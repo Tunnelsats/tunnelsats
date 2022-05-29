@@ -5,17 +5,16 @@ import {Modal,Button,ListGroup} from 'react-bootstrap'
 const FAQModal = (props) => {
 
   if(!props.show){
-      
     return (null)
-  } 
+  }
 
 
   return (
     <div>
 
     <Modal
-      id="faq_modal" 
-      show={props.show} 
+      id="faq_modal"
+      show={props.show}
       onHide={props.handleClose}
       centered
     >
@@ -28,7 +27,7 @@ const FAQModal = (props) => {
         <div>
             <h4>What is this?</h4>
             <p>With LNVPN we've build a very simple VPN pay-as-you-go service paid via Bitcoin Lightning. Instead of paying around 5$ every month with your credit card for the piviledge of being able to use a VPN service every now and then we provide you with a VPN connection on servers in different countries for one hour for only 10 cents in US$ -- paid via ⚡!</p>
-            
+
             <h4>How does it work?</h4>
             <p>
             Very simple: On this website you automatically generate WireGuard VPN keys via JavaScript inside of your browser. After selecting a country where your VPN endpoint should be located and a desired validity of your connection you click "Get Invoice" to get a QR code which you can scan with a Bitcoin Lightning capable wallet like <a href="https://phoenix.acinq.co/">Phoenix</a>, <a href="https://muun.com/">Muun</a>, <a href="https://breez.technology/">Breez</a> or <a href="https://bluewallet.io/">BlueWallet</a>. After a successful payment, the website reloads and presents you a new QR code and the message PAID. You can now scan the QR code with the WireGuard App on <a href="https://play.google.com/store/apps/details?id=com.wireguard.android&hl=de&gl=US">Android Google Play</a> or on the <a href="https://apps.apple.com/us/app/wireguard/id1441195209">Apple App Store</a>. If you want to use the VPN connection on your PC or Mac you can download the WireGuard configuration file to import it into <a href="https://www.wireguard.com/install/">WireGuard for Windows and MacOS</a>. You can as well send the configuration to yourself via Email to use it later on another divice.
@@ -65,18 +64,15 @@ const FAQModal = (props) => {
 
             <h4>Who build this?</h4>
             <p>
-            Berlin Bitcoiner
+            From Node Runnners for Node Runners
             </p>
-
-               
-
         </div>
       </Modal.Body>
       <Modal.Footer>
         <Button variant="danger" onClick={props.handleClose}>Close</Button>
       </Modal.Footer>
     </Modal>
-      
+
     </div>
   )
 }

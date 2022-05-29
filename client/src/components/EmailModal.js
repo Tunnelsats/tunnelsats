@@ -4,18 +4,16 @@ import {Modal,Button,InputGroup,FormControl} from 'react-bootstrap'
 const EmailModal = (props) => {
   const [emailAddress, setEmailAddress] = useState("");
 
-  
+
   if(!props.show){
-      
     return (null)
-  } 
+  }
 
   return (
     <div>
-       
 
-      <Modal 
-      show={props.show} 
+      <Modal
+      show={props.show}
       onHide={props.handleClose}
       centered
       >
@@ -27,7 +25,7 @@ const EmailModal = (props) => {
                 <InputGroup.Prepend>
                     <InputGroup.Text >Email</InputGroup.Text>
                 </InputGroup.Prepend>
-                <FormControl  
+                <FormControl
                 value={emailAddress}
                 onChange={(e) => setEmailAddress(e.target.value)}
                 />
@@ -42,7 +40,6 @@ const EmailModal = (props) => {
           </Button>
         </Modal.Footer>
       </Modal>
-      
     </div>
   )
 }

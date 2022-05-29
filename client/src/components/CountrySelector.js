@@ -5,13 +5,13 @@ const CountrySelector = (props) => {
     <div>
       <ToggleButtonGroup type="radio" name="options" id="countryselector" defaultValue={5}>
       <ToggleButton value={5} onClick={props.onClick}>
-          🇨🇦 <br></br>CAD
+          🇪🇺<br></br>EU
         </ToggleButton>
-        <ToggleButton value={2} onClick={props.onClick} variant="secondary" disabled>
-          🇺🇸 🙅‍♂️ <br></br>USA 
+        <ToggleButton value={2} onClick={props.onClick}>
+          🇺🇸 <br></br>USA
         </ToggleButton>
         <ToggleButton  value={3} onClick={props.onClick}>
-         🇫🇮 <br></br>FIN 
+         🇫🇮 <br></br>FIN
         </ToggleButton >
         <ToggleButton value={4} onClick={props.onClick}>
           🇬🇧 <br></br>UK
@@ -19,7 +19,6 @@ const CountrySelector = (props) => {
         <ToggleButton value={1} onClick={props.onClick}>
           🇸🇬 <br></br>SGP
         </ToggleButton>
-        
       </ToggleButtonGroup>
      </div>
   )

@@ -3,25 +3,20 @@ import {ToggleButtonGroup,ToggleButton} from 'react-bootstrap'
 const RuntimeSelector = (props) => {
   return (
     <div>
-    <ToggleButtonGroup type="radio" name="options" id="runtimeselector" defaultValue={0.1} >
-      <ToggleButton id="tbg-radio-1" value={0.1} onClick={props.onClick}>
-        1 <br></br> hour
-      </ToggleButton>
-      <ToggleButton id="tbg-radio-2" value={0.5} onClick={props.onClick}>
-        1 <br></br> day
-      </ToggleButton>
-      <ToggleButton id="tbg-radio-3" value={1.5} onClick={props.onClick}>
-        1 <br></br> week
-      </ToggleButton>
-      <ToggleButton id="tbg-radio-4" value={3} onClick={props.onClick}>
+    <ToggleButtonGroup type="radio" name="options" id="runtimeselector" defaultValue={3} >
+      <ToggleButton id="tbg-radio-1" value={3} onClick={props.onClick}>
         1 <br></br> month
       </ToggleButton>
-      <ToggleButton id="tbg-radio-4" variant="secondary" value={5} /*onClick={props.onClick}*/ disabled>
-        1 🙅‍♂️<br></br> year 
+      <ToggleButton id="tbg-radio-2" value={8.5} onClick={props.onClick}>
+        3 <br></br> months
       </ToggleButton>
-  </ToggleButtonGroup>
-         
-
+      <ToggleButton id="tbg-radio-3" value={16} onClick={props.onClick}>
+        6 <br></br> months
+      </ToggleButton>
+      <ToggleButton id="tbg-radio-4" variant="secondary" value={28.5} /*onClick={props.onClick}*/ disabled>
+        12 <br></br> months
+      </ToggleButton>
+    </ToggleButtonGroup>
     </div>
   )
 }
