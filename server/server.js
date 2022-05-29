@@ -6,49 +6,47 @@ const sgMail = require('@sendgrid/mail');
 var dayjs = require('dayjs');
 const { btoa } = require('buffer');
 // var customParseFormat = require('dayjs/plugin/customParseFormat')
-// // dayjs.extend(customParseFormat)
+// dayjs.extend(customParseFormat)
 const app = express();
 var payment_hash,payment_request;
-require('dotenv').config() 
+require('dotenv').config()
 
 
 const io = require("socket.io")(process.env.PORT, {
   cors: {
-    origin: true  
+    origin: true
   }
 })
 
-////////////// Set up the Webserver
+// Set up the Webserver
 app.use(express.static(path.join(__dirname, '../client/build')));
 app.use(bodyParser.json())
 
-///////Serving the index site
+// Serving the index site
 app.get('/', function (req, res) {
   res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
-}); 
+});
 
-/////////Invoice Webhook
+// Invoice Webhook
 app.post(process.env.WEBHOOK, (req, res) => {
-    
-    io.sockets.emit('invoicePaid',req.body.payment_hash)
-    res.status(200).end() 
-}) 
- 
-app.listen(5000);
-////////////// Finish Server Setup
 
-//////Socket Connections
+    io.sockets.emit('invoicePaid',req.body.payment_hash)
+    res.status(200).end()
+})
+
+app.listen(5000);
+// Finish Server Setup
+
+// Socket Connections
 io.on('connection', (socket) => {
-  // console.log("New connection") 
-  
- 
-  ////////Checks for a paid Invoice after reconnect
+
+  // Checks for a paid Invoice after reconnect
   socket.on('checkInvoice',(clientPaymentHash) => {
-    
-    checkInvoice(clientPaymentHash).then(result => io.sockets.emit('invoicePaid',result)) 
+
+    checkInvoice(clientPaymentHash).then(result => io.sockets.emit('invoicePaid',result))
   })
- 
-  /////Getting the Invoice from lnbits and forwarding it to the frontend
+
+  // Getting the Invoice from lnbits and forwarding it to the frontend
   socket.on('getInvoice',(amount) =>{
     getInvoice(amount).then(result => socket.emit("lnbitsInvoice",result))
   })
@@ -59,59 +57,52 @@ io.on('connection', (socket) => {
   socket.on('getWireguardConfig',(publicKey,presharedKey,priceDollar,country) => {
     getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country),priceDollar).then(result => socket.emit('reciveConfigData',result))
   })
- 
+
 
 });
-///Transforms country into server
+
+//Transforms country into server
 var getServer = (countrySelector) => {
-  var server 
+  var server
   if (countrySelector == 1){
-  var server = process.env.IP_SINGAPUR  
+  var server = process.env.IP_EU
   }
   if (countrySelector == 2){
-    var server = process.env.IP_USA  
-  } 
+    var server = process.env.IP_USA
+  }
   if (countrySelector == 3){
-    var server = process.env.IP_FIN    
-  }   
-  if (countrySelector == 4){ 
-    var server = process.env.IP_UK  
-  } 
-  if (countrySelector == 5){  
-    var server = process.env.IP_CANADA 
-  } 
-  return server 
-} 
+    var server = process.env.IP_FIN
+  }
+  if (countrySelector == 4){
+    var server = process.env.IP_UK
+  }
+  if (countrySelector == 5){
+    var server = process.env.IP_SGP
+  }
+  return server
+}
 
 
-///Transforms duration into timestamp
+// Transforms duration into timestamp
 var getTimeStamp = (selectedValue) =>{
-  //var date = new Date()
 
-  if(selectedValue == 3){
+  if(selectedValue === 1){
     date = addMonths(date = new Date(),1)
     return date
   }
-  if(selectedValue == 1.5){
-    date = addWeeks(date = new Date(),1)
-    return date
-  }
-  if(selectedValue == 0.5){
-    date = addHour(date = new Date(),24)
+
+  if(selectedValue === 3){
+    date = addMonths(date = new Date(),3)
     return date
   }
 
-  if(selectedValue == 0.1){
-    date = addHour(date = new Date(),1)
+  if(selectedValue === 6){
+    date = addMonths(date = new Date(),6)
     return date
   }
 
-  function addHour (date = new Date(), hour) {  
-    date.setHours(date.getHours() + hour)
-    return date
-  }
-  function addWeeks (date = new Date(), weeks) {  
-    date.setDate(date.getDate() + weeks * 7)
+  if(selectedValue === 12){
+    date = addMonths(date = new Date(),12)
     return date
   }
 
@@ -122,12 +113,12 @@ var getTimeStamp = (selectedValue) =>{
       date.setDate(0);
     }
     return date;
-  }   
-  
+  }
+
 }
 
 
-///////// Get Invoice Function
+// Get Invoice Function
 async function getInvoice(amount) {
   var satoshis = await getPrice().then((result) => {return result})
   return axios({
@@ -135,21 +126,21 @@ async function getInvoice(amount) {
   url: process.env.URL_INVOICE_API,
   headers: { "X-Api-Key": process.env.INVOICE_KEY},
   data: {
-    "out": false, 
-    "amount": satoshis*amount, 
-    "memo": "LNVPN",
+    "out": false,
+    "amount": satoshis*amount,
+    "memo": "NRVPN",
     "webhook" : process.env.URL_WEBHOOK
-  } 
-    }).then(function (respons){        
+  }
+    }).then(function (respons){
       payment_request = respons.data.payment_request;
       payment_hash = respons.data.payment_hash;
       return {payment_hash,payment_request}
-    }).catch(error => {   
+    }).catch(error => {
       return error
-    }); 
+    });
 }
 
-////////Get Bitcoin Price in Satoshi per Dollar
+// Get Bitcoin Price in Satoshi per Dollar
 async function getPrice() {
   return axios({
     method: "get",
@@ -158,60 +149,62 @@ async function getPrice() {
      const priceBTC = (respons.data.USD.buy);
      var priceOneDollar = (100000000 / priceBTC);
      return priceOneDollar
-  })    
-};     
+  })
+};
 
 
-//////////////////Get Wireguard Config
+// Get Wireguard Config
 async function getWireguardConfig(publicKey,presharedKey,timestamp,server,priceDollar) {
- 
+
   return axios({
     method: "post",
     url: server,
-    headers: { 
-      'Content-Type': 'application/json', 
+    headers: {
+      'Content-Type': 'application/json',
       'Authorization' : process.env.AUTH
       },
     data: {
       "publicKey": publicKey,
       "presharedKey": presharedKey,
-      "bwLimit": 10000*priceDollar,
+//      "bwLimit": 10000*priceDollar,
       "subExpiry": parseDate(timestamp),
       "ipIndex": 0
     }
-  }).then(function (respons){   
+  }).then(function (respons){
     return respons.data
-  }).catch(error => { 
-    console.log(error)  
-    return error 
+  }).catch(error => {
+    console.log(error)
+    return error
   });
 }
-//////Parse Date object to string format: YYYY-MMM-DD hh:mm:ss A
+
+
+// Parse Date object to string format: YYYY-MMM-DD hh:mm:ss A
 const parseDate = (date) => {
-  
+
   var durationEnd = dayjs(date).format("YYYY-MMM-DD hh:mm:ss A")
- 
+
   return durationEnd
 }
 
 
-//////Send Wireguard config file via email
+// Send Wireguard config file via email
 async function sendEmail(emailAddress,configData,date) {
   sgMail.setApiKey(process.env.EMAIL_TOKEN);
     const msg = {
       to: emailAddress,
-      from: 'thanks@lnvpn.net', // Use the email address or domain you verified above
-      subject: 'Your LNVPN config file for Wireguard. Valid until: '+date.toString(),
-      text: "Thank you for using lnvpn.net. Find your personal config File attached. Don't loose it.\n Your subscription is valid until: "+date.toString(),
+      from: 'thanks@nrvpn.net', // Use the email address or domain you verified above
+      subject: 'Your NodeRunner VPN config file for Wireguard. Valid until: '+date.toString(),
+      text: "Thank you for using Node Runner VPN. Find your personal config file attached. Don't loose it.\n Your subscription is valid until: "+date.toString(),
       attachments: [
         {
-          content: btoa(configData), 
-          filename: 'wireguard.conf',
+          content: btoa(configData),
+          filename: 'lndHybridMode.conf',
           type : "text/plain",
           endings:'native',
           disposition: 'attachment'
         }
-      ], 
+      ],
     };
 
     sgMail
@@ -224,26 +217,20 @@ async function sendEmail(emailAddress,configData,date) {
         }
       });
 }
-    
-    //////////////Check for Invoice
-    async function checkInvoice(hash) {
-      return axios({
-        method: "get",
-        url: "https://legend.lnbits.com/api/v1/payments/"+hash,
-        headers: { "X-Api-Key": process.env.INVOICE_KEY}
-  
-      }).then(function (respons){
-          
-          if(respons.data.paid)  {
-            return respons.data.details.payment_hash
-          } 
 
-      })
-
-    }
- 
-  
-
+// Check for Invoice
+async function checkInvoice(hash) {
+  return axios({
+       method: "get",
+       url: process.env.URL_INVOICE_API + "/" + hash,
+       //url: "https://legend.lnbits.com/api/v1/payments/"+hash,
+       headers: { "X-Api-Key": process.env.INVOICE_KEY}
+  }).then(function (respons){
+       if(respons.data.paid)  {
+          return respons.data.details.payment_hash
+       }
+  })
+}
 
 
 
