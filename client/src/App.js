@@ -15,71 +15,71 @@ var socket =  io.connect('http://localhost:5001')
 
 var emailAddress;
 var clientPaymentHash;
-var isPaid=false; //Is only necessary in the case of socket event is fireing multible times
+var isPaid=false; //Is only necessary in the case of socket event is fireing multiple times
 
 
 function App() {
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair())
-  const [priceDollar, updatePrice] =  useState(0.1)
+  const [priceDollar, updatePrice] =  useState(3)
   const [country, updateCountry] =  useState(1)
   const [showSpinner, setSpinner] = useState(true)
-  const [payment_request, setPaymentrequest] = useState(0) 
+  const [payment_request, setPaymentrequest] = useState(0)
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
-   ///////Modal Invoice
-   const [visibleInvoiceModal, setShowInvoiceModal] = useState(false);
-   const closeInvoiceModal = () => setShowInvoiceModal(false);
-   const showInvoiceModal = () => setShowInvoiceModal(true);
-  ///////Modal Configdata
-   const [isConfigModal, showConfigModal] = useState(false) 
-   const renderConfigModal = () => showConfigModal(true);
-   const hideConfigModal = () => showConfigModal(false);
-   //////FAQ - Modal
-   const [isFAQModal, showFAQModal] = useState(false) 
-   const renderFAQModal = () => showFAQModal(true);
-   const hideFAQModal = () => showFAQModal(false); 
-  
+  //Modal Invoice
+  const [visibleInvoiceModal, setShowInvoiceModal] = useState(false);
+  const closeInvoiceModal = () => setShowInvoiceModal(false);
+  const showInvoiceModal = () => setShowInvoiceModal(true);
+  //Modal Configdata
+  const [isConfigModal, showConfigModal] = useState(false)
+  const renderConfigModal = () => showConfigModal(true);
+  const hideConfigModal = () => showConfigModal(false);
+  //FAQ - Modal
+  const [isFAQModal, showFAQModal] = useState(false)
+  const renderFAQModal = () => showFAQModal(true);
+  const hideFAQModal = () => showFAQModal(false);
 
 
 
-  ///////Successfull payment alert
-   const renderAlert = (show) => {
+  //Successfull payment alert
+  const renderAlert = (show) => {
     setPaymentAlert(show)
     setTimeout(() => setPaymentAlert(false), [2000])
-  } 
+  }
 
-  //////Updates the QR-Code
+  //Updates the QR-Code
   const updatePaymentrequest = () => {
     socket.on('lnbitsInvoice',invoiceData => {
       setPaymentrequest(invoiceData.payment_request)
       clientPaymentHash = invoiceData.payment_hash;
       setSpinner(false)
-    }) 
+    })
   }
 
-  ////Connect to WebSocket Server
+  //Connect to WebSocket Server
   socket.off('connect').on("connect", () => {
-    /////Checks for already paid invoice if browser switche tab on mobile
+    //Checks for already paid invoice if browser switche tab on mobile
     if((clientPaymentHash !== undefined)){
       checkInvoice()
     }
   });
 
-  const checkInvoice = () =>{ 
+  const checkInvoice = () =>{
       socket.emit('checkInvoice',clientPaymentHash)
   }
 
-  //Get the invoice 
+  //Get the invoice
   const getInvoice = (price) => {
     socket.emit('getInvoice', price)
   }
-  ///////////GetWireguardConfig 
+
+  //GetWireguardConfig
   const getWireguardConfig = (publicKey,presharedKey,priceDollar,country) =>{
     socket.emit('getWireguardConfig',publicKey,presharedKey,priceDollar,country)
   }
 
-  socket.off('invoicePaid').on('invoicePaid', paymentHash => { 
+  socket.off('invoicePaid').on('invoicePaid', paymentHash => {
     if((paymentHash === clientPaymentHash) && !isPaid)
-    { 
+    {
       renderAlert(true)
       isPaid = true;
       setSpinner(true)
@@ -87,13 +87,12 @@ function App() {
     }
   })
 
-  /////////Get wireguard config from Server
+  //Get wireguard config from Server
   socket.off('reciveConfigData').on('reciveConfigData',wireguardConfig =>{
     setSpinner(false)
     setPaymentrequest(buildConfigFile(wireguardConfig).join('\n'))
-    
   })
-  /////////Construct the Config File
+  //Construct the Config File
   const buildConfigFile = (serverResponse) => {
     showInvoiceModal ()
     renderConfigModal()
@@ -111,16 +110,14 @@ function App() {
     return configArray
   }
 
-  ///////////Change Runtime
+  //Change Runtime
   const runtimeSelect = (e) =>{
     updatePrice(e.target.value)
-    
   }
 
   const countrySelect = (e) => {
     updateCountry(e.target.value)
   }
-
 
   const download = (filename,text) => {
     const textArray = [text]
@@ -138,36 +135,36 @@ function App() {
   const sendEmail = (email,config,date) => {
     socket.emit('sendEmail',email,config,date)
   }
-  
- 
+
+
 
   return (
     <div>
       <Container className="main-middle">
         <Row>
           <Col>
-          <h1>LN ⚡ VPN</h1>
-         
+          <h1>Tunnel ⚡ Sats</h1>
+
           <HeaderInfo/>
-          <KeyInput 
-          publicKey={keyPair.publicKey} 
-          privateKey={keyPair.privateKey} 
+          <KeyInput
+          publicKey={keyPair.publicKey}
+          privateKey={keyPair.privateKey}
           presharedKey={keyPair.presharedKey}
-          newPrivateKey={(privateKey) => {keyPair.privateKey = privateKey}} 
-          newPublicKey={(publicKey) => {keyPair.publicKey = publicKey}} 
-          newPresharedKey={(presharedKey) => {keyPair.presharedKey = presharedKey}} 
+          newPrivateKey={(privateKey) => {keyPair.privateKey = privateKey}}
+          newPublicKey={(publicKey) => {keyPair.publicKey = publicKey}}
+          newPresharedKey={(presharedKey) => {keyPair.presharedKey = presharedKey}}
           />
-          
+
           <CountrySelector onClick={countrySelect}/>
           <RuntimeSelector onClick={runtimeSelect} />
 
-          <InvoiceModal  
-          show={visibleInvoiceModal} 
-          showSpinner={showSpinner} 
-          isConfigModal={isConfigModal} 
-          value={payment_request} 
-          download={() => {download("Wireguard.conf",payment_request)}}
-          showNewInvoice={() => {getInvoice(priceDollar);setSpinner(true)}} 
+          <InvoiceModal
+          show={visibleInvoiceModal}
+          showSpinner={showSpinner}
+          isConfigModal={isConfigModal}
+          value={payment_request}
+          download={() => {download("lndHybridMode.conf",payment_request)}}
+          showNewInvoice={() => {getInvoice(priceDollar);setSpinner(true)}}
           handleClose={closeInvoiceModal}
           emailAddress = {emailAddress}
           expiryDate = {getTimeStamp(priceDollar)}
@@ -179,7 +176,7 @@ function App() {
           show={isFAQModal}
           handleClose={hideFAQModal}
           />
-          
+
           <Price dollar={priceDollar}/>
             <div className='main-buttons'>
             <Row>
@@ -187,31 +184,27 @@ function App() {
                 <Button onClick={() => displayNewPair(window.wireguard.generateKeypair)} variant="info">Generate New Key</Button>
               </Col>
               <Col>
-                <Button 
-                onClick={() => renderFAQModal()} 
+                <Button
+                onClick={() => renderFAQModal()}
                 variant="info">Show FAQ</Button>
               </Col>
             </Row>
-              <Button 
+              <Button
               onClick={() => {getInvoice(priceDollar);
                 showInvoiceModal();
                 hideConfigModal();
                 updatePaymentrequest();
                 setSpinner(true);
                 isPaid=false;
-              }} 
+              }}
               variant="success">Generate Invoice</Button>
             </div>
           </Col>
         </Row>
       </Container>
     </div>
-    
   );
-  
 }
 
 
 export default App;
-
-
