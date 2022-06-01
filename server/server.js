@@ -11,12 +11,16 @@ const app = express();
 var payment_hash,payment_request;
 require('dotenv').config()
 
-
-const io = require("socket.io")(process.env.PORT, {
+//const io = require("socket.io")(process.env.PORT, {
+const createServer = require('http');
+const httpServer = createServer.createServer(app);
+const io = require("socket.io")(httpServer, {
   cors: {
-    origin: true
+    origin: true,
+    //origin: ["https://domain.com", "https://www.domain.com", "http://localhost", "http://127.0.0.1"],
+    credentials: true
   }
-})
+});
 
 // Set up the Webserver
 app.use(express.static(path.join(__dirname, '../client/build')));
@@ -34,8 +38,9 @@ app.post(process.env.WEBHOOK, (req, res) => {
     res.status(200).end()
 })
 
-app.listen(5000);
+httpServer.listen(5000);
 // Finish Server Setup
+
 
 // Socket Connections
 io.on('connection', (socket) => {
@@ -193,13 +198,13 @@ async function sendEmail(emailAddress,configData,date) {
   sgMail.setApiKey(process.env.EMAIL_TOKEN);
     const msg = {
       to: emailAddress,
-      from: 'thanks@nrvpn.net', // Use the email address or domain you verified above
+      from: 'thanks@domain', // Use the email address or domain you verified above
       subject: 'Your NodeRunner VPN config file for Wireguard. Valid until: '+date.toString(),
-      text: "Thank you for using Node Runner VPN. Find your personal config file attached. Don't loose it.\n Your subscription is valid until: "+date.toString(),
+      text: "Thank you for using XX. Find your personal config file attached. Don't loose it.\n Your subscription is valid until: "+date.toString(),
       attachments: [
         {
           content: btoa(configData),
-          filename: 'lndHybridMode.conf',
+          filename: 'wg.conf',
           type : "text/plain",
           endings:'native',
           disposition: 'attachment'
@@ -223,7 +228,6 @@ async function checkInvoice(hash) {
   return axios({
        method: "get",
        url: process.env.URL_INVOICE_API + "/" + hash,
-       //url: "https://legend.lnbits.com/api/v1/payments/"+hash,
        headers: { "X-Api-Key": process.env.INVOICE_KEY}
   }).then(function (respons){
        if(respons.data.paid)  {
