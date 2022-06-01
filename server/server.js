@@ -16,8 +16,8 @@ const createServer = require('http');
 const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
   cors: {
-    origin: true,
-    //origin: ["https://domain.com", "https://www.domain.com", "http://localhost", "http://127.0.0.1"],
+    //origin: true,
+    origin: ["https://domain.com", "https://www.domain.com", "http://localhost", "http://127.0.0.1"],
     credentials: true
   }
 });
