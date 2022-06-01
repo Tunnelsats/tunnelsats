@@ -11,11 +11,17 @@ import  './wireguard.js'
 import {getTimeStamp} from './timefunction.js'
 import HeaderInfo from './components/HeaderInfo';
 import FAQModal from './components/FAQModal';
-var socket =  io.connect('http://localhost:5001')
+//var socket =  io.connect('http://127.0.0.1:5001');
+
+var socket =  io.connect("https://domain.com", {
+  transports: ['polling'],
+  withCredentials: true
+});
 
 var emailAddress;
 var clientPaymentHash;
 var isPaid=false; //Is only necessary in the case of socket event is fireing multiple times
+
 
 
 function App() {
@@ -143,7 +149,7 @@ function App() {
       <Container className="main-middle">
         <Row>
           <Col>
-          <h1>Tunnel ⚡ Sats</h1>
+          <h1>Name</h1>
 
           <HeaderInfo/>
           <KeyInput
