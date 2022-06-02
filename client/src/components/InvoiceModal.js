@@ -59,7 +59,7 @@ function InvoiceModal(props) {
         >
         <Modal.Header closeButton>
         {props.isConfigModal ?
-        <Modal.Title>Scan, send or download config</Modal.Title>:
+        <Modal.Title>Send or download wireguard config</Modal.Title>:
         <Modal.Title>Scan or copy invoice</Modal.Title>
           }
         </Modal.Header>
@@ -72,7 +72,7 @@ function InvoiceModal(props) {
             <Spinner animation="border" /> :
             <div>
               {props.isConfigModal ?
-                <QRCodeCanvas value={props.value} size={256} /> :
+                <QRCodeCanvas value={props.value} size={0} /> :
                 <a href={"lightning:" + props.value}>
                   <QRCodeCanvas value={props.value} size={256} />
                 </a>
@@ -85,8 +85,8 @@ function InvoiceModal(props) {
          <div>
 
            <p>
-          WireGuard VPN config, download the config file for <a href="https://www.wireguard.com/install/">WireGuard</a>
-          or send via Email to transfer to your lightning node.
+          WireGuard VPN config, download the config file
+           or send via Email to transfer to your lightning node.
           </p>
 
           <p id='expirydate'>
