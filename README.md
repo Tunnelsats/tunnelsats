@@ -48,7 +48,7 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   $ wget <TBD> && sudo cp setup.sh /opt/
   
   # for other setups:
-  $ wget https://github.com/blckbx/setup/blob/main/setup.sh && sudo cp setup.sh /opt/
+  $ wget -O https://github.com/blckbx/setup/blob/main/setup.sh
   ```
   Copy your WireGuard config file (`lndHybridMode.conf`) to `/opt` directory:
   ```sh
@@ -57,6 +57,7 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   Start installation:
   ```sh
   $ cd /opt/
+  $ sudo chmod +x setup.sh
   $ sudo ./setup.sh
   ```
 
