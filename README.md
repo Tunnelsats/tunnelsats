@@ -15,7 +15,6 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - [Prelude and Objective](#prelude-and-objective)
 - [Preconditions](#preconditions)
 - [How this works](#how-this-works)
-- [WireGuard configuration file](#wireguard-configuration-file)
 - [What to do](#what-to-do)
 - [Deep Dive](#deep-dive)
 
@@ -82,7 +81,7 @@ or just want to have a chat with us, join our [Tunnel⚡Sats](https://t.me/...) 
 
 ____________________________________________________________
 
-This service is brought to you by @ziggie1984 (Ziggie), @TrezorHannes (Hakuna) and @blckbx (osito).
+This service is brought to you by [@ziggie1984](https://github.com/ziggie1984) (Ziggie), [@TrezorHannes](https://github.com/TrezorHannes) (Hakuna) and [@blckbx](https://github.com/blckbx) (osito).
 
-Big thanks to @LightRider5 ([lnvpn.net](https://lnvpn.net)) 
+Big thanks to [@LightRider5](https://github.com/LightRider5) ([lnvpn.net](https://lnvpn.net)) 
 for providing this amazing frontend framework under MIT License.
