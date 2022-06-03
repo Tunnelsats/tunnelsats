@@ -45,18 +45,17 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   Download installation script and copy to `/opt`:
   ```sh
   # for Umbrel:
-  $ wget <TBD> && sudo cp setup.sh /opt/
+  $ wget <TBD>
   
   # for other setups:
   $ wget https://github.com/blckbx/setup/raw/main/setup.sh
   ```
-  Copy your WireGuard config file (`lndHybridMode.conf`) to `/opt` directory:
-  ```sh
-  $ sudo cp /path/to/lndHybridMode.conf /opt/
-  ```
+
+  Copy your WireGuard config file (`lndHybridMode.conf`) to the same directory where `setup.sh` is located.
+
+
   Start installation:
   ```sh
-  $ cd /opt/
   $ sudo chmod +x setup.sh
   $ sudo ./setup.sh
   ```
