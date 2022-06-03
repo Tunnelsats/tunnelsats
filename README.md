@@ -1,7 +1,7 @@
 # Tunnel⚡Sats
 
 ## Prelude and Objective ##
-The lightning network functions in rapid growing speed as infrastructure for payments across the globe between merchants, creators, consumers, institutions and investors alike. Hence the key pillars of sustained growth are their nodes, by providing _reliable_, _liquid_, _discoverable_, _trustless_ and _fast_ connection points between those parties.
+The lightning network functions in rapid growing speed as infrastructure for payments across the globe between merchants, creators, consumers, institutions and investors alike. Hence the key pillars of sustained growth are their nodes, by providing _reliable_, _liquid_, _discoverable_, _trustless_ and _fast_ connection points between those parties. For fast communication establishing clearnet connections between nodes is inevitable. 
 
 The effort of creating a valuable "clearnet over VPN" node - which we laid out [here](https://blckbx.github.io/lnd-hybrid-mode/) and [here](https://github.com/TrezorHannes/Dual-LND-Hybrid-VPS) - is quite high and intense because it touches several disciplinaries not every node runner is comfortable with. Required knowledge of the command line, firewall handling, network details, trust in and choosing of a suitable VPN provider that offers all the features we need and cares about privacy and, of course, the configuration of the lightning node itself makes it easy to just "leave it as is".
 
@@ -77,7 +77,7 @@ What the script is doing in detail:
 ## Further Help: ##
 
 If you need further help setting up hybrid mode over VPN 
-or just want to have a chat with us, join our [Tunnel⚡Sats](https://t.me/...) Telegram group.
+or just want to have a chat with us, join our [Tunnel⚡Sats](https://t.me/+zJfm3gFjv7I5ZTBi) Telegram group.
 
 ____________________________________________________________
 
