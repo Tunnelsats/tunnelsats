@@ -16,6 +16,8 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - [Preconditions](#preconditions)
 - [How this works](#how-this-works)
 - [WireGuard configuration file](#wireguard-configuration-file)
+- [What to do](#what-to-do)
+- [Deep Dive](#deep-dive)
 
 
 ## Preconditions: ##
@@ -32,7 +34,7 @@ In order to understand the provided scripts and steps we gonna take a deep dive 
 2) renting a VPN server and obtaining a corresponding WireGuard config file from [tunnelsats.com](https://www.tunnelsats.com)
 
 
-## Rent a VPN, get a WireGuard configuration file: ##
+## What to do: ##
 
 WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGuard servers in various countries to choose from. 
 1) Go to [tunnelsats.com](https://www.tunnelsats.com), select a country of your choice (preferably close to your real location for faster connection speed) and choose how long you want to use the service (1 to 12 months).
@@ -59,14 +61,28 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   $ sudo ./setup.sh
   ```
 
+
 ## Deep Dive: ##
 
-Here is what the script is doing in detail:
+What the script is doing in detail:
 
 1) Checking what setup it runs on (RaspiBlitz, MyNode, Start9, RaspiBolt, bare metal or something else (manual input required)) to find out the location of the `lnd.conf` file.
-2) Checks if required components are already installed and if not, installs them. These are: cgroup-tools (for split-tunneling Tor), nftables (VPN rules) and wireguard (VPN software)
-3) Checks if `lndHybridMode.conf` exists in directory `/opt/`
-4) Sets up "split-tunneling" to exclude Tor from VPN usage as cronjob (this runs continuously to identify Tor restarts)
+2) Checks if required components are already installed and if not, installs them. These are: cgroup-tools (for split-tunneling Tor), nftables (VPN rules) and wireguard (VPN software).
+3) Checks if `lndHybridMode.conf` exists in directory `/opt/`.
+4) Sets up "split-tunneling" to exclude Tor from VPN usage as cronjob (this runs continuously to identify Tor restarts).
 5) Applying changes to `lnd.conf` (listen, externalip, tor.streamisolation, tor.skip-proxy-for-clearnet-targets).
-6) Setting UFW rules (if available) to open up VPN forwarded port
-7) Asking user if we should autostart WireGuard (systemd.service)
+6) Setting UFW rules (if available) to open up VPN forwarded port.
+7) Asking user if we should autostart WireGuard (systemd.service).
+
+
+## Further Help: ##
+
+If you need further help setting up hybrid mode over VPN 
+or just want to have a chat with us, join our [Tunnel⚡Sats](https://t.me/...) Telegram group.
+
+____________________________________________________________
+
+This service is brought to you by @ziggie1984 (Ziggie), @TrezorHannes (Hakuna) and @blckbx (osito).
+
+Big thanks to @LightRider5 ([lnvpn.net](https://lnvpn.net)) 
+for providing this amazing frontend framework under MIT License.
