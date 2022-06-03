@@ -69,7 +69,7 @@ What the script is doing in detail:
 2) Checks if required components are already installed and if not, installs them. These are: cgroup-tools (for split-tunneling Tor), nftables (VPN rules) and wireguard (VPN software).
 3) Checks if `lndHybridMode.conf` exists in directory `/opt/`.
 4) Sets up "split-tunneling" to exclude Tor from VPN usage as cronjob (this runs continuously to identify Tor restarts).
-5) Backup up (`lnd.conf.bak`) and applying changes to `lnd.conf` (listen, externalip, tor.streamisolation, tor.skip-proxy-for-clearnet-targets).
+5) Backing up (`lnd.conf.bak`) and applying changes to `lnd.conf` (listen, externalip, tor.streamisolation, tor.skip-proxy-for-clearnet-targets).
 6) Setting UFW rules (if available) to open up VPN forwarded port.
 7) Asking user if we should autostart WireGuard (systemd.service).
 
