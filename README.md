@@ -77,7 +77,7 @@ What the script is doing in detail:
 ## Further Help: ##
 
 If you need further help setting up hybrid mode over VPN 
-or just want to have a chat with us, join our [Tunnel⚡Sats](https://t.me/+zJfm3gFjv7I5ZTBi) Telegram group.
+or just want to have a chat with us, join our [Tunnel⚡Sats](https://t.me/+NJylaUom-rxjYjU6) Telegram group.
 
 ____________________________________________________________
 
