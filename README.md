@@ -39,7 +39,7 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
 1) Go to [tunnelsats.com](https://www.tunnelsats.com), select a country of your choice (preferably close to your real location for faster connection speed) and choose how long you want to use the service (1 to 12 months).
 2) Pay the lightning invoice.
 3) Copy, download or send the Wireguard configuration (file) to your local computer and transfer it to your node.
-4) Download the installation script for your setup: [Umbrel](https://tbd) / [other](https://github.com/blckbx/setup/blob/main/setup.sh) (RaspiBolt, RaspiBlitz, MyNode, Start9, bare metal) onto your node.
+4) Download the installation script for your setup: [Umbrel](https://tbd) / [other](https://github.com/blckbx/setup/raw/main/setup.sh) (RaspiBolt, RaspiBlitz, MyNode, Start9, bare metal) onto your node.
 5) Start installation script.
 
   Download installation script and copy to `/opt`:
@@ -48,7 +48,7 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   $ wget <TBD> && sudo cp setup.sh /opt/
   
   # for other setups:
-  $ wget -O https://github.com/blckbx/setup/blob/main/setup.sh
+  $ wget https://github.com/blckbx/setup/raw/main/setup.sh
   ```
   Copy your WireGuard config file (`lndHybridMode.conf`) to `/opt` directory:
   ```sh
