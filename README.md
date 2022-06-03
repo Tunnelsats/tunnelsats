@@ -38,8 +38,8 @@ In order to understand the provided scripts and steps we gonna take a deep dive 
 WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGuard servers in various countries to choose from. 
 1) Go to [tunnelsats.com](https://www.tunnelsats.com), select a country of your choice (preferably close to your real location for faster connection speed) and choose how long you want to use the service (1 to 12 months).
 2) Pay the lightning invoice.
-3) Copy, download or send the Wireguard configuration (file) to your local computer and transfer it to your node.
-4) Download the installation script for your setup: [Umbrel](https://tbd) / [other](https://github.com/blckbx/setup/raw/main/setup.sh) (RaspiBolt, RaspiBlitz, MyNode, Start9, bare metal) onto your node.
+3) Copy, download or send the Wireguard configuration (file: `lndHybridMode.conf` - please do NOT rename this file) to your local computer and transfer it to your node.
+4) Download the installation script for your setup: [Umbrel](https://tbd) / [other](https://github.com/blckbx/setup/raw/main/setup.sh) (RaspiBolt, RaspiBlitz, MyNode, Start9, bare metal) to your node.
 5) Start installation script.
 
   Download installation script and copy to `/opt`:
@@ -52,7 +52,6 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   ```
 
   Copy your WireGuard config file (`lndHybridMode.conf`) to the same directory where `setup.sh` is located.
-
 
   Start installation:
   ```sh
@@ -67,7 +66,7 @@ What the script is doing in detail:
 
 1) Checking what setup it runs on (RaspiBlitz, MyNode, Start9, RaspiBolt, bare metal or something else (manual input required)) to find out the location of the `lnd.conf` file.
 2) Checks if required components are already installed and if not, installs them. These are: cgroup-tools (for split-tunneling Tor), nftables (VPN rules) and wireguard (VPN software).
-3) Checks if `lndHybridMode.conf` exists in directory `/opt/`.
+3) Checks if `lndHybridMode.conf` exists in current directory (must be the same directory where setup script is located).
 4) Sets up "split-tunneling" to exclude Tor from VPN usage as cronjob (this runs continuously to identify Tor restarts).
 5) Backing up (`lnd.conf.bak`) and applying changes to `lnd.conf` (listen, externalip, tor.streamisolation, tor.skip-proxy-for-clearnet-targets).
 6) Setting UFW rules (if available) to open up VPN forwarded port.
