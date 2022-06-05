@@ -53,10 +53,9 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
 
   Copy your WireGuard config file (`lndHybridMode.conf`) to the same directory where `setup.sh` is located.
 
-  Make it executable and start it:
+  Start it:
   ```sh
-  $ sudo chmod +x setup.sh
-  $ sudo ./setup.sh
+  $ sudo bash setup.sh
   ```
 
 
