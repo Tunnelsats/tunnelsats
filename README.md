@@ -16,6 +16,7 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - [Preconditions](#preconditions)
 - [How this works](#how-this-works)
 - [What to do](#what-to-do)
+- [Uninstall](#uninstall)
 - [Deep Dive](#deep-dive)
 
 
@@ -67,9 +68,19 @@ What is this script doing in detail?
 2) Checking if required components are already installed and if not, installs them. These are: `cgroup-tools` (for split-tunneling Tor), `nftables` (VPN rules) and `wireguard` (VPN software).
 3) Checks if `lndHybridMode.conf` exists in current directory (must be the same directory where setup script is located).
 4) Sets up "split-tunneling" to exclude Tor from VPN usage as cronjob (this runs continuously to identify Tor restarts).
-5) Backing up (`lnd.conf.bak`) and applying changes to `lnd.conf` (listen, externalip, tor.streamisolation, tor.skip-proxy-for-clearnet-targets).
+5) Backing up (`lnd.conf.vpnbackup` - do NOT delete this file! if you want to uninstall, this is used to restore your settings, else for safety LND is restored to  default settings using Tor only) and applying changes to `lnd.conf` (listen, externalip, tor.streamisolation, tor.skip-proxy-for-clearnet-targets).
 6) Setting UFW rules (if installed) to open up the VPN provided forwarded port.
 7) Asking user if we should autostart WireGuard (systemd.service).
+
+
+## Uninstall: ##
+
+To restore all applied changes made to your node setup, we provide an uninstallation script.
+
+  ```sh
+  $ wget https://github.com/blckbx/setup/raw/main/uninstall.sh
+  $ sudo bash uninstall.sh
+  ```
 
 
 ## Further Help: ##
