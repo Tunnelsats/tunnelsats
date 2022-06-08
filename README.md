@@ -5,7 +5,7 @@ The lightning network functions in rapid growing speed as infrastructure for pay
 
 The effort of creating a valuable "clearnet over VPN" node - which we laid out [here](https://blckbx.github.io/lnd-hybrid-mode/) and [here](https://github.com/TrezorHannes/Dual-LND-Hybrid-VPS) - is quite high and intense because it touches several disciplinaries not every node runner is comfortable with. Required knowledge of the command line, firewall handling, network details, trust in and choosing of a suitable VPN provider that offers all the features we need and cares about privacy and, of course, the configuration of the lightning node itself makes it easy to just "leave it as is".
 
-Therefore we came to the conclusion that this process has to be simplified **a lot**. In the last few weeks we put together all the pieces that we think provide the best of all worlds to make it as easy as possible to go hybrid. 
+Therefore we came to the conclusion that this process has to be simplified **a lot**. In the last few weeks we put together all the pieces that we think provide the best of both worlds to make it as easy as possible to go hybrid. 
 
 Although thinking this is a suitable way of providing a "hybrid service", we want to emphasize to carefully read through the guide below, make an educated decision by yourself if you want to go clearnet over VPN.
 
@@ -16,22 +16,26 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - [Preconditions](#preconditions)
 - [How this works](#how-this-works)
 - [What to do](#what-to-do)
-- [Uninstall](#uninstall)
 - [Deep Dive](#deep-dive)
+- [Enabling hybrid mode in `lnd.conf`](#enabling-hybrid-mode-in-lndconf)
+- [Uninstallation](#uninstallation)
+- [Further Help](#further-help)
 
 
 ## Preconditions: ##
 
 - `lnd-0.14.2-beta` or later
+- edit your node's `lnd.conf` file
 - ability to spend some sats (the hardest part)
 
 
 ## How this works: ##
 
-In order to understand the provided scripts and steps we gonna take a deep dive into our service. It is split into two parts: 
+In order to understand the provided scripts and steps we gonna take a deep dive into our service. It is split into three parts: 
 
-1) Setting up the node for hybrid mode (one-time installation) and
-2) renting a VPN server and obtaining a corresponding WireGuard config file from [tunnelsats.com](https://www.tunnelsats.com)
+1) Renting a VPN server and obtaining a corresponding WireGuard config file from [tunnelsats.com](https://www.tunnelsats.com)
+2) Installing required software and components to make VPN connection and Tor splitting work.
+3) Setting up the node for hybrid mode by editing `lnd.conf` and modifying only 4 parameter within the file. 
 
 
 ## What to do: ##
@@ -40,16 +44,12 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
 1) Go to [tunnelsats.com](https://www.tunnelsats.com), select a country of your choice (preferably close to your real location for faster connection speed) and choose how long you want to use the service (1 to 12 months).
 2) Pay the lightning invoice.
 3) Copy, download or send the Wireguard configuration (file: `lndHybridMode.conf` - please do NOT rename this file) to your local computer and transfer it to your node.
-4) Download the setup script for your node software: [Umbrel](https://tbd) / [other](https://github.com/blckbx/setup/raw/main/setup.sh) (RaspiBolt, RaspiBlitz, MyNode, Start9, bare metal)
-5) Start installation script.
+4) Download the setup script and run it.
 
-  Download setup script:
+  Download setup and uninstall script (just in case):
   ```sh
-  # for Umbrel:
-  $ wget <TBD>
-  
-  # for other setups:
   $ wget https://github.com/blckbx/setup/raw/main/setup.sh
+  $ wget https://github.com/blckbx/setup/raw/main/uninstall.sh 
   ```
 
   Copy your WireGuard config file (`lndHybridMode.conf`) to the same directory where `setup.sh` is located.
@@ -64,18 +64,33 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
 
 What is this script doing in detail?
 
-1) Checking what setup it runs on (RaspiBlitz, MyNode, Start9, RaspiBolt, bare metal or something else (manual input required)) to find out the location of the `lnd.conf` file.
-2) Checking if required components are already installed and if not, installs them. These are: `cgroup-tools` (for split-tunneling Tor), `nftables` (VPN rules) and `wireguard` (VPN software).
-3) Checks if `lndHybridMode.conf` exists in current directory (must be the same directory where setup script is located).
-4) Sets up "split-tunneling" to exclude Tor from VPN usage as cronjob (this runs continuously to identify Tor restarts).
-5) Backing up (`lnd.conf.vpnbackup` - do NOT delete this file! if you want to uninstall, this is used to restore your settings, else for safety LND is restored to  default settings using Tor only) and applying changes to `lnd.conf` (listen, externalip, tor.streamisolation, tor.skip-proxy-for-clearnet-targets).
-6) Setting UFW rules (if installed) to open up the VPN provided forwarded port.
-7) Asking user if we should autostart WireGuard (systemd.service).
+1) Checking if required components are already installed and if not, installs them. These are: `cgroup-tools` (for split-tunneling Tor), `nftables` (VPN rules) and `wireguard` (VPN software).
+2) Checks if `lndHybridMode.conf` exists in current directory (must be the same directory where setup script is located).
+3) Sets up "split-tunneling" to exclude Tor from VPN usage as systemd service to run after Tor (re)starts.
+4) Enabling and starting required systemd services (wg-quick, splitting).
+5) Setting UFW rules (if installed) to open up the VPN provided forwarded port.
 
 
-## Uninstall: ##
+## Enabling hybrid mode in `lnd.conf`: ##
 
-To restore all applied changes made to your node setup, we provide an uninstallation script.
+A few parameters have to be checked and set to activate hybrid mode:
+
+  ```ini
+  [Application Options]
+  listen=0.0.0.0:9735
+  externalip={vpnIP}:{vpnPort} #these infos are provided at the end of the setup script
+  
+  [Tor]
+  # set steamisolation to 'false' if it's currently set 'true'
+  # if it's not set at all, just leave it out
+  tor.streamisolation=false
+  tor.skip-proxy-for-clearnet-targets=true
+  ```
+
+
+## Uninstallation: ##
+
+To restore all applied changes made to your node setup, download and run the uninstall script.
 
   ```sh
   $ wget https://github.com/blckbx/setup/raw/main/uninstall.sh
