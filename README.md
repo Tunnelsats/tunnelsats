@@ -42,8 +42,11 @@ In order to understand the provided scripts and steps we gonna take a deep dive 
 
 WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGuard servers in various countries to choose from. 
 1) Go to [tunnelsats.com](https://www.tunnelsats.com), select a country of your choice (preferably close to your real location for faster connection speed) and choose how long you want to use the service (1 to 12 months).
+
 2) Pay the lightning invoice.
+
 3) Copy, download or send the Wireguard configuration (file: `lndHybridMode.conf` - please do NOT rename this file) to your local computer and transfer it to your node.
+
 4) Download the setup script and run it.
 
   Download setup script:
