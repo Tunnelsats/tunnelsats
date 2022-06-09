@@ -18,7 +18,7 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - [What to do](#what-to-do)
 - [Deep Dive](#deep-dive)
 - [Enabling hybrid mode in `lnd.conf`](#enabling-hybrid-mode-in-lndconf)
-- [Uninstallation](#uninstallation)
+- [Uninstall](#uninstall)
 - [Further Help](#further-help)
 
 
@@ -46,10 +46,9 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
 3) Copy, download or send the Wireguard configuration (file: `lndHybridMode.conf` - please do NOT rename this file) to your local computer and transfer it to your node.
 4) Download the setup script and run it.
 
-  Download setup and uninstall script (just in case):
+  Download setup script:
   ```sh
   $ wget https://github.com/blckbx/setup/raw/main/setup.sh
-  $ wget https://github.com/blckbx/setup/raw/main/uninstall.sh 
   ```
 
   Copy your WireGuard config file (`lndHybridMode.conf`) to the same directory where `setup.sh` is located.
@@ -93,15 +92,16 @@ A few parameters have to be checked and set to activate hybrid mode:
   ```
   
 Important notice: Please uncomment or remove any other `listen=` parameters like `listen=localhost`, `externalip=` and / or `externalhosts=` settings. They can potentially interfere with VPN settings. In summary:
+
   ```ini
-  # Uncomment any of these parameters if exist:
+  # Uncomment any of these parameters if present:
   #listen=localhost
   #externalip=...
   #externalhosts=...
   ```
 
 
-## Uninstallation: ##
+## Uninstall: ##
 
 To restore all applied changes made to your node setup, download and run the uninstall script. Furthermode remove entries from `lnd.conf` / restore your previous settings and restart `lnd.service`.
 
