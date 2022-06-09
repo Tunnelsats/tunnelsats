@@ -73,6 +73,12 @@ What is this script doing in detail?
 
 ## Enabling hybrid mode in `lnd.conf`: ##
 
+Before applying any changes to your `lnd.conf`, please create a backup! For example:
+
+  ```sh
+  $ sudo cp /path/to/lnd.conf /path/to/lnd.conf.backup
+  ```
+
 A few parameters have to be checked and set to activate hybrid mode:
 
   ```ini
@@ -81,21 +87,29 @@ A few parameters have to be checked and set to activate hybrid mode:
   externalip={vpnIP}:{vpnPort} #these infos are provided at the end of the setup script
   
   [Tor]
-  # set steamisolation to 'false' if it's currently set 'true'
-  # if it's not set at all, just leave it out
+  # set steamisolation to 'false' if it's currently set 'true'. if it's not set at all, just leave it out
   tor.streamisolation=false
   tor.skip-proxy-for-clearnet-targets=true
+  ```
+  
+Important notice: Please uncomment or remove any other `listen=` parameters like `listen=localhost`, `externalip=` and / or `externalhosts=` settings. They can potentially interfere with VPN settings. In summary:
+  ```ini
+  # Uncomment any of these parameters if exist:
+  #listen=localhost
+  #externalip=...
+  #externalhosts=...
   ```
 
 
 ## Uninstallation: ##
 
-To restore all applied changes made to your node setup, download and run the uninstall script.
+To restore all applied changes made to your node setup, download and run the uninstall script. Furthermode remove entries from `lnd.conf` / restore your previous settings and restart `lnd.service`.
 
   ```sh
   $ wget https://github.com/blckbx/setup/raw/main/uninstall.sh
   $ sudo bash uninstall.sh
   ```
+Restore your `lnd.conf` with the backup file you (hopefully) created on setting up hybrid mode. 
 
 
 ## Further Help: ##
