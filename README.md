@@ -34,7 +34,9 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 In order to understand the provided scripts and steps we gonna take a deep dive into our service. It is split into three parts: 
 
 1) Renting a VPN server and obtaining a corresponding WireGuard config file from [tunnelsats.com](https://www.tunnelsats.com)
+
 2) Installing required software and components to make VPN connection and Tor splitting work.
+
 3) Setting up the node for hybrid mode by editing `lnd.conf` and modifying only 4 parameter within the file. 
 
 
