@@ -119,7 +119,8 @@ Restore your `lnd.conf` with the backup file you (hopefully) created on setting 
 
 ## Further Help: ##
 
-If you need further help setting up hybrid mode over VPN 
+Please review the [FAQ](FAQ.md) for further help. 
+If you need any other help setting up hybrid mode over VPN
 or just want to have a chat with us, join our [Tunnel⚡Sats](https://t.me/+NJylaUom-rxjYjU6) Telegram group.
 
 ____________________________________________________________
