@@ -2,22 +2,18 @@ const express = require('express');
 const path = require('path');
 const bodyParser = require("body-parser")
 const axios = require('axios');
-//const sgMail = require('@sendgrid/mail');
 var nodemailer = require('nodemailer');
 var dayjs = require('dayjs');
 const { btoa } = require('buffer');
-// var customParseFormat = require('dayjs/plugin/customParseFormat')
-// dayjs.extend(customParseFormat)
+
 const app = express();
 var payment_hash,payment_request;
 require('dotenv').config()
 
-//const io = require("socket.io")(process.env.PORT, {
 const createServer = require('http');
 const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
   cors: {
-    //origin: true,
     origin: ["https://tunnelsats.com", "https://www.tunnelsats.com", "http://localhost", "http://127.0.0.1"],
     credentials: true
   }
@@ -194,67 +190,21 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server,priceD
      var response2 = await axios(request2);
 
      response1.data['portFwd'] = response2.data.portFwd;
-//     console.log(response1.data);
      return response1.data;
     }
-
-//   return axios({
-//     method: 'post',
-//     url: server+'key',
-//     headers: {
-//       'Content-Type': 'application/json',
-//       'Authorization' : process.env.AUTH
-//       },
-//     data: {
-//       "publicKey": publicKey,
-//       "presharedKey": presharedKey,
-////       "bwLimit": 10000*priceDollar,
-//       "subExpiry": parseDate(timestamp),
-//       "ipIndex": 0
-//     }
-//
-//   }).then(function (result){
-//      // get forwarded port
-//      axios({
-//         method: 'post',
-//         url: server+'portFwd',
-//         headers: {
-//            'Content-Type': 'application/json',
-//            'Authorization': process.env.AUTH
-//         },
-//         data: {
-//            "keyID": result.data.keyID
-//         }
-//      }).then(function (response){
-//         result.data['portFwd'] = response.data.portFwd
-////         console.log(result.data)
-////         return result.data
-//      }).catch(error => {
-//        console.log(error)
-//        return error
-//      })
-//       console.log(result.data)
-//       return result.data
-//    }).catch(error => {
-//       console.log(error)
-//       return error
-//    });
-
 }
 
 
 // Parse Date object to string format: YYYY-MMM-DD hh:mm:ss A
 const parseDate = (date) => {
-
   var durationEnd = dayjs(date).format("YYYY-MMM-DD hh:mm:ss A")
-
   return durationEnd
 }
 
 
 // Send Wireguard config file via email
 async function sendEmail(emailAddress,configData,date) {
-  //sgMail.setApiKey(process.env.EMAIL_TOKEN);
+
     const msg = {
       to: emailAddress,
       from: 'payment@tunnelsats.com',
@@ -262,7 +212,6 @@ async function sendEmail(emailAddress,configData,date) {
       text: "Thank you for using Tunnel Sats!\n\nFind your personal config file attached. Don't loose it!\n\nYour subscription is valid until: "+date.toString(),
       attachments: [
         {
-          //content: btoa(configData),
           content: configData,
           filename: 'lndHybridMode.conf',
           contentType : "text/plain",
