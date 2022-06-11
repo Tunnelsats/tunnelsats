@@ -1,8 +1,9 @@
 # FAQ
 
 ## Table of Contents
-- [Why should I use this](#why-should-i-use-this)
-- [Is your service reliable](#is-your-service-reliable)
+- [Why should I use this?](#why-should-i-use-this)
+- [Why choose Tunnel⚡Sats over other VPN providers?](#why-choose-tunnelsats-over-other-vpn-providers)
+- [Is your service reliable?](#is-your-service-reliable)
 - [Do you store my data? If so, which one and how do you use it?](#do-you-store-my-data-if-so-which-one-and-how-do-you-use-it)
 - [What options do I have if I'm not happy?](#what-options-do-i-have-if-im-not-happy)
 - [How can I extend my subscription?](#how-can-i-extend-my-subscription)
@@ -19,11 +20,17 @@
 ## Frequently asked Questions
 
 ### Why should I use this?
-Providing Lightning ⚡ Services is about privacy, reliability, connectivity, speed and liquidity. Relying your node connectivity to a single service **Tor** is a risk, as anyone running a lightning node can testify. With Hybrid[^1] connectivity, you offer your payment and routing services to be [faster](https://blog.lnrouter.app/lightning-payment-speed-2022), more reliable, and yet, there is a privacy concern when you do it with your home-IP: you expose your _rough_ location of your node, potentially your home. With our solution **Tunnelsats**, you get the best of both worlds. Your node and home IP stays hidden, behind Tor and our VPS public IP address, which will be your node's face to the public internet. You may see higher reliability causing not only higher uptime, fewer peer nodes offline, but also greater routing numbers. This isn't a promise, but an eventually expected outcome. 
+Providing Lightning ⚡ Services is about privacy, reliability, connectivity, speed and liquidity. Relying your node connectivity to a single service **Tor** is a risk, as anyone running a lightning node can testify. With Hybrid[^1] connectivity, you offer your payment and routing services to be [faster](https://blog.lnrouter.app/lightning-payment-speed-2022), more reliable, and yet, there is a privacy concern when you do it with your home-IP: you both expose your _rough_ location of your node, potentially your home and your node's system to attacks from the internet. With our solution **Tunnel⚡Sats**, you get the best of both worlds. Your node and home IP stays hidden, behind Tor and our VPS public IP address, which will be your node's face to the public internet. You may see higher reliability causing not only higher uptime, fewer peer nodes offline, but also greater routing numbers. This isn't a promise, but an eventually expected outcome. 
 
 You also provide better user experience for customers actually using lightning as a payment system, which you could argue is the largest benefit.
 
-### Is your service reliable
+### Why choose Tunnel⚡Sats over other VPN providers?
+Running a lightning nodes behind a VPN requires a range of features public VPN providers usually do not offer. **Tunnel⚡Sats** is specially designed for the lightning node use case in mind. So we pack up everything that's needed:
+- static VPN IP: no more disconnects due to changing VPN IPs and no hassle setting up Dynamic DNS
+- static forwarded Ports: assign VPN's port to your node config and you are good to go
+- split-tunneling: we exclude Tor traffic automatically from routing through the VPN network. Contrary to "Tor over VPN", this enables redundancy of connectivity for your node meaning: If Tor goes down, VPN still plays and vice versa. 
+
+### Is your service reliable?
 We use premium VPS Services with tight SLAs and proven, recorded high uptime. We also setup servers across different service providers to allow for switches in case something out of our control happens. We also setup tight monitoring systems for our VMs, with alert mechanisms and coverage by 3 people in operations. That said, we're early in our offering and happily provide regular uptime metrics when we enter beta phase, to provide more objective reliability data here.
 
 ### Do you store my data? If so, which one and how do you use it?
@@ -35,11 +42,9 @@ This depends on the service level you encountered. Happiness is quite subjective
 ### How can I extend my subscription?
 Let's say you bought the 1 month for testing the services, and all is going great. Now your subscription is coming to an end, and you like to extend it to add another 3 months. Since we don't offer a login-service, you'd need until shortly before your previous subscription ends, and
 - buy a new subscription
-- copy the content of the configuration file from the website 
-- edit your existing subscription configuration file with `sudo nano /etc/wireguard/lndHybridMode.conf`
-- overwrite **all existing content** (CTRL-k for deleting lines) with your new config details
-- `CTRL-x` > `Y` to save your changes
-- restart wireguard with `sudo systemctl restart wg-quick@lndHybridMode` @osito reicht das, oder eher `sudo wg-quick@lndHybridMode down & up`?
+- download or transfer via email the new configuration file from the website 
+- copy and replace old configuration file with the new one in `/etc/wireguard`
+- restart wireguard: `sudo systemctl restart wg-quick@lndHybridMode`
 
 ### Are you offering any discounts?
 Yes, as you can see, the longer the subscription, the more the discount. We offer 5% for 3 months, 10% for 6 months, and 20% for 12 months. You can also expect to buy cheaper today, since we do expect prices to rise further into launching (moneyprintergobrrrrr).
@@ -54,16 +59,16 @@ Please approach us on Telegram, via Email, Twitter or open an issue here. We'll 
 Please raise an issue in Github, explaining where you are stuck, but leave out any personal or sensitive information. Especially handle your configuration file with care!
 
 ### How do I know what value I got from subscribing to your service?
-Keep an eye on your uptime, routing amount week-over-week, and some subjective observations like nodes offline and such. Value is a quite subjective term, but we found those attributes provide value to a routing runner.
+Keep an eye on your latency, uptime, routing amount week-over-week, and some subjective observations like nodes offline and such. Value is a quite subjective term, but we found those attributes provide value to a routing runner.
 
 ### Why shouldn't I just do it myself?
 We offer a full-managed-service, which takes a lot of the server, library, security and operational headache away from you. If you feel you prefer the personal learning experience, we can only encourage you to do so. It is a great adventure to learn more, so please check the footnotes in case you look for ways to dive in.
 
 ### Why is this so expensive?
-We have invested significant amount of hours into building out the infrastructure, services, security and reliability feats, which come at a cost. We also chose a premium set of VPS providers, which come at a cost. And nodes, even without Tor traffic, are still using significant bandwidth every day, even samll ones. So we need to cover both operational costs and compensate for further extending our services.
+We have invested significant amount of hours into building out the infrastructure, unique services, security and reliability feats, which come at a cost. We also chose a premium set of VPS providers, which come at a cost. And nodes, even without Tor traffic, are still using significant bandwidth every day, even small ones. So we need to cover both operational costs and compensate for further extending our services.
 
 ### I have some ideas to make this better. Where can I provide feedback or offer help?
-Great! Please do not hesitate to reach out via Telegram, Twitter, Email or log an issue with your ideas or feature requests with details. We always look forward to partner with great thinkers and doers.
+Great! Please do not hesitate to reach out via [Telegram](https://t.me/+NJylaUom-rxjYjU6), [Twitter](https://twitter.com/tunnelsats), Email or log an issue with your ideas or feature requests with details. We always look forward to partner with great thinkers and doers.
 
 
 
