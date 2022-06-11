@@ -2,7 +2,8 @@ const express = require('express');
 const path = require('path');
 const bodyParser = require("body-parser")
 const axios = require('axios');
-const sgMail = require('@sendgrid/mail');
+//const sgMail = require('@sendgrid/mail');
+var nodemailer = require('nodemailer');
 var dayjs = require('dayjs');
 const { btoa } = require('buffer');
 // var customParseFormat = require('dayjs/plugin/customParseFormat')
@@ -17,7 +18,7 @@ const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
   cors: {
     //origin: true,
-    origin: ["https://domain.com", "https://www.domain.com", "http://localhost", "http://127.0.0.1"],
+    origin: ["https://tunnelsats.com", "https://www.tunnelsats.com", "http://localhost", "http://127.0.0.1"],
     credentials: true
   }
 });
@@ -41,7 +42,6 @@ app.post(process.env.WEBHOOK, (req, res) => {
 httpServer.listen(5000);
 // Finish Server Setup
 
-
 // Socket Connections
 io.on('connection', (socket) => {
 
@@ -63,20 +63,19 @@ io.on('connection', (socket) => {
     getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country),priceDollar).then(result => socket.emit('reciveConfigData',result))
   })
 
-
 });
 
 //Transforms country into server
 var getServer = (countrySelector) => {
   var server
   if (countrySelector == 1){
-  var server = process.env.IP_EU
+  var server = process.env.IP_GER
   }
   if (countrySelector == 2){
     var server = process.env.IP_USA
   }
   if (countrySelector == 3){
-    var server = process.env.IP_FIN
+    var server = process.env.IP_CAD
   }
   if (countrySelector == 4){
     var server = process.env.IP_UK
@@ -91,22 +90,22 @@ var getServer = (countrySelector) => {
 // Transforms duration into timestamp
 var getTimeStamp = (selectedValue) =>{
 
-  if(selectedValue === 1){
+  if(selectedValue == 0.1){
     date = addMonths(date = new Date(),1)
     return date
   }
 
-  if(selectedValue === 3){
+  if(selectedValue == 8.5){
     date = addMonths(date = new Date(),3)
     return date
   }
 
-  if(selectedValue === 6){
+  if(selectedValue == 16){
     date = addMonths(date = new Date(),6)
     return date
   }
 
-  if(selectedValue === 12){
+  if(selectedValue == 28.5){
     date = addMonths(date = new Date(),12)
     return date
   }
@@ -125,7 +124,7 @@ var getTimeStamp = (selectedValue) =>{
 
 // Get Invoice Function
 async function getInvoice(amount) {
-  var satoshis = await getPrice().then((result) => {return result})
+  var satoshis = await getPrice().then((result) => { return result})
   return axios({
   method: "post",
   url: process.env.URL_INVOICE_API,
@@ -133,7 +132,7 @@ async function getInvoice(amount) {
   data: {
     "out": false,
     "amount": satoshis*amount,
-    "memo": "NRVPN",
+    "memo": getTimeStamp(amount),
     "webhook" : process.env.URL_WEBHOOK
   }
     }).then(function (respons){
@@ -161,26 +160,86 @@ async function getPrice() {
 // Get Wireguard Config
 async function getWireguardConfig(publicKey,presharedKey,timestamp,server,priceDollar) {
 
-  return axios({
-    method: "post",
-    url: server,
+   const request1 = {
+    method: 'post',
+    url: server+'key',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization' : process.env.AUTH
-      },
+      'Authorization': process.env.AUTH
+    },
     data: {
-      "publicKey": publicKey,
-      "presharedKey": presharedKey,
-//      "bwLimit": 10000*priceDollar,
-      "subExpiry": parseDate(timestamp),
-      "ipIndex": 0
+     "publicKey": publicKey,
+     "presharedKey": presharedKey,
+     "bwLimit": 100000, // 100GB
+     "subExpiry": parseDate(timestamp),
+     "ipIndex": 0
     }
-  }).then(function (respons){
-    return respons.data
-  }).catch(error => {
-    console.log(error)
-    return error
-  });
+   };
+
+   var response1 = await axios(request1);
+
+   if (response1) {
+      const request2 = {
+      method: 'post',
+      url: server+'portFwd',
+      headers: {
+       'Content-Type': 'application/json',
+       'Authorization': process.env.AUTH
+      },
+      data: {
+       "keyID": response1.data.keyID
+      }
+     };
+
+     var response2 = await axios(request2);
+
+     response1.data['portFwd'] = response2.data.portFwd;
+//     console.log(response1.data);
+     return response1.data;
+    }
+
+//   return axios({
+//     method: 'post',
+//     url: server+'key',
+//     headers: {
+//       'Content-Type': 'application/json',
+//       'Authorization' : process.env.AUTH
+//       },
+//     data: {
+//       "publicKey": publicKey,
+//       "presharedKey": presharedKey,
+////       "bwLimit": 10000*priceDollar,
+//       "subExpiry": parseDate(timestamp),
+//       "ipIndex": 0
+//     }
+//
+//   }).then(function (result){
+//      // get forwarded port
+//      axios({
+//         method: 'post',
+//         url: server+'portFwd',
+//         headers: {
+//            'Content-Type': 'application/json',
+//            'Authorization': process.env.AUTH
+//         },
+//         data: {
+//            "keyID": result.data.keyID
+//         }
+//      }).then(function (response){
+//         result.data['portFwd'] = response.data.portFwd
+////         console.log(result.data)
+////         return result.data
+//      }).catch(error => {
+//        console.log(error)
+//        return error
+//      })
+//       console.log(result.data)
+//       return result.data
+//    }).catch(error => {
+//       console.log(error)
+//       return error
+//    });
+
 }
 
 
@@ -195,39 +254,55 @@ const parseDate = (date) => {
 
 // Send Wireguard config file via email
 async function sendEmail(emailAddress,configData,date) {
-  sgMail.setApiKey(process.env.EMAIL_TOKEN);
+  //sgMail.setApiKey(process.env.EMAIL_TOKEN);
     const msg = {
       to: emailAddress,
-      from: 'thanks@domain', // Use the email address or domain you verified above
-      subject: 'Your NodeRunner VPN config file for Wireguard. Valid until: '+date.toString(),
-      text: "Thank you for using XX. Find your personal config file attached. Don't loose it.\n Your subscription is valid until: "+date.toString(),
+      from: 'payment@tunnelsats.com',
+      subject: 'Your Tunnel Sats VPN config file for Wireguard. Valid until: '+date.toString(),
+      text: "Thank you for using Tunnel Sats!\n\nFind your personal config file attached. Don't loose it!\n\nYour subscription is valid until: "+date.toString(),
       attachments: [
         {
-          content: btoa(configData),
-          filename: 'wg.conf',
-          type : "text/plain",
+          //content: btoa(configData),
+          content: configData,
+          filename: 'lndHybridMode.conf',
+          contentType : "text/plain",
           endings:'native',
           disposition: 'attachment'
         }
       ],
     };
 
-    sgMail
-      .send(msg)
-      .then(() => {}, error => {
-        console.error(error);
-
-        if (error.response) {
-          console.error(error.response.body)
+   let transporter = nodemailer.createTransport({
+        host: process.env.EMAIL_HOST,
+        port: process.env.EMAIL_PORT,
+        secure: false, // true for 465, false for other ports
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS
+        },
+        tls: {
+            rejectUnauthorized: false
         }
       });
+
+   let info = await transporter
+               .sendMail(msg)
+               .then(() => {}, error => {
+                 console.error(error);
+               if (error.response) {
+                 console.error(error.response.body)
+               }
+              });
+
+  // console.log("Message sent: %s", info.messageId);
+
 }
 
 // Check for Invoice
 async function checkInvoice(hash) {
   return axios({
        method: "get",
-       url: process.env.URL_INVOICE_API + "/" + hash,
+       url: process.env.URL_INVOICE_API +"/"+hash,
        headers: { "X-Api-Key": process.env.INVOICE_KEY}
   }).then(function (respons){
        if(respons.data.paid)  {
@@ -235,8 +310,3 @@ async function checkInvoice(hash) {
        }
   })
 }
-
-
-
-
-
