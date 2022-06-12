@@ -133,9 +133,13 @@ Restore your `lnd.conf` with the backup file you (hopefully) created on setting 
 What is this script doing in detail?
 
 1) Checking if required components are already installed and if not, installs them. These are: `cgroup-tools` (for split-tunneling Tor), `nftables` (VPN rules) and `wireguard` (VPN software).
+
 2) Checks if `lndHybridMode.conf` exists in current directory (must be the same directory where setup script is located).
+
 3) Sets up "split-tunneling" to exclude Tor from VPN usage as systemd service to run after Tor (re)starts.
+
 4) Enabling and starting required systemd services (wg-quick, splitting).
+
 5) Setting UFW rules (if installed) to open up the VPN provided forwarded port.
 
 
