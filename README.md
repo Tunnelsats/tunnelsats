@@ -1,4 +1,6 @@
-# Tunnel⚡Sats
+<p align="center">
+  <img height=400 src=https://user-images.githubusercontent.com/74455114/173224377-ffb6320c-e832-4b85-8777-ef62bc1b5785.png></img>
+</p>
 
 ## Prelude and Objective ##
 The lightning network functions in rapid growing speed as infrastructure for payments across the globe between merchants, creators, consumers, institutions and investors alike. Hence the key pillars of sustained growth are their nodes, by providing _reliable_, _liquid_, _discoverable_, _trustless_ and _fast_ connection points between those parties. For fast communication establishing clearnet connections between nodes is inevitable. 
@@ -16,9 +18,9 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - [Preconditions](#preconditions)
 - [How this works](#how-this-works)
 - [What to do](#what-to-do)
-- [Deep Dive](#deep-dive)
 - [Enabling hybrid mode in `lnd.conf`](#enabling-hybrid-mode-in-lndconf)
 - [Uninstall](#uninstall)
+- [Deep Dive](#deep-dive)
 - [Further Help](#further-help)
 
 
@@ -49,31 +51,28 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
 
 3) Copy, download or send the Wireguard configuration (file: `lndHybridMode.conf` - please do NOT rename this file) to your local computer and transfer it to your node.
 
-4) Download the setup script and run it.
+4) Download the setup script, transfer wireguard config file (lndHybridMode.conf) and run it.
 
   Download setup script:
+  
   ```sh
   $ wget https://github.com/blckbx/setup/raw/main/setup.sh
   ```
 
-  Copy your WireGuard config file (`lndHybridMode.conf`) to the same directory where `setup.sh` is located.
+  Copy your WireGuard config file (`lndHybridMode.conf`) to the same directory where `setup.sh` is located. If you need to transfer it to your node, use `scp` like so:
+  
+  ```sh
+  $ scp lndHybridMode.conf <user>@<ip/hostname>:/<path-to-home-dir>
+  ```
+  
+  e.g. for Umbrel: ` scp lndHybridMode.conf umbrel@umbrel.local:/home/umbrel/ `
+  
 
-  Start it:
+  Make sure that both files (lndHybridMode.conf and setup.sh) are located in the same directory. Then start it:
+  
   ```sh
   $ sudo bash setup.sh
   ```
-
-
-## Deep Dive: ##
-
-What is this script doing in detail?
-
-1) Checking if required components are already installed and if not, installs them. These are: `cgroup-tools` (for split-tunneling Tor), `nftables` (VPN rules) and `wireguard` (VPN software).
-2) Checks if `lndHybridMode.conf` exists in current directory (must be the same directory where setup script is located).
-3) Sets up "split-tunneling" to exclude Tor from VPN usage as systemd service to run after Tor (re)starts.
-4) Enabling and starting required systemd services (wg-quick, splitting).
-5) Setting UFW rules (if installed) to open up the VPN provided forwarded port.
-
 
 ## Enabling hybrid mode in `lnd.conf`: ##
 
@@ -105,7 +104,6 @@ Important notice: Please uncomment or remove any other `listen=` parameters like
   #externalhosts=...
   ```
 
-
 ## Uninstall: ##
 
 To restore all applied changes made to your node setup, download and run the uninstall script. Furthermode remove entries from `lnd.conf` / restore your previous settings and restart `lnd.service`.
@@ -115,6 +113,17 @@ To restore all applied changes made to your node setup, download and run the uni
   $ sudo bash uninstall.sh
   ```
 Restore your `lnd.conf` with the backup file you (hopefully) created on setting up hybrid mode. 
+
+
+## Deep Dive: ##
+
+What is this script doing in detail?
+
+1) Checking if required components are already installed and if not, installs them. These are: `cgroup-tools` (for split-tunneling Tor), `nftables` (VPN rules) and `wireguard` (VPN software).
+2) Checks if `lndHybridMode.conf` exists in current directory (must be the same directory where setup script is located).
+3) Sets up "split-tunneling" to exclude Tor from VPN usage as systemd service to run after Tor (re)starts.
+4) Enabling and starting required systemd services (wg-quick, splitting).
+5) Setting UFW rules (if installed) to open up the VPN provided forwarded port.
 
 
 ## Further Help: ##
