@@ -1,7 +1,7 @@
 # FAQ
 
 ## Table of Contents
-- [Why should I use this?](#why-should-i-use-this)
+- [Why should I use this service?](#why-should-i-use-this-service)
 - [Why choose Tunnel⚡Sats over other VPN providers?](#why-choose-tunnelsats-over-other-vpn-providers)
 - [Is your service reliable?](#is-your-service-reliable)
 - [Do you store my data? If so, which one and how do you use it?](#do-you-store-my-data-if-so-which-one-and-how-do-you-use-it)
@@ -13,13 +13,14 @@
 - [I'm stuck with the setup process, can you help?](#im-stuck-with-the-setup-process-can-you-help)
 - [How do I know what value I got from subscribing to your service?](#how-do-i-know-what-value-i-got-from-subscribing-to-your-service)
 - [Why shouldn't I just do it myself?](#why-shouldnt-i-just-do-it-myself)
-- [Why is this so expensive?](#why-is-this-so-expensive)
+- [Why are you charging fees?](#why-are-you-charging-fees)
+- [Where do I find my `lnd.conf` file?](#where-do-i-find-my-lndconf-file)
+- [How to transfer `lndHybridMode.conf` to my node?](#how-to-transfer-lndhybridmodeconf-to-my-node)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
-
 
 ## Frequently asked Questions
 
-### Why should I use this?
+### Why should I use this service?
 Providing Lightning ⚡ Services is about privacy, reliability, connectivity, speed and liquidity. Relying your node connectivity to a single service **Tor** is a risk, as anyone running a lightning node can testify. With Hybrid[^1] connectivity, you offer your payment and routing services to be [faster](https://blog.lnrouter.app/lightning-payment-speed-2022), more reliable, and yet, there is a privacy concern when you do it with your home-IP: you both expose your _rough_ location of your node, potentially your home and your node's system to attacks from the internet. With our solution **Tunnel⚡Sats**, you get the best of both worlds. Your node and home IP stays hidden, behind Tor and our VPS public IP address, which will be your node's face to the public internet. You may see higher reliability causing not only higher uptime, fewer peer nodes offline, but also greater routing numbers. This isn't a promise, but an eventually expected outcome. 
 
 You also provide better user experience for customers actually using lightning as a payment system, which you could argue is the largest benefit.
@@ -56,7 +57,7 @@ No, not yet, but we'll be happy to look into it when people raise interest to su
 Please approach us on Telegram, via Email, Twitter or open an issue here. We'll ask you for confirming the timestamp of your payment, so we can check our accounting, and provide a solution for you. Sorry for the inconvenience in advance.
 
 ### I'm stuck with the setup process, can you help?
-Please raise an issue in Github, explaining where you are stuck, but leave out any personal or sensitive information. Especially handle your configuration file with care!
+Please raise an issue in Github or simply join our [Telegram](https://t.me/+NJylaUom-rxjYjU6) group, explaining where you are stuck, but leave out any personal or sensitive information. Especially handle your configuration file with care!
 
 ### How do I know what value I got from subscribing to your service?
 Keep an eye on your latency, uptime, routing amount week-over-week, and some subjective observations like nodes offline and such. Value is a quite subjective term, but we found those attributes provide value to a routing runner.
@@ -64,11 +65,32 @@ Keep an eye on your latency, uptime, routing amount week-over-week, and some sub
 ### Why shouldn't I just do it myself?
 We offer a full-managed-service, which takes a lot of the server, library, security and operational headache away from you. If you feel you prefer the personal learning experience, we can only encourage you to do so. It is a great adventure to learn more, so please check the footnotes in case you look for ways to dive in.
 
-### Why is this so expensive?
+### Why are you charging fees?
 We have invested significant amount of hours into building out the infrastructure, unique services, security and reliability feats, which come at a cost. We also chose a premium set of VPS providers, which come at a cost. And nodes, even without Tor traffic, are still using significant bandwidth every day, even small ones. So we need to cover both operational costs and compensate for further extending our services.
 
+### Where do I find my `lnd.conf` file?
+Every node software (RaspiBlitz, RaspiBolt, Umbrel, Start9, myNode, etc.) has its own directory where it keeps data of the underlying lightning implementation. As far as we know, the current (06/2022) directories are:
+
+```ini
+RaspiBlitz: /mnt/hdd/lnd/lnd.conf
+RaspiBolt: /data/lnd/lnd.conf
+Umbrel: /home/umbrel/umbrel/lnd/lnd.conf
+Umbrel 0.5+: /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf
+Start9: /embassy-data/package-data/volumes/lnd/data/main/lnd.conf
+myNode: /mnt/hdd/mynode/lnd/lnd.conf
+```
+
+### How to transfer `lndHybridMode.conf` to my node?
+The easiest way to transfer a file to a remote node is to use the cli command `scp`. Assuming that you run an Umbrel node and have downloaded the wireguard config file (lndHybridMode.conf) to your computer, the `scp` command would look like this: 
+```sh
+$ scp lndHybridMode.conf umbrel@umbrel.local:/home/umbrel/
+
+[ scp <local file> <user>@<ip/hostname>:<destination path> ]
+```
+
 ### I have some ideas to make this better. Where can I provide feedback or offer help?
-Great! Please do not hesitate to reach out via [Telegram](https://t.me/+NJylaUom-rxjYjU6), [Twitter](https://twitter.com/tunnelsats), Email or log an issue with your ideas or feature requests with details. We always look forward to partner with great thinkers and doers.
+Great! Please do not hesitate to reach out via [Telegram](https://t.me/+NJylaUom-rxjYjU6), [Twitter](https://twitter.com/tunnelsats) or log an issue here on Github with your ideas or feature requests with details. We always look forward to partner with great thinkers and doers.
+
 
 
 
