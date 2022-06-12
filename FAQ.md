@@ -91,6 +91,10 @@ $ scp lndHybridMode.conf umbrel@umbrel.local:/home/umbrel/
 ### I have some ideas to make this better. Where can I provide feedback or offer help?
 Great! Please do not hesitate to reach out via [Telegram](https://t.me/+NJylaUom-rxjYjU6), [Twitter](https://twitter.com/tunnelsats), eMail (info @ tunnelsats.com) or log an issue here on Github with your detailed ideas or feature requests. We always look forward to partner with great thinkers and doers.
 
+### How does it actually look like, how am I connected?
+See the current network setup in a comparison between your Tor only setup vs the new setup as a flowchart
+![Flowchart Diagram](/docs/assets/Tunnelsats-Tor-scenario.drawio.png)
+
 
 
 
