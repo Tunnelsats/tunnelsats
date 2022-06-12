@@ -71,6 +71,21 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   ```sh
   $ sudo bash setup.sh
   ```
+  
+  If everything went fine, your selected VPN's credentials and further instructions are shown to adjust `lnd.conf`. Copy to file or write them down for later use:
+  
+  ```ini
+  #########################################
+  [Application Options]
+  listen=0.0.0.0:9735
+  externalip={vpnIP}:{vpnPort}
+  
+  [Tor]
+  tor.streamisolation=false
+  tor.skip-proxy-for-clearnet-targets=true
+  #########################################
+  ```
+  
 
 ## Enabling hybrid mode in `lnd.conf`: ##
 
