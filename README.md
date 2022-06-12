@@ -1,4 +1,4 @@
-[<img src=https://user-images.githubusercontent.com/74455114/173226447-88cf6026-66f4-4d5c-8d09-83d09cf5d4cc.png height=400></img>]()
+![TunnelSatsLogo](/docs/assets/tunnelsats11.png)
 
 ## Prelude and Objective ##
 The lightning network functions in rapid growing speed as infrastructure for payments across the globe between merchants, creators, consumers, institutions and investors alike. Hence the key pillars of sustained growth are their nodes, by providing _reliable_, _liquid_, _discoverable_, _trustless_ and _fast_ connection points between those parties. For fast communication establishing clearnet connections between nodes is inevitable. 
