@@ -54,7 +54,7 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   Download setup script:
   
   ```sh
-  $ wget https://github.com/blckbx/setup/raw/main/setup.sh
+  $ wget https://github.com/blckbx/tunnelsats/raw/main/scripts/setup.sh
   ```
 
   Copy your WireGuard config file (`tunnelsats.conf`) to the same directory where `setup.sh` is located. If you need to transfer it to your node, use `scp` like so:
@@ -122,7 +122,7 @@ Important notice: Please uncomment or remove any other `listen=` parameters like
 To restore all applied changes made to your node setup, download and run the uninstall script. Furthermode remove entries from `lnd.conf` / restore your previous settings and restart `lnd.service`.
 
   ```sh
-  $ wget https://github.com/blckbx/setup/raw/main/uninstall.sh
+  $ wget https://github.com/blckbx/tunnelsats/raw/main/scripts/uninstall.sh
   $ sudo bash uninstall.sh
   ```
 Restore your `lnd.conf` with the backup file you (hopefully) created on setting up hybrid mode. 
@@ -154,4 +154,4 @@ ____________________________________________________________
 This service is brought to you by [@ziggie1984](https://github.com/ziggie1984) (Ziggie), [@TrezorHannes](https://github.com/TrezorHannes) (Hakuna) and [@blckbx](https://github.com/blckbx) (osito).
 
 Big thanks to [@LightRider5](https://github.com/LightRider5) ([lnvpn.net](https://lnvpn.net)) 
-for providing this amazing frontend framework under MIT License.
+for providing this amazing frontend framework and for help and support.
