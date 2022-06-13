@@ -16,6 +16,8 @@
 - [Why are you charging fees?](#why-are-you-charging-fees)
 - [Where do I find my `lnd.conf` file?](#where-do-i-find-my-lndconf-file)
 - [How to transfer `tunnelsats.conf` to my node?](#how-to-transfer-tunnelsatsconf-to-my-node)
+- [How does it actually look like, how am I connected?](#how-does-it-actually-look-like-how-am-i-connected)
+- [Tuning Tor](#tuning-tor)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
 
 ## Frequently asked Questions
@@ -88,14 +90,23 @@ $ scp tunnelsats.conf umbrel@umbrel.local:/home/umbrel/
 [ scp <local file> <user>@<ip/hostname>:<destination path> ]
 ```
 
-### I have some ideas to make this better. Where can I provide feedback or offer help?
-Great! Please do not hesitate to reach out via [Telegram](https://t.me/+NJylaUom-rxjYjU6), [Twitter](https://twitter.com/tunnelsats), eMail (info @ tunnelsats.com) or log an issue here on Github with your detailed ideas or feature requests. We always look forward to partner with great thinkers and doers.
-
 ### How does it actually look like, how am I connected?
 See the current network setup in a comparison between your Tor only setup vs the new setup as a flowchart
 ![Flowchart Diagram](/docs/assets/Tunnelsats-Tor-scenario.drawio.png)
 
+### Tuning Tor
+Although we can speed up clearnet to clearnet connections, we still have to use the Tor network to reach out to Tor-only nodes. There have been some experiments going on to stabilize Tor connectivity and minimize its issues. Some of them might be worth trying out. These options are added to the `torrc` file:
+```ini
+LongLivedPorts 21,22,706,1863,5050,5190,5222,5223,6523,6667,6697,8300,9735,9736,9911
+CircuitBuildTimeout 3
+KeepalivePeriod 60
+NewCircuitPeriod 20
+UseEntryGuards 1
+NumEntryGuards 8
+```
 
+### I have some ideas to make this better. Where can I provide feedback or offer help?
+Great! Please do not hesitate to reach out via [Telegram](https://t.me/+NJylaUom-rxjYjU6), [Twitter](https://twitter.com/tunnelsats), eMail (info @ tunnelsats.com) or log an issue here on Github with your detailed ideas or feature requests. We always look forward to partner with great thinkers and doers.
 
 
 [^1]: See hybrid options for [home-IP](https://github.com/blckbx/lnd-hybrid-mode) and [VPS](https://github.com/TrezorHannes/Dual-LND-Hybrid-VPS) for self-setup.
