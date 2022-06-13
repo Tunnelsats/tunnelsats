@@ -15,7 +15,7 @@
 - [Why shouldn't I just do it myself?](#why-shouldnt-i-just-do-it-myself)
 - [Why are you charging fees?](#why-are-you-charging-fees)
 - [Where do I find my `lnd.conf` file?](#where-do-i-find-my-lndconf-file)
-- [How to transfer `lndHybridMode.conf` to my node?](#how-to-transfer-lndhybridmodeconf-to-my-node)
+- [How to transfer `tunnelsats.conf` to my node?](#how-to-transfer-tunnelsatsconf-to-my-node)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
 
 ## Frequently asked Questions
@@ -45,7 +45,7 @@ Let's say you bought the 1 month for testing the services, and all is going grea
 - buy a new subscription
 - download or transfer via email the new configuration file from the website 
 - copy and replace old configuration file with the new one in `/etc/wireguard`
-- restart wireguard: `sudo systemctl restart wg-quick@lndHybridMode`
+- restart wireguard: `sudo systemctl restart wg-quick@tunnelsats`
 
 ### Are you offering any discounts?
 Yes, as you can see, the longer the subscription, the more the discount. We offer 5% for 3 months, 10% for 6 months, and 20% for 12 months. You can also expect to buy cheaper today, since we do expect prices to rise further into launching (moneyprintergobrrrrr).
@@ -80,10 +80,10 @@ Start9: /embassy-data/package-data/volumes/lnd/data/main/lnd.conf
 myNode: /mnt/hdd/mynode/lnd/lnd.conf
 ```
 
-### How to transfer `lndHybridMode.conf` to my node?
-The easiest way to transfer a file to a remote node is to use the cli command `scp`. Assuming that you run an Umbrel node and have downloaded the wireguard config file (lndHybridMode.conf) to your computer, the `scp` command would look like this: 
+### How to transfer `tunnelsats.conf` to my node?
+The easiest way to transfer a file to a remote node is to use the cli command `scp`. Assuming that you run an Umbrel node and have downloaded the wireguard config file (tunnelsats.conf) to your computer, the `scp` command would look like this: 
 ```sh
-$ scp lndHybridMode.conf umbrel@umbrel.local:/home/umbrel/
+$ scp tunnelsats.conf umbrel@umbrel.local:/home/umbrel/
 
 [ scp <local file> <user>@<ip/hostname>:<destination path> ]
 ```
