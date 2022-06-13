@@ -47,9 +47,9 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
 
 2) Pay the lightning invoice.
 
-3) Copy, download or send the Wireguard configuration (file: `lndHybridMode.conf` - please do NOT rename this file) to your local computer and transfer it to your node.
+3) Copy, download or send the Wireguard configuration (file: `tunnelsats.conf` - please do NOT rename this file) to your local computer and transfer it to your node.
 
-4) Download the setup script, transfer wireguard config file (lndHybridMode.conf) and run it.
+4) Download the setup script, transfer wireguard config file (tunnelsats.conf) and run it.
 
   Download setup script:
   
@@ -57,16 +57,16 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   $ wget https://github.com/blckbx/setup/raw/main/setup.sh
   ```
 
-  Copy your WireGuard config file (`lndHybridMode.conf`) to the same directory where `setup.sh` is located. If you need to transfer it to your node, use `scp` like so:
+  Copy your WireGuard config file (`tunnelsats.conf`) to the same directory where `setup.sh` is located. If you need to transfer it to your node, use `scp` like so:
   
   ```sh
-  $ scp lndHybridMode.conf <user>@<ip/hostname>:/<path-to-home-dir>
+  $ scp tunnelsats.conf <user>@<ip/hostname>:/<path-to-home-dir>
   ```
   
-  e.g. for Umbrel: ` scp lndHybridMode.conf umbrel@umbrel.local:/home/umbrel/ `
+  e.g. for Umbrel: ` scp tunnelsats.conf umbrel@umbrel.local:/home/umbrel/ `
   
 
-  Make sure that both files (lndHybridMode.conf and setup.sh) are located in the same directory. Then start it:
+  Make sure that both files (tunnelsats.conf and setup.sh) are located in the same directory. Then start it:
   
   ```sh
   $ sudo bash setup.sh
@@ -134,7 +134,7 @@ What is this script doing in detail?
 
 1) Checking if required components are already installed and if not, installs them. These are: `cgroup-tools` (for split-tunneling Tor), `nftables` (VPN rules) and `wireguard` (VPN software).
 
-2) Checks if `lndHybridMode.conf` exists in current directory (must be the same directory where setup script is located).
+2) Checks if `tunnelsats.conf` exists in current directory (must be the same directory where setup script is located).
 
 3) Sets up "split-tunneling" to exclude Tor from VPN usage as systemd service to run after Tor (re)starts.
 
