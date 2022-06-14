@@ -1,5 +1,7 @@
 ![TunnelSatsLogo](/docs/assets/tunnelsats11.png)
 
+<br/>
+
 ## Prelude and Objective ##
 The lightning network functions in rapid growing speed as infrastructure for payments across the globe between merchants, creators, consumers, institutions and investors alike. Hence the key pillars of sustained growth are their nodes, by providing _reliable_, _liquid_, _discoverable_, _trustless_ and _fast_ connection points between those parties. For fast communication establishing clearnet connections between nodes is inevitable. 
 
@@ -9,18 +11,22 @@ Therefore we came to the conclusion that this process has to be simplified **a l
 
 Although thinking this is a suitable way of providing a "hybrid service", we want to emphasize to carefully read through the guide below, make an educated decision by yourself if you want to go clearnet over VPN.
 
+<br/>
 
 ## Table of Content ##
 
 - [Prelude and Objective](#prelude-and-objective)
 - [Preconditions](#preconditions)
 - [How this works](#how-this-works)
-- [What to do](#what-to-do)
-- [Enabling hybrid mode in `lnd.conf`](#enabling-hybrid-mode-in-lndconf)
+- [Install](#install)
+- [Enabling hybrid mode](#enabling-hybrid-mode)
+  - [LND](#lnd)
+  - [CLN](#cln)
 - [Uninstall](#uninstall)
 - [Deep Dive](#deep-dive)
 - [Further Help](#further-help)
 
+<br/>
 
 ## Preconditions: ##
 
@@ -28,6 +34,7 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - edit your node's `lnd.conf` file
 - ability to spend some sats (the hardest part)
 
+<br/>
 
 ## How this works: ##
 
@@ -39,8 +46,9 @@ In order to understand the provided scripts and steps we gonna take a deep dive 
 
 3) setting up the node for hybrid mode by editing `lnd.conf` and modifying only 4 parameters within the file. 
 
+<br/>
 
-## What to do: ##
+## Install: ##
 
 WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGuard servers in various countries to choose from. 
 1) Go to [tunnelsats.com](https://www.tunnelsats.com), select a country of your choice (preferably close to your real location for faster connection speed) and choose how long you want to use the service (1 to 12 months).
@@ -85,30 +93,116 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   tor.skip-proxy-for-clearnet-targets=true
   #########################################
   ```
+
+<br/>
   
+## Enabling hybrid mode ##
 
-## Enabling hybrid mode in `lnd.conf`: ##
-
-Before applying any changes to your `lnd.conf`, please create a backup! For example:
+Before applying any changes to your config files, please __always__ create a backup! For example:
 
   ```sh
   $ sudo cp /path/to/lnd.conf /path/to/lnd.conf.backup
   ```
 
-A few parameters have to be checked and set to activate hybrid mode:
+⚠️ __Important Notice__: The following parts show how to configure LND and CLN implementations for hybrid mode. Regarding the status quo of this project, we can only support one lightning implementation at once. This means: If you plan to run both LND and CLN in parallel, only one is routed over VPN and the other defaults to Tor-only. Nevertheless, it is possible to choose or switch default ports on various node setups. This requires deep technical knowledge of the setup and is therefore not recommended!
+
+<br/>
+
+### LND
+
+Running LND only requires a few parameters to be checked and set to activate hybrid mode. Locate `lnd.conf` depending on your node setup. See the [FAQ](https://blckbx.github.io/tunnelsats/FAQ.html#where-do-i-find-my-lndconf-file) for some default path examples.
 
   ```ini
   [Application Options]
   listen=0.0.0.0:9735
-  externalip={vpnIP}:{vpnPort} #these infos are provided at the end of the setup script
+  externalip={vpnIP}:{vpnPort} #these infos are provided at the end of the setup.sh script
   
   [Tor]
   # set steamisolation to 'false' if it's currently set 'true'. if it's not set at all, just leave it out
   tor.streamisolation=false
   tor.skip-proxy-for-clearnet-targets=true
   ```
-  
-Important notice: Please uncomment or remove any other `listen=` parameters like `listen=localhost`, `externalip=` and / or `externalhosts=` settings. They can potentially interfere with VPN settings. In summary:
+
+<br/>
+
+### CLN
+
+With CLN it is a bit more difficult if you don't happen to run bare metal and control everything yourself. Most node setups like Umbrel, RaspiBolt, RaspiBlitz etc. default CLN's daemon port to the number `9736`. So in order to route CLN clearnet over VPN, we need to change CLN's default port to `9735`. 
+
+The following show how to edit bare metal installations or anything using non-docker CLN configuration:
+
+Locate the data directory of your CLN installation. By default configuration is stored in a file named `config`. Edit the file and look out for network settings. Configured to hybrid it should look like this:
+
+```ini
+proxy=127.0.0.1:9050
+bind-addr=0.0.0.0:9735
+addr=statictor:127.0.0.1:9051/torport=9735
+announce-addr={vpnIP}:{vpnPort}
+always-use-proxy=false
+```
+
+On dockerized systems this can look very differently. The following shows how to enable hybrid on Umbrel (v0.5+):
+
+Apps installed: Bitcoin, CLN
+Working Directory: `~/umbrel/app-data/core-lightning/`
+Files to look at: `export.sh`, `docker-compose.yml`
+Changes to be made: 
+export.sh: change port number from 9736 to 9735
+```ini
+export APP_CORE_LIGHTNING_DAEMON_PORT="9736"
+```
+change to
+```ini
+export APP_CORE_LIGHTNING_DAEMON_PORT="9735"
+```
+docker-compose.yml: add two new parameters to `command` section. these are `always-use-proxy=false` and `announce-addr=`
+```ini
+  lightningd:
+    image: lncm/clightning:v0.11.0@sha256:75e0ce04d644f34b07bc8a3b92e58b3db4e3c06bdc0e0cecd1669bc3b2d53421
+    restart: on-failure
+    ports:
+      - ${APP_CORE_LIGHTNING_DAEMON_PORT}:9735
+    command:
+      - --bitcoin-rpcconnect=${APP_BITCOIN_NODE_IP}
+      - --bitcoin-rpcuser=${APP_BITCOIN_RPC_USER}
+      - --bitcoin-rpcpassword=${APP_BITCOIN_RPC_PASS}
+      - --proxy=${TOR_PROXY_IP}:${TOR_PROXY_PORT}
+      - --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735
+      - --addr=statictor:${TOR_PROXY_IP}:29051
+      - --tor-service-password=${TOR_PASSWORD}
+      #- --grpc-port=${APP_CORE_LIGHTNING_DAEMON_GRPC_PORT}
+    volumes:
+      - "${APP_DATA_DIR}/data/lightningd:/data/.lightning"
+    networks:
+      default:
+        ipv4_address: ${APP_CORE_LIGHTNING_DAEMON_IP}
+```
+change to (replace {vpnIP}:{vpnPort} with the information received running `setup.sh`)
+```ini
+lightningd:
+    image: lncm/clightning:v0.11.0@sha256:75e0ce04d644f34b07bc8a3b92e58b3db4e3c06bdc0e0cecd1669bc3b2d53421
+    restart: on-failure
+    ports:
+      - ${APP_CORE_LIGHTNING_DAEMON_PORT}:9735
+    command:
+      - --bitcoin-rpcconnect=${APP_BITCOIN_NODE_IP}
+      - --bitcoin-rpcuser=${APP_BITCOIN_RPC_USER}
+      - --bitcoin-rpcpassword=${APP_BITCOIN_RPC_PASS}
+      - --proxy=${TOR_PROXY_IP}:${TOR_PROXY_PORT}
+      - --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735
+      - --addr=statictor:${TOR_PROXY_IP}:29051
+      - --tor-service-password=${TOR_PASSWORD}
+      - --announce-addr={vpnIP}:{vpnPort}
+      - --always-use-proxy=false
+      #- --grpc-port=${APP_CORE_LIGHTNING_DAEMON_GRPC_PORT}
+    volumes:
+      - "${APP_DATA_DIR}/data/lightningd:/data/.lightning"
+    networks:
+      default:
+        ipv4_address: ${APP_CORE_LIGHTNING_DAEMON_IP}
+```
+
+⚠️ __Important Notice:__ Please uncomment or remove any other `listen=` parameters like `listen=localhost`, `externalip=` and / or `externalhosts=` settings. They can potentially interfere with VPN settings. In summary:
 
   ```ini
   # Uncomment any of these parameters if present:
@@ -116,17 +210,20 @@ Important notice: Please uncomment or remove any other `listen=` parameters like
   #externalip=...
   #externalhosts=...
   ```
+  
+<br/>
 
 ## Uninstall: ##
 
-To restore all applied changes made to your node setup, download and run the uninstall script. Furthermode remove entries from `lnd.conf` / restore your previous settings and restart `lnd.service`.
+To restore all applied changes made to your node setup, download and run the uninstall script. Furthermode remove entries from configuration files.
 
   ```sh
   $ wget https://github.com/blckbx/tunnelsats/raw/main/scripts/uninstall.sh
   $ sudo bash uninstall.sh
   ```
-Restore your `lnd.conf` with the backup file you (hopefully) created on setting up hybrid mode. 
+Restore your configuration from with the backup file you (hopefully) created on setting up hybrid mode. 
 
+<br/>
 
 ## Deep Dive: ##
 
@@ -144,6 +241,7 @@ What is this script doing in detail?
 
 6) Adds nftables ruleset to client system to enable kill-switching and prevent DNS leakage.
 
+<br/>
 
 ## Further Help: ##
 
