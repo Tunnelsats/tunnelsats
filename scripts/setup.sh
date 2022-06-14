@@ -254,6 +254,8 @@ if [ $(hostname) != "raspberrypi" ]; then
   $(nft flush chain inet $(wg show | grep interface | awk '{print $2}') output)
   # Add Kill Switch Rule
   $(nft insert rule inet $(wg show | grep interface | awk '{print $2}')   output oifname != $(wg show | grep interface | awk '{print $2}')  meta mark != 0xdeadbeef  ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 ip daddr != 224.0.0.1/24 oifname != "br-*" oifname != "veth*"  fib daddr type != local counter drop comment \"tunnelsats kill switch\" )  
+  #Add Kill Switch for DNS Requests in particular
+  $(nft add rule inet $(wg show | grep interface | awk '{print $2}') output  oifname != $(wg show | grep interface | awk '{print $2}') meta l4proto {udp, tcp} th dport {53} counter drop comment \"tunnelsats prevent DNS leakage\")
 else
   #Create output chain 
   $(nft add chain inet $(wg show | grep interface | awk '{print $2}') output '{type filter hook output priority filter; policy accept;}')
@@ -261,6 +263,9 @@ else
   $(nft flush chain inet $(wg show | grep interface | awk '{print $2}') output)
   #Add Kill Switch Rule
   $(nft insert rule inet  $(wg show | grep interface | awk '{print $2}')  output oifname !=  $(wg show | grep interface | awk '{print $2}') ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 ip daddr != 224.0.0.1/24  meta mark != 0xdeadbeef fib daddr type != local  counter drop comment \"tunnelsats kill switch\" )
+  #Add Kill Switch for DNS Requests in particular
+  $(nft add rule inet $(wg show | grep interface | awk '{print $2}') output  oifname != $(wg show | grep interface | awk '{print $2}') meta l4proto {udp, tcp} th dport {53} counter drop comment \"tunnelsats prevent DNS leakage\")
+
 fi
 
 #Checking for Kill Switch
@@ -274,6 +279,17 @@ else
 fi
 
 sleep 2
+
+killSwitchExists=$(nft -s list table inet $(wg show | grep interface | awk '{print $2}') | grep -c "tunnelsats prevent DNS leakage")
+if [ $killSwitchExists -eq 0 ]; then
+  echo "> ERR: Preventing DNS Leakage failed";echo
+  exit 1
+else
+  echo "> Preventing DNS Leakage rule activated";echo
+fi
+
+sleep 2
+
 
 ## UFW firewall configuration
 vpnExternalPort=$(grep "#VPNPort" /etc/wireguard/tunnelsats.conf | awk '{ print $3 }')
