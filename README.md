@@ -140,7 +140,9 @@ What is this script doing in detail?
 
 4) Enabling and starting required systemd services (wg-quick, splitting).
 
-5) Setting UFW rules (if installed) to open up the VPN provided forwarded port.
+5) Setting ufw port rules (if installed) to open up the VPN provided forwarded port.
+
+6) Adds nftables ruleset to client system to enable kill-switching and prevent DNS leakage.
 
 
 ## Further Help: ##
