@@ -89,7 +89,8 @@ fi
 sleep 2
 
 # remove netcls subgroup
-if sudo cgdelete net_cls:/splitted_processes; then
+echo "Removing netcls subgroup..."
+if cgdelete net_cls:/splitted_processes 2> /dev/null; then
     echo "> Control Group Splitted Processes removed";echo
 else
     echo "> ERR: Could not remove cgroup.";echo
