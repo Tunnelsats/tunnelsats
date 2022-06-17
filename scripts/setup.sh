@@ -137,7 +137,7 @@ sshd=\$(systemctl show --no-pager sshd | grep ExecMainPID | cut -d \"=\" -f2)
 if [ \$sshd -eq 0 ];then
   echo \"> ERR: no able to exclude sshd from tunnel\"
 else
-  echo \">  sshd process found \"
+  echo \"> sshd process found \"
   echo \$sshd >> /sys/fs/cgroup/net_cls/splitted_processes/tasks
 fi
 
@@ -172,7 +172,7 @@ fi
 echo "Creating splitting systemd service..."
 if [ ! -f /etc/systemd/system/splitting.service ]; then
   # if we are on Umbrel || Start9 (Docker solutions), create a timer to restart and re-check Tor/ssh pids
-  if  ! systemctl is-enabled --quiet tor@default.service; then
+  if  ! systemctl is-enabled --quiet tor@default.service 2> /dev/null; then
      echo "[Unit]
 Description=Splitting Tor Traffic by Timer
 StartLimitInterval=200
@@ -195,7 +195,7 @@ WantedBy=timers.target
     " > /etc/systemd/system/splitting.timer
     
     if [ -f /etc/systemd/system/splitting.service ]; then
-      echo "> splitting.service created";echo
+      echo "> splitting.service created"
     else
       echo "> ERR: splitting.service not created. Please check for errors.";echo
     fi
@@ -300,7 +300,7 @@ if [ $killSwitchExists -eq 0 ]; then
   echo "> ERR: Activating Kill Switch failed, check whether tunnel activated";echo
   exit 1
 else
-  echo "> Kill Switch Activated";echo
+  echo "> Kill Switch Activated"
 fi
 
 sleep 2
@@ -344,10 +344,13 @@ externalip=${vpnExternalIP}:${vpnExternalPort}
 tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
 #########################################
+
 Please save them in a file or write them down for later use.
+
 A more detailed guide is available at: 
 https://blckbx.github.io/tunnelsats/ 
-Afterwards please restart LND / your system for changes to take effect.
+
+Afterwards please restart LND / CLN for changes to take effect.
 VPN setup completed!";echo
 
 # the end
