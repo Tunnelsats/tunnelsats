@@ -88,6 +88,15 @@ fi
 
 sleep 2
 
+# remove netcls subgroup
+if sudo cgdelete net_cls:/splitted_processes; then
+    echo "> Control Group Splitted Processes removed";echo
+else
+    echo "> ERR: Could not remove cgroup.";echo
+fi
+
+sleep 2
+
 # uninstall cgroup-tools, nftables, wireguard
 echo "Uninstalling packages: cgroup-tools, nftables, wireguard-tools ..."
 if apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
@@ -99,16 +108,7 @@ fi
 sleep 2
 
 
-# remove netcls subgroup
 
-if sudo cgdelete net_cls:/splitted_processes; then
-    echo "> Control Group Splitted Processes removed";echo
-else
-    echo "> ERR: Could not remove cgroup.";echo
-fi
-
-
-sleep 2
 
 echo "VPN setup uninstalled";echo
 
