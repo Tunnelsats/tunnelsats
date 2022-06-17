@@ -98,6 +98,18 @@ fi
 
 sleep 2
 
+
+# remove netcls subgroup
+
+if sudo cgdelete net_cls:/splitted_processes; then
+    echo "> Control Group Splitted Processes removed";echo
+else
+    echo "> ERR: Could not remove cgroup.";echo
+fi
+
+
+sleep 2
+
 echo "VPN setup uninstalled";echo
 
 # the end
