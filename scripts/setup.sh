@@ -278,6 +278,21 @@ else
 
 fi
 
+#Add DNS in case systemd-resolved is active
+
+if [ ! -x /sbin/resolvconf ] && systemctl is-enabled systemd-resolved.service; then
+
+  resolvectl dns $(wg show | grep interface | awk '{print $2}') 8.8.8.8; resolvectl domain $(wg show | grep interface | awk '{print $2}') ~.
+
+  if [ $? -eq 0 ]; then
+      echo "> 8.8.8.8 is now set as DNS resolver";echo
+  else
+     echo "> ERR: not able to setup new DNS server - check your DNS settings";echo
+     exit 1
+  fi
+
+fi
+
 #Checking for Kill Switch
 
 killSwitchExists=$(nft -s list table inet $(wg show | grep interface | awk '{print $2}') | grep -c "tunnelsats kill switch")
