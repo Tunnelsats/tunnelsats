@@ -17,6 +17,7 @@
 - [Where do I find my `lnd.conf` file?](#where-do-i-find-my-lndconf-file)
 - [How to transfer `tunnelsats.conf` to my node?](#how-to-transfer-tunnelsatsconf-to-my-node)
 - [How does it actually look like, how am I connected?](#how-does-it-actually-look-like-how-am-i-connected)
+- [How can I verify that my connection is routed over VPN?](#how-can-i-verify-that-my-connection-is-routed-over-vpn)
 - [Tuning Tor](#tuning-tor)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
 
@@ -125,6 +126,12 @@ $ scp tunnelsats.conf umbrel@umbrel.local:/home/umbrel/
 ### How does it actually look like, how am I connected?
 See the current network setup in a comparison between your Tor only setup vs the new setup as a flowchart
 ![Flowchart Diagram](/docs/assets/Tunnelsats-Tor-scenario.drawio.png)
+
+<br/>
+
+### How can I verify that my connection is routed over VPN?
+On console, run a curl command to check the returned external IP. For example: `curl ifconfig.me`
+The result should match with your selected VPN IP. Furthermore see some wireguard connection statistics via `sudo wg show`
 
 <br/>
 

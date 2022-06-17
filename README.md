@@ -20,6 +20,7 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - [Enabling hybrid mode](#enabling-hybrid-mode)
   - [LND](#lnd)
   - [CLN](#cln)
+- [Verify Connection](#verify-connection)
 - [Uninstall](#uninstall)
 - [Deep Dive](#deep-dive)
 - [Further Help](#further-help)
@@ -211,6 +212,20 @@ lightningd:
   #externalhosts=...
   ```
   
+<br/>
+
+## Verify Connection: ##
+
+When all is set and done, verify the established VPN connection. To do so, run a `curl` command on console and check if the result matches your selected VPN IP:
+
+```sh
+$ curl ifconfig.me
+> {vpnIP}
+```
+
+Furthermore, check some wiregard stats with: `sudo wg show`
+
+
 <br/>
 
 ## Uninstall: ##
