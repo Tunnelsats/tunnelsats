@@ -90,6 +90,10 @@ sleep 2
 
 # remove netcls subgroup
 echo "Removing netcls subgroup..."
+if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
+  cgdelete net_cls:/tor_splitting 2> /dev/null
+fi
+
 if cgdelete net_cls:/splitted_processes 2> /dev/null; then
     echo "> Control Group Splitted Processes removed";echo
 else
