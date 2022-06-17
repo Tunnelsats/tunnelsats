@@ -131,8 +131,16 @@ else
 fi
 # add Tor pid(s) to cgroup
 pgrep -x tor | xargs -I % sh -c 'echo % > /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
+
 # Add sshd root process
-systemctl show --no-pager sshd | grep ExecMainPID | cut -d \"=\" -f2  >> /sys/fs/cgroup/net_cls/splitted_processes/tasks
+sshd=\$(systemctl show --no-pager sshd | grep ExecMainPID | cut -d \"=\" -f2)
+if [ \$sshd -eq 0 ];then
+  echo \"> ERR: no able to exclude sshd from tunnel\"
+else
+  echo \">  sshd process found \"
+  echo \$sshd >> /sys/fs/cgroup/net_cls/splitted_processes/tasks
+fi
+
 count=\$(cat /sys/fs/cgroup/net_cls/splitted_processes/tasks | wc -l)
 if [ \$count -eq 0 ];then
   echo \"> ERR: no pids added to file\"
@@ -168,7 +176,7 @@ if [ ! -f /etc/systemd/system/splitting.service ]; then
      echo "[Unit]
 Description=Splitting Tor Traffic by Timer
 StartLimitInterval=200
-StartLimitBurst=5
+StartLimitBurst=5rel
 [Service]
 Type=oneshot
 ExecStart=/bin/bash /etc/wireguard/splitting.sh
