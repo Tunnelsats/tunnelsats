@@ -109,13 +109,13 @@ fi
 sleep 2
 
 
-# setup split-tunneling
+# setup split-tunneling tor + ssh
 # create file
 echo "Creating splitting.sh file in /etc/wireguard/..."
 echo "#!/bin/sh
 set -e
 dir_netcls=\"/sys/fs/cgroup/net_cls\"
-torsplitting=\"/sys/fs/cgroup/net_cls/tor_splitting\"
+torsplitting=\"/sys/fs/cgroup/net_cls/splitted_processes\"
 modprobe cls_cgroup
 if [ ! -d \"\$dir_netcls\" ]; then
   mkdir \$dir_netcls
@@ -123,20 +123,22 @@ if [ ! -d \"\$dir_netcls\" ]; then
   echo \"> Successfully added cgroup net_cls subsystem\"
 fi
 if [ ! -d \"\$torsplitting\" ]; then
-  mkdir /sys/fs/cgroup/net_cls/tor_splitting
-  echo 1118498  > /sys/fs/cgroup/net_cls/tor_splitting/net_cls.classid
+  mkdir /sys/fs/cgroup/net_cls/splitted_processes
+  echo 1118498  > /sys/fs/cgroup/net_cls/splitted_processes/net_cls.classid
   echo \"> Successfully added Mark for net_cls subsystem\"
 else
   echo \"> Mark for net_cls subsystem already present\"
 fi
 # add Tor pid(s) to cgroup
-pgrep -x tor | xargs -I % sh -c 'echo % > /sys/fs/cgroup/net_cls/tor_splitting/tasks' > /dev/null
-count=\$(cat /sys/fs/cgroup/net_cls/tor_splitting/tasks | wc -l)
+pgrep -x tor | xargs -I % sh -c 'echo % > /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
+# Add sshd root process
+systemctl show --no-pager sshd | grep ExecMainPID | cut -d \"=\" -f2  >> /sys/fs/cgroup/net_cls/splitted_processes/tasks
+count=\$(cat /sys/fs/cgroup/net_cls/splitted_processes/tasks | wc -l)
 if [ \$count -eq 0 ];then
   echo \"> ERR: no pids added to file\"
   exit 1
 else
-  echo \"> \${count} Tor process(es) successfully excluded\"
+  echo \"> \${count} Process(es) successfully excluded\"
 fi
 " > /etc/wireguard/splitting.sh
 if [ -f /etc/wireguard/splitting.sh ]; then
@@ -161,8 +163,8 @@ fi
 # create systemd file
 echo "Creating splitting systemd service..."
 if [ ! -f /etc/systemd/system/splitting.service ]; then
-  # if we are on Umbrel || Start9 (Docker solutions), create a timer to restart and re-check Tor pids
-  if [ $(hostname) = "umbrel" ] || [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then
+  # if we are on Umbrel || Start9 (Docker solutions), create a timer to restart and re-check Tor/ssh pids
+  if  ! systemctl is-enabled --quiet tor@default.service; then
      echo "[Unit]
 Description=Splitting Tor Traffic by Timer
 StartLimitInterval=200
@@ -247,7 +249,7 @@ echo "> wireguard systemd service started";echo
 
 ##Add KillSwitch to nftables
 echo "Adding KillSwitch to nftables..."
-if [ $(hostname) != "raspberrypi" ]; then
+if systemctl is-enabled --quiet  docker.service; then
   #Create output chain 
   $(nft add chain inet $(wg show | grep interface | awk '{print $2}') output '{type filter hook output priority filter; policy accept;}')
   #Flush Table first to prevent redundant rules
