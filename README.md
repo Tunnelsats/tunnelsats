@@ -29,8 +29,8 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 
 ## Preconditions: ##
 
-- `lnd-0.14.2-beta` or later
-- edit your node's `lnd.conf` file
+- LND `0.14.2-beta` or latest / CLN latest
+- edit your lightning configuration file (`lnd.conf` / `config`)
 - ability to spend some sats (the hardest part)
 
 <br/>
