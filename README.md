@@ -136,9 +136,7 @@ The following shows how to edit non-docker CLN configuration:
 Locate the data directory of your CLN installation. By default CLN's configuration is stored in a file named `config`. Edit the file and look out for network settings section. Configured to hybrid it should look like this:
 
 ```ini
-proxy=127.0.0.1:9050
 bind-addr=0.0.0.0:9735
-addr=statictor:127.0.0.1:9051/torport=9735
 announce-addr={vpnIP}:{vpnPort}
 always-use-proxy=false
 ```
