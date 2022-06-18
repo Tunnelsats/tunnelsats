@@ -130,16 +130,10 @@ else
   echo \"> Mark for net_cls subsystem already present\"
 fi
 # add Tor pid(s) to cgroup
-pgrep -x tor | xargs -I % sh -c 'echo % > /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
+pgrep -x tor | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
 
-# Add sshd root process
-sshd=\$(systemctl show --no-pager sshd | grep ExecMainPID | cut -d \"=\" -f2)
-if [ \$sshd -eq 0 ];then
-  echo \"> ERR: no able to exclude sshd from tunnel\"
-else
-  echo \"> sshd process found \"
-  echo \$sshd >> /sys/fs/cgroup/net_cls/splitted_processes/tasks
-fi
+# add ssh pid(s) to cgroup
+pgrep -x sshd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
 
 count=\$(cat /sys/fs/cgroup/net_cls/splitted_processes/tasks | wc -l)
 if [ \$count -eq 0 ];then
@@ -247,6 +241,9 @@ fi
 
 sleep 2
 
+#Get IP prior to tunnelsats setup
+ipHome=$(curl --silent https://api.ipify.org)
+
 ## create and enable wireguard service
 echo "Initializing the service..."
 systemctl daemon-reload > /dev/null
@@ -314,6 +311,19 @@ else
 fi
 
 sleep 2
+
+#Check your external Ip is the external Ip of the vpn
+ipVPN=$(curl --silent https://api.ipify.org)
+
+if [[ $ipHome == $ipVPN ]]; then
+    echo "> Tunnel is active
+    Your ISP external ip: $ipHome 
+    Your Tunnelsats  external ip: $ipVPN";echo
+else
+
+   echo "> ERR: Tunnelsats VPN Interface not successfully activated, check debug logs";echo
+   exit 1
+fi
 
 
 ## UFW firewall configuration
