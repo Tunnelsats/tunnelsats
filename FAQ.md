@@ -130,8 +130,7 @@ See the current network setup in a comparison between your Tor only setup vs the
 <br/>
 
 ### How can I verify that my connection is routed over VPN?
-On console, run a curl command to check the returned external IP. For example: `curl ifconfig.me`
-The result should match with your selected VPN IP. Furthermore see some wireguard connection statistics via `sudo wg show`
+On console, run the following wireguard command to see some connection statistics: `sudo wg show`
 
 <br/>
 
