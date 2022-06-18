@@ -312,15 +312,13 @@ fi
 
 sleep 2
 
-#Check your external Ip is the external Ip of the vpn
+#Check your external IP is the external IP of the VPN
 ipVPN=$(curl --silent https://api.ipify.org)
-
-if [[ $ipHome == $ipVPN ]]; then
+if [ "$ipHome" != "$ipVPN" ]; then
     echo "> Tunnel is active
-    Your ISP external ip: $ipHome 
-    Your Tunnelsats  external ip: $ipVPN";echo
+    Your ISP external IP: ${ipHome} 
+    Your Tunnelsats external IP: ${ipVPN}";echo
 else
-
    echo "> ERR: Tunnelsats VPN Interface not successfully activated, check debug logs";echo
    exit 1
 fi
@@ -343,7 +341,7 @@ fi
 # Instructions
 vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsats.conf | awk '{ print $3 }' | cut -d ":" -f1)
 
-echo " 
+echo "
 These are your personal VPN credentials for your lightning configuration.
 
 For LND:
