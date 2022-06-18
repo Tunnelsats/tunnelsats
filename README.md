@@ -29,7 +29,9 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 
 ## Preconditions: ##
 
-- LND `0.14.2-beta` or latest / CLN latest
+- OS: Debian-/Ubuntu-based (apt-get required)
+- LND `0.14.2-beta` or latest
+- CLN latest
 - edit your lightning configuration file (`lnd.conf` / `config`)
 - ability to spend some sats (the hardest part)
 
