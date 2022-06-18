@@ -212,19 +212,28 @@ lightningd:
   #externalhosts=...
   ```
   
+After enabling hybrid mode in related configuration files, restart the lightning implementation for changes to take effect! Before doing so, verify the established VPN connection with commands provided in the following part. 
+
 <br/>
 
 ## Verify Connection: ##
 
-When all is set and done, verify the established VPN connection. To do so, run a `curl` command on console and check if the result matches your selected VPN IP:
+When all is set and done, you can verify the established VPN connection. To do so, we take a look at some VPN connection statistics: `sudo wg show`
+This shows some information about the establised tunnel:
 
-```sh
-$ curl ifconfig.me
-> {vpnIP}
+```ini
+interface: tunnelsats
+  public key: <server pubkey>
+  private key: (hidden)
+  listening port: 11111
+  fwmark: 0xaaabbb
+
+peer: <peer pubkey>
+  endpoint: <vpn ip>:51820
+  allowed ips: 0.0.0.0/0, ::/0
+  latest handshake: 7 seconds ago
+  transfer: x.xx MiB received, xx.xx MiB sent
 ```
-
-Furthermore, check some wiregard stats with: `sudo wg show`
-
 
 <br/>
 
