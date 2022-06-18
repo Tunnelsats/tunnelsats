@@ -334,10 +334,9 @@ fi
 vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsats.conf | awk '{ print $3 }' | cut -d ":" -f1)
 
 echo " 
-These are your personal VPN credentials for your LN configuration.
+These are your personal VPN credentials for your lightning configuration.
 
 For LND:
-Put these in the sections shown in brackets: 
 #########################################
 [Application Options]
 listen=0.0.0.0:9735
