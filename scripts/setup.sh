@@ -334,7 +334,9 @@ fi
 vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsats.conf | awk '{ print $3 }' | cut -d ":" -f1)
 
 echo " 
-These are your personal VPN credentials for your lnd.conf.
+These are your personal VPN credentials for your LN configuration.
+
+For LND:
 Put these in the sections shown in brackets: 
 #########################################
 [Application Options]
@@ -345,10 +347,18 @@ tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
 #########################################
 
+For CLN:
+#########################################
+proxy=127.0.0.1:9050
+bind-addr=0.0.0.0:9735
+addr=statictor:127.0.0.1:9051/torport=9735
+announce-addr=${vpnExternalIP}:${vpnExternalPort}
+always-use-proxy=false
+#########################################
+
 Please save them in a file or write them down for later use.
 
-A more detailed guide is available at: 
-https://blckbx.github.io/tunnelsats/ 
+A more detailed guide is available at: https://blckbx.github.io/tunnelsats/ 
 
 Afterwards please restart LND / CLN for changes to take effect.
 VPN setup completed!";echo
