@@ -14,7 +14,7 @@
 - [How do I know what value I got from subscribing to your service?](#how-do-i-know-what-value-i-got-from-subscribing-to-your-service)
 - [Why shouldn't I just do it myself?](#why-shouldnt-i-just-do-it-myself)
 - [Why are you charging fees?](#why-are-you-charging-fees)
-- [Where do I find my `lnd.conf` file?](#where-do-i-find-my-lndconf-file)
+- [Where do I find my lightning configuration file?](#where-do-i-find-my-lightning-configuration-file)
 - [How to transfer `tunnelsats.conf` to my node?](#how-to-transfer-tunnelsatsconf-to-my-node)
 - [How does it actually look like, how am I connected?](#how-does-it-actually-look-like-how-am-i-connected)
 - [How can I verify that my connection is routed over VPN?](#how-can-i-verify-that-my-connection-is-routed-over-vpn)
@@ -99,9 +99,10 @@ We have invested significant amount of hours into building out the infrastructur
 
 <br/>
 
-### Where do I find my `lnd.conf` file?
+### Where do I find my lightning configuration file?
 Every node software (RaspiBlitz, RaspiBolt, Umbrel, Start9, myNode, etc.) has its own directory where it keeps data of the underlying lightning implementation. As far as we know, the current (06/2022) directories are:
 
+LND:
 ```ini
 RaspiBlitz: /mnt/hdd/lnd/lnd.conf
 RaspiBolt: /data/lnd/lnd.conf
@@ -109,6 +110,13 @@ Umbrel: /home/umbrel/umbrel/lnd/lnd.conf
 Umbrel 0.5+: /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf
 Start9: /embassy-data/package-data/volumes/lnd/data/main/lnd.conf
 myNode: /mnt/hdd/mynode/lnd/lnd.conf
+```
+
+CLN:
+```ini
+RaspiBlitz: /mnt/hdd/app-data/.lightning/config
+RaspiBolt: /data/cln/config
+Umbrel 0.5+: /home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin/ (file initially not present)
 ```
 
 <br/>
