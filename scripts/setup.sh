@@ -9,6 +9,25 @@ if [ "$EUID" -ne 0 ]
   exit 1
 fi
 
+
+# check setup
+setup=""
+if [ $(hostname) = "raspberrypi" ] && [ -f /mnt/hdd/lnd/lnd.conf ]; then
+  setup="raspiblitz"
+elif [ -f /data/lnd/lnd.conf ]; then
+  setup="raspibolt"
+elif [ $(hostname) = "umbrel" ] && [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then
+  setup="umbrel"
+elif [ $(hostname) = "umbrel" ] && [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then
+  setup="umbrel"
+elif [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then
+  setup="start9"
+elif [ $(hostname) = "mynode" ] && [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then
+  setup="mynode"
+fi
+
+
+
 echo "
 ##############################
 #         TunnelSats         #
@@ -156,7 +175,7 @@ else
 fi
 
 # run it once
-if [ -f /etc/wireguard/splitting.sh ];then
+if [ -f /etc/wireguard/splitting.sh ]; then
     echo "> splitting.sh created, executing...";
     # run
     bash /etc/wireguard/splitting.sh
@@ -259,7 +278,7 @@ echo "> wireguard systemd service started";echo
 
 ##Add KillSwitch to nftables
 echo "Adding KillSwitch to nftables..."
-if systemctl is-enabled --quiet  docker.service; then
+if systemctl is-enabled --quiet docker.service; then
   #Create output chain 
   $(nft add chain inet $(wg show | grep interface | awk '{print $2}') output '{type filter hook output priority filter; policy accept;}')
   #Flush Table first to prevent redundant rules
