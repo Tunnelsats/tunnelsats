@@ -190,7 +190,7 @@ ExecStart=/usr/bin/bash /etc/wireguard/splitting.sh
 [Install]
 WantedBy=multi-user.target
 " > /etc/systemd/system/splitting.service
-else if  [ ! -f /etc/systemd/system/splitting.service ] && systemctl is-enabled --quiet lightningd.service 2> /dev/null; then
+elif  [ ! -f /etc/systemd/system/splitting.service ] && systemctl is-enabled --quiet lightningd.service 2> /dev/null; then
      echo "[Unit]
 Description=Splitting Lightning Traffic after Restart
 # Make sure it starts when lightning service is running (thats why restart settings are crucial here)
