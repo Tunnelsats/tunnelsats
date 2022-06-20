@@ -26,12 +26,17 @@ else
   echo "> tunnelsats.conf found, proceeding.";echo
 fi
 
-# RaspiBlitz: deactivate lnd.check.sh
-if [ $(hostname) = "raspberrypi" ] && [ -f /mnt/hdd/lnd/lnd.conf ]; then
+# RaspiBlitz: deactivate config checks
+if [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
     if [ -f /home/admin/config.scripts/lnd.check.sh ]; then
         mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak
-        echo "RaspiBlitz detected, safety check for lnd.conf removed";echo
+        echo "RaspiBlitz detected, lnd conf safety check removed";echo
     fi
+elif [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+  if [ -f /home/admin/config.scripts/cl.check.sh ]; then
+    mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak
+    echo "RaspiBlitz detected, cln conf safety check removed";echo
+  fi    
 fi
 
 echo "Checking and installing requirements..."
@@ -46,7 +51,7 @@ if [ $checkcgroup -eq 0 ]; then
     if apt-get install -y cgroup-tools > /dev/null;then
         echo "> cgroup-tools installed";echo
     else
-        echo "> failed to install ncgroup-tools";echo
+        echo "> failed to install cgroup-tools";echo
         exit 1
     fi
 else
