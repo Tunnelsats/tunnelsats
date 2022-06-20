@@ -55,7 +55,7 @@ if systemctl is-enabled --quiet lnd.service 2> /dev/null || systemctl is-enabled
         if apt-get install -y cgroup-tools > /dev/null; then
             echo "> cgroup-tools installed";echo
         else
-            echo "> failed to install ncgroup-tools";echo
+            echo "> failed to install cgroup-tools";echo
             exit 1
         fi
     else
