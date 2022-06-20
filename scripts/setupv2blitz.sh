@@ -9,13 +9,14 @@ if [ "$EUID" -ne 0 ]
   exit 1
 fi
 
+# intro
 echo "
 ##############################
 #        TunnelSatsv2        #
 #        Setup Script        #
 ##############################";echo
 
-# check for downloaded tunnelsats.conf, exit if not available
+# check for downloaded tunnelsatsv2.conf, exit if not available
 # get current directory
 directory=$(dirname -- $(readlink -fn -- "$0"))
 echo "Looking for WireGuard config file..."
@@ -26,26 +27,32 @@ else
   echo "> tunnelsatsv2.conf found, proceeding.";echo
 fi
 
-# RaspiBlitz: deactivate lnd.check.sh
-if [ $(hostname) = "raspberrypi" ] && [ -f /mnt/hdd/lnd/lnd.conf ]; then
+
+# RaspiBlitz: deactivate config checks
+if [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
     if [ -f /home/admin/config.scripts/lnd.check.sh ]; then
         mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak
-        echo "RaspiBlitz detected, safety check for lnd.conf removed";echo
+        echo "RaspiBlitz detected, lnd conf safety check removed";echo
     fi
+elif [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+  if [ -f /home/admin/config.scripts/cl.check.sh ]; then
+    mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak
+    echo "RaspiBlitz detected, cln conf safety check removed";echo
+  fi    
 fi
 
+# check requirements and update repos
 echo "Checking and installing requirements..."
 echo "Updating the package repositories..."
 apt-get update > /dev/null;echo
 
 # check cgroup-tools only necessary when lnd runs as systemd service
 if systemctl is-enabled --quiet lnd.service 2> /dev/null || systemctl is-enabled --quiet lightningd.service 2> /dev/null; then 
-
     echo "Checking cgroup-tools..."
     checkcgroup=$(cgcreate -h 2> /dev/null | grep -c "Usage")
     if [ $checkcgroup -eq 0 ]; then
         echo "Installing cgroup-tools..."
-        if apt-get install -y cgroup-tools > /dev/null;then
+        if apt-get install -y cgroup-tools > /dev/null; then
             echo "> cgroup-tools installed";echo
         else
             echo "> failed to install ncgroup-tools";echo
@@ -63,7 +70,7 @@ echo "Checking nftables installation..."
 checknft=$(nft -v 2> /dev/null | grep -c "nftables")
 if [ $checknft -eq 0 ]; then
     echo "Installing nftables..."
-    if apt-get install -y nftables > /dev/null;then
+    if apt-get install -y nftables > /dev/null; then
         echo "> nftables installed";echo
     else
         echo "> failed to install nftables";echo
@@ -80,7 +87,7 @@ echo "Checking wireguard installation..."
 checkwg=$(wg -v 2> /dev/null | grep -c "wireguard-tools")
 if [ ! -f /etc/wireguard ] && [ $checkwg -eq 0 ]; then
     echo "Installing wireguard..."
-    if apt-get install -y wireguard > /dev/null;then
+    if apt-get install -y wireguard > /dev/null; then
         echo "> wireguard installed";echo
     else
         echo "> failed to install wireguard";echo
@@ -110,8 +117,6 @@ else
 fi
 
 sleep 2
-
-
 
 
 # setup lnd for splitting
@@ -165,6 +170,7 @@ else
     exit 1
 fi
 
+
 # enable systemd service
 # create systemd file
 echo "Creating splitting systemd service..."
@@ -201,9 +207,6 @@ WantedBy=multi-user.target
 " > /etc/systemd/system/splitting.service
 fi
 
-
-
-
 # enable and start splitting.service
 if [ -f /etc/systemd/system/splitting.service ]; then
   systemctl daemon-reload > /dev/null
@@ -221,7 +224,6 @@ fi
 sleep 2
 
 
-
 ## create and enable wireguard service
 echo "Initializing the service..."
 systemctl daemon-reload > /dev/null
@@ -229,7 +231,6 @@ systemctl enable wg-quick@tunnelsatsv2 > /dev/null
 echo "> wireguard systemd service enabled"
 systemctl start wg-quick@tunnelsatsv2 > /dev/null
 echo "> wireguard systemd service started";echo
-
 
 
 #Check if tunnel works
@@ -246,7 +247,7 @@ fi
 
 
 ## UFW firewall configuration
-vpnExternalPort=$(grep "#VPNPort" /etc/wireguard/tunnelsats.conf | awk '{ print $3 }')
+vpnExternalPort=$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')
 vpnInternalPort="9735"
 echo "Checking for firewalls and adjusting settings if applicable...";
 checkufw=$(ufw version 2> /dev/null | grep -c "Canonical")
@@ -259,13 +260,13 @@ else
    echo "> ufw not detected";echo
 fi
 
+
 # Instructions
-vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsats.conf | awk '{ print $3 }' | cut -d ":" -f1)
+vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
 
-echo "
-These are your personal VPN credentials for your lightning configuration.
+echo "These are your personal VPN credentials for your lightning configuration.";echo
 
-For LND:
+echo "LND:
 #########################################
 [Application Options]
 listen=0.0.0.0:9735
@@ -273,18 +274,18 @@ externalip=${vpnExternalIP}:${vpnExternalPort}
 [Tor]
 tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
-#########################################
+#########################################";echo
 
-For CLN:
+echo "CLN:
 #########################################
 bind-addr=0.0.0.0:9735
 announce-addr=${vpnExternalIP}:${vpnExternalPort}
 always-use-proxy=false
-#########################################
+#########################################";echo
 
-Please save them in a file or write them down for later use.
+echo "Please save them in a file or write them down for later use.
 
-A more detailed guide is available at: https://blckbx.github.io/tunnelsats/ 
+A more detailed guide is available at: https://blckbx.github.io/tunnelsats/
 
 Afterwards please restart LND / CLN for changes to take effect.
 VPN setup completed!";echo
