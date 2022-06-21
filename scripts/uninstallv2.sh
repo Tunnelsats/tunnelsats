@@ -21,7 +21,7 @@ fi
 # intro
 echo "
 ##############################
-#         TunnelSats         #
+#        TunnelSatsv2        #
 #      Uninstall Script      #
 ##############################";echo
 
