@@ -55,39 +55,42 @@ echo "Checking and installing requirements..."
 echo "Updating the package repositories..."
 apt-get update > /dev/null;echo
 
-# check cgroup-tools only necessary when lightning runs as systemd service
-if [ -f /etc/systemd/system/lnd.service ] || 
-   [ -f /etc/systemd/system/lightningd.service ]; then 
-    echo "Checking cgroup-tools..."
-    checkcgroup=$(cgcreate -h 2> /dev/null | grep -c "Usage")
-    if [ $checkcgroup -eq 0 ]; then
-        echo "Installing cgroup-tools..."
-        if apt-get install -y cgroup-tools > /dev/null; then
-            echo "> cgroup-tools installed";echo
-        else
-            echo "> failed to install cgroup-tools";echo
-            exit 1
-        fi
-    else
-        echo "> cgroup-tools found";echo
-    fi
-fi
+# only non-docker
+if [ ! $isDocker ]; then
+  # check cgroup-tools only necessary when lightning runs as systemd service
+  if [ -f /etc/systemd/system/lnd.service ] || 
+     [ -f /etc/systemd/system/lightningd.service ]; then 
+      echo "Checking cgroup-tools..."
+      checkcgroup=$(cgcreate -h 2> /dev/null | grep -c "Usage")
+      if [ $checkcgroup -eq 0 ]; then
+          echo "Installing cgroup-tools..."
+          if apt-get install -y cgroup-tools > /dev/null; then
+              echo "> cgroup-tools installed";echo
+          else
+              echo "> failed to install cgroup-tools";echo
+              exit 1
+          fi
+      else
+          echo "> cgroup-tools found";echo
+      fi
+  fi
 
-sleep 2
+  sleep 2
 
-# check nftables
-echo "Checking nftables installation..."
-checknft=$(nft -v 2> /dev/null | grep -c "nftables")
-if [ $checknft -eq 0 ]; then
-    echo "Installing nftables..."
-    if apt-get install -y nftables > /dev/null; then
-        echo "> nftables installed";echo
-    else
-        echo "> failed to install nftables";echo
-        exit 1
-    fi
-else
-    echo "> nftables found";echo
+  # check nftables
+  echo "Checking nftables installation..."
+  checknft=$(nft -v 2> /dev/null | grep -c "nftables")
+  if [ $checknft -eq 0 ]; then
+      echo "Installing nftables..."
+      if apt-get install -y nftables > /dev/null; then
+          echo "> nftables installed";echo
+      else
+          echo "> failed to install nftables";echo
+          exit 1
+      fi
+  else
+      echo "> nftables found";echo
+  fi
 fi
 
 sleep 2
@@ -109,22 +112,71 @@ fi
 
 sleep 2
 
+# edit tunnelsats.conf, add PostUp/Down rules
+# and copy to destination folder
+echo "Applying network rules to wireguard conf file..."
+inputDocker="
+FwMark = 0x3333
+Table = off
 
-# check for downloaded tunnelsatsv2.conf, exit if not available
-# get current directory
-echo "Copying WireGuard config file..."
+PostUp = docker network create \"docker-tunnelsats\" --subnet \"10.9.9.0/25\" -o \"com.docker.network.driver.mtu\"=\"1420\"
+PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820;ip rule add from all table main suppress_prefixlength 0
+PostUp = ip route add blackhole default metric 3 table 51820;
+PostUp = ip route add default dev %i metric 2 table 51820
+PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
+PostUp = docker network connect \"docker-tunnelsats\" \$(docker ps | grep 9735 | awk '{ print \$18 }')
+
+PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820
+PostDown = ip rule del from all table  main suppress_prefixlength 0
+PostDown = ip route del blackhole default metric 3 table 51820
+PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
+PostDown = docker network disconnect docker-tunnelsats 
+PostDown = docker network rm \"docker-tunnelsats\" \$(docker ps | grep 9735 | awk '{ print \$18 }')
+"
+inputNonDocker="
+FwMark = 0xdeadbeef
+Table = off
+
+PostUp = ip rule add not from all fwmark 0xdeadbeef table 51820;ip rule add from all table main suppress_prefixlength 0
+PostUp = ip route add default dev %i table 51820;
+
+PostUp = nft add table inet %i
+PostUp = nft add chain inet %i raw '{type filter hook prerouting priority raw; policy accept;}'; nft add rule inet %i raw iifname != %i ip daddr 10.9.0.1 fib saddr type != local counter drop
+PostUp = nft add chain inet %i prerouting '{type filter hook prerouting priority mangle; policy accept;}'; nft add rule inet %i prerouting meta mark set ct mark
+PostUp = nft add chain inet %i mangle '{type route hook output priority mangle; policy accept;}'; nft add rule inet %i mangle meta cgroup 1118498 meta mark set 0xdeadbeef
+PostUp = nft add chain inet %i nat'{type nat hook postrouting priority srcnat; policy accept;}'; nft add rule inet %i nat oif %i ct mark 0xdeadbeef drop;nft add rule inet %i nat oif != "lo" ct mark 0xdeadbeef masquerade
+PostUp = nft add chain inet %i postroutingmangle'{type filter hook postrouting priority mangle; policy accept;}'; nft add rule inet %i postroutingmangle meta mark 0xdeadbeef ct mark set meta mark
+
+PostDown = nft delete table inet %i
+PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del not from all fwmark 0xdeadbeef table 51820
+"
+
 directory=$(dirname -- $(readlink -fn -- "$0"))
 if [ -f $directory/tunnelsatsv2.conf ]; then
-   cp $directory/tunnelsatsv2.conf /etc/wireguard/
-   if [ -f /etc/wireguard/tunnelsatsv2.conf ]; then
+  line=$(grep -n "#VPNPort" | cut -d ":" -f1)
+  line="$(($line+1))"
+  if [ $line != "" ]; then
+    if [ $isDocker ]; then
+      sed -i "${line}i${inputDocker}" $directory/tunnelsatsv2.conf
+    else
+      sed -i "${line}i${inputNonDocker}" $directory/tunnelsatsv2.conf
+    fi
+  fi
+  # check
+  check=$(grep -c "FwMark" $directory/tunnelsatsv2.conf)
+  if [ $check -gt 0 ]; then
+    echo "> network rules applied"
+    cp $directory/tunnelsatsv2.conf /etc/wireguard/
+    if [ -f /etc/wireguard/tunnelsatsv2.conf ]; then
       echo "> tunnelsatsv2.conf copied to /etc/wireguard/";echo
-   else
+    else
       echo "> ERR: tunnelsatsv2.conf not found in /etc/wireguard/. Please check for errors.";echo
-   fi
-else
-   echo "> tunnelsatsv2.conf VPN config file not found. Please put your config file in the same directory as this script!";echo
-   exit 1
+    fi    
+  else
+    echo "> ERR: network rules not applied";echo
+  fi
 fi
+
 
 sleep 2
 
