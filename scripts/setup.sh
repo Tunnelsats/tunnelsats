@@ -10,22 +10,15 @@ if [ "$EUID" -ne 0 ]
 fi
 
 
-# check setup
-setup=""
-if [ $(hostname) = "raspberrypi" ] && [ -f /mnt/hdd/lnd/lnd.conf ]; then
-  setup="raspiblitz"
-elif [ -f /data/lnd/lnd.conf ]; then
-  setup="raspibolt"
-elif [ $(hostname) = "umbrel" ] && [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then
-  setup="umbrel"
+# check if docker
+isDocker=0
+if [ $(hostname) = "umbrel" ] && [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then
+  isDocker=1
 elif [ $(hostname) = "umbrel" ] && [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then
-  setup="umbrel"
+  isDocker=1
 elif [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then
-  setup="start9"
-elif [ $(hostname) = "mynode" ] && [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then
-  setup="mynode"
+  isDocker=1
 fi
-
 
 
 echo "
@@ -190,7 +183,7 @@ fi
 echo "Creating splitting systemd service..."
 if [ ! -f /etc/systemd/system/splitting.service ]; then
   # if we are on Umbrel || Start9 (Docker solutions), create a timer to restart and re-check Tor/ssh pids
-  if  ! systemctl is-enabled --quiet tor@default.service 2> /dev/null; then
+  if  ! $isDocker then
      echo "[Unit]
 Description=Splitting Tor Traffic by Timer
 StartLimitInterval=200
@@ -278,7 +271,7 @@ echo "> wireguard systemd service started";echo
 
 ##Add KillSwitch to nftables
 echo "Adding KillSwitch to nftables..."
-if systemctl is-enabled --quiet docker.service; then
+if $isDocker then
   #Create output chain 
   $(nft add chain inet $(wg show | grep interface | awk '{print $2}') output '{type filter hook output priority filter; policy accept;}')
   #Flush Table first to prevent redundant rules
@@ -300,8 +293,7 @@ else
 fi
 
 #Add DNS in case systemd-resolved is active
-
-if [ ! -x /sbin/resolvconf ] && systemctl is-enabled systemd-resolved.service; then
+if [ ! -x /sbin/resolvconf ] && [ $(systemctl is-enabled systemd-resolved.service) = "enabled" ]; then
 
   resolvectl dns $(wg show | grep interface | awk '{print $2}') 8.8.8.8; resolvectl domain $(wg show | grep interface | awk '{print $2}') ~.
 
