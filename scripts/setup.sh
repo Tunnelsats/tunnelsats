@@ -184,7 +184,7 @@ if [ ! -f /etc/systemd/system/splitting.service ]; then
      echo "[Unit]
 Description=Splitting Tor Traffic by Timer
 StartLimitInterval=200
-StartLimitBurst=5rel
+StartLimitBurst=5
 [Service]
 Type=oneshot
 ExecStart=/bin/bash /etc/wireguard/splitting.sh
