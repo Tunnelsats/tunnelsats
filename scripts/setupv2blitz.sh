@@ -9,6 +9,15 @@ if [ "$EUID" -ne 0 ]
   exit 1
 fi
 
+# check if docker
+isDocker=0
+if [ $(hostname) = "umbrel" ] ||
+   [ -f /home/umbrel/umbrel/lnd/lnd.conf ] ||
+   [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ] ||
+   [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then
+  isDocker=1
+fi
+
 # intro
 echo "
 ##############################
@@ -46,8 +55,9 @@ echo "Checking and installing requirements..."
 echo "Updating the package repositories..."
 apt-get update > /dev/null;echo
 
-# check cgroup-tools only necessary when lnd runs as systemd service
-if systemctl is-enabled --quiet lnd.service 2> /dev/null || systemctl is-enabled --quiet lightningd.service 2> /dev/null; then 
+# check cgroup-tools only necessary when lightning runs as systemd service
+if [ -f /etc/systemd/system/lnd.service ] || 
+   [ -f /etc/systemd/system/lightningd.service ]; then 
     echo "Checking cgroup-tools..."
     checkcgroup=$(cgcreate -h 2> /dev/null | grep -c "Usage")
     if [ $checkcgroup -eq 0 ]; then
@@ -175,7 +185,7 @@ fi
 # create systemd file
 echo "Creating splitting systemd service..."
 # LND
-if [ ! -f /etc/systemd/system/splitting.service ] && systemctl is-enabled --quiet lnd.service 2> /dev/null; then
+if [ ! -f /etc/systemd/system/splitting.service ] && [ -f /etc/systemd/system/lnd.service ]; then
      echo "[Unit]
 Description=Splitting Lightning Traffic after Restart
 # Make sure it starts when lightning service is running (thats why restart settings are crucial here)
@@ -190,7 +200,7 @@ ExecStart=/usr/bin/bash /etc/wireguard/splitting.sh
 [Install]
 WantedBy=multi-user.target
 " > /etc/systemd/system/splitting.service
-elif  [ ! -f /etc/systemd/system/splitting.service ] && systemctl is-enabled --quiet lightningd.service 2> /dev/null; then
+elif  [ ! -f /etc/systemd/system/splitting.service ] && [ -f /etc/systemd/system/lightningd.service ]; then
      echo "[Unit]
 Description=Splitting Lightning Traffic after Restart
 # Make sure it starts when lightning service is running (thats why restart settings are crucial here)
@@ -227,10 +237,12 @@ sleep 2
 ## create and enable wireguard service
 echo "Initializing the service..."
 systemctl daemon-reload > /dev/null
-systemctl enable wg-quick@tunnelsatsv2 > /dev/null
-echo "> wireguard systemd service enabled"
-systemctl start wg-quick@tunnelsatsv2 > /dev/null
-echo "> wireguard systemd service started";echo
+if systemctl enable wg-quick@tunnelsatsv2 > /dev/null &&
+   systemctl start wg-quick@tunnelsatsv2 > /dev/null; then
+  echo "> wireguard systemd service enabled and started";echo
+else
+  echo "> ERR: wireguard service could not be enabled/started. Please check for errors.";echo
+fi
 
 
 #Check if tunnel works
