@@ -9,17 +9,14 @@ if [ "$EUID" -ne 0 ]
   exit 1
 fi
 
-
 # check if docker
 isDocker=0
-if [ $(hostname) = "umbrel" ] && [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then
-  isDocker=1
-elif [ $(hostname) = "umbrel" ] && [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then
-  isDocker=1
-elif [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then
+if [ $(hostname) = "umbrel" ] ||
+   [ -f /home/umbrel/umbrel/lnd/lnd.conf ] ||
+   [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ] ||
+   [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then
   isDocker=1
 fi
-
 
 echo "
 ##############################
