@@ -18,6 +18,7 @@ if [ $(hostname) = "umbrel" ] ||
   isDocker=1
 fi
 
+# intro
 echo "
 ##############################
 #         TunnelSats         #
