@@ -32,6 +32,7 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - OS: Debian-/Ubuntu-based (apt-get required)
 - LND `0.14.2-beta` or latest
 - CLN latest
+- only **one** lightning implementation per system is supported (configured to port 9735)
 - edit your lightning configuration file (`lnd.conf` / `config`)
 - ability to spend some sats (the hardest part)
 
