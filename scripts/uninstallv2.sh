@@ -5,17 +5,17 @@
 
 # check if sudo
 if [ "$EUID" -ne 0 ]
-  then echo "Please run as root (with sudo)";echo
-  exit 1
+then echo "Please run as root (with sudo)";echo
+    exit 1
 fi
 
 # check if docker
 isDocker=0
 if [ $(hostname) = "umbrel" ] ||
-   [ -f /home/umbrel/umbrel/lnd/lnd.conf ] ||
-   [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ] ||
-   [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then
-  isDocker=1
+[ -f /home/umbrel/umbrel/lnd/lnd.conf ] ||
+[ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ] ||
+[ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then
+    isDocker=1
 fi
 
 # intro
@@ -26,7 +26,7 @@ echo "
 ##############################";echo
 
 # RaspiBlitz, redo safety check and run it
-if [ $(hostname) = "raspberrypi" ] && [ -f /mnt/hdd/lnd/lnd.conf ]; then 
+if [ $(hostname) = "raspberrypi" ] && [ -f /mnt/hdd/lnd/lnd.conf ]; then
     echo "RaspiBlitz: Trying to restore safety check 'lnd.check.sh'..."
     if [ -f /home/admin/config.scripts/lnd.check.bak ]; then
       mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
@@ -47,6 +47,22 @@ fi
 
 sleep 2
 
+#remove docker-tunnelsats network
+if [ $isDocker ]; then
+  checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
+  echo "Removing docker-tunnelsats  network..."
+
+  if [ $checkdockernetwork -ne 0 ];
+    if docker network rm "docker-tunnelsats";then
+      echo "> docker-tunnelsats network removed";echo
+    else
+      echo "> ERR: could not remove docker-tunnelsats network. Please check manually.";echo
+  fi
+fi
+
+sleep 2
+
+
 # remove ufw setting (port rule)
 checkufw=$(ufw version 2> /dev/null | grep -c Canonical)
 if [ $checkufw -eq 1 ]; then
@@ -63,7 +79,7 @@ sleep 2
 # remove wg-quick@tunnelsats service
 if [ -f /lib/systemd/system/wg-quick@.service ]; then
   echo "Removing wireguard systemd service..."
-  
+
   if wg-quick down tunnelsatsv2 > /dev/null &&
      systemctl stop wg-quick@tunnelsatsv2 > /dev/null &&
      systemctl disable wg-quick@tunnelsatsv2 > /dev/null &&
@@ -75,6 +91,20 @@ if [ -f /lib/systemd/system/wg-quick@.service ]; then
 fi
 
 sleep 2
+
+# remove wg-quick@tunnelsatsv2.service.d
+if [ -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d  ]; then
+  echo "Removing wg-quick@tunnelsatsv2.service.d..."
+
+  if rm -r /etc/systemd/system/wg-quick@tunnelsatsv2.service.d; then
+    echo "> /etc/systemd/system/wg-quick@tunnelsatsv2.service.d removed";echo
+  else
+    echo "> ERR: could not remove /etc/systemd/systemd/wg-quick@tunnelsatsv2.service.d. Please check manually.";echo
+  fi
+fi
+
+sleep 2
+
 
 # removing /etc/wireguard/*
 if [ -d /etc/wireguard/ ]; then
