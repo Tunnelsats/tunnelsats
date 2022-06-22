@@ -13,8 +13,9 @@ fi
 isDocker=0
 if [ $(hostname) = "umbrel" ] ||
    [ -f /home/umbrel/umbrel/lnd/lnd.conf ] ||
-   [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ] ||
-   [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then
+   [ -d /home/umbrel/umbrel/app-data/lightning ] ||
+   [ -d /home/umbrel/umbrel/app-data/core-lightning ] ||
+   [ -d /embassy-data/package-data/volumes/lnd ]; then
   isDocker=1
 fi
 
