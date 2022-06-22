@@ -355,15 +355,31 @@ if [ ! $isDocker ]; then
 fi
 
 
+
 ## create and enable wireguard service
 echo "Initializing the service..."
 systemctl daemon-reload > /dev/null
-if systemctl enable wg-quick@tunnelsatsv2 > /dev/null &&
-   systemctl start wg-quick@tunnelsatsv2 > /dev/null; then
-  echo "> wireguard systemd service enabled and started";echo
+if systemctl enable wg-quick@tunnelsatsv2 > /dev/null; then
+
+  if [ $isDocker ]; then
+     mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d > /dev/null
+       echo "[Unit]
+    Description=Forcing wg-quick to start after umbrel startup scripts
+    # Make sure to start vpn after umbrel start up to have lnd containers available
+    Requires=umbrel-startup.service
+    After=umbrel-startup.service
+    " > /etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf 
+  fi
+
+  systemctl start wg-quick@tunnelsatsv2 > /dev/null; 
+  if [ $? -eq 0 ]; then
+    echo "> wireguard systemd service enabled and started";echo
+  else 
+    echo "> ERR: wireguard service could not be started. Please check for errors.";echo
 else
-  echo "> ERR: wireguard service could not be enabled/started. Please check for errors.";echo
+  echo "> ERR: wireguard service could not be enabled. Please check for errors.";echo
 fi
+
 
 if [ ! $isDocker ]; then 
   #Check if tunnel works
