@@ -186,11 +186,14 @@ PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep
 PostUp = ip route add blackhole default metric 3 table 51820;
 PostUp = ip route add default dev %i metric 2 table 51820
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
+PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
+PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
 PostUp = docker network connect \"docker-tunnelsats\" \$(docker ps --format 'table {{.Image}}\t{{.Names}}\t{{.Ports}}' | grep 9735 | awk '{print \$2}')
 
 PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820
 PostDown = ip rule del from all table  main suppress_prefixlength 0
 PostDown = ip route flush table 51820
+PostUp = sysctl -w net.ipv4.conf.all.rp_filter=1
 PostDown = docker network disconnect docker-tunnelsats \$(docker ps --format 'table {{.Image}}\t{{.Names}}\t{{.Ports}}' | grep 9735 | awk '{print \$2}')
 "
 inputNonDocker="
@@ -200,6 +203,8 @@ Table = off
 PostUp = ip rule add from all fwmark 0xdeadbeef table 51820;ip rule add from all table main suppress_prefixlength 0
 PostUp = ip route add default dev %i table 51820;
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
+PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
+PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
 
 #Firewall nftable rules
 PostUp = nft add table inet %i
@@ -213,6 +218,7 @@ PostDown = nft delete table inet %i
 PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del not from all fwmark 0xdeadbeef table 51820
 PostDown = ip route flush table 51820
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
+
 
 "
 
