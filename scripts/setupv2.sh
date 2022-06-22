@@ -378,7 +378,7 @@ if [ $isDocker ]; then
       type filter hook output priority filter; policy accept;
       oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
     }
-      " >  /etc/nftables.conf
+      " >>  /etc/nftables.conf
     else
       echo "#!/sbin/nft -f
       table inet tunnelsatsv2 {
@@ -388,7 +388,7 @@ if [ $isDocker ]; then
       oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
       }
 
-      " >>  /etc/nftables.conf
+      " >  /etc/nftables.conf
 
   else
     echo "> ERR: not able to get default routing interface.  Please check for errors.";echo
