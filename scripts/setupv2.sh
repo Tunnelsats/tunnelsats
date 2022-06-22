@@ -367,30 +367,33 @@ fi
 #Get main interface
 mainif=$(ip route | grep default | cut -d' ' -f5)
 
-if [ ! -z $mainif ]; then
+if [ $isDocker ]; then
 
-  if [ -f /etc/nftables.conf  ]; then 
-  echo "table inet tunnelsatsv2 {
-	#block traffic until the setup is up
-	chain output {
-		type filter hook output priority filter; policy accept;
-    oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
-	}
-    " >  /etc/nftables.conf
-  else
-    echo "#!/sbin/nft -f
-    table inet tunnelsatsv2 {
+  if [ ! -z $mainif ] ; then
+
+    if [ -f /etc/nftables.conf  ]; then 
+    echo "table inet tunnelsatsv2 {
     #block traffic until the setup is up
-	  chain output {
-		type filter hook output priority filter; policy accept;
-    oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
-	  }
+    chain output {
+      type filter hook output priority filter; policy accept;
+      oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
+    }
+      " >  /etc/nftables.conf
+    else
+      echo "#!/sbin/nft -f
+      table inet tunnelsatsv2 {
+      #block traffic until the setup is up
+      chain output {
+      type filter hook output priority filter; policy accept;
+      oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
+      }
 
-    " >>  /etc/nftables.conf
+      " >>  /etc/nftables.conf
 
-else
-   echo "> ERR: not able to get default routing interface.  Please check for errors.";echo
-   exit 1
+  else
+    echo "> ERR: not able to get default routing interface.  Please check for errors.";echo
+    exit 1
+  fi
 fi
 
 ## create and enable nftables service
