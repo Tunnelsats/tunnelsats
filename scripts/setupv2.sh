@@ -194,7 +194,7 @@ PostDown = ip route flush table 51820
 PostDown = docker network disconnect docker-tunnelsats \$(docker ps --format 'table {{.Image}}\t{{.Names}}\t{{.Ports}}' | grep 9735 | awk '{print \$2}')
 "
 inputNonDocker="
-FwMark = 0xdeadbeef
+FwMark = 0x3333
 Table = off
 
 PostUp = ip rule add not from all fwmark 0xdeadbeef table 51820;ip rule add from all table main suppress_prefixlength 0
