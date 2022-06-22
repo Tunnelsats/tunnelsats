@@ -362,6 +362,64 @@ if [ ! $isDocker ]; then
 fi
 
 
+#Creating Killswitch to prevent any leakage
+
+#Get main interface
+mainif=$(ip route | grep default | cut -d' ' -f5)
+
+if [ ! -z $mainif ]; then
+
+  if [ -f /etc/nftables.conf  ]; then 
+  echo "table inet tunnelsatsv2 {
+	#block traffic until the setup is up
+	chain output {
+		type filter hook output priority filter; policy accept;
+    oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
+	}
+    " >  /etc/nftables.conf
+  else
+    echo "#!/sbin/nft -f
+    table inet tunnelsatsv2 {
+    #block traffic until the setup is up
+	  chain output {
+		type filter hook output priority filter; policy accept;
+    oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
+	  }
+
+    " >>  /etc/nftables.conf
+
+else
+   echo "> ERR: not able to get default routing interface.  Please check for errors.";echo
+   exit 1
+fi
+
+## create and enable nftables service
+echo "Initializing the service..."
+systemctl daemon-reload > /dev/null
+if  sudo systemctl enable nftables > /dev/null; then
+
+  if [ $isDocker ]; then
+
+    if [ -d /etc/systemd/system/umbrel-startup.service.d ]
+        mkdir /etc/systemd/system/umbrel-startup.service.d > /dev/null
+    fi 
+       echo "[Unit]
+    Description=Forcing wg-quick to start after umbrel startup scripts
+    # Make sure kill switch is in place before starting umbrel containers
+    Requires=nftables.service
+    After=nftables.service
+    " > /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
+  fi
+
+
+else
+  echo "> ERR: nftables service could not be enabled. Please check for errors.";echo
+  exit 1
+fi
+
+
+
+
 
 ## create and enable wireguard service
 echo "Initializing the service..."
@@ -375,6 +433,7 @@ if systemctl enable wg-quick@tunnelsatsv2 > /dev/null; then
     # Make sure to start vpn after umbrel start up to have lnd containers available
     Requires=umbrel-startup.service
     After=umbrel-startup.service
+    ExecStartPost=/usr/sbin/nft delete table inet tunnelsatsv2
     " > /etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf 
   fi
 
