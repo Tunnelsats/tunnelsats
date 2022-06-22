@@ -376,6 +376,7 @@ if systemctl enable wg-quick@tunnelsatsv2 > /dev/null; then
     echo "> wireguard systemd service enabled and started";echo
   else 
     echo "> ERR: wireguard service could not be started. Please check for errors.";echo
+  fi
 else
   echo "> ERR: wireguard service could not be enabled. Please check for errors.";echo
 fi
@@ -401,6 +402,8 @@ else
   else
     ipHome=$(curl --silent https://api.ipify.org)
     ipVPN=$(docker run -ti --rm --net=docker-tunnelsats appropriate/curl https://api.ipify.org &> /dev/null)
+  fi
+  
   if [ "$ipHome" != "$ipVPN" ]; then
       echo "> Tunnel is active
       Your ISP external IP: ${ipHome} 
@@ -409,7 +412,6 @@ else
       echo "> ERR: Tunnelsats VPN Interface not successfully activated, check debug logs";echo
       exit 1
   fi
-
 fi
 
 ## UFW firewall configuration
