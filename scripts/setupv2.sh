@@ -197,7 +197,7 @@ inputNonDocker="
 FwMark = 0x3333
 Table = off
 
-PostUp = ip rule add not from all fwmark 0xdeadbeef table 51820;ip rule add from all table main suppress_prefixlength 0
+PostUp = ip rule add from all fwmark 0xdeadbeef table 51820;ip rule add from all table main suppress_prefixlength 0
 PostUp = ip route add default dev %i table 51820;
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 
