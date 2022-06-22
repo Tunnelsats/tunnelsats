@@ -193,7 +193,7 @@ PostUp = docker network connect \"docker-tunnelsats\" \$(docker ps --format 'tab
 PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820
 PostDown = ip rule del from all table  main suppress_prefixlength 0
 PostDown = ip route flush table 51820
-PostUp = sysctl -w net.ipv4.conf.all.rp_filter=1
+PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 PostDown = docker network disconnect docker-tunnelsats \$(docker ps --format 'table {{.Image}}\t{{.Names}}\t{{.Ports}}' | grep 9735 | awk '{print \$2}')
 "
 inputNonDocker="
