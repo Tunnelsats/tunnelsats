@@ -369,7 +369,7 @@ if [ $isDocker ]; then
     #block traffic until the setup is up
     chain output {
       type filter hook output priority filter; policy accept;
-      oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
+      oifname $mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
     }
       " >>  /etc/nftables.conf
     else
@@ -378,7 +378,7 @@ if [ $isDocker ]; then
       #block traffic until the setup is up
       chain output {
       type filter hook output priority filter; policy accept;
-      oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
+      oifname $mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
       }
 
       " >  /etc/nftables.conf
