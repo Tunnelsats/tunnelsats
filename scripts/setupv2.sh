@@ -386,7 +386,7 @@ if [ $isDocker ]; then
     echo "table inet tunnelsatsv2 {
   set killswitch_tunnelsats {
 		type ipv4_addr
-		comment "prevent lightning service to leak ip"
+		comment \"prevent lightning service to leak ip\"
 		elements = { $result }
 	}
   #block traffic from lighting containers
@@ -400,7 +400,7 @@ if [ $isDocker ]; then
   table inet tunnelsatsv2 {
   set killswitch_tunnelsats {
 		type ipv4_addr
-		comment "prevent lightning service to leak ip"
+		comment \"prevent lightning service to leak ip\"
 		elements = { $result }
 	}
   #block traffic from lighting containers
