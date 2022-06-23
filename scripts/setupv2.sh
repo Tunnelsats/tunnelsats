@@ -382,8 +382,10 @@ if [ $isDocker ]; then
 
   if [ ! -z $mainif ] ; then
 
-    if [ -f /etc/nftables.conf  ]; then 
-    echo "table inet tunnelsatsv2 {
+    if [ -f /etc/nftables.conf ]; then
+      check=$(grep -c "tunnelsatsv2" /etc/nftables.conf)
+      if [ $check -eq 0 ]; then
+        echo "table inet tunnelsatsv2 {
   set killswitch_tunnelsats {
 		type ipv4_addr
 		elements = { $result }
@@ -394,7 +396,8 @@ if [ $isDocker ]; then
     oifname $mainif ip saddr @killswitch_tunnelsats counter  drop
   }
 }" >>  /etc/nftables.conf
-    else
+     fi
+   else
       echo "#!/sbin/nft -f
   table inet tunnelsatsv2 {
   set killswitch_tunnelsats {
