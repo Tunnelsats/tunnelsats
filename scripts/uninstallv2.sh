@@ -60,9 +60,9 @@ sleep 2
 #remove docker-tunnelsats network
 if [ $isDocker ]; then
   checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
-  if [ $checkdockernetwork -ne 0 ]; then
+  if [ $checkdockernetwork -ne 0 ];
     echo "Removing docker-tunnelsats network..."  
-    if docker network rm "docker-tunnelsats" 2> /dev/null; then
+    if docker network rm "docker-tunnelsats"; then
       echo "> docker-tunnelsats network removed";echo
     else
       echo "> ERR: could not remove docker-tunnelsats network. Please check manually.";echo
@@ -89,16 +89,10 @@ sleep 2
 # remove wg-quick@tunnelsats service
 if [ -f /lib/systemd/system/wg-quick@.service ]; then
   echo "Removing wireguard systemd service..."
-  
-  # remove old v1
-  if [ -f /etc/wireguard/tunnelsats.conf ]; then
-    if wg-quick down tunnelsats > /dev/null &&
-       systemctl stop wg-quick@tunnelsats &&
-       systemctl disable wg-quick@tunnelsats; then
-       echo "> wireguard systemd service (v1) removed"
-    fi
-  fi
-  
+  # remove v1
+  wg-quick down tunnelsats > /dev/null
+  systemctl stop wg-quick@tunnelsats > /dev/null
+  systemctl disable wg-quick@tunnelsats > /dev/null
   if wg-quick down tunnelsatsv2 > /dev/null &&
      systemctl stop wg-quick@tunnelsatsv2 > /dev/null &&
      systemctl disable wg-quick@tunnelsatsv2 > /dev/null &&
@@ -151,25 +145,44 @@ fi
 
 sleep 2
 
-# remove netcls subgroup
-if [ ! $isDocker ]; then
-    echo "Removing net_cls subgroup..."
-    # v1
-    if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
-        cgdelete net_cls:/tor_splitting 2> /dev/null
-    fi
 
-    if cgdelete net_cls:/splitted_processes 2> /dev/null; then
-        echo "> Control Group Splitted Processes removed";echo
-    else
-        echo "> ERR: Could not remove cgroup.";echo
-    fi
+#reset lnd
+if [ ! $isDocker ] && [ -f /etc/systemd/system/lnd.service.bak ]; then
+  if mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service; then
+    echo "> reseted lnd.service prior to tunnelsats successfully";echo
+  else 
+    echo "> ERR: Not able to reset /etc/systemd/system/lnd.service Please check manually.";echo
+  fi
+fi
+
+
+#reset lightingd
+if [ ! $isDocker ] && [ -f /etc/systemd/system/lightnind.service.bak ]; then
+  if mv /etc/systemd/system/lightnind.service.bak /etc/systemd/system/lightingd.service; then
+    echo "> reseted lightningd.service prior to tunnelsats successfully";echo
+  else 
+    echo "> ERR: Not able to reset /etc/systemd/system/lightningd.service Please check manually.";echo
+  fi
+fi
+
+
+# remove netcls subgroup
+echo "Removing net_cls subgroup..."
+# v1
+if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
+    cgdelete net_cls:/tor_splitting 2> /dev/null
+fi
+
+if cgdelete net_cls:/splitted_processes 2> /dev/null; then
+    echo "> Control Group Splitted Processes removed";echo
+else
+    echo "> ERR: Could not remove cgroup.";echo
 fi
 
 sleep 2
 
 # uninstall cgroup-tools, nftables, wireguard
-echo "Uninstalling packages..."
+echo "Uninstalling packages: cgroup-tools, nftables, wireguard-tools ..."
 if apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
   echo "> Packages removed";echo
 else
