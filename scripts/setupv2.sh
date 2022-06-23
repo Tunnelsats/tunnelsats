@@ -377,7 +377,7 @@ if [ $isDocker ]; then
   if [ ${dockerclnip} = "" ]; then
     result=${dockerlndip}
   else
-    result=${dockerlndip}","{$dockerclnip}
+    result="${dockerlndip}, ${dockerclnip}"
   fi
 
   if [ ! -z $mainif ] ; then
@@ -386,7 +386,6 @@ if [ $isDocker ]; then
     echo "table inet tunnelsatsv2 {
   set killswitch_tunnelsats {
 		type ipv4_addr
-		comment \"prevent lightning service to leak ip\"
 		elements = { $result }
 	}
   #block traffic from lighting containers
@@ -394,13 +393,12 @@ if [ $isDocker ]; then
     type filter hook forward priority filter; policy accept;
     oifname $mainif ip saddr @killswitch_tunnelsats counter  drop
   }
-  }" >>  /etc/nftables.conf
+}" >>  /etc/nftables.conf
     else
       echo "#!/sbin/nft -f
   table inet tunnelsatsv2 {
   set killswitch_tunnelsats {
 		type ipv4_addr
-		comment \"prevent lightning service to leak ip\"
 		elements = { $result }
 	}
   #block traffic from lighting containers
@@ -408,13 +406,13 @@ if [ $isDocker ]; then
     type filter hook forward priority filter; policy accept;
     oifname $mainif ip saddr @killswitch_tunnelsats counter  drop
   }
-  }" >  /etc/nftables.conf
+}" >  /etc/nftables.conf
     fi
     
     # check application
     check=$(grep -c "tunnelsatsv2" /etc/nftables.conf)
     if [ $check -ne 0 ]; then
-      echo "> KillSwitch applied"
+      echo "> KillSwitch applied";echo
     else
       echo "> ERR: KillSwitch not applied. Please check /etc/nftables.conf";echo
       exit 1
