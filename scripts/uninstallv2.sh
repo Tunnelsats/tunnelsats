@@ -106,7 +106,7 @@ fi
 sleep 2
 
 # remove wg-quick@tunnelsatsv2.service.d
-if [ -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d  ]; then
+if [ -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d  ] && [ $isDocker ]; then
   echo "Removing wg-quick@tunnelsatsv2.service.d..."
   if rm -r /etc/systemd/system/wg-quick@tunnelsatsv2.service.d; then
     echo "> /etc/systemd/system/wg-quick@tunnelsatsv2.service.d removed";echo
