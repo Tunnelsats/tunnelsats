@@ -360,7 +360,7 @@ sleep 2
 #Start lightning implementation in cggroup when non docker
 #changing respective .service file
 
-if [ ! $isDocker ] 
+if [ ! $isDocker ]; then
 
   if [ -f /etc/systemd/system/lnd.service ]; then
 
