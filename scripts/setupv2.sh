@@ -176,6 +176,7 @@ sleep 2
 # and copy to destination folder
 echo "Applying network rules to wireguard conf file..."
 inputDocker="
+[Interface]
 FwMark = 0x3333
 Table = off
 
@@ -186,15 +187,16 @@ PostUp = ip route add default dev %i metric 2 table 51820
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
-PostUp = docker network connect \"docker-tunnelsats\" \$(docker ps --format 'table {{.Image}}\t{{.Names}}\t{{.Ports}}' | grep 9735 | awk '{print \$2}')
+PostUp = docker network connect \"docker-tunnelsats\" \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')
 
 PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820
 PostDown = ip rule del from all table  main suppress_prefixlength 0
 PostDown = ip route flush table 51820
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
-PostDown = docker network disconnect docker-tunnelsats \$(docker ps --format 'table {{.Image}}\t{{.Names}}\t{{.Ports}}' | grep 9735 | awk '{print \$2}')
+PostDown = docker network disconnect docker-tunnelsats \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')
 "
 inputNonDocker="
+[Interface]
 FwMark = 0x3333
 Table = off
 
@@ -219,12 +221,13 @@ PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 directory=$(dirname -- $(readlink -fn -- "$0"))
 if [ -f $directory/tunnelsatsv2.conf ]; then
   line=$(grep -n "#VPNPort" $directory/tunnelsatsv2.conf | cut -d ":" -f1)
-  line="$(($line+1))"
   if [ $line != "" ]; then
+    line="$(($line+1))"
+    
     if [ $isDocker ]; then
-      sed -i "${line}i${inputDocker}" $directory/tunnelsatsv2.conf
+      echo -e $inputDocker 2> /dev/null >> $directory/tunnelsatsv2.conf
     else
-      sed -i "${line}i${inputNonDocker}" $directory/tunnelsatsv2.conf
+      echo -e $inputNonDocker 2> /dev/null >> $directory/tunnelsatsv2.conf
     fi
   fi
   # check
@@ -356,32 +359,28 @@ sleep 2
 
 
 #Creating Killswitch to prevent any leakage
-
-#Get main interface
-mainif=$(ip route | grep default | cut -d' ' -f5)
-
 if [ $isDocker ]; then
-
+  #Get main interface
+  mainif=$(ip route | grep default | cut -d' ' -f5)
   if [ ! -z $mainif ] ; then
 
     if [ -f /etc/nftables.conf  ]; then 
     echo "table inet tunnelsatsv2 {
-    #block traffic until the setup is up
-    chain output {
-      type filter hook output priority filter; policy accept;
-      oifname $mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
-    }
-      " >>  /etc/nftables.conf
+#block traffic until the setup is up
+  chain output {
+    type filter hook output priority filter; policy accept;
+    oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
+  }
+}" >>  /etc/nftables.conf
     else
       echo "#!/sbin/nft -f
-      table inet tunnelsatsv2 {
-      #block traffic until the setup is up
-      chain output {
-      type filter hook output priority filter; policy accept;
-      oifname $mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
-      }
-
-      " >  /etc/nftables.conf
+table inet tunnelsatsv2 {
+#block traffic until the setup is up
+  chain output {
+  type filter hook output priority filter; policy accept;
+  oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
+  }
+}" >  /etc/nftables.conf
     fi
   else
     echo "> ERR: not able to get default routing interface.  Please check for errors.";echo
@@ -390,7 +389,7 @@ if [ $isDocker ]; then
 fi
 
 ## create and enable nftables service
-echo "Initializing the service..."
+echo "Initializing nftables..."
 systemctl daemon-reload > /dev/null
 if  sudo systemctl enable nftables > /dev/null; then
 
@@ -423,14 +422,14 @@ if systemctl enable wg-quick@tunnelsatsv2 > /dev/null; then
   if [ $isDocker ]; then
      mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d > /dev/null
        echo "[Unit]
-    Description=Forcing wg-quick to start after umbrel startup scripts
-    # Make sure to start vpn after umbrel start up to have lnd containers available
-    Requires=umbrel-startup.service
-    After=umbrel-startup.service
-    ExecStartPost=/usr/sbin/nft delete table inet tunnelsatsv2
-    " > /etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf 
+Description=Forcing wg-quick to start after umbrel startup scripts
+# Make sure to start vpn after umbrel start up to have lnd containers available
+Requires=umbrel-startup.service
+After=umbrel-startup.service
+ExecStartPost=/usr/sbin/nft delete table inet tunnelsatsv2
+" > /etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf 
   fi
-
+  systemctl daemon-reload
   systemctl start wg-quick@tunnelsatsv2 > /dev/null; 
   if [ $? -eq 0 ]; then
     echo "> wireguard systemd service enabled and started";echo
@@ -441,9 +440,11 @@ else
   echo "> ERR: wireguard service could not be enabled. Please check for errors.";echo
 fi
 
+sleep 2
 
-if [ ! $isDocker ]; then 
-  #Check if tunnel works
+#Check if tunnel works
+echo "Verifying tunnel ..."
+if [ ! $isDocker ]; then
   ipHome=$(curl --silent https://api.ipify.org)
   ipVPN=$(cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
   if [ "$ipHome" != "$ipVPN" ]; then
@@ -454,9 +455,10 @@ if [ ! $isDocker ]; then
     echo "> ERR: Tunnelsats VPN Interface not successfully activated, check debug logs";echo
     exit 1
   fi
-else
+  
+else #Docker
 
-  if   docker pull appropriate/curl &> /dev/null; then
+  if docker pull appropriate/curl &> /dev/null; then
       echo "> Tunnel Verification not checked bc appropriate/curl not available on your system ";echo
   else
     ipHome=$(curl --silent https://api.ipify.org)
