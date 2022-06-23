@@ -456,8 +456,7 @@ if [ ! $isDocker ]; then
   fi
 else
 
-  docker pull appropriate/curl
-  if [ $? -ne 0 ]; then
+  if   docker pull appropriate/curl &> /dev/null; then
       echo "> Tunnel Verification not checked bc appropriate/curl not available on your system ";echo
   else
     ipHome=$(curl --silent https://api.ipify.org)
