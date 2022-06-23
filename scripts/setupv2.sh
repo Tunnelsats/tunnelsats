@@ -415,46 +415,41 @@ if [ $isDocker ]; then
   fi
 
 
-## create and enable nftables service
-echo "Initializing nftables..."
-systemctl daemon-reload > /dev/null
-if systemctl enable nftables > /dev/null && systemctl start nftables > /dev/null; then
+  ## create and enable nftables service
+  echo "Initializing nftables..."
+  systemctl daemon-reload > /dev/null
+  if systemctl enable nftables > /dev/null && systemctl start nftables > /dev/null; then
 
 
-    if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
-        mkdir /etc/systemd/system/umbrel-startup.service.d > /dev/null
-    fi 
-    echo "[Unit]
-  Description=Forcing wg-quick to start after umbrel startup scripts
-  # Make sure kill switch is in place before starting umbrel containers
-  Requires=nftables.service
-  After=nftables.service
-  " > /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
-  
-  #Start nftables service
-  systemctl daemon-reload
-  systemctl start nftables > /dev/null; 
-  if [ $? -eq 0 ]; then
-    echo "> nftables systemd service started";echo
-  else 
-    echo "> ERR: nftables service could not be started. Please check for errors.";echo
-    #We exit here to prevent potential ip leakage
+      if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
+          mkdir /etc/systemd/system/umbrel-startup.service.d > /dev/null
+      fi 
+      echo "[Unit]
+    Description=Forcing wg-quick to start after umbrel startup scripts
+    # Make sure kill switch is in place before starting umbrel containers
+    Requires=nftables.service
+    After=nftables.service
+    " > /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
+    
+    #Start nftables service
+    systemctl daemon-reload
+    systemctl start nftables > /dev/null; 
+    if [ $? -eq 0 ]; then
+      echo "> nftables systemd service started";echo
+    else 
+      echo "> ERR: nftables service could not be started. Please check for errors.";echo
+      #We exit here to prevent potential ip leakage
+      exit 1
+    fi
+
+  else
+    echo "> ERR: nftables service could not be enabled. Please check for errors.";echo
     exit 1
-
-Description=Forcing wg-quick to start after umbrel startup scripts
-# Make sure kill switch is in place before starting umbrel containers
-Requires=nftables.service
-After=nftables.service
-" > /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
   fi
-else
-  echo "> ERR: nftables service could not be enabled. Please check for errors.";echo
-  exit 1
-fi
-
 fi
 
 sleep 2
+
 
 ## create and enable wireguard service
 echo "Initializing the service..."
