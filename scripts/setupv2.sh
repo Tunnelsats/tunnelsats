@@ -187,13 +187,13 @@ PostUp = ip route add default dev %i metric 2 table 51820\n
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0\n
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1\n
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
-PostUp = docker network connect --ip 10.9.9.9  \"docker-tunnelsats\" \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')\n
+#PostUp = docker network connect --ip 10.9.9.9  \"docker-tunnelsats\" \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}') &> /dev/null\n
 \n
 PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
 PostDown = ip rule del from all table  main suppress_prefixlength 0\n
 PostDown = ip route flush table 51820\n
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
-PostDown = docker network disconnect docker-tunnelsats \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')\n
+#PostDown = docker network disconnect docker-tunnelsats \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')\n
 "
 inputNonDocker="\n
 [Interface]\n
@@ -225,6 +225,7 @@ if [ -f $directory/tunnelsatsv2.conf ]; then
     line="$(($line+1))"
     
     if [ $isDocker ]; then
+      echo -e $inputDocker
       echo -e $inputDocker 2> /dev/null >> $directory/tunnelsatsv2.conf
     else
       echo -e $inputNonDocker 2> /dev/null >> $directory/tunnelsatsv2.conf
@@ -408,7 +409,7 @@ if [ $isDocker ]; then
   fi
   
   result=""
-  if [ ${dockerclnip} = "" ]; then
+  if [ -z ${dockerclnip} ]; then
     result=${dockerlndip}
   else
     result="${dockerlndip}, ${dockerclnip}"
@@ -507,7 +508,7 @@ if [ $isDocker ]; then
   checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
 
   if [ \$checkdockernetwork -ne 0 ] && [ !  -z \$lightningcontainer ]; then
-    docker network connect docker-tunnelsats \$lightningcontainer
+    docker network connect docker-tunnelsats \$lightningcontainer & > /dev/null
   fi
 
   " > /etc/wireguard/tunnelsats-docker-network.sh 
@@ -642,8 +643,8 @@ else #Docker
 
   if docker pull curlimages/curl > /dev/null; then
     ipHome=$(curl --silent https://api.ipify.org)
-    ipVPN=$(docker run -ti --rm --net=docker-tunnelsats curlimages/curl https://api.ipify.org &> /dev/null)
-    if [ "$ipHome" != "$ipVPN" ]; then
+    ipVPN=$(docker run -ti --rm --net=docker-tunnelsats curlimages/curl https://api.ipify.org 2> /dev/null)
+    if [ "$ipHome" != "$ipVPN" ] && [ ! -z $ipHome ] && [ ! -z $ipVPN  ]; then
       echo "> Tunnel is active
       Your ISP external IP: ${ipHome} 
       Your Tunnelsats external IP: ${ipVPN}";echo
