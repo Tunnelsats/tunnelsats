@@ -465,7 +465,7 @@ echo "Initializing the service..."
 systemctl daemon-reload > /dev/null
 if systemctl enable wg-quick@tunnelsatsv2 > /dev/null; then
 
-  if [ $isDocker ]; then
+  if [ $isDocker ] && [ -f /etc/systemd/system/umbrel-startup.service ]; then
      mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d > /dev/null
        echo "[Unit]
 Description=Forcing wg-quick to start after umbrel startup scripts
