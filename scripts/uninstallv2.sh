@@ -12,9 +12,10 @@ fi
 # check if docker
 isDocker=0
 if [ $(hostname) = "umbrel" ] ||
-[ -f /home/umbrel/umbrel/lnd/lnd.conf ] ||
-[ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ] ||
-[ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then
+   [ -f /home/umbrel/umbrel/lnd/lnd.conf ] ||
+   [ -d /home/umbrel/umbrel/app-data/lightning ] ||
+   [ -d /home/umbrel/umbrel/app-data/core-lightning ] ||
+   [ -d /embassy-data/package-data/volumes/lnd ]; then
     isDocker=1
 fi
 
@@ -36,6 +37,15 @@ if [ $(hostname) = "raspberrypi" ] && [ -f /mnt/hdd/lnd/lnd.conf ]; then
     fi
 fi
 
+# remove splitting.timer systemd (v1)
+if [ -f /etc/systemd/system/splitting.timer ]; then
+  echo "Removing splitting systemd timer...";
+  systemctl stop splitting.timer > /dev/null
+  systemctl disable splitting.timer > /dev/null
+  rm /etc/systemd/system/splitting.timer > /dev/null
+  echo "> splitting.timer: removed";echo
+fi
+
 # remove splitting.service systemd
 if [ -f /etc/systemd/system/splitting.service ]; then
   echo "Removing splitting systemd service...";
@@ -50,13 +60,13 @@ sleep 2
 #remove docker-tunnelsats network
 if [ $isDocker ]; then
   checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
-  echo "Removing docker-tunnelsats  network..."
-
   if [ $checkdockernetwork -ne 0 ];
-    if docker network rm "docker-tunnelsats";then
+    echo "Removing docker-tunnelsats network..."  
+    if docker network rm "docker-tunnelsats"; then
       echo "> docker-tunnelsats network removed";echo
     else
       echo "> ERR: could not remove docker-tunnelsats network. Please check manually.";echo
+    fi
   fi
 fi
 
@@ -79,7 +89,10 @@ sleep 2
 # remove wg-quick@tunnelsats service
 if [ -f /lib/systemd/system/wg-quick@.service ]; then
   echo "Removing wireguard systemd service..."
-
+  # remove v1
+  wg-quick down tunnelsats > /dev/null
+  systemctl stop wg-quick@tunnelsats > /dev/null
+  systemctl disable wg-quick@tunnelsats > /dev/null
   if wg-quick down tunnelsatsv2 > /dev/null &&
      systemctl stop wg-quick@tunnelsatsv2 > /dev/null &&
      systemctl disable wg-quick@tunnelsatsv2 > /dev/null &&
@@ -95,7 +108,6 @@ sleep 2
 # remove wg-quick@tunnelsatsv2.service.d
 if [ -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d  ]; then
   echo "Removing wg-quick@tunnelsatsv2.service.d..."
-
   if rm -r /etc/systemd/system/wg-quick@tunnelsatsv2.service.d; then
     echo "> /etc/systemd/system/wg-quick@tunnelsatsv2.service.d removed";echo
   else
@@ -107,7 +119,7 @@ sleep 2
 
 
 # removing /etc/wireguard/*
-if [ -d /etc/wireguard/ ]; then
+if [ -d /etc/wireguard ]; then
   echo "Removing wireguard directory..."
   rm -rf /etc/wireguard/ > /dev/null
   if [ ! -d /etc/wireguard/ ]; then
@@ -121,8 +133,9 @@ sleep 2
 
 # remove netcls subgroup
 echo "Removing net_cls subgroup..."
+# v1
 if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
-  cgdelete net_cls:/tor_splitting 2> /dev/null
+    cgdelete net_cls:/tor_splitting 2> /dev/null
 fi
 
 if cgdelete net_cls:/splitted_processes 2> /dev/null; then
