@@ -118,6 +118,20 @@ fi
 sleep 2
 
 
+
+# remove killswitch requirement for umbrel startup
+if [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  ] && [ $isDocker ]; then
+  echo "Removing tunnelsats_killswitch.conf..."
+  if rm /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf ; then
+    echo "> /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  removed";echo
+  else
+    echo "> ERR: could not remove /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf . Please check manually.";echo
+  fi
+fi
+
+sleep 2
+
+
 # removing /etc/wireguard/*
 if [ -d /etc/wireguard ]; then
   echo "Removing wireguard directory..."
