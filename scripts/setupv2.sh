@@ -75,23 +75,23 @@ if [ ! $isDocker ]; then
           echo "> cgroup-tools found";echo
       fi
   fi
+fi
 
-  sleep 2
+sleep 2
 
-  # check nftables
-  echo "Checking nftables installation..."
-  checknft=$(nft -v 2> /dev/null | grep -c "nftables")
-  if [ $checknft -eq 0 ]; then
-      echo "Installing nftables..."
-      if apt-get install -y nftables > /dev/null; then
-          echo "> nftables installed";echo
-      else
-          echo "> failed to install nftables";echo
-          exit 1
-      fi
-  else
-      echo "> nftables found";echo
-  fi
+# check nftables
+echo "Checking nftables installation..."
+checknft=$(nft -v 2> /dev/null | grep -c "nftables")
+if [ $checknft -eq 0 ]; then
+    echo "Installing nftables..."
+    if apt-get install -y nftables > /dev/null; then
+        echo "> nftables installed";echo
+    else
+        echo "> failed to install nftables";echo
+        exit 1
+    fi
+else
+    echo "> nftables found";echo
 fi
 
 sleep 2
@@ -113,10 +113,8 @@ fi
 
 sleep 2
 
-
-
 #Create Docker Tunnelsat Network which stays persistent over restarts
- if [ $isDocker ]; then 
+if [ $isDocker ]; then 
 
   checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
   #the subnet needs a bigger subnetmask (25) than the normal umbrel_mainet subnetmask of 24
@@ -124,6 +122,7 @@ sleep 2
   dockersubnet="10.9.9.0/25"
 
   if [ $checkdockernetwork -eq 0 ];
+    echo "Creating TunnelSats Docker Network..."
     docker network create "docker-tunnelsats" --subnet $dockersubnet -o "com.docker.network.driver.mtu"="1420" &> /dev/null
     if [ $? -eq 0 ];
       echo "> docker-tunnelsats created successfully";echo
@@ -169,11 +168,9 @@ else
    #Flush any rules which are still present from failed interface starts
   ip route flush table 51820
 
-
 fi
 
-
-
+sleep 2
 
 # edit tunnelsats.conf, add PostUp/Down rules
 # and copy to destination folder
@@ -185,6 +182,7 @@ Table = off
 PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820;ip rule add from all table main suppress_prefixlength 0
 PostUp = ip route add blackhole default metric 3 table 51820;
 PostUp = ip route add default dev %i metric 2 table 51820
+
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
@@ -206,20 +204,16 @@ PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
 
-#Firewall nftable rules
 PostUp = nft add table inet %i
 PostUp = nft add chain inet %i prerouting '{type filter hook prerouting priority mangle; policy accept;}'; nft add rule inet %i prerouting meta mark set ct mark
 PostUp = nft add chain inet %i mangle '{type route hook output priority mangle; policy accept;}'; nft add rule inet %i mangle meta mark != 0x3333 meta cgroup 1118498 meta mark set 0xdeadbeef
 PostUp = nft add chain inet %i nat'{type nat hook postrouting priority srcnat; policy accept;}'; nft insert rule inet %i nat fib saddr type != local oif != %i ct mark 0xdeadbeef drop;nft add rule inet %i nat oif != "lo" ct mark 0xdeadbeef masquerade
 PostUp = nft add chain inet %i postroutingmangle'{type filter hook postrouting priority mangle; policy accept;}'; nft add rule inet %i postroutingmangle meta mark 0xdeadbeef ct mark set meta mark
 
-
 PostDown = nft delete table inet %i
 PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del not from all fwmark 0xdeadbeef table 51820
 PostDown = ip route flush table 51820
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
-
-
 "
 
 directory=$(dirname -- $(readlink -fn -- "$0"))
@@ -254,112 +248,111 @@ sleep 2
 
 if [ ! $isDocker ]; then
 
-
-    # setup lnd/clnfor splitting
-    # create file
-    echo "Creating lightning splitting.sh file in /etc/wireguard/..."
-    echo "#!/bin/sh
-    set -e
-    dir_netcls=\"/sys/fs/cgroup/net_cls\"
-    torsplitting=\"/sys/fs/cgroup/net_cls/splitted_processes\"
-    modprobe cls_cgroup
-    if [ ! -d \"\$dir_netcls\" ]; then
-      mkdir \$dir_netcls
-      mount -t cgroup -o net_cls none \$dir_netcls
-      echo \"> Successfully added cgroup net_cls subsystem\"
-    fi
-    if [ ! -d \"\$torsplitting\" ]; then
-      mkdir /sys/fs/cgroup/net_cls/splitted_processes
-      echo 1118498  > /sys/fs/cgroup/net_cls/splitted_processes/net_cls.classid
-      echo \"> Successfully added Mark for net_cls subsystem\"
-    else
-      echo \"> Mark for net_cls subsystem already present\"
-    fi
-    # add Lightning pid(s) to cgroup
-    pgrep -x lnd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
-    pgrep -x lightningd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
-
-
-    count=\$(cat /sys/fs/cgroup/net_cls/splitted_processes/tasks | wc -l)
-    if [ \$count -eq 0 ];then
-      echo \"> ERR: no pids added to file\"
-      exit 1
-    else
-      echo \"> \${count} Process(es) successfully excluded\"
-    fi
-    " > /etc/wireguard/splitting.sh
-    if [ -f /etc/wireguard/splitting.sh ]; then
-      echo "> /etc/wireguard/splitting.sh created.";echo
-    else
-      echo "> ERR: /etc/wireguard/splitting.sh was not created. Please check for errors.";
-      exit 1
-    fi
-
-    # run it once
-    if [ -f /etc/wireguard/splitting.sh ];then
-        echo "> splitting.sh created, executing...";
-        # run
-        bash /etc/wireguard/splitting.sh
-        echo "> Split-tunneling successfully executed";echo
-    else
-        echo "> ERR: splitting.sh execution failed";echo
-        exit 1
-    fi
-
-
-    # enable systemd service
-    # create systemd file
-    echo "Creating splitting systemd service..."
-    # LND
-    if [ ! -f /etc/systemd/system/splitting.service ] && [ -f /etc/systemd/system/lnd.service ]; then
-        echo "[Unit]
-    Description=Splitting Lightning Traffic after Restart
-    # Make sure it starts when lightning service is running (thats why restart settings are crucial here)
-    Requires=lnd.service
-    After=lnd.service
-    StartLimitInterval=200
-    StartLimitBurst=5
-    [Service]
-    Type=oneshot
-    RemainAfterExit=yes
-    ExecStart=/usr/bin/bash /etc/wireguard/splitting.sh
-    [Install]
-    WantedBy=multi-user.target
-    " > /etc/systemd/system/splitting.service
-    elif  [ ! -f /etc/systemd/system/splitting.service ] && [ -f /etc/systemd/system/lightningd.service ]; then
-        echo "[Unit]
-    Description=Splitting Lightning Traffic after Restart
-    # Make sure it starts when lightning service is running (thats why restart settings are crucial here)
-    Requires=lightningd.service
-    After=lightningd.service
-    StartLimitInterval=200
-    StartLimitBurst=5
-    [Service]
-    Type=oneshot
-    RemainAfterExit=yes
-    ExecStart=/usr/bin/bash /etc/wireguard/splitting.sh
-    [Install]
-    WantedBy=multi-user.target
-    " > /etc/systemd/system/splitting.service
-    fi
-
-    # enable and start splitting.service
-    if [ -f /etc/systemd/system/splitting.service ]; then
-      systemctl daemon-reload > /dev/null
-      if systemctl enable splitting.service > /dev/null &&
-        systemctl start splitting.service > /dev/null; then
-        echo "> splitting.service: systemd service enabled and started";echo
-      else
-        echo "> ERR: splitting.service could not be enabled or started. Please check for errors.";echo
-      fi
-    else
-      echo "> ERR: splitting.service was not created. Please check for errors.";echo
-      exit 1
-    fi
-
-    sleep 2
-
+  # setup lnd/clnfor splitting
+  # create file
+  echo "Creating lightning splitting.sh file in /etc/wireguard/..."
+  echo "#!/bin/sh
+set -e
+dir_netcls=\"/sys/fs/cgroup/net_cls\"
+torsplitting=\"/sys/fs/cgroup/net_cls/splitted_processes\"
+modprobe cls_cgroup
+if [ ! -d \"\$dir_netcls\" ]; then
+  mkdir \$dir_netcls
+  mount -t cgroup -o net_cls none \$dir_netcls
+  echo \"> Successfully added cgroup net_cls subsystem\"
 fi
+if [ ! -d \"\$torsplitting\" ]; then
+  mkdir /sys/fs/cgroup/net_cls/splitted_processes
+  echo 1118498  > /sys/fs/cgroup/net_cls/splitted_processes/net_cls.classid
+  echo \"> Successfully added Mark for net_cls subsystem\"
+else
+  echo \"> Mark for net_cls subsystem already present\"
+fi
+# add Lightning pid(s) to cgroup
+pgrep -x lnd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
+pgrep -x lightningd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
+
+count=\$(cat /sys/fs/cgroup/net_cls/splitted_processes/tasks | wc -l)
+if [ \$count -eq 0 ];then
+  echo \"> ERR: no pids added to file\"
+  exit 1
+else
+  echo \"> \${count} Process(es) successfully excluded\"
+fi
+" > /etc/wireguard/splitting.sh
+
+  if [ -f /etc/wireguard/splitting.sh ]; then
+    echo "> /etc/wireguard/splitting.sh created.";echo
+  else
+    echo "> ERR: /etc/wireguard/splitting.sh was not created. Please check for errors.";
+    exit 1
+  fi
+
+  # run it once
+  if [ -f /etc/wireguard/splitting.sh ];then
+      echo "> splitting.sh created, executing...";
+      # run
+      bash /etc/wireguard/splitting.sh
+      echo "> Split-tunneling successfully executed";echo
+  else
+      echo "> ERR: splitting.sh execution failed";echo
+      exit 1
+  fi
+
+
+  # enable systemd service
+  # create systemd file
+  echo "Creating splitting systemd service..."
+  # LND
+  if [ ! -f /etc/systemd/system/splitting.service ] && [ -f /etc/systemd/system/lnd.service ]; then
+      echo "[Unit]
+Description=Splitting Lightning Traffic after Restart
+# Make sure it starts when lightning service is running (thats why restart settings are crucial here)
+Requires=lnd.service
+After=lnd.service
+StartLimitInterval=200
+StartLimitBurst=5
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/bash /etc/wireguard/splitting.sh
+[Install]
+WantedBy=multi-user.target
+" > /etc/systemd/system/splitting.service
+  elif  [ ! -f /etc/systemd/system/splitting.service ] && [ -f /etc/systemd/system/lightningd.service ]; then
+      echo "[Unit]
+Description=Splitting Lightning Traffic after Restart
+# Make sure it starts when lightning service is running (thats why restart settings are crucial here)
+Requires=lightningd.service
+After=lightningd.service
+StartLimitInterval=200
+StartLimitBurst=5
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/bash /etc/wireguard/splitting.sh
+[Install]
+WantedBy=multi-user.target
+" > /etc/systemd/system/splitting.service
+  fi
+
+  # enable and start splitting.service
+  if [ -f /etc/systemd/system/splitting.service ]; then
+    systemctl daemon-reload > /dev/null
+    if systemctl enable splitting.service > /dev/null &&
+       systemctl start splitting.service > /dev/null; then
+       echo "> splitting.service: systemd service enabled and started";echo
+    else
+       echo "> ERR: splitting.service could not be enabled or started. Please check for errors.";echo
+    fi
+  else
+    echo "> ERR: splitting.service was not created. Please check for errors.";echo
+    exit 1
+  fi
+fi
+
+
+sleep 2
 
 
 #Creating Killswitch to prevent any leakage
@@ -389,7 +382,7 @@ if [ $isDocker ]; then
       }
 
       " >  /etc/nftables.conf
-
+    fi
   else
     echo "> ERR: not able to get default routing interface.  Please check for errors.";echo
     exit 1
@@ -403,18 +396,16 @@ if  sudo systemctl enable nftables > /dev/null; then
 
   if [ $isDocker ]; then
 
-    if [ -d /etc/systemd/system/umbrel-startup.service.d ]
+    if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]
         mkdir /etc/systemd/system/umbrel-startup.service.d > /dev/null
     fi 
-       echo "[Unit]
-    Description=Forcing wg-quick to start after umbrel startup scripts
-    # Make sure kill switch is in place before starting umbrel containers
-    Requires=nftables.service
-    After=nftables.service
-    " > /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
+    echo "[Unit]
+Description=Forcing wg-quick to start after umbrel startup scripts
+# Make sure kill switch is in place before starting umbrel containers
+Requires=nftables.service
+After=nftables.service
+" > /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
   fi
-
-
 else
   echo "> ERR: nftables service could not be enabled. Please check for errors.";echo
   exit 1
