@@ -368,7 +368,7 @@ if [ $isDocker ]; then
 
   dockerlndip=$(grep LND_IP /home/umbrel/umbrel/.env | cut -d= -f2)
   if [ -d /home/umbrel/umbrel/app-data/core-lightning ]; then
-    dockerclnip=$(grep APP_CORE_LIGHTNING_IP /home/umbrel/umbrel/.env | cut -d= -f2)
+    dockerclnip=$(grep APP_CORE_LIGHTNING_IP /home/umbrel/umbrel/app-data/core-lightning/exports.sh | cut -d "\"" -f2)
   else
     dockerclnip=""
   fi
