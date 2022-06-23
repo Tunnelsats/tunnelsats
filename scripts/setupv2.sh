@@ -121,10 +121,10 @@ if [ $isDocker ]; then
   #otherwise the network will not be chosen as the gateway for outside connection
   dockersubnet="10.9.9.0/25"
 
-  if [ $checkdockernetwork -eq 0 ];
+  if [ $checkdockernetwork -eq 0 ]; then
     echo "Creating TunnelSats Docker Network..."
     docker network create "docker-tunnelsats" --subnet $dockersubnet -o "com.docker.network.driver.mtu"="1420" &> /dev/null
-    if [ $? -eq 0 ];
+    if [ $? -eq 0 ]; then
       echo "> docker-tunnelsats created successfully";echo
     else 
       echo "> failed to create docker-tunnelsats network";echo
@@ -289,7 +289,7 @@ fi
   fi
 
   # run it once
-  if [ -f /etc/wireguard/splitting.sh ];then
+  if [ -f /etc/wireguard/splitting.sh ]; then
       echo "> splitting.sh created, executing...";
       # run
       bash /etc/wireguard/splitting.sh
@@ -396,7 +396,7 @@ if  sudo systemctl enable nftables > /dev/null; then
 
   if [ $isDocker ]; then
 
-    if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]
+    if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
         mkdir /etc/systemd/system/umbrel-startup.service.d > /dev/null
     fi 
     echo "[Unit]
