@@ -507,10 +507,10 @@ if [ ! $isDocker ]; then
 else #Docker
 
   if docker pull curlimages/curl &> /dev/null; then
-      echo "> Tunnel Verification not checked bc appropriate/curl not available on your system ";echo
+      echo "> Tunnel Verification not checked bc curlimages/curl not available on your system ";echo
   else
     ipHome=$(curl --silent https://api.ipify.org)
-    ipVPN=$(docker run -ti --rm --net=docker-tunnelsats appropriate/curl https://api.ipify.org &> /dev/null)
+    ipVPN=$(docker run -ti --rm --net=docker-tunnelsats curlimages/curl https://api.ipify.org &> /dev/null)
   fi
   
   if [ "$ipHome" != "$ipVPN" ]; then
