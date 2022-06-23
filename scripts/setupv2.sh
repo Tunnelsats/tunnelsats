@@ -506,7 +506,7 @@ if [ $isDocker ]; then
 
   checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
 
-  if [ \$checkdockernetwork -ne 0 ] && [ -z \$lightningcontainer ]; then
+  if [ \$checkdockernetwork -ne 0 ] && [ !  -z \$lightningcontainer ]; then
     docker network connect docker-tunnelsats \$lightningcontainer
   fi
 
