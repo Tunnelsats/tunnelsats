@@ -88,6 +88,10 @@ fi
 
 sleep 2
 
+#delete killswitch nftable 
+/usr/sbin/nft delete table inet tunnelsatsv2 &> /dev/null
+
+
 # remove netcls subgroup
 echo "Removing netcls subgroup..."
 if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then

@@ -187,7 +187,7 @@ PostUp = ip route add default dev %i metric 2 table 51820
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
-PostUp = docker network connect \"docker-tunnelsats\" \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')
+PostUp = docker network connect --ip 10.9.9.9  \"docker-tunnelsats\" \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')
 
 PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820
 PostDown = ip rule del from all table  main suppress_prefixlength 0
@@ -362,55 +362,81 @@ sleep 2
 if [ $isDocker ]; then
   #Get main interface
   mainif=$(ip route | grep default | cut -d' ' -f5)
+
+  #Get docker umbrel lnd/cln ip address
+
+  dockerlndip=$(grep LND_IP ~/umbrel/.env | cut -d= -f2)
+  dockerclnip=$(grep APP_CORE_LIGHTNING_IP ~/umbrel/.env | cut -d= -f2)
+
   if [ ! -z $mainif ] ; then
 
     if [ -f /etc/nftables.conf  ]; then 
     echo "table inet tunnelsatsv2 {
-#block traffic until the setup is up
-  chain output {
-    type filter hook output priority filter; policy accept;
-    oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
+  set killswitch_tunnelsats {
+		type ipv4_addr
+		comment "prevent lightning service to leak ip"
+		elements = { $dockerlndip, $dockerclnip }
+	}
+  #block traffic from lighting containers
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    oifname $mainif ip saddr @killswitch_tunnelsats counter  drop
   }
-}" >>  /etc/nftables.conf
+  }" >>  /etc/nftables.conf
     else
       echo "#!/sbin/nft -f
-table inet tunnelsatsv2 {
-#block traffic until the setup is up
-  chain output {
-  type filter hook output priority filter; policy accept;
-  oifname mainif ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 fib daddr type != local drop
+  table inet tunnelsatsv2 {
+  set killswitch_tunnelsats {
+		type ipv4_addr
+		comment "prevent lightning service to leak ip"
+		elements = { $dockerlndip, $dockerclnip }
+	}
+  #block traffic from lighting containers
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    oifname $mainif ip saddr @killswitch_tunnelsats counter  drop
   }
-}" >  /etc/nftables.conf
+  }" >  /etc/nftables.conf
     fi
   else
     echo "> ERR: not able to get default routing interface.  Please check for errors.";echo
     exit 1
   fi
-fi
+
 
 ## create and enable nftables service
 echo "Initializing nftables..."
 systemctl daemon-reload > /dev/null
 if  sudo systemctl enable nftables > /dev/null; then
 
-  if [ $isDocker ]; then
 
     if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
         mkdir /etc/systemd/system/umbrel-startup.service.d > /dev/null
     fi 
     echo "[Unit]
-Description=Forcing wg-quick to start after umbrel startup scripts
-# Make sure kill switch is in place before starting umbrel containers
-Requires=nftables.service
-After=nftables.service
-" > /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
+  Description=Forcing wg-quick to start after umbrel startup scripts
+  # Make sure kill switch is in place before starting umbrel containers
+  Requires=nftables.service
+  After=nftables.service
+  " > /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
+  
+  #Start nftables service
+  systemctl daemon-reload
+  systemctl start nftables > /dev/null; 
+  if [ $? -eq 0 ]; then
+    echo "> nftables systemd service started";echo
+  else 
+    echo "> ERR: nftables service could not be started. Please check for errors.";echo
+    #We exit here to prevent potential ip leakage
+    exit 1
   fi
+
 else
   echo "> ERR: nftables service could not be enabled. Please check for errors.";echo
   exit 1
 fi
 
-
+fi
 
 
 
@@ -426,7 +452,6 @@ Description=Forcing wg-quick to start after umbrel startup scripts
 # Make sure to start vpn after umbrel start up to have lnd containers available
 Requires=umbrel-startup.service
 After=umbrel-startup.service
-ExecStartPost=/usr/sbin/nft delete table inet tunnelsatsv2
 " > /etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf 
   fi
   systemctl daemon-reload
