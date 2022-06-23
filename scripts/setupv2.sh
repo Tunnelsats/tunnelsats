@@ -534,7 +534,7 @@ if [ $isDocker ]; then
   echo "Creating tunnelsats-docker-network.sh systemd service..."
   if [ ! -f /etc/systemd/system/tunnelsats-docker-network.sh ]; then
     # if we are on Umbrel || Start9 (Docker solutions), create a timer to restart and re-check Tor/ssh pids
-    if  $isDocker then
+    if [ $isDocker ]; then
       echo "[Unit]
   Description=Adding Lightning Container to the tunnel
   StartLimitInterval=200
@@ -569,8 +569,8 @@ if [ $isDocker ]; then
 
     fi
   fi
-
 fi
+
 # enable and start tunnelsats-docker-network.service
 if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
   systemctl daemon-reload > /dev/null
@@ -595,10 +595,6 @@ else
 fi
 
 sleep 2
-
-
-
-
 
 
 ## create and enable wireguard service
@@ -644,20 +640,20 @@ if [ ! $isDocker ]; then
   
 else #Docker
 
-  if docker pull curlimages/curl &> /dev/null; then
-      echo "> Tunnel Verification not checked bc curlimages/curl not available on your system ";echo
-  else
+  if docker pull curlimages/curl > /dev/null; then
     ipHome=$(curl --silent https://api.ipify.org)
     ipVPN=$(docker run -ti --rm --net=docker-tunnelsats curlimages/curl https://api.ipify.org &> /dev/null)
-  fi
-  
-  if [ "$ipHome" != "$ipVPN" ]; then
+    if [ "$ipHome" != "$ipVPN" ]; then
       echo "> Tunnel is active
       Your ISP external IP: ${ipHome} 
       Your Tunnelsats external IP: ${ipVPN}";echo
-  else
-      echo "> ERR: Tunnelsats VPN Interface not successfully activated, check debug logs";echo
+    else
+      echo "> ERR: Tunnelsats VPN Interface not successfully activated, please check debug logs";echo
       exit 1
+    fi    
+  else
+    echo "> Tunnel Verification not checked. curlimages/curl not available for your system ";echo
+    exit 1
   fi
 fi
 
@@ -674,7 +670,6 @@ if [ $checkufw -gt 0 ]; then
 else
    echo "> ufw not detected";echo
 fi
-
 
 # Instructions
 vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
