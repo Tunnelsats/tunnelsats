@@ -459,6 +459,110 @@ fi
 
 sleep 2
 
+#Add Monitor which connects the docker-tunnelsats network to the lightning container
+if [ $isDocker ]; then
+  # create file
+  echo "Creating tunnelsats-docker-network.sh file in /etc/wireguard/..."
+  echo "#!/bin/sh
+  #set -e
+  lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}'
+
+  checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
+
+  if [ \$checkdockernetwork -ne 0 ] && [ -z \$lightningcontainer ]
+    docker network connect docker-tunnelsats \$lightningcontainer
+  fi
+
+  " > /etc/wireguard/tunnelsats-docker-network.sh 
+  if [ -f /etc/wireguard/tunnelsats-docker-network.sh ]; then
+    echo "> /etc/wireguard/tunnelsats-docker-network.sh created.";echo
+  else
+    echo "> ERR: /etc/wireguard/tunnelsats-docker-network.sh was not created. Please check for errors.";
+    exit 1
+  fi
+
+  # run it once
+  if [ -f /etc/wireguard/tunnelsats-docker-network.sh ]; then
+      echo "> tunnelsats-docker-network.sh created, executing...";
+      # run
+      bash /etc/wireguard/tunnelsats-docker-network.sh
+      echo "> tunnelsats-docker-network.sh successfully executed";echo
+  else
+      echo "> ERR: tunnelsats-docker-network.sh execution failed";echo
+      exit 1
+  fi
+
+  # enable systemd service
+  # create systemd file
+  echo "Creating tunnelsats-docker-network.sh systemd service..."
+  if [ ! -f /etc/systemd/system/tunnelsats-docker-network.sh ]; then
+    # if we are on Umbrel || Start9 (Docker solutions), create a timer to restart and re-check Tor/ssh pids
+    if  $isDocker then
+      echo "[Unit]
+  Description=Adding Lightning Container to the tunnel
+  StartLimitInterval=200
+  StartLimitBurst=5
+  [Service]
+  Type=oneshot
+  ExecStart=/bin/bash /etc/wireguard/tunnelsats-docker-network.sh
+  [Install]
+  WantedBy=multi-user.target
+  " > /etc/systemd/system/tunnelsats-docker-network.service
+
+      echo "[Unit]
+  Description=5min timer for tunnelsats-docker-network.service
+  [Timer]
+  OnBootSec=60
+  OnUnitActiveSec=300
+  Persistent=true
+  [Install]
+  WantedBy=timers.target
+      " > /etc/systemd/system/tunnelsats-docker-network.timer
+      
+      if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
+        echo "> tunnelsats-docker-network.service created"
+      else
+        echo "> ERR: tunnelsats-docker-network.service not created. Please check for errors.";echo
+      fi
+      if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
+        echo "> tunnelsats-docker-network.timer created";echo
+      else
+        echo "> ERR: tunnelsats-docker-network.timer not created. Please check for errors.";echo
+      fi
+
+    fi
+  fi
+
+fi
+# enable and start tunnelsats-docker-network.service
+if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
+  systemctl daemon-reload > /dev/null
+  if systemctl enable tunnelsats-docker-network.service > /dev/null &&
+     systemctl start tunnelsats-docker-network.service > /dev/null; then
+    echo "> tunnelsats-docker-network.service: systemd service enabled and started";echo
+  else
+    echo "> ERR: tunnelsats-docker-network.service could not be enabled or started. Please check for errors.";echo
+  fi
+    # Docker: enable timer
+  if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
+    if systemctl enable tunnelsats-docker-network.timer > /dev/null &&
+       systemctl start tunnelsats-docker-network.timer > /dev/null; then
+      echo "> tunnelsats-docker-network.timer: systemd timer enabled and started";echo
+    else
+      echo "> ERR: tunnelsats-docker-network.timer: systemd timer could not be enabled or started. Please check for errors.";echo
+    fi
+  fi
+else
+  echo "> ERR: tunnelsats-docker-network.service was not created. Please check for errors.";echo
+  exit 1
+fi
+
+sleep 2
+
+
+
+
+
 
 ## create and enable wireguard service
 echo "Initializing the service..."
