@@ -146,22 +146,24 @@ fi
 sleep 2
 
 # remove netcls subgroup
-echo "Removing net_cls subgroup..."
-# v1
-if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
-    cgdelete net_cls:/tor_splitting 2> /dev/null
-fi
+if [ ! $isDocker ]; then
+    echo "Removing net_cls subgroup..."
+    # v1
+    if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
+        cgdelete net_cls:/tor_splitting 2> /dev/null
+    fi
 
-if cgdelete net_cls:/splitted_processes 2> /dev/null; then
-    echo "> Control Group Splitted Processes removed";echo
-else
-    echo "> ERR: Could not remove cgroup.";echo
+    if cgdelete net_cls:/splitted_processes 2> /dev/null; then
+        echo "> Control Group Splitted Processes removed";echo
+    else
+        echo "> ERR: Could not remove cgroup.";echo
+    fi
 fi
 
 sleep 2
 
 # uninstall cgroup-tools, nftables, wireguard
-echo "Uninstalling packages: cgroup-tools, nftables, wireguard-tools ..."
+echo "Uninstalling packages..."
 if apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
   echo "> Packages removed";echo
 else
