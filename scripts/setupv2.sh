@@ -500,7 +500,7 @@ if [ $isDocker ]; then
   echo "Creating tunnelsats-docker-network.sh systemd service..."
   if [ ! -f /etc/systemd/system/tunnelsats-docker-network.sh ]; then
     # if we are on Umbrel || Start9 (Docker solutions), create a timer to restart and re-check Tor/ssh pids
-    if  $isDocker then
+    if [ $isDocker ]; then
       echo "[Unit]
   Description=Adding Lightning Container to the tunnel
   StartLimitInterval=200
@@ -535,8 +535,8 @@ if [ $isDocker ]; then
 
     fi
   fi
-
 fi
+
 # enable and start tunnelsats-docker-network.service
 if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
   systemctl daemon-reload > /dev/null
@@ -561,10 +561,6 @@ else
 fi
 
 sleep 2
-
-
-
-
 
 
 ## create and enable wireguard service
@@ -640,7 +636,6 @@ if [ $checkufw -gt 0 ]; then
 else
    echo "> ufw not detected";echo
 fi
-
 
 # Instructions
 vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
