@@ -175,47 +175,47 @@ sleep 2
 # edit tunnelsats.conf, add PostUp/Down rules
 # and copy to destination folder
 echo "Applying network rules to wireguard conf file..."
-inputDocker="
-[Interface]
-FwMark = 0x3333
-Table = off
-
-PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820;ip rule add from all table main suppress_prefixlength 0
-PostUp = ip route add blackhole default metric 3 table 51820;
-PostUp = ip route add default dev %i metric 2 table 51820
-
-PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
-PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
-PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
-PostUp = docker network connect --ip 10.9.9.9  \"docker-tunnelsats\" \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')
-
-PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820
-PostDown = ip rule del from all table  main suppress_prefixlength 0
-PostDown = ip route flush table 51820
-PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
-PostDown = docker network disconnect docker-tunnelsats \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')
+inputDocker="\n
+[Interface]\n
+FwMark = 0x3333\n
+Table = off\n
+\n
+PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820;ip rule add from all table main suppress_prefixlength 0\n
+PostUp = ip route add blackhole default metric 3 table 51820;\n
+PostUp = ip route add default dev %i metric 2 table 51820\n
+\n
+PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0\n
+PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1\n
+PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
+PostUp = docker network connect --ip 10.9.9.9  \"docker-tunnelsats\" \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')\n
+\n
+PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
+PostDown = ip rule del from all table  main suppress_prefixlength 0\n
+PostDown = ip route flush table 51820\n
+PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
+PostDown = docker network disconnect docker-tunnelsats \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')\n
 "
-inputNonDocker="
-[Interface]
-FwMark = 0x3333
-Table = off
-
-PostUp = ip rule add from all fwmark 0xdeadbeef table 51820;ip rule add from all table main suppress_prefixlength 0
-PostUp = ip route add default dev %i table 51820;
-PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
-PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
-PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
-
-PostUp = nft add table inet %i
-PostUp = nft add chain inet %i prerouting '{type filter hook prerouting priority mangle; policy accept;}'; nft add rule inet %i prerouting meta mark set ct mark
-PostUp = nft add chain inet %i mangle '{type route hook output priority mangle; policy accept;}'; nft add rule inet %i mangle meta mark != 0x3333 meta cgroup 1118498 meta mark set 0xdeadbeef
-PostUp = nft add chain inet %i nat'{type nat hook postrouting priority srcnat; policy accept;}'; nft insert rule inet %i nat fib saddr type != local oif != %i ct mark 0xdeadbeef drop;nft add rule inet %i nat oif != "lo" ct mark 0xdeadbeef masquerade
-PostUp = nft add chain inet %i postroutingmangle'{type filter hook postrouting priority mangle; policy accept;}'; nft add rule inet %i postroutingmangle meta mark 0xdeadbeef ct mark set meta mark
-
-PostDown = nft delete table inet %i
-PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del not from all fwmark 0xdeadbeef table 51820
-PostDown = ip route flush table 51820
-PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
+inputNonDocker="\n
+[Interface]\n
+FwMark = 0x3333\n
+Table = off\n
+\n
+PostUp = ip rule add from all fwmark 0xdeadbeef table 51820;ip rule add from all table main suppress_prefixlength 0\n
+PostUp = ip route add default dev %i table 51820;\n
+PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0\n
+PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1\n
+PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
+\n
+PostUp = nft add table inet %i\n
+PostUp = nft add chain inet %i prerouting '{type filter hook prerouting priority mangle; policy accept;}'; nft add rule inet %i prerouting meta mark set ct mark\n
+PostUp = nft add chain inet %i mangle '{type route hook output priority mangle; policy accept;}'; nft add rule inet %i mangle meta mark != 0x3333 meta cgroup 1118498 meta mark set 0xdeadbeef\n
+PostUp = nft add chain inet %i nat'{type nat hook postrouting priority srcnat; policy accept;}'; nft insert rule inet %i nat fib saddr type != local oif != %i ct mark 0xdeadbeef drop;nft add rule inet %i nat oif != \"lo\" ct mark 0xdeadbeef masquerade\n
+PostUp = nft add chain inet %i postroutingmangle'{type filter hook postrouting priority mangle; policy accept;}'; nft add rule inet %i postroutingmangle meta mark 0xdeadbeef ct mark set meta mark\n
+\n
+PostDown = nft delete table inet %i\n
+PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del not from all fwmark 0xdeadbeef table 51820\n
+PostDown = ip route flush table 51820\n
+PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
 "
 
 directory=$(dirname -- $(readlink -fn -- "$0"))
