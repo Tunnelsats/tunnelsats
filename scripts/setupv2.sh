@@ -360,7 +360,8 @@ sleep 2
 
 #Creating Killswitch to prevent any leakage
 if [ $isDocker ]; then
-  #Get main interface
+  echo "Applying KillSwitch to Docker setup..."
+  #Get main interface  
   mainif=$(ip route | grep default | cut -d' ' -f5)
 
   #Get docker umbrel lnd/cln ip address
@@ -398,6 +399,16 @@ if [ $isDocker ]; then
   }
   }" >  /etc/nftables.conf
     fi
+    
+    # check application
+    check=$(grep -c "tunnelsatsv2" /etc/nftables.conf)
+    if [ $check -ne 0 ]; then
+      echo "> KillSwitch applied"
+    else
+      echo "> ERR: KillSwitch not applied. Please check /etc/nftables.conf";echo
+      exit 1
+    fi
+    
   else
     echo "> ERR: not able to get default routing interface.  Please check for errors.";echo
     exit 1
@@ -407,7 +418,7 @@ if [ $isDocker ]; then
 ## create and enable nftables service
 echo "Initializing nftables..."
 systemctl daemon-reload > /dev/null
-if  sudo systemctl enable nftables > /dev/null; then
+if systemctl enable nftables > /dev/null && systemctl start nftables > /dev/null; then
 
 
     if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
@@ -429,8 +440,13 @@ if  sudo systemctl enable nftables > /dev/null; then
     echo "> ERR: nftables service could not be started. Please check for errors.";echo
     #We exit here to prevent potential ip leakage
     exit 1
-  fi
 
+Description=Forcing wg-quick to start after umbrel startup scripts
+# Make sure kill switch is in place before starting umbrel containers
+Requires=nftables.service
+After=nftables.service
+" > /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
+  fi
 else
   echo "> ERR: nftables service could not be enabled. Please check for errors.";echo
   exit 1
@@ -438,7 +454,7 @@ fi
 
 fi
 
-
+sleep 2
 
 ## create and enable wireguard service
 echo "Initializing the service..."
