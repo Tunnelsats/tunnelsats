@@ -62,7 +62,7 @@ if [ $isDocker ]; then
   checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
   if [ $checkdockernetwork -ne 0 ]; then
     echo "Removing docker-tunnelsats network..."  
-    if docker network rm "docker-tunnelsats"; then
+    if docker network rm "docker-tunnelsats" 2> /dev/null; then
       echo "> docker-tunnelsats network removed";echo
     else
       echo "> ERR: could not remove docker-tunnelsats network. Please check manually.";echo
@@ -89,10 +89,16 @@ sleep 2
 # remove wg-quick@tunnelsats service
 if [ -f /lib/systemd/system/wg-quick@.service ]; then
   echo "Removing wireguard systemd service..."
-  # remove v1
-  wg-quick down tunnelsats > /dev/null
-  systemctl stop wg-quick@tunnelsats > /dev/null
-  systemctl disable wg-quick@tunnelsats > /dev/null
+  
+  # remove old v1
+  if [ -f /etc/wireguard/tunnelsats.conf ]; then
+    if wg-quick down tunnelsats > /dev/null &&
+       systemctl stop wg-quick@tunnelsats &&
+       systemctl disable wg-quick@tunnelsats; then
+       echo "> wireguard systemd service (v1) removed"
+    fi
+  fi
+  
   if wg-quick down tunnelsatsv2 > /dev/null &&
      systemctl stop wg-quick@tunnelsatsv2 > /dev/null &&
      systemctl disable wg-quick@tunnelsatsv2 > /dev/null &&
