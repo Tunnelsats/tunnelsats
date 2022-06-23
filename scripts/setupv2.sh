@@ -372,6 +372,13 @@ if [ $isDocker ]; then
   else
     dockerclnip=""
   fi
+  
+  result=""
+  if [ ${dockerclnip} = "" ]; then
+    result=${dockerlndip}
+  else
+    result=${dockerlndip}","{$dockerclnip}
+  fi
 
   if [ ! -z $mainif ] ; then
 
@@ -380,7 +387,7 @@ if [ $isDocker ]; then
   set killswitch_tunnelsats {
 		type ipv4_addr
 		comment "prevent lightning service to leak ip"
-		elements = { $dockerlndip, $dockerclnip }
+		elements = { $result }
 	}
   #block traffic from lighting containers
   chain forward {
@@ -394,7 +401,7 @@ if [ $isDocker ]; then
   set killswitch_tunnelsats {
 		type ipv4_addr
 		comment "prevent lightning service to leak ip"
-		elements = { $dockerlndip, $dockerclnip }
+		elements = { $result }
 	}
   #block traffic from lighting containers
   chain forward {
