@@ -115,16 +115,16 @@ sleep 2
 
 #Create Docker Tunnelsat Network which stays persistent over restarts
 if [ $isDocker ]; then 
-
+  
+  echo "Creating TunnelSats Docker Network..."
   checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
   #the subnet needs a bigger subnetmask (25) than the normal umbrel_mainet subnetmask of 24
   #otherwise the network will not be chosen as the gateway for outside connection
   dockersubnet="10.9.9.0/25"
 
-  if [ $checkdockernetwork -eq 0 ];
-    echo "Creating TunnelSats Docker Network..."
+  if [ $checkdockernetwork -eq 0 ]; then
     docker network create "docker-tunnelsats" --subnet $dockersubnet -o "com.docker.network.driver.mtu"="1420" &> /dev/null
-    if [ $? -eq 0 ];
+    if [ $? -eq 0 ]; then
       echo "> docker-tunnelsats created successfully";echo
     else 
       echo "> failed to create docker-tunnelsats network";echo
@@ -218,7 +218,7 @@ PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 
 directory=$(dirname -- $(readlink -fn -- "$0"))
 if [ -f $directory/tunnelsatsv2.conf ]; then
-  line=$(grep -n "#VPNPort" | cut -d ":" -f1)
+  line=$(grep -n "#VPNPort" $directory/tunnelsatsv2.conf | cut -d ":" -f1)
   line="$(($line+1))"
   if [ $line != "" ]; then
     if [ $isDocker ]; then
@@ -289,7 +289,7 @@ fi
   fi
 
   # run it once
-  if [ -f /etc/wireguard/splitting.sh ];then
+  if [ -f /etc/wireguard/splitting.sh ]; then
       echo "> splitting.sh created, executing...";
       # run
       bash /etc/wireguard/splitting.sh
@@ -396,7 +396,7 @@ if  sudo systemctl enable nftables > /dev/null; then
 
   if [ $isDocker ]; then
 
-    if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]
+    if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
         mkdir /etc/systemd/system/umbrel-startup.service.d > /dev/null
     fi 
     echo "[Unit]
