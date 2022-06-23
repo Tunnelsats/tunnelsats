@@ -357,6 +357,40 @@ fi
 
 sleep 2
 
+#Start lightning implementation in cggroup when non docker
+#changing respective .service file
+
+if [ ! $isDocker ] 
+
+  if [ -f /etc/systemd/system/lnd.service ]; then
+
+   if sed -i'.bak' 's/ExecStart=/ExecStart=\/usr\/bin\/cgexec -g net_cls:splitted_processes /g' /etc/systemd/system/lnd.service ; then
+      echo "> lnd.service updated now starts in cgroup tunnelsats";echo
+      echo "> backup saved under /etc/systemd/system/lnd.service.bak";echo
+
+   else
+      echo "> ERR: not able to change /etc/systemd/system/lnd.service. Please check for errors.";echo
+   fi
+
+  elif [ -f /etc/systemd/system/lightningd.service ]; then
+
+    if sed -i'.bak' 's/ExecStart=/ExecStart=\/usr\/bin\/cgexec -g net_cls:splitted_processes /g' /etc/systemd/system/lightningd.service ; then
+      echo "> lightnind.service updated now starts in cgroup tunnelsats";echo
+      echo "> backup saved under /etc/systemd/system/lightnind.service.bak";echo
+
+    else
+      echo "> ERR: not able to change /etc/systemd/system/lightnind.service. Please check for errors.";echo
+    fi
+
+  fi
+
+fi
+
+
+sleep 2
+
+
+
 
 #Creating Killswitch to prevent any leakage
 if [ $isDocker ]; then
