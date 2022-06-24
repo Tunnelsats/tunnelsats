@@ -80,25 +80,6 @@ fi
 
 sleep 2
 
-#remove docker-tunnelsats network
-if [ $isDocker ]; then
-  #Disconnect all containers from the network first
-  echo "Disconnecting containers form docker-tunnelsats network..."  
-  docker inspect docker-tunnelsats | jq .[].Containers | grep Name | sed 's/[\",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats  %'
-  
-  checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
-  if [ $checkdockernetwork -ne 0 ]; then 
-    echo "Removing docker-tunnelsats network..."  
-    if docker network rm "docker-tunnelsats"; then
-      echo "> docker-tunnelsats network removed";echo
-    else
-      echo "> ERR: could not remove docker-tunnelsats network. Please check manually.";echo
-    fi
-  fi
-fi
-
-sleep 2
-
 
 # remove ufw setting (port rule)
 checkufw=$(ufw version 2> /dev/null | grep -c Canonical)
@@ -132,6 +113,7 @@ fi
 
 sleep 2
 
+
 # remove wg-quick@tunnelsatsv2.service.d
 if [ -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d  ] && [ $isDocker ]; then
   echo "Removing wg-quick@tunnelsatsv2.service.d..."
@@ -143,6 +125,27 @@ if [ -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d  ] && [ $isDocker ];
 fi
 
 sleep 2
+
+
+#remove docker-tunnelsats network
+if [ $isDocker ]; then
+  #Disconnect all containers from the network first
+  echo "Disconnecting containers form docker-tunnelsats network..."  
+  docker inspect docker-tunnelsats | jq .[].Containers | grep Name | sed 's/[\",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats  %'
+  
+  checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
+  if [ $checkdockernetwork -ne 0 ]; then 
+    echo "Removing docker-tunnelsats network..."  
+    if docker network rm "docker-tunnelsats"; then
+      echo "> docker-tunnelsats network removed";echo
+    else
+      echo "> ERR: could not remove docker-tunnelsats network. Please check manually.";echo
+    fi
+  fi
+fi
+
+sleep 2
+
 
 
 
