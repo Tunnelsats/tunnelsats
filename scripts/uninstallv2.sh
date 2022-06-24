@@ -217,9 +217,9 @@ sleep 2
 # uninstall cgroup-tools, nftables, wireguard
 kickoffs='✅Yes ⛔️Cancel'
 if [ $isDocker ]; then
-  PS3='Do you want to uninstall nftables wireguard via apt remove? '
+  PS3='Do you really want to uninstall nftables and wireguard via apt remove? '
 else
-  PS3='Do you want to uninstall cgroup-tools, nftables and wireguard via apt remove? '
+  PS3='Do you really want to uninstall cgroup-tools, nftables and wireguard via apt remove? '
 fi
 
 select kickoff in $kickoffs
