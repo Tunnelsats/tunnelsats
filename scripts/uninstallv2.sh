@@ -202,7 +202,7 @@ fi
 #Flush nftables and enable old nftables.conf
 
 #Flush table if exist to avoid redundant rules
-if nft list table inet tunnelsatsv2; then
+if nft list table inet tunnelsatsv2 &> /dev/null; then
     echo "> Flushing tunnelsats nftable rules";echo
     nft flush table inet tunnelsatsv2
 fi
@@ -211,6 +211,7 @@ if [  -f /etc/nftablespriortunnelsats.backup ]; then
      mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf 
       echo "> Prior nftables.conf now active. To enable it restart nftables.service or restart system ";echo
 fi
+
 
 
 sleep 2
