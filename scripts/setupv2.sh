@@ -232,7 +232,6 @@ if [ -f $directory/tunnelsatsv2.conf ]; then
     line="$(($line+1))"
     
     if [ $isDocker ]; then
-      echo -e $inputDocker
       echo -e $inputDocker 2> /dev/null >> /etc/wireguard/tunnelsatsv2.conf
     else
       echo -e $inputNonDocker 2> /dev/null >> /etc/wireguard/tunnelsatsv2.conf
@@ -241,7 +240,7 @@ if [ -f $directory/tunnelsatsv2.conf ]; then
   # check
   check=$(grep -c "FwMark" /etc/wireguard/tunnelsatsv2.conf)
   if [ $check -gt 0 ]; then
-    echo "> network rules applied"   
+    echo "> network rules applied";echo
   else
     echo "> ERR: network rules not applied";echo
   fi
@@ -513,10 +512,11 @@ if [ $isDocker ]; then
   fi
 
   " > /etc/wireguard/tunnelsats-docker-network.sh 
+  
   if [ -f /etc/wireguard/tunnelsats-docker-network.sh ]; then
-    echo "> /etc/wireguard/tunnelsats-docker-network.sh created.";echo
+    echo "> /etc/wireguard/tunnelsats-docker-network.sh created"
   else
-    echo "> ERR: /etc/wireguard/tunnelsats-docker-network.sh was not created. Please check for errors.";
+    echo "> ERR: /etc/wireguard/tunnelsats-docker-network.sh was not created. Please check for errors."
     exit 1
   fi
 
@@ -562,11 +562,13 @@ if [ $isDocker ]; then
         echo "> tunnelsats-docker-network.service created"
       else
         echo "> ERR: tunnelsats-docker-network.service not created. Please check for errors.";echo
+	exit 1
       fi
       if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
-        echo "> tunnelsats-docker-network.timer created";echo
+        echo "> tunnelsats-docker-network.timer created"
       else
         echo "> ERR: tunnelsats-docker-network.timer not created. Please check for errors.";echo
+	exit 1
       fi
 
     fi
@@ -578,9 +580,10 @@ if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
   systemctl daemon-reload > /dev/null
   if systemctl enable tunnelsats-docker-network.service > /dev/null &&
      systemctl start tunnelsats-docker-network.service > /dev/null; then
-    echo "> tunnelsats-docker-network.service: systemd service enabled and started";echo
+    echo "> tunnelsats-docker-network.service: systemd service enabled and started"
   else
     echo "> ERR: tunnelsats-docker-network.service could not be enabled or started. Please check for errors.";echo
+    exit 1
   fi
     # Docker: enable timer
   if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
@@ -589,6 +592,7 @@ if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
       echo "> tunnelsats-docker-network.timer: systemd timer enabled and started";echo
     else
       echo "> ERR: tunnelsats-docker-network.timer: systemd timer could not be enabled or started. Please check for errors.";echo
+      exit 1
     fi
   fi
 else
@@ -605,8 +609,10 @@ systemctl daemon-reload > /dev/null
 if systemctl enable wg-quick@tunnelsatsv2 > /dev/null; then
 
   if [ $isDocker ] && [ -f /etc/systemd/system/umbrel-startup.service ]; then
+    if [ ! -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d ]; then
      mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d > /dev/null
-       echo "[Unit]
+    fi
+    echo "[Unit]
 Description=Forcing wg-quick to start after umbrel startup scripts
 # Make sure to start vpn after umbrel start up to have lnd containers available
 Requires=umbrel-startup.service
@@ -619,9 +625,11 @@ After=umbrel-startup.service
     echo "> wireguard systemd service enabled and started";echo
   else 
     echo "> ERR: wireguard service could not be started. Please check for errors.";echo
+    exit 1
   fi
 else
   echo "> ERR: wireguard service could not be enabled. Please check for errors.";echo
+  exit 1
 fi
 
 sleep 2
@@ -662,21 +670,20 @@ fi
 ## UFW firewall configuration
 vpnExternalPort=$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')
 vpnInternalPort="9735"
-echo "Checking for firewalls and adjusting settings if applicable...";
 checkufw=$(ufw version 2> /dev/null | grep -c "Canonical")
 if [ $checkufw -gt 0 ]; then
+   echo "Checking for firewalls and adjusting settings if applicable...";
    ufw disable > /dev/null
    ufw allow $vpnInternalPort comment '# VPN Tunnelsats' > /dev/null
    ufw --force enable > /dev/null
    echo "> ufw detected. VPN port rule added";echo
-else
-   echo "> ufw not detected";echo
 fi
 
 # Instructions
 vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
 
-echo "These are your personal VPN credentials for your lightning configuration.";echo
+echo "______________________________________________________________________
+These are your personal VPN credentials for your lightning configuration.";echo
 
 echo "LND:
 #########################################
