@@ -530,11 +530,10 @@ if [ $isDocker ]; then
   echo "#!/bin/sh
   set -e
   lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')
-
   checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
 
-  if [ \$checkdockernetwork -ne 0 ] && [ !  -z \$lightningcontainer ]; then
-    if ! docker inspect \$lightningcontainer | grep -c "tunnelsats"; then
+  if [ \$checkdockernetwork -ne 0 ] && [ ! -z \$lightningcontainer ]; then
+    if ! docker inspect \$lightningcontainer | grep -c \"tunnelsats\"; then
     docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  &> /dev/null
     fi
   fi
