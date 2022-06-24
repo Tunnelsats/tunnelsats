@@ -488,7 +488,7 @@ if [ $isDocker ]; then
       echo "[Unit]
     Description=Forcing wg-quick to start after umbrel startup scripts
     # Make sure kill switch is in place before starting umbrel containers
-    #Requires=nftables.service
+    Requires=nftables.service
     After=nftables.service
     " > /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
     
@@ -638,7 +638,7 @@ if systemctl enable wg-quick@tunnelsatsv2 > /dev/null; then
     echo "[Unit]
 Description=Forcing wg-quick to start after umbrel startup scripts
 # Make sure to start vpn after umbrel start up to have lnd containers available
-#Requires=umbrel-startup.service
+Requires=umbrel-startup.service
 After=umbrel-startup.service
 " > /etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf 
   fi

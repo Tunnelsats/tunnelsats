@@ -253,6 +253,9 @@ sleep 2
 if [ $isDocker ]; then
   systemctl restart docker
   echo "> Restarted docker.service to ensure clean setup";echo
+  #Restart containers
+  echo "> Restarted umbrel containers";echo
+  systemctl restart umbrel-startup.service
 fi 
 
 
