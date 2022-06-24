@@ -533,11 +533,10 @@ if [ $isDocker ]; then
   echo "#!/bin/sh
   set -e
   lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')
-
   checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
 
-  if [ \$checkdockernetwork -ne 0 ] && [ !  -z \$lightningcontainer ]; then
-    if ! docker inspect \$lightningcontainer | grep -c "tunnelsats" > /dev/null ; then
+  if [ \$checkdockernetwork -ne 0 ] && [ ! -z \$lightningcontainer ]; then
+    if ! docker inspect \$lightningcontainer | grep -c \"tunnelsats\" > /dev/null; then
     docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  &> /dev/null
     fi
   fi
@@ -710,6 +709,8 @@ if [ $checkufw -gt 0 ]; then
    ufw --force enable > /dev/null
    echo "> ufw detected. VPN port rule added";echo
 fi
+
+sleep 2
 
 # Instructions
 vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
