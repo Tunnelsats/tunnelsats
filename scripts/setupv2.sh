@@ -491,6 +491,15 @@ if [ $isDocker ]; then
     echo "> ERR: nftables service could not be enabled. Please check for errors.";echo
     exit 1
   fi
+
+  #Check if kill switch is in place
+  checkKillSwitch=$(nft list chain inet tunnelsatsv2 forward | grep -c "oifname")
+  if [ $checkKillSwitch -eq 0 ]; then
+    echo "> ERR: Killswitch failed to activate. Please check for errors.";echo
+    exit 1
+  else
+      echo "> Killswitch successfully activated";echo
+  fi
 fi
 
 sleep 2
