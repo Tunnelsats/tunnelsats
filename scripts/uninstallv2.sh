@@ -59,6 +59,10 @@ sleep 2
 
 #remove docker-tunnelsats network
 if [ $isDocker ]; then
+  #Disconnect all containers from the network first
+  echo "Disconnecting containers form docker-tunnelsats network..."  
+  docker inspect docker-tunnelsats | jq .[].Containers | grep Name | sed 's/[\",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats  %'
+  
   checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
   if [ $checkdockernetwork -ne 0 ]; then 
     echo "Removing docker-tunnelsats network..."  
