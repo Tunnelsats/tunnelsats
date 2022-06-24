@@ -170,6 +170,13 @@ if [ $isDocker ]; then
   #Flush any rules which are still present from failed interface starts
   ip route flush table 51820
 
+  #Adding the rules to prevent any leaking in case wg service does not start up
+  ip rule add from $(docker network inspect "docker-tunnelsats" | grep Subnet | awk '{print $2}' | sed 's/[\",]//g') table 51820
+  ip rule add from all table main suppress_prefixlength 0
+  ip route add blackhole default metric 3 table 51820;
+
+
+
 else
   #Delete Rules for non-docker setup
   #Clean Routing Tables from prior failed wg-quick starts
@@ -200,17 +207,12 @@ inputDocker="\n
 FwMark = 0x3333\n
 Table = off\n
 \n
-PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820;ip rule add from all table main suppress_prefixlength 0\n
-PostUp = ip route add blackhole default metric 3 table 51820;\n
 PostUp = ip route add default dev %i metric 2 table 51820\n
 \n
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0\n
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1\n
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
 \n
-PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
-PostDown = ip rule del from all table  main suppress_prefixlength 0\n
-PostDown = ip route flush table 51820\n
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
 "
 inputNonDocker="\n
