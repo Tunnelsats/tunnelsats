@@ -416,22 +416,13 @@ if [ $isDocker ]; then
   if [ ! -z $mainif ] ; then
 
     if [ -f /etc/nftables.conf ]; then
-      check=$(grep -c "tunnelsatsv2" /etc/nftables.conf)
-      if [ $check -eq 0 ]; then
-        echo "table inet tunnelsatsv2 {
-  set killswitch_tunnelsats {
-		type ipv4_addr
-		elements = { $result }
-	}
-  #block traffic from lighting containers
-  chain forward {
-    type filter hook forward priority filter; policy accept;
-    oifname $mainif ip saddr @killswitch_tunnelsats counter  drop
-  }
-}" >>  /etc/nftables.conf
-     fi
+
+      echo "> ERR: tunnelsats replaces the whole /etc/nftables.conf, please remove it to let the setup.sh create a new one";echo
+      exit 1
+  
    else
       echo "#!/sbin/nft -f
+  flush table inet tunnelsatsv2
   table inet tunnelsatsv2 {
   set killswitch_tunnelsats {
 		type ipv4_addr
