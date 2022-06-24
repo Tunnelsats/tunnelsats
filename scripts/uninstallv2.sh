@@ -244,6 +244,14 @@ done
 sleep 2
 
 
+
+#Restarting docker to prevent missing rules in iptables
+if [ $isDocker ]; then
+  systemctl restart docker
+  echo "> Restarted docker.service to ensure clean setup";echo
+fi 
+
+
 echo "VPN setup uninstalled!
 
 Please check your lightning configuration file and remove/restore previous settings.
