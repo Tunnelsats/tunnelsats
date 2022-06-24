@@ -538,6 +538,7 @@ if [ $isDocker ]; then
   
   if [ -f /etc/wireguard/tunnelsats-docker-network.sh ]; then
     echo "> /etc/wireguard/tunnelsats-docker-network.sh created"
+    chmod +x /etc/wireguard/tunnelsats-docker-network.sh
   else
     echo "> ERR: /etc/wireguard/tunnelsats-docker-network.sh was not created. Please check for errors."
     exit 1
