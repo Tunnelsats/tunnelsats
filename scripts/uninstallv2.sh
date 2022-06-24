@@ -153,6 +153,7 @@ sleep 2
 if [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  ] && [ $isDocker ]; then
   echo "Removing tunnelsats_killswitch.conf..."
   if rm /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf ; then
+    rm -r /etc/systemd/system/umbrel-startup.service.d > /dev/null
     echo "> /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  removed";echo
   else
     echo "> ERR: could not remove /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf . Please check manually.";echo
@@ -165,17 +166,17 @@ sleep 2
 #reset lnd
 if [ ! $isDocker ] && [ -f /etc/systemd/system/lnd.service.bak ]; then
   if mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service; then
-    echo "> reseted lnd.service prior to tunnelsats successfully";echo
+    echo "> lnd.service prior to tunnelsats successfully reset";echo
   else 
     echo "> ERR: Not able to reset /etc/systemd/system/lnd.service Please check manually.";echo
   fi
 fi
 
 
-#reset lightingd
+#reset lightningd
 if [ ! $isDocker ] && [ -f /etc/systemd/system/lightnind.service.bak ]; then
   if mv /etc/systemd/system/lightnind.service.bak /etc/systemd/system/lightingd.service; then
-    echo "> reseted lightningd.service prior to tunnelsats successfully";echo
+    echo "> lightningd.service prior to tunnelsats successfully reset";echo
   else 
     echo "> ERR: Not able to reset /etc/systemd/system/lightningd.service Please check manually.";echo
   fi
