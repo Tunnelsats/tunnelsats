@@ -1,7 +1,27 @@
+#!/bin/bash
 # This script setup the environment needed for VPN usage on lightning network nodes
 # Use with care
 #
 # Usage: sudo bash setup.sh
+
+
+#Helper
+function valid_ipv4()
+{
+    local  ip=$1
+    local  stat=1
+
+    if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        OIFS=$IFS
+        IFS='.'
+        ip=($ip)
+        IFS=$OIFS
+        [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 \
+            && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
+        stat=$?
+    fi
+    return $stat
+}
 
 # check if sudo
 if [ "$EUID" -ne 0 ]
@@ -474,7 +494,7 @@ if [ $isDocker ]; then
     
     #Start nftables service
     systemctl daemon-reload
-    systemctl restart nftables > /dev/null; 
+    systemctl reload nftables > /dev/null; 
     if [ $? -eq 0 ]; then
       echo "> nftables systemd service started";echo
     else 
@@ -656,7 +676,7 @@ else #Docker
   if docker pull curlimages/curl > /dev/null; then
     ipHome=$(curl --silent https://api.ipify.org)
     ipVPN=$(docker run -ti --rm --net=docker-tunnelsats curlimages/curl https://api.ipify.org 2> /dev/null)
-    if [ "$ipHome" != "$ipVPN" ] && [ ! -z "$ipHome" ] && [ ! -z "$ipVPN"  ]; then
+    if [ "$ipHome" != "$ipVPN" ] && valid_ipv4 $ipHome  &&  valid_ipv4 $ipVPN  ; then
       echo "> Tunnel is active ✅
       Your ISP external IP: ${ipHome} 
       Your Tunnelsats external IP: ${ipVPN}";echo
