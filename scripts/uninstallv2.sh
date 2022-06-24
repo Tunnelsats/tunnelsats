@@ -216,7 +216,7 @@ do
                 break
         else
             echo
-            if apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
+            if [[ $isDocker ]] && apt-get remove -yqq nftables wireguard-tools || apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
               echo "> Packages removed";echo
             else
               echo "> ERR: packages could not be removed. Please check manually.";echo
