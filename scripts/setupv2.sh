@@ -531,7 +531,7 @@ if [ $isDocker ]; then
   checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
 
   if [ \$checkdockernetwork -ne 0 ] && [ !  -z \$lightningcontainer ]; then
-    docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  > /dev/null
+    docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  &> /dev/null
   fi
 
   " > /etc/wireguard/tunnelsats-docker-network.sh 
