@@ -651,9 +651,9 @@ else #Docker
     ipHome=$(curl --silent https://api.ipify.org)
     ipVPN=$(docker run -ti --rm --net=docker-tunnelsats curlimages/curl https://api.ipify.org 2> /dev/null)
     if [ "$ipHome" != "$ipVPN" ] && [ ! -z $ipHome ] && [ ! -z $ipVPN  ]; then
-      echo "> Tunnel is active
+      echo "> Tunnel is active ✅
       Your ISP external IP: ${ipHome} 
-      Your Tunnelsats external IP: ${ipVPN}";echo
+      Your Tunnelsats external IP: ${ipVPN}";echo ⚡️
     else
       echo "> ERR: Tunnelsats VPN Interface not successfully activated, please check debug logs";echo
       exit 1
