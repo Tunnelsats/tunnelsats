@@ -170,10 +170,7 @@ if [ $isDocker ]; then
   #Flush any rules which are still present from failed interface starts
   ip route flush table 51820
 
-  #Adding the rules to prevent any leaking in case wg service does not start up
-  ip rule add from $(docker network inspect "docker-tunnelsats" | grep Subnet | awk '{print $2}' | sed 's/[\",]//g') table 51820
-  ip rule add from all table main suppress_prefixlength 0
-  ip route add blackhole default metric 3 table 51820;
+
 
 
 
@@ -207,12 +204,18 @@ inputDocker="\n
 FwMark = 0x3333\n
 Table = off\n
 \n
+PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
+PostUp = ip rule add from all table main suppress_prefixlength 0\n
+PostUp = ip route add blackhole default metric 3 table 51820\n
 PostUp = ip route add default dev %i metric 2 table 51820\n
 \n
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0\n
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1\n
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
 \n
+PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
+PostDown = ip rule del from all table  main suppress_prefixlength 0\n
+PostDown = ip route flush table 51820\n
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
 "
 inputNonDocker="\n
@@ -534,7 +537,7 @@ if [ $isDocker ]; then
   checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
 
   if [ \$checkdockernetwork -ne 0 ] && [ !  -z \$lightningcontainer ]; then
-    if ! docker inspect \$lightningcontainer | grep -c "tunnelsats"; then
+    if ! docker inspect \$lightningcontainer | grep -c "tunnelsats" > /dev/null ; then
     docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  &> /dev/null
     fi
   fi

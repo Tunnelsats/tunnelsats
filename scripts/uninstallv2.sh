@@ -137,8 +137,6 @@ if [ $isDocker ]; then
 
   #Removing rules from routing table
   echo "Removing tunnelsats specific routing rules..."  
-  ip rule del from $(docker network inspect "docker-tunnelsats" | grep Subnet | awk '{print $2}' | sed 's/[\",]//g') table 51820
-  ip rule del from all table  main suppress_prefixlength 0
   ip route flush table 51820
 
 
