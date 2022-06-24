@@ -423,7 +423,7 @@ if [ $isDocker ]; then
   
    fi
    #Flush table if exist to avoid redundant rules
-   if nft list table inet tunnelsatsv2; then
+   if nft list table inet tunnelsatsv2 &> /dev/null; then
       nft flush table inet tunnelsatsv2
    fi
 
@@ -474,7 +474,7 @@ if [ $isDocker ]; then
     
     #Start nftables service
     systemctl daemon-reload
-    systemctl start nftables > /dev/null; 
+    systemctl restart nftables > /dev/null; 
     if [ $? -eq 0 ]; then
       echo "> nftables systemd service started";echo
     else 
@@ -623,7 +623,7 @@ After=umbrel-startup.service
 " > /etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf 
   fi
   systemctl daemon-reload
-  systemctl start wg-quick@tunnelsatsv2 > /dev/null; 
+  systemctl restart wg-quick@tunnelsatsv2 > /dev/null; 
   if [ $? -eq 0 ]; then
     echo "> wireguard systemd service enabled and started";echo
   else 
@@ -656,7 +656,7 @@ else #Docker
   if docker pull curlimages/curl > /dev/null; then
     ipHome=$(curl --silent https://api.ipify.org)
     ipVPN=$(docker run -ti --rm --net=docker-tunnelsats curlimages/curl https://api.ipify.org 2> /dev/null)
-    if [ "$ipHome" != "$ipVPN" ] && [ ! -z $ipHome ] && [ ! -z $ipVPN  ]; then
+    if [ "$ipHome" != "$ipVPN" ] && [ ! -z "$ipHome" ] && [ ! -z "$ipVPN"  ]; then
       echo "> Tunnel is active ✅
       Your ISP external IP: ${ipHome} 
       Your Tunnelsats external IP: ${ipVPN}⚡️";echo
