@@ -60,7 +60,7 @@ sleep 2
 #remove docker-tunnelsats network
 if [ $isDocker ]; then
   checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
-  if [ $checkdockernetwork -ne 0 ];
+  if [ $checkdockernetwork -ne 0 ]; then 
     echo "Removing docker-tunnelsats network..."  
     if docker network rm "docker-tunnelsats"; then
       echo "> docker-tunnelsats network removed";echo
