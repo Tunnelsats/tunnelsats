@@ -659,7 +659,7 @@ else #Docker
     if [ "$ipHome" != "$ipVPN" ] && [ ! -z "$ipHome" ] && [ ! -z "$ipVPN"  ]; then
       echo "> Tunnel is active ✅
       Your ISP external IP: ${ipHome} 
-      Your Tunnelsats external IP: ${ipVPN}⚡️";echo
+      Your Tunnelsats external IP: ${ipVPN}";echo
     else
       echo "> ERR: Tunnelsats VPN Interface not successfully activated, please check debug logs";echo
       exit 1
