@@ -422,7 +422,6 @@ if [ $isDocker ]; then
   
    else
       echo "#!/sbin/nft -f
-  flush table inet tunnelsatsv2
   table inet tunnelsatsv2 {
   set killswitch_tunnelsats {
 		type ipv4_addr
