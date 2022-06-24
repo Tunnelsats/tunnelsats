@@ -707,6 +707,8 @@ if [ $checkufw -gt 0 ]; then
    echo "> ufw detected. VPN port rule added";echo
 fi
 
+sleep 2
+
 # Instructions
 vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
 
