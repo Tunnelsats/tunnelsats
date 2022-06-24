@@ -57,6 +57,29 @@ fi
 
 sleep 2
 
+# remove timer and systemd services
+if [ $isDocker ]; then
+ 
+  if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
+    echo "Removing tunnelsats docker network timer..."
+    systemctl stop tunnelsats-docker-network.timer > /dev/null
+    systemctl disable tunnelsats-docker-network.timer > /dev/null
+    rm /etc/systemd/system/tunnelsats-docker-network.timer > /dev/null
+    echo "> tunnelsats docker network timer removed";echo
+  fi
+  
+  if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
+    echo "Removing tunnelsats docker network service..."
+    systemctl stop tunnelsats-docker-network.service > /dev/null
+    systemctl disable tunnelsats-docker-network.service > /dev/null
+    rm /etc/systemd/system/tunnelsats-docker-network.service > /dev/null
+    echo "> tunnelsats docker network timer removed";echo
+  fi
+
+fi
+
+sleep 2
+
 #remove docker-tunnelsats network
 if [ $isDocker ]; then
   #Disconnect all containers from the network first
