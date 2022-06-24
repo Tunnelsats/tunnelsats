@@ -212,12 +212,28 @@ fi
 sleep 2
 
 # uninstall cgroup-tools, nftables, wireguard
-echo "Uninstalling packages: cgroup-tools, nftables, wireguard-tools ..."
-if apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
-  echo "> Packages removed";echo
+kickoffs='✅Yes ⛔️Cancel'
+if [ $isDocker ]; then
+  PS3='Do you want to uninstall nftables wireguard via apt remove? '
 else
-  echo "> ERR: packages could not be removed. Please check manually.";echo
+  PS3='Do you want to uninstall cgroup-tools, nftables and wireguard via apt remove? '
 fi
+
+select kickoff in $kickoffs
+do
+        if [ $kickoff == '⛔️Cancel' ]
+        then
+                break
+        else
+            echo
+            if apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
+              echo "> Packages removed";echo
+            else
+              echo "> ERR: packages could not be removed. Please check manually.";echo
+            fi
+        fi
+break
+done
 
 sleep 2
 
