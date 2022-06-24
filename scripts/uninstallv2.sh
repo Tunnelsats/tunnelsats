@@ -196,8 +196,11 @@ fi
 sleep 2
 
 
-echo "VPN setup uninstalled.
-Please check your lightning configuration file and remove/restore previous settings.";echo
+echo "VPN setup uninstalled!
+
+Please check your lightning configuration file and remove/restore previous settings.
+Afterwards a restart of the lightning implementation or the system is required.
+";echo
 
 # the end
 exit 0
