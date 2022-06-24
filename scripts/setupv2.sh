@@ -240,7 +240,7 @@ directory=$(dirname -- $(readlink -fn -- "$0"))
 if [ -f $directory/tunnelsatsv2.conf ]; then
   cp $directory/tunnelsatsv2.conf /etc/wireguard/
   if [ -f /etc/wireguard/tunnelsatsv2.conf ]; then
-    echo "> tunnelsatsv2.conf copied to /etc/wireguard/";echo
+    echo "> tunnelsatsv2.conf copied to /etc/wireguard/"
   else
     echo "> ERR: tunnelsatsv2.conf not found in /etc/wireguard/. Please check for errors.";echo
   fi   
@@ -437,7 +437,7 @@ if [ $isDocker ]; then
 
     if [ -f /etc/nftables.conf ] && [ ! -f /etc/nftablespriortunnelsats.backup ]; then
 
-      echo "> Info: tunnelsats replaces the whole /etc/nftables.conf, backup was saved to /etc/nftablespriortunnelsats.backup";echo
+      echo "> Info: tunnelsats replaces the whole /etc/nftables.conf, backup was saved to /etc/nftablespriortunnelsats.backup"
 
       mv /etc/nftables.conf /etc/nftablespriortunnelsats.backup
   
@@ -496,7 +496,7 @@ if [ $isDocker ]; then
     systemctl daemon-reload
     systemctl reload nftables > /dev/null; 
     if [ $? -eq 0 ]; then
-      echo "> nftables systemd service started";echo
+      echo "> nftables systemd service started"
     else 
       echo "> ERR: nftables service could not be started. Please check for errors.";echo
       #We exit here to prevent potential ip leakage
@@ -706,6 +706,7 @@ fi
 vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
 
 echo "______________________________________________________________________
+
 These are your personal VPN credentials for your lightning configuration.";echo
 
 echo "LND:
