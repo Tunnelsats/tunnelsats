@@ -197,17 +197,20 @@ fi
 
 
 # remove netcls subgroup
-echo "Removing net_cls subgroup..."
-# v1
-if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
-    cgdelete net_cls:/tor_splitting 2> /dev/null
+if [ ! $isDocker ]; then
+    echo "Removing net_cls subgroup..."
+    # v1
+    if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
+        cgdelete net_cls:/tor_splitting 2> /dev/null
+    fi
+
+    if cgdelete net_cls:/splitted_processes 2> /dev/null; then
+        echo "> Control Group Splitted Processes removed";echo
+    else
+        echo "> ERR: Could not remove cgroup.";echo
+    fi
 fi
 
-if cgdelete net_cls:/splitted_processes 2> /dev/null; then
-    echo "> Control Group Splitted Processes removed";echo
-else
-    echo "> ERR: Could not remove cgroup.";echo
-fi
 
 sleep 2
 
@@ -223,6 +226,7 @@ select kickoff in $kickoffs
 do
         if [ $kickoff == '⛔️Cancel' ]
         then
+                echo
                 break
         else
             echo
