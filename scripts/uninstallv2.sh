@@ -162,20 +162,6 @@ fi
 sleep 2
 
 
-# removing /etc/wireguard/*
-if [ -d /etc/wireguard ]; then
-  echo "Removing wireguard directory..."
-  rm -rf /etc/wireguard/ > /dev/null
-  if [ ! -d /etc/wireguard/ ]; then
-    echo "> /etc/wireguard/ directory removed";echo
-  else
-    echo "> ERR: could not remove directory /etc/wireguard/. Please check manually.";echo
-  fi
-fi
-
-sleep 2
-
-
 #reset lnd
 if [ ! $isDocker ] && [ -f /etc/systemd/system/lnd.service.bak ]; then
   if mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service; then
@@ -203,12 +189,13 @@ if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
     cgdelete net_cls:/tor_splitting 2> /dev/null
 fi
 
-if cgdelete net_cls:/splitted_processes 2> /dev/null; then
-    echo "> Control Group Splitted Processes removed";echo
-else
-    echo "> ERR: Could not remove cgroup.";echo
+if [ ! $isDocker ]; then
+  if cgdelete net_cls:/splitted_processes 2> /dev/null; then
+      echo "> Control Group Splitted Processes removed";echo
+  else
+      echo "> ERR: Could not remove cgroup.";echo
+  fi
 fi
-
 sleep 2
 
 # uninstall cgroup-tools, nftables, wireguard
