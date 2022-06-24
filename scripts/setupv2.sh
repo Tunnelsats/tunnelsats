@@ -187,13 +187,11 @@ PostUp = ip route add default dev %i metric 2 table 51820\n
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0\n
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1\n
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
-#PostUp = docker network connect --ip 10.9.9.9 \"docker-tunnelsats\" \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}') &> /dev/null\n
 \n
 PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
 PostDown = ip rule del from all table  main suppress_prefixlength 0\n
 PostDown = ip route flush table 51820\n
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
-#PostDown = docker network disconnect docker-tunnelsats \$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')\n
 "
 inputNonDocker="\n
 [Interface]\n
