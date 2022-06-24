@@ -415,25 +415,31 @@ if [ $isDocker ]; then
 
   if [ ! -z $mainif ] ; then
 
-    if [ -f /etc/nftables.conf ]; then
+    if [ -f /etc/nftables.conf ] && [ ! -f /etc/nftablespriortunnelsats.backup ]; then
 
-      echo "> ERR: tunnelsats replaces the whole /etc/nftables.conf, please remove it to let the setup.sh create a new one";echo
-      exit 1
+      echo "> Info: tunnelsats replaces the whole /etc/nftables.conf, backup was saved to /etc/nftablespriortunnelsats.backup";echo
+
+      mv /etc/nftables.conf /etc/nftablespriortunnelsats.backup
   
-   else
-      echo "#!/sbin/nft -f
-  table inet tunnelsatsv2 {
-  set killswitch_tunnelsats {
-		type ipv4_addr
-		elements = { $result }
-	}
-  #block traffic from lighting containers
-  chain forward {
-    type filter hook forward priority filter; policy accept;
-    oifname $mainif ip saddr @killswitch_tunnelsats counter  drop
-  }
-}" >  /etc/nftables.conf
-    fi
+   fi
+   #Flush table if exist to avoid redundant rules
+   if nft list table inet tunnelsatsv2; then
+      nft flush table inet tunnelsatsv2
+   fi
+
+        echo "#!/sbin/nft -f
+    table inet tunnelsatsv2 {
+    set killswitch_tunnelsats {
+      type ipv4_addr
+      elements = { $result }
+    }
+    #block traffic from lighting containers
+    chain forward {
+      type filter hook forward priority filter; policy accept;
+      oifname $mainif ip saddr @killswitch_tunnelsats counter  drop
+    }
+  }" >  /etc/nftables.conf
+    
     
     # check application
     check=$(grep -c "tunnelsatsv2" /etc/nftables.conf)
@@ -653,7 +659,7 @@ else #Docker
     if [ "$ipHome" != "$ipVPN" ] && [ ! -z $ipHome ] && [ ! -z $ipVPN  ]; then
       echo "> Tunnel is active ✅
       Your ISP external IP: ${ipHome} 
-      Your Tunnelsats external IP: ${ipVPN}";echo ⚡️
+      Your Tunnelsats external IP: ${ipVPN}⚡️";echo
     else
       echo "> ERR: Tunnelsats VPN Interface not successfully activated, please check debug logs";echo
       exit 1
