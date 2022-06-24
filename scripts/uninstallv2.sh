@@ -183,33 +183,36 @@ fi
 
 
 # remove netcls subgroup
-echo "Removing net_cls subgroup..."
-# v1
-if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
-    cgdelete net_cls:/tor_splitting 2> /dev/null
+if [ ! $isDocker ]; then
+    echo "Removing net_cls subgroup..."
+    # v1
+    if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
+        cgdelete net_cls:/tor_splitting 2> /dev/null
+    fi
+
+    if cgdelete net_cls:/splitted_processes 2> /dev/null; then
+        echo "> Control Group Splitted Processes removed";echo
+    else
+        echo "> ERR: Could not remove cgroup.";echo
+    fi
 fi
 
-if [ ! $isDocker ]; then
-  if cgdelete net_cls:/splitted_processes 2> /dev/null; then
-      echo "> Control Group Splitted Processes removed";echo
-  else
-      echo "> ERR: Could not remove cgroup.";echo
-  fi
-fi
+
 sleep 2
 
 # uninstall cgroup-tools, nftables, wireguard
 kickoffs='✅Yes ⛔️Cancel'
 if [ $isDocker ]; then
-  PS3='Do you want to uninstall nftables wireguard via apt remove? '
+  PS3='Do you really want to uninstall nftables and wireguard via apt remove? '
 else
-  PS3='Do you want to uninstall cgroup-tools, nftables and wireguard via apt remove? '
+  PS3='Do you really want to uninstall cgroup-tools, nftables and wireguard via apt remove? '
 fi
 
 select kickoff in $kickoffs
 do
         if [ $kickoff == '⛔️Cancel' ]
         then
+                echo
                 break
         else
             echo
