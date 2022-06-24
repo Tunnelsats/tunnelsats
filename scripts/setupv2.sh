@@ -427,6 +427,7 @@ if [ $isDocker ]; then
   fi
   
   result=""
+  dockertunnelsatsip="10.9.9.9"
   if [ -z ${dockerclnip} ]; then
     result=${dockerlndip}
   else
@@ -451,7 +452,7 @@ if [ $isDocker ]; then
     table inet tunnelsatsv2 {
     set killswitch_tunnelsats {
       type ipv4_addr
-      elements = { $result }
+      elements = { $dockertunnelsatsip, $result}
     }
     #block traffic from lighting containers
     chain forward {
