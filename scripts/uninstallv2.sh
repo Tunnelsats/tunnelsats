@@ -259,11 +259,12 @@ sleep 2
 
 #Restarting docker to prevent missing rules in iptables
 if [ $isDocker ]; then
-  systemctl restart docker
-  echo "> Restarted docker.service to ensure clean setup";echo
+  systemctl daemon-reload > /dev/null
+  systemctl restart docker > /dev/null
+  echo "> Restarted docker.service to ensure clean setup"
   #Restart containers
-  echo "> Restarted umbrel containers";echo
-  systemctl restart umbrel-startup.service
+  systemctl restart umbrel-startup.service > /dev/null
+  echo "> Restarted umbrel containers";echo  
 fi 
 
 
