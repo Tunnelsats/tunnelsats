@@ -174,7 +174,7 @@ sleep 2
 
 # edit tunnelsats.conf, add PostUp/Down rules
 # and copy to destination folder
-echo "Applying network rules to wireguard conf file..."
+echo "Copy wireguard conf file to /etc/wireguard and apply network rules..."
 inputDocker="\n
 [Interface]\n
 FwMark = 0x3333\n
@@ -220,27 +220,28 @@ PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
 
 directory=$(dirname -- $(readlink -fn -- "$0"))
 if [ -f $directory/tunnelsatsv2.conf ]; then
-  line=$(grep -n "#VPNPort" $directory/tunnelsatsv2.conf | cut -d ":" -f1)
+  cp $directory/tunnelsatsv2.conf /etc/wireguard/
+  if [ -f /etc/wireguard/tunnelsatsv2.conf ]; then
+    echo "> tunnelsatsv2.conf copied to /etc/wireguard/";echo
+  else
+    echo "> ERR: tunnelsatsv2.conf not found in /etc/wireguard/. Please check for errors.";echo
+  fi   
+
+  line=$(grep -n "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | cut -d ":" -f1)
   if [ $line != "" ]; then
     line="$(($line+1))"
     
     if [ $isDocker ]; then
       echo -e $inputDocker
-      echo -e $inputDocker 2> /dev/null >> $directory/tunnelsatsv2.conf
+      echo -e $inputDocker 2> /dev/null >> /etc/wireguard/tunnelsatsv2.conf
     else
-      echo -e $inputNonDocker 2> /dev/null >> $directory/tunnelsatsv2.conf
+      echo -e $inputNonDocker 2> /dev/null >> /etc/wireguard/tunnelsatsv2.conf
     fi
   fi
   # check
-  check=$(grep -c "FwMark" $directory/tunnelsatsv2.conf)
+  check=$(grep -c "FwMark" /etc/wireguard/tunnelsatsv2.conf)
   if [ $check -gt 0 ]; then
-    echo "> network rules applied"
-    cp $directory/tunnelsatsv2.conf /etc/wireguard/
-    if [ -f /etc/wireguard/tunnelsatsv2.conf ]; then
-      echo "> tunnelsatsv2.conf copied to /etc/wireguard/";echo
-    else
-      echo "> ERR: tunnelsatsv2.conf not found in /etc/wireguard/. Please check for errors.";echo
-    fi    
+    echo "> network rules applied"   
   else
     echo "> ERR: network rules not applied";echo
   fi
