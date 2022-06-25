@@ -247,9 +247,12 @@ elif [ -f /mnt/hdd/app-data/.lightning/config ]; then
 elif [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then #Umbrel < 0.5
   path="/home/umbrel/umbrel/lnd/lnd.conf"
   imp="lnd"
-elif [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then #Umbrel 0.5+
+elif [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then #Umbrel 0.5+ LND
   path="/home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf"
   imp="lnd"
+elif [ -f /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml ]; then # Umbrel 0.5+ CLN
+  path="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"
+  imp="cln"
 elif [ -f /data/lnd/lnd.conf ]; then #RaspiBolt
   path="/data/lnd/lnd.conf"
   imp="lnd"
@@ -283,10 +286,10 @@ fi
 
 # try to modify lnd config file
 success=0
-if [ $path != "null" ] && [ $imp = "lnd" ]; then
+if [ "${path}" != "null" ] && [ "${imp}" = "lnd" ]; then
 
   check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
-  if [ $check -gt 0 ]; then
+  if [ $check -ne 0 ]; then
     lines=$(grep -n "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
     for i in $lines
     do
@@ -326,7 +329,7 @@ if [ -f $umbrelPath ]; then
 fi
 
 # check CLN (RaspiBlitz) - recovery via cl.check.sh failed
-if [ $path = "/mnt/hdd/app-data/.lightning/config" ] && [ $imp = "cln" ]; then
+if [ "${path}" = "/mnt/hdd/app-data/.lightning/config" ] && [ "${imp}" = "cln" ]; then
   
   line=$(grep -n "always-use-proxy=false" $path > /dev/null)
   if [ "${line}" != "" ]; then
@@ -355,7 +358,7 @@ if [ $success ]; then
     do
        if [ $kickoff == 'No' ]
        then
-         echo "Please check your lightning configuration file and remove/restore previous settings.Afterwards please restart the lightning implementation or reboot the system.";echo
+         echo;echo -e "Please check your lightning configuration file and remove/restore previous settings.\nAfterwards please restart the lightning implementation or reboot the system.";echo
          break
        else
          
