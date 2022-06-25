@@ -341,26 +341,8 @@ if [ $path = "/mnt/hdd/app-data/.lightning/config" ] && [ $imp = "cln" ]; then
   
 fi
 
-# restart if succeeded, else inform user
-if [ $success ] && [ $isDocker ]; then
 
-  echo "Restarting docker services..."
-  systemctl daemon-reload > /dev/null
-  systemctl restart docker > /dev/null
-  echo "> Restarted docker.service to ensure clean setup"
-  
-  # Restart containers
-  if  [ -f /home/umbrel/umbrel/scripts/start ]; then
-    /home/umbrel/umbrel/scripts/start > /dev/null
-    echo "> Restarted umbrel containers";echo  
-  fi
-  
-else
-  echo "Please check your lightning configuration file and remove/restore previous settings.
-Afterwards please restart the lightning implementation or reboot the system.";echo
-fi 
-
-# on LND: ask user if we should restart nonDocker automatically
+# ask user if we should restart nonDocker automatically
 if [ $success ] && [ ! $isDocker ]; then
   
     kickoffs='Yes No'
@@ -373,18 +355,35 @@ if [ $success ] && [ ! $isDocker ]; then
          echo "Please check your lightning configuration file and remove/restore previous settings.Afterwards please restart the lightning implementation or reboot the system.";echo
          break
        else
-         if [ $imp = "lnd" ] && [ -f /etc/systemd/system/lnd.service ]; then
+         
+         if [ $isDocker ]; then
+         
+           echo "Restarting docker services..."
+           systemctl daemon-reload > /dev/null
+           systemctl restart docker > /dev/null
+           echo "> Restarted docker.service to ensure clean setup"
 
-           [[ systemctl restart lnd.service > /dev/null ]] && echo "> lnd.service successfully restarted";echo || echo "> ERR: lnd.service could not be restarted.";echo
+           # Restart containers
+           if  [ -f /home/umbrel/umbrel/scripts/start ]; then
+             /home/umbrel/umbrel/scripts/start > /dev/null
+             echo "> Restarted umbrel containers";echo  
+           fi
            
-         elif [ $imp = "cln" ] && [ -f /etc/systemd/system/lightningd.service ]; then
-           
-           [[ systemctl restart lightningd.service > /dev/null ]] && echo "> lightningd.service successfully restarted";echo || echo "> ERR: lightningd.service could not be restarted.";echo
-           
-         elif [ $imp = "cln" ] && [ -f /etc/systemd/system/cln.service ]; then
-           
-           [[ systemctl restart cln.service > /dev/null ]] && echo "> cln.service successfully restarted";echo || echo "> ERR: cln.service could not be restarted.";echo
-           
+         else #nonDocker
+         
+           if [ $imp = "lnd" ] && [ -f /etc/systemd/system/lnd.service ]; then
+
+             [[ systemctl restart lnd.service > /dev/null ]] && echo "> lnd.service successfully restarted";echo || echo "> ERR: lnd.service could not be restarted.";echo
+
+           elif [ $imp = "cln" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+
+             [[ systemctl restart lightningd.service > /dev/null ]] && echo "> lightningd.service successfully restarted";echo || echo "> ERR: lightningd.service could not be restarted.";echo
+
+           elif [ $imp = "cln" ] && [ -f /etc/systemd/system/cln.service ]; then
+
+             [[ systemctl restart cln.service > /dev/null ]] && echo "> cln.service successfully restarted";echo || echo "> ERR: cln.service could not be restarted.";echo
+
+           fi
          fi
        fi
     break
