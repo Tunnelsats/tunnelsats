@@ -261,8 +261,10 @@ if [ $isDocker ]; then
   systemctl restart docker > /dev/null
   echo "> Restarted docker.service to ensure clean setup"
   #Restart containers
-  systemctl restart umbrel-startup.service > /dev/null
-  echo "> Restarted umbrel containers";echo  
+  if  [ -f /home/umbrel/umbrel/scripts/start ]; then
+    /home/umbrel/umbrel/scripts/start > /dev/null
+    echo "> Restarted umbrel containers";echo  
+  fi 
 fi 
 
 
