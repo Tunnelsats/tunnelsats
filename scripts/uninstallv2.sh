@@ -251,12 +251,10 @@ do
 break
 done
 
-sleep 2
-
-
 
 #Restarting docker to prevent missing rules in iptables
 if [ $isDocker ]; then
+  echo "Restarting docker services..."
   systemctl daemon-reload > /dev/null
   systemctl restart docker > /dev/null
   echo "> Restarted docker.service to ensure clean setup"
