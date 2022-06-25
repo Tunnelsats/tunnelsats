@@ -730,11 +730,18 @@ tor.skip-proxy-for-clearnet-targets=true
 #########################################";echo
 
 echo "CLN:
-#########################################
+##############################################################################
+Umbrel 0.5 (locate export.sh and edit section 'lightningd' as follows):
+#- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735 (<- comment out this line)
+- --bind-addr=0.0.0.0:9735
+- --announce-addr=${vpnExternalIP}:${vpnExternalPort}
+- --always-use-proxy=false
+
+Native (config file):
 bind-addr=0.0.0.0:9735
 announce-addr=${vpnExternalIP}:${vpnExternalPort}
 always-use-proxy=false
-#########################################";echo
+##############################################################################";echo
 
 echo "Please save them in a file or write them down for later use.
 
