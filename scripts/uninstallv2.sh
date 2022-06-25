@@ -376,15 +376,27 @@ if [ $success ] && [ ! $isDocker ]; then
          
            if [ $imp = "lnd" ] && [ -f /etc/systemd/system/lnd.service ]; then
 
-             [[ systemctl restart lnd.service > /dev/null ]] && echo "> lnd.service successfully restarted";echo || echo "> ERR: lnd.service could not be restarted.";echo
+             if systemctl restart lnd.service > /dev/null; then
+               echo "> lnd.service successfully restarted";echo
+             else
+               echo "> ERR: lnd.service could not be restarted.";echo
+             fi
 
            elif [ $imp = "cln" ] && [ -f /etc/systemd/system/lightningd.service ]; then
 
-             [[ systemctl restart lightningd.service > /dev/null ]] && echo "> lightningd.service successfully restarted";echo || echo "> ERR: lightningd.service could not be restarted.";echo
+             if systemctl restart lightningd.service > /dev/null; then
+               echo "> lightningd.service successfully restarted";echo
+             else 
+               echo "> ERR: lightningd.service could not be restarted.";echo
+             fi
 
            elif [ $imp = "cln" ] && [ -f /etc/systemd/system/cln.service ]; then
 
-             [[ systemctl restart cln.service > /dev/null ]] && echo "> cln.service successfully restarted";echo || echo "> ERR: cln.service could not be restarted.";echo
+             if systemctl restart cln.service > /dev/null; then
+               echo "> cln.service successfully restarted";echo
+             else
+              echo "> ERR: cln.service could not be restarted.";echo
+            fi
 
            fi
          fi
