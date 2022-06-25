@@ -426,7 +426,7 @@ if [ $isDocker ]; then
 
   dockerlndip=$(grep LND_IP /home/umbrel/umbrel/.env | cut -d= -f2)
   if [ -d /home/umbrel/umbrel/app-data/core-lightning ]; then
-    dockerclnip=$(grep APP_CORE_LIGHTNING_IP /home/umbrel/umbrel/app-data/core-lightning/exports.sh | cut -d "\"" -f2)
+    dockerclnip=$(grep APP_CORE_LIGHTNING_DAEMON_IP /home/umbrel/umbrel/app-data/core-lightning/exports.sh | cut -d "\"" -f2)
   else
     dockerclnip=""
   fi
@@ -457,7 +457,7 @@ if [ $isDocker ]; then
     table inet tunnelsatsv2 {
     set killswitch_tunnelsats {
       type ipv4_addr
-      elements = { $dockertunnelsatsip, $result}
+      elements = { $dockertunnelsatsip, $result }
     }
     #block traffic from lighting containers
     chain forward {
