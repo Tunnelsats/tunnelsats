@@ -27,8 +27,8 @@ echo "
 #      Uninstall Script      #
 ##############################";echo
 
-# RaspiBlitz, redo safety check and run it
-if [ $(hostname) = "raspberrypi" ] && [ -f /mnt/hdd/lnd/lnd.conf ]; then
+# RaspiBlitz: try to redo safety check
+if [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
     echo "RaspiBlitz: Trying to restore safety check 'lnd.check.sh'..."
     if [ -f /home/admin/config.scripts/lnd.check.bak ]; then
       mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
@@ -36,6 +36,13 @@ if [ $(hostname) = "raspberrypi" ] && [ -f /mnt/hdd/lnd/lnd.conf ]; then
     else
       echo "> Backup of 'lnd.check.sh' not found";echo
     fi
+elif [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+  if [ -f /home/admin/config.scripts/cl.check.bak ]; then
+    mv /home/admin/config.scripts/cl.check.bak /home/admin/config.scripts/cl.check.sh
+    echo "> Safety check for cln config found and restored";echo
+  else
+    echo "> Backup of 'cl.check.sh' not found";echo
+  fi    
 fi
 
 # remove splitting.timer systemd (v1)
@@ -227,34 +234,102 @@ fi
 
 select kickoff in $kickoffs
 do
-        if [ $kickoff == '⛔️Cancel' ]
-        then
-                echo
-                break
-        else
-            echo
-            if [[ $isDocker ]] && apt-get remove -yqq nftables wireguard-tools || apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
-              echo "> Packages removed";echo
-            else
-              echo "> ERR: packages could not be removed. Please check manually.";echo
-            fi
-        fi
+   if [ $kickoff == '⛔️Cancel' ]
+   then
+     echo
+     break
+   else
+     echo
+     if [[ $isDocker ]] && apt-get remove -yqq nftables wireguard-tools || apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
+       echo "> Packages removed";echo
+     else
+       echo "> ERR: packages could not be removed. Please check manually.";echo
+     fi
+   fi
 break
 done
 
 
-#Restarting docker to prevent missing rules in iptables
-if [ $isDocker ]; then
+# Make sure to disable hybrid mode to prevent IP leakage
+echo "Trying to automatically deactivate hybrid mode..."
+# check setup
+path="null"
+imp="null"
+if [ -f /mnt/hdd/lnd/lnd.conf ]; then #RaspiBlitz
+  path="/mnt/hdd/lnd/lnd.conf"
+  imp="lnd"
+elif [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then #Umbrel < 0.5
+  path="/home/umbrel/umbrel/lnd/lnd.conf"
+  imp="lnd"
+elif [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then #Umbrel 0.5+
+  path="/home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf"
+  imp="lnd"
+elif [ -f /data/lnd/lnd.conf ]; then #RaspiBolt
+  path="/data/lnd/lnd.conf"
+  imp="lnd"
+elif [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then #Start9
+ path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"
+ imp="lnd"
+elif [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then #myNode
+ path="/mnt/hdd/mynode/lnd/lnd.conf"
+ imp="lnd"
+fi
+
+# try to modify lnd config file
+success=0
+if [ $path != "null" ] && [ $imp = "lnd" ]; then
+  check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
+  if [ $check -gt 0 ]; then
+    lines=$(grep -n "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
+    for i in $lines
+    do
+      sed '{i}d' $path > /dev/null
+    done
+  fi
+  # recheck again
+  checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
+  if [ ! $checkAgain ]; then
+    success=1
+    echo "> Hybrid Mode deactivated.";echo
+  else
+    echo "> Could not deactivate hybrid mode!! Please check your LND configuration file and set 'tor.skip-proxy-for-clearnet-targets=false' before restarting!!";echo
+  fi
+fi
+
+# check CLN
+umbrelPath="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"
+if [ -f $umbrelPath ]; then
+
+  check=$(grep -c "\-\-always-use-proxy=false" $umbrelPath > /dev/null)
+  if [ $check ]; then
+    line=$(grep -n "\-\-always-use-proxy=false" $umbrelPath | cut -d ':' -f1> /dev/null)
+    sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $umbrelPath > /dev/null
+  fi
+  
+  # recheck again
+  checkAgain=$(grep -c "always-use-proxy=false" $umbrelPath > /dev/null)
+  if [ ! $checkAgain ]; then
+    success=1
+    echo "> Hybrid Mode deactivated.";echo
+  else
+    echo "> Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=true' before restarting!!";echo
+  fi
+  
+fi
+
+# restart if succeeded
+if [ $success ] && [ $isDocker ]; then
   echo "Restarting docker services..."
   systemctl daemon-reload > /dev/null
   systemctl restart docker > /dev/null
   echo "> Restarted docker.service to ensure clean setup"
-  #Restart containers
+  # Restart containers
   if  [ -f /home/umbrel/umbrel/scripts/start ]; then
     /home/umbrel/umbrel/scripts/start > /dev/null
     echo "> Restarted umbrel containers";echo  
   fi 
 fi 
+
 
 
 echo "VPN setup uninstalled!
