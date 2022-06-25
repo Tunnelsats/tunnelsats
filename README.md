@@ -191,9 +191,10 @@ lightningd:
       - --bitcoin-rpcuser=${APP_BITCOIN_RPC_USER}
       - --bitcoin-rpcpassword=${APP_BITCOIN_RPC_PASS}
       - --proxy=${TOR_PROXY_IP}:${TOR_PROXY_PORT}
-      - --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735
+      #- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735
       - --addr=statictor:${TOR_PROXY_IP}:29051
       - --tor-service-password=${TOR_PASSWORD}
+      - --bind-addr=0.0.0.0:9735
       - --announce-addr={vpnIP}:{vpnPort}
       - --always-use-proxy=false
       #- --grpc-port=${APP_CORE_LIGHTNING_DAEMON_GRPC_PORT}
