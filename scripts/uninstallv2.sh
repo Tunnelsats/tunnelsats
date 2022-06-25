@@ -258,6 +258,9 @@ imp="null"
 if [ -f /mnt/hdd/lnd/lnd.conf ]; then #RaspiBlitz
   path="/mnt/hdd/lnd/lnd.conf"
   imp="lnd"
+elif [ -f /mnt/hdd/app-data/.lightning/config ]; then
+  path="/mnt/hdd/app-data/.lightning/config"
+  imp="cln"
 elif [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then #Umbrel < 0.5
   path="/home/umbrel/umbrel/lnd/lnd.conf"
   imp="lnd"
@@ -278,6 +281,7 @@ fi
 # try to modify lnd config file
 success=0
 if [ $path != "null" ] && [ $imp = "lnd" ]; then
+
   check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
   if [ $check -gt 0 ]; then
     lines=$(grep -n "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
@@ -286,6 +290,7 @@ if [ $path != "null" ] && [ $imp = "lnd" ]; then
       sed '{i}d' $path > /dev/null
     done
   fi
+  
   # recheck again
   checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
   if [ ! $checkAgain ]; then
@@ -294,21 +299,21 @@ if [ $path != "null" ] && [ $imp = "lnd" ]; then
   else
     echo "> Could not deactivate hybrid mode!! Please check your LND configuration file and set 'tor.skip-proxy-for-clearnet-targets=false' before restarting!!";echo
   fi
+  
 fi
 
-# check CLN
+# check CLN (Umbrel 0.5)
 umbrelPath="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"
 if [ -f $umbrelPath ]; then
 
-  check=$(grep -c "\-\-always-use-proxy=false" $umbrelPath > /dev/null)
-  if [ $check ]; then
-    line=$(grep -n "\-\-always-use-proxy=false" $umbrelPath | cut -d ':' -f1> /dev/null)
+  line=$(grep -n "\- \-\-always-use-proxy=false" $umbrelPath | cut -d ':' -f1> /dev/null)
+  if [ $line != "" ]; then
     sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $umbrelPath > /dev/null
-  fi
+  fi 
   
   # recheck again
-  checkAgain=$(grep -c "always-use-proxy=false" $umbrelPath > /dev/null)
-  if [ ! $checkAgain ]; then
+  checkAgain=$(grep -c "always-use-proxy=true" $umbrelPath > /dev/null)
+  if [ $checkAgain ]; then
     success=1
     echo "> Hybrid Mode deactivated.";echo
   else
@@ -317,26 +322,78 @@ if [ -f $umbrelPath ]; then
   
 fi
 
-# restart if succeeded
+# check CLN (RaspiBlitz) - recovery via cl.check.sh failed
+if [ $path = "/mnt/hdd/app-data/.lightning/config" ] && [ $imp = "cln" ]; then
+  
+  line=$(grep -n "always-use-proxy=false" $path > /dev/null)
+  if [ $line != "" ]; then
+    sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $path > /dev/null
+  fi
+  
+  # recheck again
+  checkAgain=$(grep -c "always-use-proxy=true" $path > /dev/null)
+  if [ $checkAgain ]; then
+    success=1
+    echo "> Hybrid Mode deactivated.";echo
+  else
+    echo "> Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=true' before restarting!!";echo
+  fi  
+  
+fi
+
+# restart if succeeded, else inform user
 if [ $success ] && [ $isDocker ]; then
+
   echo "Restarting docker services..."
   systemctl daemon-reload > /dev/null
   systemctl restart docker > /dev/null
   echo "> Restarted docker.service to ensure clean setup"
+  
   # Restart containers
   if  [ -f /home/umbrel/umbrel/scripts/start ]; then
     /home/umbrel/umbrel/scripts/start > /dev/null
     echo "> Restarted umbrel containers";echo  
-  fi 
+  fi
+  
+else
+  echo "Please check your lightning configuration file and remove/restore previous settings.
+Afterwards please restart the lightning implementation or reboot the system.";echo
 fi 
 
+# on LND: ask user if we should restart nonDocker automatically
+if [ $success ] && [ ! $isDocker ]; then
+  
+    kickoffs='Yes No'
+    PS3='Do you want to automatically restart lightning service now? '
+
+    select kickoff in $kickoffs
+    do
+       if [ $kickoff == 'No' ]
+       then
+         echo "Please check your lightning configuration file and remove/restore previous settings.Afterwards please restart the lightning implementation or reboot the system.";echo
+         break
+       else
+         if [ $imp = "lnd" ] && [ -f /etc/systemd/system/lnd.service ]; then
+
+           [[ systemctl restart lnd.service > /dev/null ]] && echo "> lnd.service successfully restarted";echo || echo "> ERR: lnd.service could not be restarted.";echo
+           
+         elif [ $imp = "cln" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+           
+           [[ systemctl restart lightningd.service > /dev/null ]] && echo "> lightningd.service successfully restarted";echo || echo "> ERR: lightningd.service could not be restarted.";echo
+           
+         elif [ $imp = "cln" ] && [ -f /etc/systemd/system/cln.service ]; then
+           
+           [[ systemctl restart cln.service > /dev/null ]] && echo "> cln.service successfully restarted";echo || echo "> ERR: cln.service could not be restarted.";echo
+           
+         fi
+       fi
+    break
+    done
+
+fi
 
 
-echo "VPN setup uninstalled!
-
-Please check your lightning configuration file and remove/restore previous settings.
-Afterwards please restart the lightning implementation or reboot the system.
-";echo
+echo "VPN setup uninstalled!";echo
 
 # the end
 exit 0
