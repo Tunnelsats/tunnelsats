@@ -238,13 +238,13 @@ echo "Trying to automatically detect setup and deactivate hybrid mode...";echo
 # check setup
 path="null"
 imp="null"
-if [ -f /mnt/hdd/lnd/lnd.conf ]; then #RaspiBlitz
+if [ -f /mnt/hdd/lnd/lnd.conf ]; then #RaspiBlitz LND
   path="/mnt/hdd/lnd/lnd.conf"
   imp="lnd"
-elif [ -f /mnt/hdd/app-data/.lightning/config ]; then
+elif [ -f /mnt/hdd/app-data/.lightning/config ]; then #RaspiBlitz CLN
   path="/mnt/hdd/app-data/.lightning/config"
   imp="cln"
-elif [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then #Umbrel < 0.5
+elif [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then #Umbrel < 0.5 LND
   path="/home/umbrel/umbrel/lnd/lnd.conf"
   imp="lnd"
 elif [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then #Umbrel 0.5+ LND
@@ -253,9 +253,12 @@ elif [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then #Umbr
 elif [ -f /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml ]; then # Umbrel 0.5+ CLN
   path="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"
   imp="cln"
-elif [ -f /data/lnd/lnd.conf ]; then #RaspiBolt
+elif [ -f /data/lnd/lnd.conf ]; then #RaspiBolt LND
   path="/data/lnd/lnd.conf"
   imp="lnd"
+elif [ -f /data/cln/config ]; then #RaspiBolt CLN
+  path="/data/cln/config"
+  imp="cln"
 elif [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then #Start9
  path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"
  imp="lnd"
@@ -264,8 +267,7 @@ elif [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then #myNode
  imp="lnd"
 fi
 
-echo "> Lighting found: ${imp}"
-echo "> Path found: ${path}";echo
+# TODO: BETTER DETECTION AND REMOVAL
 
 # RaspiBlitz: try to recover cl/lnd.check.sh and run it once
 if [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
