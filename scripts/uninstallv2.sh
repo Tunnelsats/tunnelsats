@@ -310,7 +310,7 @@ umbrelPath="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"
 if [ -f $umbrelPath ]; then
 
   line=$(grep -n "\- \-\-always-use-proxy=false" $umbrelPath | cut -d ':' -f1> /dev/null)
-  if [ ${line} != "" ]; then
+  if [ "${line}" != "" ]; then
     sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $umbrelPath > /dev/null
   fi 
   
@@ -329,7 +329,7 @@ fi
 if [ $path = "/mnt/hdd/app-data/.lightning/config" ] && [ $imp = "cln" ]; then
   
   line=$(grep -n "always-use-proxy=false" $path > /dev/null)
-  if [ ${line} != "" ]; then
+  if [ "${line}" != "" ]; then
     sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $path > /dev/null
   fi
   
@@ -346,7 +346,7 @@ fi
 
 
 # ask user if we should restart nonDocker automatically
-if [ $success ] && [ ! $isDocker ]; then
+if [ $success ]; then
   
     kickoffs='Yes No'
     PS3='Do you want to automatically restart lightning service now? '
