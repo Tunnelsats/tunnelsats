@@ -134,19 +134,17 @@ sleep 2
 #remove docker-tunnelsats network
 if [ $isDocker ]; then
   #Disconnect all containers from the network first
-
   #Removing rules from routing table
   echo "Removing tunnelsats specific routing rules..."  
   ip route flush table 51820
 
-
-  echo "Disconnecting containers form docker-tunnelsats network..."  
+  echo "Disconnecting containers from docker-tunnelsats network..."  
   docker inspect docker-tunnelsats | jq .[].Containers | grep Name | sed 's/[\",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats  %'
   
   checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
   if [ $checkdockernetwork -ne 0 ]; then 
     echo "Removing docker-tunnelsats network..."  
-    if docker network rm "docker-tunnelsats"; then
+    if docker network rm "docker-tunnelsats" > /dev/null; then
       echo "> docker-tunnelsats network removed";echo
     else
       echo "> ERR: could not remove docker-tunnelsats network. Please check manually.";echo
@@ -155,9 +153,6 @@ if [ $isDocker ]; then
 fi
 
 sleep 2
-
-
-
 
 # remove killswitch requirement for umbrel startup
 if [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  ] && [ $isDocker ]; then
@@ -171,7 +166,6 @@ if [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
 fi
 
 sleep 2
-
 
 #reset lnd
 if [ ! $isDocker ] && [ -f /etc/systemd/system/lnd.service.bak ]; then
@@ -210,7 +204,6 @@ fi
 
 
 #Flush nftables and enable old nftables.conf
-
 #Flush table if exist to avoid redundant rules
 if nft list table inet tunnelsatsv2 &> /dev/null; then
     echo "> Flushing tunnelsats nftable rules";echo
@@ -221,8 +214,6 @@ if [  -f /etc/nftablespriortunnelsats.backup ]; then
      mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf 
       echo "> Prior nftables.conf now active. To enable it restart nftables.service or restart system ";echo
 fi
-
-
 
 sleep 2
 
@@ -269,7 +260,7 @@ fi
 echo "VPN setup uninstalled!
 
 Please check your lightning configuration file and remove/restore previous settings.
-Afterwards a restart of the lightning implementation or the system is required.
+Afterwards please restart the lightning implementation or reboot the system.
 ";echo
 
 # the end
