@@ -169,7 +169,7 @@ fi
 
 #reset lightningd
 if [ ! $isDocker ] && [ -f /etc/systemd/system/lightnind.service.bak ]; then
-  if mv /etc/systemd/system/lightnind.service.bak /etc/systemd/system/lightingd.service; then
+  if mv /etc/systemd/system/lightnind.service.bak /etc/systemd/system/lightningd.service; then
     echo "> lightningd.service prior to tunnelsats successfully reset";echo
   else 
     echo "> ERR: Not able to reset /etc/systemd/system/lightningd.service Please check manually.";echo
@@ -208,7 +208,7 @@ fi
 sleep 2
 
 # uninstall cgroup-tools, nftables, wireguard
-kickoffs='✅Yes ⛔️Cancel'
+kickoffs='Yes No'
 if [ $isDocker ]; then
   PS3='Do you really want to uninstall nftables and wireguard via apt remove? '
 else
@@ -217,7 +217,7 @@ fi
 
 select kickoff in $kickoffs
 do
-   if [ $kickoff == '⛔️Cancel' ]
+   if [ $kickoff == 'No' ]
    then
      echo
      break
@@ -234,7 +234,7 @@ done
 
 
 # Make sure to disable hybrid mode to prevent IP leakage
-echo "Trying to automatically detect setup and deactivate hybrid mode..."
+echo "Trying to automatically detect setup and deactivate hybrid mode...";echo
 # check setup
 path="null"
 imp="null"
@@ -263,6 +263,9 @@ elif [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then #myNode
  path="/mnt/hdd/mynode/lnd/lnd.conf"
  imp="lnd"
 fi
+
+echo "> Lighting found: ${imp}"
+echo "> Path found: ${path}";echo
 
 # RaspiBlitz: try to recover cl/lnd.check.sh and run it once
 if [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
@@ -310,7 +313,7 @@ fi
 
 # check CLN (Umbrel 0.5)
 umbrelPath="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"
-if [ -f $umbrelPath ]; then
+if [ -f $umbrelPath ] && [ "${imp}" = "cln" ]; then
 
   line=$(grep -n "\- \-\-always-use-proxy=false" $umbrelPath | cut -d ':' -f1> /dev/null)
   if [ "${line}" != "" ]; then
