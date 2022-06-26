@@ -12,10 +12,10 @@ fi
 
 # check if docker
 isDocker=0
-if [ "$(hostname)" == "umbrel" ] ||
-   [ -f /home/umbrel/umbrel/lnd/lnd.conf ] ||
-   [ -d /home/umbrel/umbrel/app-data/lightning ] ||
-   [ -d /home/umbrel/umbrel/app-data/core-lightning ] ||
+if [ "$(hostname)" == "umbrel" ] || \
+   [ -f /home/umbrel/umbrel/lnd/lnd.conf ] || \
+   [ -d /home/umbrel/umbrel/app-data/lightning ] || \
+   [ -d /home/umbrel/umbrel/app-data/core-lightning ] || \
    [ -d /embassy-data/package-data/volumes/lnd ]; then
     isDocker=1
 fi
@@ -95,9 +95,9 @@ if [ -f /lib/systemd/system/wg-quick@.service ]; then
     systemctl disable wg-quick@tunnelsats > /dev/null
   fi
   
-  if wg-quick down tunnelsatsv2 > /dev/null &&
-     systemctl stop wg-quick@tunnelsatsv2 > /dev/null &&
-     systemctl disable wg-quick@tunnelsatsv2 > /dev/null &&
+  if wg-quick down tunnelsatsv2 > /dev/null && \
+     systemctl stop wg-quick@tunnelsatsv2 > /dev/null && \
+     systemctl disable wg-quick@tunnelsatsv2 > /dev/null && \
      [ ! -f /etc/systemd/systemd/wg-quick@tunnelsatsv2 ]; then
     echo "> wireguard systemd service disabled and removed";echo
   else
@@ -181,11 +181,12 @@ fi
 if [ ! $isDocker ]; then
     echo "Removing net_cls subgroup..."
     # v1
-    if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
+    if [ -d /sys/fs/cgroup/net_cls/tor_splitting ]; then
         cgdelete net_cls:/tor_splitting 2> /dev/null
     fi
 
-    if cgdelete net_cls:/splitted_processes 2> /dev/null; then
+    if [ -d /sys/fs/cgroup/net_cls/splitted_processes ]; then
+        cgdelete net_cls:/splitted_processes 2> /dev/null; then
         echo "> Control Group Splitted Processes removed";echo
     else
         echo "> ERR: Could not remove cgroup.";echo
@@ -200,9 +201,9 @@ if nft list table inet tunnelsatsv2 &> /dev/null; then
     nft flush table inet tunnelsatsv2
 fi
 
-if [  -f /etc/nftablespriortunnelsats.backup ]; then
+if [ -f /etc/nftablespriortunnelsats.backup ]; then
      mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf 
-      echo "> Prior nftables.conf now active. To enable it restart nftables.service or restart system ";echo
+     echo "> Prior nftables.conf now active. To enable it restart nftables.service or restart system ";echo
 fi
 
 sleep 2
@@ -404,7 +405,7 @@ if [ $success ]; then
                echo "> cln.service successfully restarted";echo
              else
               echo "> ERR: cln.service could not be restarted.";echo
-            fi
+             fi
 
            fi
          fi
