@@ -273,23 +273,22 @@ fi
 echo "Adding KillSwitch to nftables..."
 if [ $isDocker ]; then
   #Create output chain 
-  $(nft add chain inet $(wg show | grep interface | awk '{print $2}') output '{type filter hook output priority filter; policy accept;}')
+  nft add chain inet $(wg show | grep interface | awk '{print $2}') output '{type filter hook output priority filter; policy accept;}'
   #Flush Table first to prevent redundant rules
-  $(nft flush chain inet $(wg show | grep interface | awk '{print $2}') output)
+  nft flush chain inet $(wg show | grep interface | awk '{print $2}') output
   # Add Kill Switch Rule
-  $(nft insert rule inet $(wg show | grep interface | awk '{print $2}')   output oifname != $(wg show | grep interface | awk '{print $2}')  meta mark != 0xdeadbeef  ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 ip daddr != 224.0.0.1/24 oifname != "br-*" oifname != "veth*"  fib daddr type != local counter drop comment \"tunnelsats kill switch\" )  
+  nft insert rule inet $(wg show | grep interface | awk '{print $2}') output oifname != $(wg show | grep interface | awk '{print $2}')  meta mark != 0xdeadbeef  ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 ip daddr != 224.0.0.1/24 oifname != "br-*" oifname != "veth*"  fib daddr type != local counter drop comment \"tunnelsats kill switch\"
   #Add Kill Switch for DNS Requests in particular
-  $(nft add rule inet $(wg show | grep interface | awk '{print $2}') output  oifname != $(wg show | grep interface | awk '{print $2}') meta l4proto {udp, tcp} th dport {53} counter drop comment \"tunnelsats prevent DNS leakage\")
+  nft add rule inet $(wg show | grep interface | awk '{print $2}') output oifname != $(wg show | grep interface | awk '{print $2}') meta l4proto {udp, tcp} th dport {53} counter drop comment \"tunnelsats prevent DNS leakage\"
 else
   #Create output chain 
-  $(nft add chain inet $(wg show | grep interface | awk '{print $2}') output '{type filter hook output priority filter; policy accept;}')
+  nft add chain inet $(wg show | grep interface | awk '{print $2}') output '{type filter hook output priority filter; policy accept;}'
   #Flush Table first to prevent redundant rules
-  $(nft flush chain inet $(wg show | grep interface | awk '{print $2}') output)
+  nft flush chain inet $(wg show | grep interface | awk '{print $2}') output
   #Add Kill Switch Rule
-  $(nft insert rule inet  $(wg show | grep interface | awk '{print $2}')  output oifname !=  $(wg show | grep interface | awk '{print $2}') ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 ip daddr != 224.0.0.1/24  meta mark != 0xdeadbeef fib daddr type != local  counter drop comment \"tunnelsats kill switch\" )
+  nft insert rule inet  $(wg show | grep interface | awk '{print $2}') output oifname != $(wg show | grep interface | awk '{print $2}') ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 ip daddr != 224.0.0.1/24  meta mark != 0xdeadbeef fib daddr type != local  counter drop comment \"tunnelsats kill switch\"
   #Add Kill Switch for DNS Requests in particular
-  $(nft add rule inet $(wg show | grep interface | awk '{print $2}') output  oifname != $(wg show | grep interface | awk '{print $2}') meta l4proto {udp, tcp} th dport {53} counter drop comment \"tunnelsats prevent DNS leakage\")
-
+  nft add rule inet $(wg show | grep interface | awk '{print $2}') output oifname != $(wg show | grep interface | awk '{print $2}') meta l4proto {udp, tcp} th dport {53} counter drop comment \"tunnelsats prevent DNS leakage\"
 fi
 
 #Add DNS in case systemd-resolved is active
