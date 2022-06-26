@@ -1,3 +1,4 @@
+#!/bin/bash
 # This script setup the environment needed for VPN usage on lightning network nodes
 # Use with care
 #
@@ -27,9 +28,9 @@ echo "
 
 # check for downloaded tunnelsats.conf, exit if not available
 # get current directory
-directory=$(dirname -- $(readlink -fn -- "$0"))
+directory=$(dirname -- "$(readlink -fn -- "$0")")
 echo "Looking for WireGuard config file..."
-if [ ! -f $directory/tunnelsats.conf ]; then
+if [ ! -f "$directory"/tunnelsats.conf ]; then
   echo "> ERR: tunnelsats.conf not found. Please place it where this script is located.";echo
   exit 1
 else
@@ -108,9 +109,9 @@ sleep 2
 # check for downloaded tunnelsats.conf, exit if not available
 # get current directory
 echo "Copying WireGuard config file..."
-directory=$(dirname -- $(readlink -fn -- "$0"))
-if [ -f $directory/tunnelsats.conf ]; then
-   cp $directory/tunnelsats.conf /etc/wireguard/
+directory=$(dirname -- "$(readlink -fn -- "$0")")
+if [ -f "$directory"/tunnelsats.conf ]; then
+   cp "$directory"/tunnelsats.conf /etc/wireguard/
    if [ -f /etc/wireguard/tunnelsats.conf ]; then
       echo "> tunnelsats.conf copied to /etc/wireguard/";echo
    else
@@ -146,10 +147,8 @@ else
 fi
 # add Tor pid(s) to cgroup
 pgrep -x tor | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
-
 # add ssh pid(s) to cgroup
 pgrep -x sshd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
-
 count=\$(cat /sys/fs/cgroup/net_cls/splitted_processes/tasks | wc -l)
 if [ \$count -eq 0 ];then
   echo \"> ERR: no pids added to file\"
@@ -273,28 +272,28 @@ fi
 echo "Adding KillSwitch to nftables..."
 if [ $isDocker ]; then
   #Create output chain 
-  nft add chain inet $(wg show | grep interface | awk '{print $2}') output '{type filter hook output priority filter; policy accept;}'
+  nft add chain inet "$(wg show | grep interface | awk '{print $2}')" output '{type filter hook output priority filter; policy accept;}'
   #Flush Table first to prevent redundant rules
-  nft flush chain inet $(wg show | grep interface | awk '{print $2}') output
+  nft flush chain inet "$(wg show | grep interface | awk '{print $2}')" output
   # Add Kill Switch Rule
-  nft insert rule inet $(wg show | grep interface | awk '{print $2}') output oifname != $(wg show | grep interface | awk '{print $2}')  meta mark != 0xdeadbeef  ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 ip daddr != 224.0.0.1/24 oifname != "br-*" oifname != "veth*"  fib daddr type != local counter drop comment \"tunnelsats kill switch\"
+  nft insert rule inet "$(wg show | grep interface | awk '{print $2}')" output oifname != "$(wg show | grep interface | awk '{print $2}')"  meta mark != 0xdeadbeef  ip daddr != "$(hostname -I | awk '{print $1}' | cut -d"." -f1-3)".0/24 ip daddr != 224.0.0.1/24 oifname != "br-*" oifname != "veth*"  fib daddr type != local counter drop comment \"tunnelsats kill switch\"
   #Add Kill Switch for DNS Requests in particular
-  nft add rule inet $(wg show | grep interface | awk '{print $2}') output oifname != $(wg show | grep interface | awk '{print $2}') meta l4proto {udp, tcp} th dport {53} counter drop comment \"tunnelsats prevent DNS leakage\"
+  nft add rule inet "$(wg show | grep interface | awk '{print $2}')" output oifname != "$(wg show | grep interface | awk '{print $2}')" meta l4proto \{udp, tcp\} th dport \{53\} counter drop comment \"tunnelsats prevent DNS leakage\"
 else
   #Create output chain 
-  nft add chain inet $(wg show | grep interface | awk '{print $2}') output '{type filter hook output priority filter; policy accept;}'
+  nft add chain inet "$(wg show | grep interface | awk '{print $2}')" output '{type filter hook output priority filter; policy accept;}'
   #Flush Table first to prevent redundant rules
-  nft flush chain inet $(wg show | grep interface | awk '{print $2}') output
+  nft flush chain inet "$(wg show | grep interface | awk '{print $2}')" output
   #Add Kill Switch Rule
-  nft insert rule inet  $(wg show | grep interface | awk '{print $2}') output oifname != $(wg show | grep interface | awk '{print $2}') ip daddr != $(hostname -I | awk '{print $1}' | cut -d"." -f1-3).0/24 ip daddr != 224.0.0.1/24  meta mark != 0xdeadbeef fib daddr type != local  counter drop comment \"tunnelsats kill switch\"
+  nft insert rule inet "$(wg show | grep interface | awk '{print $2}')" output oifname != "$(wg show | grep interface | awk '{print $2}')" ip daddr != "$(hostname -I | awk '{print $1}' | cut -d"." -f1-3)".0/24 ip daddr != 224.0.0.1/24  meta mark != 0xdeadbeef fib daddr type != local  counter drop comment \"tunnelsats kill switch\"
   #Add Kill Switch for DNS Requests in particular
-  nft add rule inet $(wg show | grep interface | awk '{print $2}') output oifname != $(wg show | grep interface | awk '{print $2}') meta l4proto {udp, tcp} th dport {53} counter drop comment \"tunnelsats prevent DNS leakage\"
+  nft add rule inet "$(wg show | grep interface | awk '{print $2}')" output oifname != "$(wg show | grep interface | awk '{print $2}')" meta l4proto \{udp, tcp\} th dport \{53\} counter drop comment \"tunnelsats prevent DNS leakage\"
 fi
 
 #Add DNS in case systemd-resolved is active
 if [ ! -x /sbin/resolvconf ] && [ "$(systemctl is-enabled systemd-resolved.service)" == "enabled" ]; then
 
-  resolvectl dns $(wg show | grep interface | awk '{print $2}') 8.8.8.8; resolvectl domain $(wg show | grep interface | awk '{print $2}') ~.
+  resolvectl dns "$(wg show | grep interface | awk '{print $2}')" 8.8.8.8; resolvectl domain "$(wg show | grep interface | awk '{print $2}')" ~.
 
   if [ $? -eq 0 ]; then
       echo "> 8.8.8.8 is now set as DNS resolver";echo
@@ -307,7 +306,7 @@ fi
 
 #Checking for Kill Switch
 
-killSwitchExists=$(nft -s list table inet $(wg show | grep interface | awk '{print $2}') | grep -c "tunnelsats kill switch")
+killSwitchExists=$(nft -s list table inet "$(wg show | grep interface | awk '{print $2}')" | grep -c "tunnelsats kill switch")
 if [ $killSwitchExists -eq 0 ]; then
   echo "> ERR: Activating Kill Switch failed, check whether tunnel activated";echo
   exit 1
@@ -317,7 +316,7 @@ fi
 
 sleep 2
 
-killSwitchExists=$(nft -s list table inet $(wg show | grep interface | awk '{print $2}') | grep -c "tunnelsats prevent DNS leakage")
+killSwitchExists=$(nft -s list table inet "$(wg show | grep interface | awk '{print $2}')" | grep -c "tunnelsats prevent DNS leakage")
 if [ $killSwitchExists -eq 0 ]; then
   echo "> ERR: Preventing DNS Leakage failed";echo
   exit 1
@@ -358,7 +357,6 @@ vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsats.conf | awk '{ print $3
 
 echo "
 These are your personal VPN credentials for your lightning configuration.
-
 For LND:
 #########################################
 [Application Options]
@@ -368,18 +366,14 @@ externalip=${vpnExternalIP}:${vpnExternalPort}
 tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
 #########################################
-
 For CLN:
 #########################################
 bind-addr=0.0.0.0:9735
 announce-addr=${vpnExternalIP}:${vpnExternalPort}
 always-use-proxy=false
 #########################################
-
 Please save them in a file or write them down for later use.
-
 A more detailed guide is available at: https://blckbx.github.io/tunnelsats/ 
-
 Afterwards please restart LND / CLN for changes to take effect.
 VPN setup completed!";echo
 
