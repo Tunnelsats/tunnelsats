@@ -63,9 +63,9 @@ sleep 2
 if [ -f /lib/systemd/system/wg-quick@.service ]; then
   echo "Removing wireguard systemd service..."
   
-  if wg-quick down tunnelsats > /dev/null &&
-     systemctl stop wg-quick@tunnelsats > /dev/null &&
-     systemctl disable wg-quick@tunnelsats > /dev/null &&
+  if wg-quick down tunnelsats > /dev/null && \
+     systemctl stop wg-quick@tunnelsats > /dev/null && \
+     systemctl disable wg-quick@tunnelsats > /dev/null && \
      [ ! -f /etc/systemd/systemd/wg-quick@tunnelsats ]; then
     echo "> wireguard systemd service disabled and removed";echo
   else
@@ -97,11 +97,12 @@ fi
 
 # remove netcls subgroup
 echo "Removing netcls subgroup..."
-if [ -f /sys/fs/cgroup/net_cls/tor_splitting/tasks ]; then
+if [ -d /sys/fs/cgroup/net_cls/tor_splitting ]; then
   cgdelete net_cls:/tor_splitting 2> /dev/null
 fi
 
-if cgdelete net_cls:/splitted_processes 2> /dev/null; then
+if [ -d /sys/fs/cgroup/net_cls/splitted_processes ]; then
+    cgdelete net_cls:/splitted_processes 2> /dev/null
     echo "> Control Group Splitted Processes removed";echo
 else
     echo "> ERR: Could not remove cgroup.";echo
