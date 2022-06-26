@@ -59,12 +59,12 @@ fi
 
 
 # RaspiBlitz: deactivate config checks
-if [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
+if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
     if [ -f /home/admin/config.scripts/lnd.check.sh ]; then
         mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak
         echo "RaspiBlitz detected, lnd conf safety check removed";echo
     fi
-elif [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+elif [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
   if [ -f /home/admin/config.scripts/cl.check.sh ]; then
     mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak
     echo "RaspiBlitz detected, cln conf safety check removed";echo
@@ -251,7 +251,7 @@ if [ -f $directory/tunnelsatsv2.conf ]; then
   fi   
 
   line=$(grep -n "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | cut -d ":" -f1)
-  if [ $line != "" ]; then
+  if [ "$line" != "" ]; then
     line="$(($line+1))"
     
     if [ $isDocker ]; then
