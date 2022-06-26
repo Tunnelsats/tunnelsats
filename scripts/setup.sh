@@ -181,7 +181,7 @@ fi
 echo "Creating splitting systemd service..."
 if [ ! -f /etc/systemd/system/splitting.service ]; then
   # if we are on Umbrel || Start9 (Docker solutions), create a timer to restart and re-check Tor/ssh pids
-  if  $isDocker then
+  if [ $isDocker ]; then
      echo "[Unit]
 Description=Splitting Tor Traffic by Timer
 StartLimitInterval=200
