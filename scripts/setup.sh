@@ -271,7 +271,7 @@ fi
 
 ##Add KillSwitch to nftables
 echo "Adding KillSwitch to nftables..."
-if $isDocker then
+if [ $isDocker ]; then
   #Create output chain 
   $(nft add chain inet $(wg show | grep interface | awk '{print $2}') output '{type filter hook output priority filter; policy accept;}')
   #Flush Table first to prevent redundant rules
