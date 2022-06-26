@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0 
-patch=2
+patch=3
 
 
 #Helper
@@ -734,11 +734,13 @@ tor.skip-proxy-for-clearnet-targets=true
 
 echo "CLN:
 ##############################################################################
-Umbrel 0.5 (locate export.sh and edit section 'lightningd' as follows):
+Umbrel 0.5 (edit /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml 
+file in section 'lightningd' as follows):
 #- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735 (<- comment out this line)
 - --bind-addr=0.0.0.0:9735
 - --announce-addr=${vpnExternalIP}:${vpnExternalPort}
 - --always-use-proxy=false
+
 Native (config file):
 bind-addr=0.0.0.0:9735
 announce-addr=${vpnExternalIP}:${vpnExternalPort}
