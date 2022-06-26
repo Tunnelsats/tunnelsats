@@ -16,7 +16,7 @@ echo "
 ##############################";echo
 
 # RaspiBlitz, redo safety check and run it
-if [ $(hostname) = "raspberrypi" ] && [ -f /mnt/hdd/lnd/lnd.conf ]; then 
+if [ "$(hostname)" == "raspberrypi" ] && [ -f /mnt/hdd/lnd/lnd.conf ]; then 
     echo "RaspiBlitz: Trying to restore safety check 'lnd.check.sh'..."
     if [ -f /home/admin/config.scripts/lnd.check.bak ]; then
       mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
@@ -118,8 +118,6 @@ else
 fi
 
 sleep 2
-
-
 
 
 echo "VPN setup uninstalled";echo
