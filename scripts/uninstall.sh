@@ -1,3 +1,4 @@
+#!/bin/bash
 # This script uninstalls/removes the changes made by setup.sh script
 # Use with care
 #
