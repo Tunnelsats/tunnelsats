@@ -298,7 +298,7 @@ if [ "${path}" != "null" ] && [ "${imp}" = "lnd" ]; then
     lines=$(grep -n "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
     for i in $lines
     do
-      sed '{i}d' $path > /dev/null
+      sed "${i}d" $path > /dev/null
     done
   fi
   
