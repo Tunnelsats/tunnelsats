@@ -37,13 +37,13 @@ if [ "$EUID" -ne 0 ]
 fi
 
 # check if docker
-isDocker=1
+isDocker=0
 if [ "$(hostname)" == "umbrel" ] || \
    [ -f /home/umbrel/umbrel/lnd/lnd.conf ] || \
    [ -d /home/umbrel/umbrel/app-data/lightning ] || \
    [ -d /home/umbrel/umbrel/app-data/core-lightning ] || \
    [ -d /embassy-data/package-data/volumes/lnd ]; then
-  isDocker=0
+  isDocker=1
 fi
 
 # intro
