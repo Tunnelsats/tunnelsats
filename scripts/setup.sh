@@ -12,9 +12,9 @@ fi
 
 # check if docker
 isDocker=0
-if [ "$(hostname)" == "umbrel" ] ||
-   [ -f /home/umbrel/umbrel/lnd/lnd.conf ] ||
-   [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ] ||
+if [ "$(hostname)" == "umbrel" ] || \
+   [ -f /home/umbrel/umbrel/lnd/lnd.conf ] || \
+   [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ] || \
    [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then
   isDocker=1
 fi
@@ -91,7 +91,7 @@ sleep 2
 # check wireguard
 echo "Checking wireguard installation..."
 checkwg=$(wg -v 2> /dev/null | grep -c "wireguard-tools")
-if [ ! -f /etc/wireguard ] && [ $checkwg -eq 0 ]; then
+if [ ! -d /etc/wireguard ] && [ $checkwg -eq 0 ]; then
     echo "Installing wireguard..."
     if apt-get install -y wireguard > /dev/null;then
         echo "> wireguard installed";echo
@@ -157,6 +157,7 @@ else
   echo \"> \${count} Process(es) successfully excluded\"
 fi
 " > /etc/wireguard/splitting.sh
+
 if [ -f /etc/wireguard/splitting.sh ]; then
   echo "> /etc/wireguard/splitting.sh created.";echo
 else
@@ -180,7 +181,7 @@ fi
 echo "Creating splitting systemd service..."
 if [ ! -f /etc/systemd/system/splitting.service ]; then
   # if we are on Umbrel || Start9 (Docker solutions), create a timer to restart and re-check Tor/ssh pids
-  if [ $isDocker ]; then
+  if [ $isDocker -eq 1 ]; then
      echo "[Unit]
 Description=Splitting Tor Traffic by Timer
 StartLimitInterval=200
@@ -233,7 +234,7 @@ fi
 # enable and start splitting.service
 if [ -f /etc/systemd/system/splitting.service ]; then
   systemctl daemon-reload > /dev/null
-  if systemctl enable splitting.service > /dev/null &&
+  if systemctl enable splitting.service > /dev/null && \
      systemctl start splitting.service > /dev/null; then
     echo "> splitting.service: systemd service enabled and started";echo
   else
@@ -241,7 +242,7 @@ if [ -f /etc/systemd/system/splitting.service ]; then
   fi
     # Docker: enable timer
   if [ -f /etc/systemd/system/splitting.timer ]; then
-    if systemctl enable splitting.timer > /dev/null &&
+    if systemctl enable splitting.timer > /dev/null && \
        systemctl start splitting.timer > /dev/null; then
       echo "> splitting.timer: systemd timer enabled and started";echo
     else
@@ -261,7 +262,7 @@ ipHome=$(curl --silent https://api.ipify.org)
 ## create and enable wireguard service
 echo "Initializing the service..."
 systemctl daemon-reload > /dev/null
-if systemctl enable wg-quick@tunnelsats > /dev/null &&
+if systemctl enable wg-quick@tunnelsats > /dev/null && \
    systemctl start wg-quick@tunnelsats > /dev/null; then
   echo "> wireguard systemd service enabled and started";echo
 else
@@ -270,7 +271,7 @@ fi
 
 ##Add KillSwitch to nftables
 echo "Adding KillSwitch to nftables..."
-if [ $isDocker ]; then
+if [ $isDocker -eq 1 ]; then
   #Create output chain 
   nft add chain inet "$(wg show | grep interface | awk '{print $2}')" output '{type filter hook output priority filter; policy accept;}'
   #Flush Table first to prevent redundant rules
@@ -278,7 +279,7 @@ if [ $isDocker ]; then
   # Add Kill Switch Rule
   nft insert rule inet "$(wg show | grep interface | awk '{print $2}')" output oifname != "$(wg show | grep interface | awk '{print $2}')"  meta mark != 0xdeadbeef  ip daddr != "$(hostname -I | awk '{print $1}' | cut -d"." -f1-3)".0/24 ip daddr != 224.0.0.1/24 oifname != "br-*" oifname != "veth*"  fib daddr type != local counter drop comment \"tunnelsats kill switch\"
   #Add Kill Switch for DNS Requests in particular
-  nft add rule inet "$(wg show | grep interface | awk '{print $2}')" output oifname != "$(wg show | grep interface | awk '{print $2}')" meta l4proto \{udp, tcp\} th dport \{53\} counter drop comment \"tunnelsats prevent DNS leakage\"
+  nft add rule inet "$(wg show | grep interface | awk '{print $2}')" output oifname != "$(wg show | grep interface | awk '{print $2}')" meta l4proto {udp, tcp} th dport {53} counter drop comment \"tunnelsats prevent DNS leakage\"
 else
   #Create output chain 
   nft add chain inet "$(wg show | grep interface | awk '{print $2}')" output '{type filter hook output priority filter; policy accept;}'
@@ -287,7 +288,7 @@ else
   #Add Kill Switch Rule
   nft insert rule inet "$(wg show | grep interface | awk '{print $2}')" output oifname != "$(wg show | grep interface | awk '{print $2}')" ip daddr != "$(hostname -I | awk '{print $1}' | cut -d"." -f1-3)".0/24 ip daddr != 224.0.0.1/24  meta mark != 0xdeadbeef fib daddr type != local  counter drop comment \"tunnelsats kill switch\"
   #Add Kill Switch for DNS Requests in particular
-  nft add rule inet "$(wg show | grep interface | awk '{print $2}')" output oifname != "$(wg show | grep interface | awk '{print $2}')" meta l4proto \{udp, tcp\} th dport \{53\} counter drop comment \"tunnelsats prevent DNS leakage\"
+  nft add rule inet "$(wg show | grep interface | awk '{print $2}')" output oifname != "$(wg show | grep interface | awk '{print $2}')" meta l4proto {udp, tcp} th dport {53} counter drop comment \"tunnelsats prevent DNS leakage\"
 fi
 
 #Add DNS in case systemd-resolved is active
