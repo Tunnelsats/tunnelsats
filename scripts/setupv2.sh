@@ -4,6 +4,13 @@
 #
 # Usage: sudo bash setup.sh
 
+#VERSION NUMBER of setupv2.sh
+#Update if your make a significant change
+##########UPDATE IF YOU MAKE A NEW RELEASE#############
+major = 0
+minor = 0 
+patch=1
+
 
 #Helper
 function valid_ipv4()
@@ -44,6 +51,8 @@ echo "
 ##############################
 #        TunnelSats v2       #
 #        Setup Script        #
+#        Version:            #
+#       v$major.$minor.$patch#
 ##############################";echo
 
 # check for downloaded tunnelsatsv2.conf, exit if not available
