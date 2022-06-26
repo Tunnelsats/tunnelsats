@@ -88,8 +88,11 @@ fi
 
 sleep 2
 
-#delete killswitch nftable 
-/usr/sbin/nft delete table inet tunnelsatsv2 &> /dev/null
+#flush killswitch nftable 
+if nft list table inet tunnelsats &> /dev/null; then
+    echo "> Flushing tunnelsats nftable rules";echo
+    nft flush table inet tunnelsats
+fi
 
 
 # remove netcls subgroup
