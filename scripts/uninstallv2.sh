@@ -49,7 +49,7 @@ fi
 sleep 2
 
 # remove timer and systemd services
-if [ $isDocker ]; then
+if [ $isDocker -eq 1 ]; then
  
   if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
     echo "Removing tunnelsats docker network timer..."
@@ -109,7 +109,7 @@ sleep 2
 
 
 # remove wg-quick@tunnelsatsv2.service.d
-if [ -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d  ] && [ $isDocker ]; then
+if [ -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d  ] && [ $isDocker -eq 1 ]; then
   echo "Removing wg-quick@tunnelsatsv2.service.d..."
   if rm -r /etc/systemd/system/wg-quick@tunnelsatsv2.service.d; then
     echo "> /etc/systemd/system/wg-quick@tunnelsatsv2.service.d removed";echo
@@ -122,7 +122,7 @@ sleep 2
 
 
 #remove docker-tunnelsats network
-if [ $isDocker ]; then
+if [ $isDocker -eq 1 ]; then
   #Disconnect all containers from the network first
   #Removing rules from routing table
   echo "Removing tunnelsats specific routing rules..."  
@@ -145,7 +145,7 @@ fi
 sleep 2
 
 # remove killswitch requirement for umbrel startup
-if [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  ] && [ $isDocker ]; then
+if [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  ] && [ $isDocker -eq 1 ]; then
   echo "Removing tunnelsats_killswitch.conf..."
   if rm /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf ; then
     rm -r /etc/systemd/system/umbrel-startup.service.d > /dev/null
@@ -158,7 +158,7 @@ fi
 sleep 2
 
 #reset lnd
-if [ ! $isDocker ] && [ -f /etc/systemd/system/lnd.service.bak ]; then
+if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lnd.service.bak ]; then
   if mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service; then
     echo "> lnd.service prior to tunnelsats successfully reset";echo
   else 
@@ -168,7 +168,7 @@ fi
 
 
 #reset lightningd
-if [ ! $isDocker ] && [ -f /etc/systemd/system/lightnind.service.bak ]; then
+if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lightnind.service.bak ]; then
   if mv /etc/systemd/system/lightnind.service.bak /etc/systemd/system/lightningd.service; then
     echo "> lightningd.service prior to tunnelsats successfully reset";echo
   else 
@@ -178,7 +178,7 @@ fi
 
 
 # remove netcls subgroup
-if [ ! $isDocker ]; then
+if [ $isDocker -eq 0 ]; then
     echo "Removing net_cls subgroup..."
     # v1
     if [ -d /sys/fs/cgroup/net_cls/tor_splitting ]; then
@@ -186,7 +186,7 @@ if [ ! $isDocker ]; then
     fi
 
     if [ -d /sys/fs/cgroup/net_cls/splitted_processes ]; then
-        cgdelete net_cls:/splitted_processes 2> /dev/null; then
+        cgdelete net_cls:/splitted_processes 2> /dev/null
         echo "> Control Group Splitted Processes removed";echo
     else
         echo "> ERR: Could not remove cgroup.";echo
@@ -210,7 +210,7 @@ sleep 2
 
 # uninstall cgroup-tools, nftables, wireguard
 kickoffs='Yes No'
-if [ $isDocker ]; then
+if [ $isDocker -eq 1 ]; then
   PS3='Do you really want to uninstall nftables and wireguard via apt remove? '
 else
   PS3='Do you really want to uninstall cgroup-tools, nftables and wireguard via apt remove? '
@@ -224,7 +224,7 @@ do
      break
    else
      echo
-     if [[ $isDocker ]] && apt-get remove -yqq nftables wireguard-tools || apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
+     if [[ $isDocker -eq 1 ]] && apt-get remove -yqq nftables wireguard-tools || apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
        echo "> Packages removed";echo
      else
        echo "> ERR: packages could not be removed. Please check manually.";echo
@@ -305,7 +305,7 @@ if [ "$path" != "null" ] && [ "$imp" == "lnd" ]; then
   
   # recheck again
   checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
-  if [ ! $checkAgain ]; then
+  if [ $checkAgain -eq 0 ]; then
     success=1
     echo "> Hybrid Mode deactivated.";echo
   else
@@ -325,7 +325,7 @@ if [ -f $umbrelPath ] && [ "$imp" == "cln" ]; then
   
   # recheck again
   checkAgain=$(grep -c "always-use-proxy=true" $umbrelPath > /dev/null)
-  if [ $checkAgain ]; then
+  if [ $checkAgain -eq 1 ]; then
     success=1
     echo "> Hybrid Mode deactivated.";echo
   else
@@ -344,7 +344,7 @@ if [ "$path" == "/mnt/hdd/app-data/.lightning/config" ] && [ "$imp" == "cln" ]; 
   
   # recheck again
   checkAgain=$(grep -c "always-use-proxy=true" $path > /dev/null)
-  if [ $checkAgain ]; then
+  if [ $checkAgain -eq 1 ]; then
     success=1
     echo "> Hybrid Mode deactivated.";echo
   else
@@ -355,7 +355,7 @@ fi
 
 
 # ask user if we should restart nonDocker automatically
-if [ $success ]; then
+if [ $success -eq 1 ]; then
   
     kickoffs='Yes No'
     PS3='Do you want to automatically restart lightning service now? '
@@ -368,7 +368,7 @@ if [ $success ]; then
          break
        else
          
-         if [ $isDocker ]; then
+         if [ $isDocker -eq 1 ]; then
          
            echo "Restarting docker services..."
            systemctl daemon-reload > /dev/null
