@@ -262,8 +262,8 @@ ipHome=$(curl --silent https://api.ipify.org)
 ## create and enable wireguard service
 echo "Initializing the service..."
 systemctl daemon-reload > /dev/null
-if systemctl enable wg-quick@tunnelsatsv2 > /dev/null &&
-   systemctl start wg-quick@tunnelsatsv2 > /dev/null; then
+if systemctl enable wg-quick@tunnelsats > /dev/null &&
+   systemctl start wg-quick@tunnelsats > /dev/null; then
   echo "> wireguard systemd service enabled and started";echo
 else
   echo "> ERR: wireguard service could not be enabled/started. Please check for errors.";echo
