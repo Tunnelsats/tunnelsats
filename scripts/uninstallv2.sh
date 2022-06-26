@@ -12,7 +12,7 @@ fi
 
 # check if docker
 isDocker=0
-if [ $(hostname) = "umbrel" ] ||
+if [ "$(hostname)" == "umbrel" ] ||
    [ -f /home/umbrel/umbrel/lnd/lnd.conf ] ||
    [ -d /home/umbrel/umbrel/app-data/lightning ] ||
    [ -d /home/umbrel/umbrel/app-data/core-lightning ] ||
@@ -217,7 +217,7 @@ fi
 
 select kickoff in $kickoffs
 do
-   if [ $kickoff == 'No' ]
+   if [ "$kickoff" == "No" ]
    then
      echo
      break
@@ -270,7 +270,7 @@ fi
 # TODO: BETTER DETECTION AND REMOVAL
 
 # RaspiBlitz: try to recover cl/lnd.check.sh and run it once
-if [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
+if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
     echo "RaspiBlitz: Trying to restore safety check 'lnd.check.sh'..."
     if [ -f /home/admin/config.scripts/lnd.check.bak ]; then
       mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
@@ -279,7 +279,7 @@ if [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; th
     else
       echo "> Backup of 'lnd.check.sh' not found";echo
     fi
-elif [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+elif [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
   if [ -f /home/admin/config.scripts/cl.check.bak ]; then
     mv /home/admin/config.scripts/cl.check.bak /home/admin/config.scripts/cl.check.sh
     bash /home/admin/config.scripts/cl.check.sh
@@ -291,7 +291,7 @@ fi
 
 # try to modify lnd config file
 success=0
-if [ "${path}" != "null" ] && [ "${imp}" = "lnd" ]; then
+if [ "$path" != "null" ] && [ "$imp" == "lnd" ]; then
 
   check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
   if [ $check -ne 0 ]; then
@@ -315,10 +315,10 @@ fi
 
 # check CLN (Umbrel 0.5)
 umbrelPath="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"
-if [ -f $umbrelPath ] && [ "${imp}" = "cln" ]; then
+if [ -f $umbrelPath ] && [ "$imp" == "cln" ]; then
 
-  line=$(grep -n "\- \-\-always-use-proxy=false" $umbrelPath | cut -d ':' -f1> /dev/null)
-  if [ "${line}" != "" ]; then
+  line=$(grep -n "\- \-\-always-use-proxy=false" $umbrelPath | cut -d ':' -f1 > /dev/null)
+  if [ "$line" != "" ]; then
     sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $umbrelPath > /dev/null
   fi 
   
@@ -334,10 +334,10 @@ if [ -f $umbrelPath ] && [ "${imp}" = "cln" ]; then
 fi
 
 # check CLN (RaspiBlitz) - recovery via cl.check.sh failed
-if [ "${path}" = "/mnt/hdd/app-data/.lightning/config" ] && [ "${imp}" = "cln" ]; then
+if [ "$path" == "/mnt/hdd/app-data/.lightning/config" ] && [ "$imp" == "cln" ]; then
   
   line=$(grep -n "always-use-proxy=false" $path > /dev/null)
-  if [ "${line}" != "" ]; then
+  if [ "$line" != "" ]; then
     sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $path > /dev/null
   fi
   
@@ -361,7 +361,7 @@ if [ $success ]; then
 
     select kickoff in $kickoffs
     do
-       if [ $kickoff == 'No' ]
+       if [ "$kickoff" == "No" ]
        then
          echo;echo -e "Please check your lightning configuration file and remove/restore previous settings.\nAfterwards please restart the lightning implementation or reboot the system.";echo
          break
@@ -382,7 +382,7 @@ if [ $success ]; then
            
          else #nonDocker
          
-           if [ $imp = "lnd" ] && [ -f /etc/systemd/system/lnd.service ]; then
+           if [ "$imp" == "lnd" ] && [ -f /etc/systemd/system/lnd.service ]; then
 
              if systemctl restart lnd.service > /dev/null; then
                echo "> lnd.service successfully restarted";echo
@@ -390,7 +390,7 @@ if [ $success ]; then
                echo "> ERR: lnd.service could not be restarted.";echo
              fi
 
-           elif [ $imp = "cln" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+           elif [ "$imp" == "cln" ] && [ -f /etc/systemd/system/lightningd.service ]; then
 
              if systemctl restart lightningd.service > /dev/null; then
                echo "> lightningd.service successfully restarted";echo
@@ -398,7 +398,7 @@ if [ $success ]; then
                echo "> ERR: lightningd.service could not be restarted.";echo
              fi
 
-           elif [ $imp = "cln" ] && [ -f /etc/systemd/system/cln.service ]; then
+           elif [ "$imp" == "cln" ] && [ -f /etc/systemd/system/cln.service ]; then
 
              if systemctl restart cln.service > /dev/null; then
                echo "> cln.service successfully restarted";echo
