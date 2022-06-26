@@ -48,12 +48,12 @@ fi
 
 # intro
 echo "
-##############################
-#        TunnelSats v2       #
-#        Setup Script        #
-#        Version:            #
-#       v$major.$minor.$patch#
-##############################";echo
+###############################
+#        TunnelSats v2        #
+#        Setup Script         #
+#        Version:             #
+#        v$major.$minor.$patch#
+###############################";echo
 
 # check for downloaded tunnelsatsv2.conf, exit if not available
 # get current directory
