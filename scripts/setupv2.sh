@@ -261,7 +261,7 @@ if [ -f "$directory"/tunnelsatsv2.conf ]; then
   if [ "$line" != "" ]; then
     line="$(($line+1))"
     
-    if [ $isDocker ]; then
+    if [ $isDocker -eq 1 ]; then
       echo -e $inputDocker 2> /dev/null >> /etc/wireguard/tunnelsatsv2.conf
     else
       echo -e $inputNonDocker 2> /dev/null >> /etc/wireguard/tunnelsatsv2.conf
