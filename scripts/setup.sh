@@ -11,7 +11,7 @@ fi
 
 # check if docker
 isDocker=0
-if [ $(hostname) = "umbrel" ] ||
+if [ "$(hostname)" == "umbrel" ] ||
    [ -f /home/umbrel/umbrel/lnd/lnd.conf ] ||
    [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ] ||
    [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then
@@ -37,12 +37,12 @@ else
 fi
 
 # RaspiBlitz: deactivate config checks
-if [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
+if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
     if [ -f /home/admin/config.scripts/lnd.check.sh ]; then
         mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak
         echo "RaspiBlitz detected, lnd conf safety check removed";echo
     fi
-elif [ $(hostname) = "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+elif [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
   if [ -f /home/admin/config.scripts/cl.check.sh ]; then
     mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak
     echo "RaspiBlitz detected, cln conf safety check removed";echo
@@ -293,7 +293,7 @@ else
 fi
 
 #Add DNS in case systemd-resolved is active
-if [ ! -x /sbin/resolvconf ] && [ $(systemctl is-enabled systemd-resolved.service) = "enabled" ]; then
+if [ ! -x /sbin/resolvconf ] && [ "$(systemctl is-enabled systemd-resolved.service)" == "enabled" ]; then
 
   resolvectl dns $(wg show | grep interface | awk '{print $2}') 8.8.8.8; resolvectl domain $(wg show | grep interface | awk '{print $2}') ~.
 
