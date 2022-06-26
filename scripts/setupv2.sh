@@ -7,9 +7,9 @@
 #VERSION NUMBER of setupv2.sh
 #Update if your make a significant change
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
-major = 0
-minor = 0 
-patch=1
+major=0
+minor=0 
+patch=2
 
 
 #Helper
@@ -38,10 +38,10 @@ fi
 
 # check if docker
 isDocker=0
-if [ $(hostname) = "umbrel" ] ||
-   [ -f /home/umbrel/umbrel/lnd/lnd.conf ] ||
-   [ -d /home/umbrel/umbrel/app-data/lightning ] ||
-   [ -d /home/umbrel/umbrel/app-data/core-lightning ] ||
+if [ "$(hostname)" == "umbrel" ] || \
+   [ -f /home/umbrel/umbrel/lnd/lnd.conf ] || \
+   [ -d /home/umbrel/umbrel/app-data/lightning ] || \
+   [ -d /home/umbrel/umbrel/app-data/core-lightning ] || \
    [ -d /embassy-data/package-data/volumes/lnd ]; then
   isDocker=1
 fi
@@ -57,9 +57,9 @@ echo "
 
 # check for downloaded tunnelsatsv2.conf, exit if not available
 # get current directory
-directory=$(dirname -- $(readlink -fn -- "$0"))
+directory=$(dirname -- "$(readlink -fn -- "$0")")
 echo "Looking for WireGuard config file..."
-if [ ! -f $directory/tunnelsatsv2.conf ]; then
+if [ ! -f "$directory"/tunnelsatsv2.conf ]; then
   echo "> ERR: tunnelsatsv2.conf not found. Please place it where this script is located.";echo
   exit 1
 else
@@ -86,7 +86,7 @@ echo "Updating the package repositories..."
 apt-get update > /dev/null;echo
 
 # only non-docker
-if [ ! $isDocker ]; then
+if [ $isDocker -eq 0 ]; then
   # check cgroup-tools only necessary when lightning runs as systemd service
   if [ -f /etc/systemd/system/lnd.service ] || 
      [ -f /etc/systemd/system/lightningd.service ]; then 
@@ -128,7 +128,7 @@ sleep 2
 # check wireguard
 echo "Checking wireguard installation..."
 checkwg=$(wg -v 2> /dev/null | grep -c "wireguard-tools")
-if [ ! -f /etc/wireguard ] && [ $checkwg -eq 0 ]; then
+if [ ! -d /etc/wireguard ] && [ $checkwg -eq 0 ]; then
     echo "Installing wireguard..."
     if apt-get install -y wireguard > /dev/null; then
         echo "> wireguard installed";echo
@@ -143,7 +143,7 @@ fi
 sleep 2
 
 #Create Docker Tunnelsat Network which stays persistent over restarts
-if [ $isDocker ]; then 
+if [ $isDocker -eq 1 ]; then 
   
   echo "Creating TunnelSats Docker Network..."
   checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
@@ -180,10 +180,8 @@ if [ $isDocker ]; then
   ip route flush table 51820
 
 
-
-
-
 else
+
   #Delete Rules for non-docker setup
   #Clean Routing Tables from prior failed wg-quick starts
   delrule1=$(ip rule | grep -c "from all lookup main suppress_prefixlength 0")
@@ -250,9 +248,9 @@ PostDown = ip route flush table 51820\n
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
 "
 
-directory=$(dirname -- $(readlink -fn -- "$0"))
-if [ -f $directory/tunnelsatsv2.conf ]; then
-  cp $directory/tunnelsatsv2.conf /etc/wireguard/
+directory=$(dirname -- "$(readlink -fn -- "$0")")
+if [ -f "$directory"/tunnelsatsv2.conf ]; then
+  cp "$directory"/tunnelsatsv2.conf /etc/wireguard/
   if [ -f /etc/wireguard/tunnelsatsv2.conf ]; then
     echo "> tunnelsatsv2.conf copied to /etc/wireguard/"
   else
@@ -282,7 +280,7 @@ fi
 sleep 2
 
 
-if [ ! $isDocker ]; then
+if [ $isDocker -eq 0 ]; then
 
   # setup lnd/clnfor splitting
   # create file
@@ -307,7 +305,6 @@ fi
 # add Lightning pid(s) to cgroup
 pgrep -x lnd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
 pgrep -x lightningd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
-
 count=\$(cat /sys/fs/cgroup/net_cls/splitted_processes/tasks | wc -l)
 if [ \$count -eq 0 ];then
   echo \"> ERR: no pids added to file\"
@@ -375,7 +372,7 @@ WantedBy=multi-user.target
   # enable and start splitting.service
   if [ -f /etc/systemd/system/splitting.service ]; then
     systemctl daemon-reload > /dev/null
-    if systemctl enable splitting.service > /dev/null &&
+    if systemctl enable splitting.service > /dev/null && \
        systemctl start splitting.service > /dev/null; then
        echo "> splitting.service: systemd service enabled and started";echo
     else
@@ -393,7 +390,7 @@ sleep 2
 #Start lightning implementation in cggroup when non docker
 #changing respective .service file
 
-if [ ! $isDocker ]; then
+if [ $isDocker -eq 0 ]; then
 
   if [ -f /etc/systemd/system/lnd.service ]; then
 
@@ -426,7 +423,7 @@ sleep 2
 
 
 #Creating Killswitch to prevent any leakage
-if [ $isDocker ]; then
+if [ $isDocker -eq 1 ]; then
   echo "Applying KillSwitch to Docker setup..."
   #Get main interface  
   mainif=$(ip route | grep default | cut -d' ' -f5)
@@ -442,13 +439,13 @@ if [ $isDocker ]; then
   
   result=""
   dockertunnelsatsip="10.9.9.9"
-  if [ -z ${dockerclnip} ]; then
+  if [ -z "$(dockerclnip)" ]; then
     result=${dockerlndip}
   else
     result="${dockerlndip}, ${dockerclnip}"
   fi
 
-  if [ ! -z $mainif ] ; then
+  if [ -n "$mainif" ] ; then
 
     if [ -f /etc/nftables.conf ] && [ ! -f /etc/nftablespriortunnelsats.backup ]; then
 
@@ -536,20 +533,18 @@ fi
 sleep 2
 
 #Add Monitor which connects the docker-tunnelsats network to the lightning container
-if [ $isDocker ]; then
+if [ $isDocker -eq 1 ]; then
   # create file
   echo "Creating tunnelsats-docker-network.sh file in /etc/wireguard/..."
   echo "#!/bin/sh
   set -e
   lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')
   checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
-
   if [ \$checkdockernetwork -ne 0 ] && [ ! -z \$lightningcontainer ]; then
     if ! docker inspect \$lightningcontainer | grep -c \"tunnelsats\" > /dev/null; then
     docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  &> /dev/null
     fi
   fi
-
   " > /etc/wireguard/tunnelsats-docker-network.sh 
   
   if [ -f /etc/wireguard/tunnelsats-docker-network.sh ]; then
@@ -576,7 +571,7 @@ if [ $isDocker ]; then
   echo "Creating tunnelsats-docker-network.sh systemd service..."
   if [ ! -f /etc/systemd/system/tunnelsats-docker-network.sh ]; then
     # if we are on Umbrel || Start9 (Docker solutions), create a timer to restart and re-check Tor/ssh pids
-    if [ $isDocker ]; then
+    if [ $isDocker -eq 1 ]; then
       echo "[Unit]
   Description=Adding Lightning Container to the tunnel
   StartLimitInterval=200
@@ -602,13 +597,13 @@ if [ $isDocker ]; then
         echo "> tunnelsats-docker-network.service created"
       else
         echo "> ERR: tunnelsats-docker-network.service not created. Please check for errors.";echo
-	exit 1
+	    exit 1
       fi
       if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
         echo "> tunnelsats-docker-network.timer created"
       else
         echo "> ERR: tunnelsats-docker-network.timer not created. Please check for errors.";echo
-	exit 1
+	    exit 1
       fi
 
     fi
@@ -618,7 +613,7 @@ fi
 # enable and start tunnelsats-docker-network.service
 if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
   systemctl daemon-reload > /dev/null
-  if systemctl enable tunnelsats-docker-network.service > /dev/null &&
+  if systemctl enable tunnelsats-docker-network.service > /dev/null && \
      systemctl start tunnelsats-docker-network.service > /dev/null; then
     echo "> tunnelsats-docker-network.service: systemd service enabled and started"
   else
@@ -627,7 +622,7 @@ if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
   fi
     # Docker: enable timer
   if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
-    if systemctl enable tunnelsats-docker-network.timer > /dev/null &&
+    if systemctl enable tunnelsats-docker-network.timer > /dev/null && \
        systemctl start tunnelsats-docker-network.timer > /dev/null; then
       echo "> tunnelsats-docker-network.timer: systemd timer enabled and started";echo
     else
@@ -648,9 +643,9 @@ echo "Initializing the service..."
 systemctl daemon-reload > /dev/null
 if systemctl enable wg-quick@tunnelsatsv2 > /dev/null; then
 
-  if [ $isDocker ] && [ -f /etc/systemd/system/umbrel-startup.service ]; then
+  if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service ]; then
     if [ ! -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d ]; then
-     mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d > /dev/null
+      mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d > /dev/null
     fi
     echo "[Unit]
 Description=Forcing wg-quick to start after umbrel startup scripts
@@ -676,7 +671,7 @@ sleep 2
 
 #Check if tunnel works
 echo "Verifying tunnel ..."
-if [ ! $isDocker ]; then
+if [ $isDocker -eq 0 ]; then
   ipHome=$(curl --silent https://api.ipify.org)
   ipVPN=$(cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
   if [ "$ipHome" != "$ipVPN" ]; then
@@ -696,13 +691,13 @@ else #Docker
     if [ "$ipHome" != "$ipVPN" ] && valid_ipv4 $ipHome  &&  valid_ipv4 $ipVPN  ; then
       echo "> Tunnel is active ✅
       Your ISP external IP: ${ipHome} 
-      Your Tunnelsats external IP: ${ipVPN}";echo
+      Your TunnelSats external IP: ${ipVPN}";echo
     else
-      echo "> ERR: Tunnelsats VPN Interface not successfully activated, please check debug logs";echo
+      echo "> ERR: TunnelSats VPN interface not successfully activated, please check debug logs";echo
       exit 1
     fi    
   else
-    echo "> Tunnel Verification not checked. curlimages/curl not available for your system ";echo
+    echo "> Tunnel verification not checked. curlimages/curl not available for your system ";echo
     exit 1
   fi
 fi
@@ -725,7 +720,6 @@ sleep 2
 vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
 
 echo "______________________________________________________________________
-
 These are your personal VPN credentials for your lightning configuration.";echo
 
 echo "LND:
@@ -745,7 +739,6 @@ Umbrel 0.5 (locate export.sh and edit section 'lightningd' as follows):
 - --bind-addr=0.0.0.0:9735
 - --announce-addr=${vpnExternalIP}:${vpnExternalPort}
 - --always-use-proxy=false
-
 Native (config file):
 bind-addr=0.0.0.0:9735
 announce-addr=${vpnExternalIP}:${vpnExternalPort}
@@ -753,9 +746,7 @@ always-use-proxy=false
 ##############################################################################";echo
 
 echo "Please save them in a file or write them down for later use.
-
 A more detailed guide is available at: https://blckbx.github.io/tunnelsats/
-
 Afterwards please restart LND / CLN for changes to take effect.
 VPN setup completed!";echo
 
