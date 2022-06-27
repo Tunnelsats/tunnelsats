@@ -10,6 +10,15 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+
+# intro
+echo "
+##############################
+#       TunnelSats v2        #
+#      Uninstall Script      #
+##############################";echo
+
+
 # Restart required: Ask user if we should proceed anyway
 options='Yes No'
 PS3='CAUTION! Uninstalling TunnelSats requires a mandatory restart of your lightning implementation. Do you really want to proceed? '
@@ -42,13 +51,174 @@ if [ -f /etc/wireguard/tunnelsatsv2.conf ]; then
     vpnExternalPort=$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')
 fi
 
-# intro
-echo "
-##############################
-#       TunnelSats v2        #
-#      Uninstall Script      #
-##############################";echo
 
+# Make sure to disable hybrid mode to prevent IP leakage
+success=0
+imps="LND CLN"
+PS3="Which lightning implementation was set to hybrid mode at TunnelSats installation? "
+select i in $imps
+do
+
+    if [ "$i" == "LND" ]; then
+
+        # RaspiBlitz: try to recover lnd.check.sh
+        if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
+            echo "RaspiBlitz: Trying to restore with safety check 'lnd.check.sh'..."
+            if [ -f /home/admin/config.scripts/lnd.check.bak ]; then
+                mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
+                if bash /home/admin/config.scripts/lnd.check.sh > /dev/null; then
+                    success=1
+                    echo "> Safety check for lnd.conf found and restored";echo
+                fi
+            else
+                echo "> Backup of 'lnd.check.sh' not found, proceeding with manual deactivation...";echo
+            fi
+        fi
+
+        # do it manually
+        if [ $success -eq 0 ]; then
+            path=""
+            if [ -f /mnt/hdd/lnd/lnd.conf ]; then path="/mnt/hdd/lnd/lnd.conf"; fi 
+            if [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/lnd/lnd.conf"; fi
+            if [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf"; fi
+            if [ -f /data/lnd/lnd.conf ]; then path="/data/lnd/lnd.conf"; fi 
+            if [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"; fi
+            if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
+
+            if [ "$path" != "" ]; then
+                check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" "$path")
+                if [ $check -ne 0 ]; then
+                    sed -i "s/tor.skip-proxy-for-clearnet-targets=true/tor.skip-proxy-for-clearnet-targets=false/g" "$path" > /dev/null
+                   
+                    # recheck again
+                    checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" "$path")
+                    if [ $checkAgain -ne 0 ]; then
+                        echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!";echo
+                    else
+                        success=1
+                        echo "> Hybrid Mode deactivated successfully.";echo
+                    fi
+                fi
+            fi
+        fi
+    fi 
+
+
+    if [ "$i" == "CLN" ]; then
+
+        # check CLN (RaspiBlitz)
+        # RaspiBlitz: try to recover cl.check.sh
+        if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+            echo "RaspiBlitz: Trying to restore with safety check 'cl.check.sh'..."
+            if [ -f /home/admin/config.scripts/cl.check.bak ]; then
+                mv /home/admin/config.scripts/cl.check.bak /home/admin/config.scripts/cl.check.sh
+                if bash /home/admin/config.scripts/cl.check.sh; then
+                    success=1
+                    echo "> Safety check for cln config found and restored";echo
+                fi
+            else
+                echo "> Backup of 'cl.check.sh' not found, proceeding with manual deactivation...";echo
+            fi    
+        fi
+
+        # do it manually
+        if [ $success -eq 0 ]; then
+            path=""
+            if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
+            if [ -f /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml ]; then path="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"; fi
+            if [ -f /data/cln/config ]; then path="/data/cln/config"; fi
+
+            if [ "$path" != "" ]; then
+                check=$(grep -c "always-use-proxy=false" "$path")
+                if [ $check -eq 1 ]; then
+                    line=$(grep -n "always-use-proxy=false" "$path" | cut -d ':' -f1)
+                    if [ "$line" != "" ]; then
+                        sed -i "${line}d" "$path" > /dev/null
+                    fi
+                    
+                    # recheck again
+                    checkAgain=$(grep -c "always-use-proxy=false" "$path")
+                    if [ $checkAgain -ne 0 ]; then
+                        echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=false' to 'true' before restarting!!";echo
+                    else
+                        success=1
+                        echo "> Hybrid Mode deactivated successfully.";echo
+                    fi
+                fi
+                
+                # Umbrel 0.5: restore default configuration
+                if [ "$path" == "/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml" ]; then
+                    uncomment=$(grep -n "#- --bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735" "$path" | cut -d ':' -f1)
+                    if [ "$uncomment" != "" ]; then
+                        sed -i "s/#- --bind-addr/- --bind-addr/g" "$path" > /dev/null
+                    fi
+                    deleteBind=$(grep -n "bind-addr=0\.0\.0\.0\:9735" "$path" | cut -d ':' -f1)
+                    if [ "$deleteBind" != "" ]; then
+                        sed -i "${deleteBind}d" "$path" > /dev/null
+                    fi
+                    deleteAnnounceAddr=$(grep -n "announce-addr=" "$path" | cut -d ':' -f1)
+                    if [ "$deleteAnnounceAddr" != "" ]; then
+                        sed -i "${deleteAnnounceAddr}d" "$path" > /dev/null
+                    fi                    
+                    echo "> Umbrel 0.5+: hybrid mode deactivated and configuration restored";echo
+                fi
+            fi
+        fi
+    fi
+break
+done
+
+
+# forced lightning restart
+echo "Restarting lightning implementation now..."
+if [ $isDocker -eq 1 ]; then
+ 
+    echo "Restarting docker services..."
+    systemctl daemon-reload > /dev/null
+    systemctl restart docker > /dev/null
+    echo "> Restarted docker.service to ensure clean setup"
+
+    # Restart containers
+    if  [ -f /home/umbrel/umbrel/scripts/start ]; then
+        /home/umbrel/umbrel/scripts/start > /dev/null
+        echo "> Restarted umbrel containers";echo  
+    fi
+            
+else #nonDocker
+            
+    # RaspiBolt / RaspiBlitz / Bare Metal LND
+    if [ -f /etc/systemd/system/lnd.service ]; then
+         echo "Restarting lnd.service ..."
+         if systemctl restart lnd.service > /dev/null; then
+            echo "> lnd.service successfully restarted";echo
+         else
+            echo "> ERR: lnd.service could not be restarted.";echo
+         fi
+
+    # RaspiBlitz CLN
+    elif [ -f /etc/systemd/system/lightningd.service ]; then
+         echo "Restarting lighningd.service ..."
+         if systemctl restart lightningd.service > /dev/null; then
+            echo "> lightningd.service successfully restarted";echo
+         else 
+            echo "> ERR: lightningd.service could not be restarted.";echo
+         fi
+
+     # RaspiBolt / Bare Metal CLN
+     elif [ -f /etc/systemd/system/cln.service ]; then
+        echo "Restarting cln.service ..."
+        if systemctl restart cln.service > /dev/null; then
+            echo "> cln.service successfully restarted";echo
+        else
+            echo "> ERR: cln.service could not be restarted.";echo
+        fi
+    fi
+fi
+
+
+
+
+# remove splitting services
 if [ $isDocker -eq 0 ]; then
 
     # remove splitting.timer systemd (v1)
@@ -93,7 +263,7 @@ sleep 2
 
 
 # remove ufw setting (port rule)
-checkufw=$(ufw version 2> /dev/null | grep -c Canonical)
+checkufw=$(ufw version 2> /dev/null | grep -c "Canonical")
 if [ $checkufw -eq 1 ]; then
     vpnExternalPort="$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')" > /dev/null
     echo "Checking firewall and removing VPN port..."
@@ -255,190 +425,6 @@ do
 break
 done
 
-sleep 2
-
-# Make sure to disable hybrid mode to prevent IP leakage
-success=0
-imps="LND CLN"
-PS3="Which lightning implementation was set to hybrid mode at TunnelSats installation? "
-select i in $imps
-do
-
-    if [ "$i" == "LND" ]; then
-
-        # RaspiBlitz: try to recover lnd.check.sh
-        if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
-            echo "RaspiBlitz: Trying to restore with safety check 'lnd.check.sh'..."
-            if [ -f /home/admin/config.scripts/lnd.check.bak ]; then
-                mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
-                if bash /home/admin/config.scripts/lnd.check.sh > /dev/null; then
-                    success=1
-                    echo "> Safety check for lnd.conf found and restored";echo
-                fi
-            else
-                echo "> Backup of 'lnd.check.sh' not found, proceeding with manual deactivation...";echo
-            fi
-        fi
-
-        # do it manually
-        if [ $success -eq 0 ]; then
-            path=""
-            if [ -f /mnt/hdd/lnd/lnd.conf ]; then path="/mnt/hdd/lnd/lnd.conf"; fi 
-            if [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/lnd/lnd.conf"; fi
-            if [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf"; fi
-            if [ -f /data/lnd/lnd.conf ]; then path="/data/lnd/lnd.conf"; fi 
-            if [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"; fi
-            if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
-
-            if [ "$path" != "" ]; then
-                check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" "$path")
-                if [ $check -ne 0 ]; then
-                    sed -i "s/tor.skip-proxy-for-clearnet-targets=true/tor.skip-proxy-for-clearnet-targets=false/g" "$path" > /dev/null
-                   
-                    # recheck again
-                    checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" "$path")
-                    if [ $checkAgain -ne 0 ]; then
-                        echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!";echo
-                    else
-                        success=1
-                        echo "> Hybrid Mode deactivated successfully.";echo
-                    fi
-                fi
-            fi
-        fi
-    fi 
-
-
-    if [ "$i" == "CLN" ]; then
-
-        # check CLN (RaspiBlitz)
-        # RaspiBlitz: try to recover cl.check.sh
-        if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
-            echo "RaspiBlitz: Trying to restore with safety check 'cl.check.sh'..."
-            if [ -f /home/admin/config.scripts/cl.check.bak ]; then
-                mv /home/admin/config.scripts/cl.check.bak /home/admin/config.scripts/cl.check.sh
-                if bash /home/admin/config.scripts/cl.check.sh; then
-                    success=1
-                    echo "> Safety check for cln config found and restored";echo
-                fi
-            else
-                echo "> Backup of 'cl.check.sh' not found, proceeding with manual deactivation...";echo
-            fi    
-        fi
-
-        # do it manually
-        if [ $success -eq 0 ]; then
-            path=""
-            if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
-            if [ -f /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml ]; then path="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"; fi
-            if [ -f /data/cln/config ]; then path="/data/cln/config"; fi
-
-            if [ "$path" != "" ]; then
-                check=$(grep -c "always-use-proxy=false" "$path")
-                if [ $check -eq 1 ]; then
-                    line=$(grep -n "always-use-proxy=false" "$path" | cut -d ':' -f1)
-                    if [ "$line" != "" ]; then
-                        sed -i "${line}d" "$path" > /dev/null
-                    fi
-                    
-                    # recheck again
-                    checkAgain=$(grep -c "always-use-proxy=false" "$path")
-                    if [ $checkAgain -ne 0 ]; then
-                        echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=false' to 'true' before restarting!!";echo
-                    else
-                        success=1
-                        echo "> Hybrid Mode deactivated successfully.";echo
-                    fi
-                fi
-                
-                # Umbrel 0.5: restore default configuration
-                if [ "$path" == "/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml" ]; then
-                    uncomment=$(grep -n "#- --bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735" "$path" | cut -d ':' -f1)
-                    if [ "$uncomment" != "" ]; then
-                        sed -i "s/#- --bind-addr/- --bind-addr/g" "$path" > /dev/null
-                    fi
-                    deleteBind=$(grep -n "bind-addr=0\.0\.0\.0\:9735" "$path" | cut -d ':' -f1)
-                    if [ "$deleteBind" != "" ]; then
-                        sed -i "${deleteBind}d" "$path" > /dev/null
-                    fi
-                    deleteAnnounceAddr=$(grep -n "announce-addr=" "$path" | cut -d ':' -f1)
-                    if [ "$deleteAnnounceAddr" != "" ]; then
-                        sed -i "${deleteAnnounceAddr}d" "$path" > /dev/null
-                    fi                    
-                    echo "> Umbrel 0.5+: hybrid mode deactivated and configuration restored";echo
-                fi
-            fi
-        fi
-    fi
-break
-done
-
-
-
-# ask user if we should restart nonDocker automatically
-#if [ $success -eq 1 ]; then
-#  
-#    kickoffs='Yes No'
-#    PS3='Do you want to automatically restart lightning service now? '
-#
-#    select kickoff in $kickoffs
-#    do
-#        if [ "$kickoff" == "No" ]
-#        then
-#            echo;echo -e "Please check your lightning configuration file and remove/restore previous settings.\nAfterwards please restart the lightning implementation or reboot the system.";echo
-#            break
-#        else
-#         
-echo "Restarting lightning implementation now..."
-            if [ $isDocker -eq 1 ]; then
-         
-                echo "Restarting docker services..."
-                systemctl daemon-reload > /dev/null
-                systemctl restart docker > /dev/null
-                echo "> Restarted docker.service to ensure clean setup"
-
-                # Restart containers
-                if  [ -f /home/umbrel/umbrel/scripts/start ]; then
-                    /home/umbrel/umbrel/scripts/start > /dev/null
-                    echo "> Restarted umbrel containers";echo  
-                fi
-            
-            else #nonDocker
-            
-                # RaspiBolt / RaspiBlitz / Bare Metal LND
-                if [ -f /etc/systemd/system/lnd.service ]; then
-                    echo "Restarting lnd.service ..."
-                    if systemctl restart lnd.service > /dev/null; then
-                        echo "> lnd.service successfully restarted";echo
-                    else
-                        echo "> ERR: lnd.service could not be restarted.";echo
-                    fi
-
-                # RaspiBlitz CLN
-                elif [ -f /etc/systemd/system/lightningd.service ]; then
-                    echo "Restarting lighningd.service ..."
-                    if systemctl restart lightningd.service > /dev/null; then
-                        echo "> lightningd.service successfully restarted";echo
-                    else 
-                        echo "> ERR: lightningd.service could not be restarted.";echo
-                    fi
-
-                # RaspiBolt / Bare Metal CLN
-                elif [ -f /etc/systemd/system/cln.service ]; then
-                    echo "Restarting cln.service ..."
-                    if systemctl restart cln.service > /dev/null; then
-                        echo "> cln.service successfully restarted";echo
-                    else
-                        echo "> ERR: cln.service could not be restarted.";echo
-                    fi
-                fi
-            fi
-
-#       fi
-#    break
-#    done
-#
-#fi
 
 echo "VPN setup uninstalled!";echo
 
