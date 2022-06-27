@@ -439,8 +439,8 @@ if [ $isDocker -eq 1 ]; then
   
   result=""
   dockertunnelsatsip="10.9.9.9"
-  if [ -z "$(dockerclnip)" ]; then
-    result=${dockerlndip}
+  if [ -z "$dockerclnip" ]; then
+    result="$dockerlndip"
   else
     result="${dockerlndip}, ${dockerclnip}"
   fi
@@ -720,6 +720,7 @@ sleep 2
 vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
 
 echo "______________________________________________________________________
+
 These are your personal VPN credentials for your lightning configuration.";echo
 
 echo "LND:
@@ -733,23 +734,28 @@ tor.skip-proxy-for-clearnet-targets=true
 #########################################";echo
 
 echo "CLN:
-##############################################################################
-Umbrel 0.5 (edit /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml 
-file in section 'lightningd' as follows):
-#- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735 (<- comment out this line)
+###############################################################################
+Umbrel 0.5+
+(edit /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml file 
+in section 'lightningd' - 'command' as follows):
+comment out the following line: 
+#- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735
+add the following lines:
 - --bind-addr=0.0.0.0:9735
 - --announce-addr=${vpnExternalIP}:${vpnExternalPort}
 - --always-use-proxy=false
 
-Native (config file):
+Native CLN (config file):
 bind-addr=0.0.0.0:9735
 announce-addr=${vpnExternalIP}:${vpnExternalPort}
 always-use-proxy=false
-##############################################################################";echo
+###############################################################################";echo
 
 echo "Please save them in a file or write them down for later use.
+
 A more detailed guide is available at: https://blckbx.github.io/tunnelsats/
 Afterwards please restart LND / CLN for changes to take effect.
+
 VPN setup completed!";echo
 
 # the end
