@@ -275,15 +275,12 @@ do
             if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
 
             if [ "$path" != "" ]; then
-                check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path)
+                check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" "$path")
                 if [ $check -ne 0 ]; then
-                    line=$(grep -n "tor.skip-proxy-for-clearnet-targets=true" $path | cut -d ':' -f1)
-                    if [ "$line" != "" ]; then
-                        sed -i 's/tor.skip-proxy-for-clearnet-targets=true/tor.skip-proxy-for-clearnet-targets=false/g' $path > /dev/null
-                    fi
-                    
+                    sed -i "s/tor.skip-proxy-for-clearnet-targets=true/tor.skip-proxy-for-clearnet-targets=false/g" "$path" > /dev/null
+                   
                     # recheck again
-                    checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
+                    checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" "$path" > /dev/null)
                     if [ $checkAgain -ne 0 ]; then
                         echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!";echo
                     else
@@ -321,17 +318,17 @@ do
             if [ -f /data/cln/config ]; then path="/data/cln/config"; fi
 
             if [ "$path" != "" ]; then
-                check=$(grep -c "always-use-proxy=false" $path)
+                check=$(grep -c "always-use-proxy=false" "$path")
                 if [ $check -eq 1 ]; then
-                    line=$(grep -n "always-use-proxy=false" $path | cut -d ':' -f1)
+                    line=$(grep -n "always-use-proxy=false" "$path" | cut -d ':' -f1)
                     if [ "$line" != "" ]; then
-                        sed '${line}d' $path > /dev/null
+                        sed -i "${line}d" "$path" > /dev/null
                     fi
                     
                     # recheck again
-                    checkAgain=$(grep -c "always-use-proxy=false" $path)
+                    checkAgain=$(grep -c "always-use-proxy=false" "$path")
                     if [ $checkAgain -ne 0 ]; then
-                        echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'always-use-proxy=false' to 'true' before restarting!!";echo
+                        echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=false' to 'true' before restarting!!";echo
                     else
                         success=1
                         echo "> Hybrid Mode deactivated successfully.";echo
@@ -340,19 +337,19 @@ do
                 
                 # Umbrel 0.5: restore default configuration
                 if [ "$path" == "/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml" ]; then
-                    uncomment=$(grep -n "#\- \-\-bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735" $path | cut -d ':' -f1)
+                    uncomment=$(grep -n "#- --bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735" "$path" | cut -d ':' -f1)
                     if [ "$uncomment" != "" ]; then
-                        sed -i 's/#\- \-\-bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735/\- \-\-bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735/g' $path > /dev/null
+                        sed -i "s/#- --bind-addr/- --bind-addr/g" "$path" > /dev/null
                     fi
-                    deleteBind=(grep -n "\- \-\-bind-addr=0.0.0.0:9735" $path | cut -d ':' -f1)
+                    deleteBind=$(grep -n "bind-addr=0\.0\.0\.0\:9735" "$path" | cut -d ':' -f1)
                     if [ "$deleteBind" != "" ]; then
-                        sed '${deleteBind}d' $path > /dev/null
+                        sed -i "${deleteBind}d" "$path" > /dev/null
                     fi
-                    deleteAnnounceAddr=(grep -n "\- \-\-announce-addr=${vpnExternalIP}:${vpnExternalPort}" $path | cut -d ':' -f1)
+                    deleteAnnounceAddr=$(grep -n "announce-addr=" "$path" | cut -d ':' -f1)
                     if [ "$deleteAnnounceAddr" != "" ]; then
-                        sed '${deleteAnnounceAddr}d' $path > /dev/null
-                    fi
-                    echo "> Umbrel 0.5+: hybrid mode deactivated and configuration restored"
+                        sed -i "${deleteAnnounceAddr}d" "$path" > /dev/null
+                    fi                    
+                    echo "> Umbrel 0.5+: hybrid mode deactivated and configuration restored";echo
                 fi
             fi
         fi
