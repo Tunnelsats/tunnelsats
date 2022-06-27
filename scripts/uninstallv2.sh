@@ -24,11 +24,11 @@ options='Yes No'
 PS3='CAUTION! Uninstalling TunnelSats requires a mandatory restart of your lightning implementation. Do you really want to proceed? '
 select option in $options
 do
-    if [ "$option" == "No" ]; then
+    if [ "$option" == "Yes" ]; then
+        echo "> OK, proceeding... ";echo
+    else
         echo "> Exiting process.";echo
         exit 1
-    else
-        echo "> OK, proceeding... ";echo
     fi
 break
 done
@@ -101,10 +101,8 @@ do
                 fi
             fi
         fi
-    fi 
-
-
-    if [ "$i" == "CLN" ]; then
+    
+    elif [ "$i" == "CLN" ]; then
 
         # check CLN (RaspiBlitz)
         # RaspiBlitz: try to recover cl.check.sh
@@ -164,7 +162,11 @@ do
                 fi
             fi
         fi
+    else
+        echo "Please choose a given option.";echo
+        exit 1
     fi
+    
 break
 done
 
@@ -181,7 +183,7 @@ if [ $isDocker -eq 1 ]; then
     # Restart containers
     if  [ -f /home/umbrel/umbrel/scripts/start ]; then
         /home/umbrel/umbrel/scripts/start > /dev/null
-        echo "> Restarted umbrel containers";echo  
+        echo "> Restarted umbrel containers";echo
     fi
             
 else #nonDocker
