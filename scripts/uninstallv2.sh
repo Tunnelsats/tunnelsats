@@ -269,9 +269,9 @@ do
             if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
 
             if [ "$path" != "" ]; then
-                check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
+                check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path)
                 if [ $check -ne 0 ]; then
-                    line=$(grep -n "tor.skip-proxy-for-clearnet-targets=true" $path | cut -d ':' -f1 > /dev/null)
+                    line=$(grep -n "tor.skip-proxy-for-clearnet-targets=true" $path | cut -d ':' -f1)
                     if [ "$line" != "" ]; then
                         sed -i 's/tor.skip-proxy-for-clearnet-targets=true/tor.skip-proxy-for-clearnet-targets=false/g' $path > /dev/null
                     fi
@@ -315,15 +315,15 @@ do
             if [ -f /data/cln/config ]; then path="/data/cln/config"; fi
 
             if [ "$path" != "" ]; then
-                check=$(grep -c "always-use-proxy=false" $path > /dev/null)
-                if [ "${check}" -gt 0 ]; then
-                    line=$(grep -n "always-use-proxy=false" $path | cut -d ':' -f1 > /dev/null)
+                check=$(grep -c "always-use-proxy=false" $path)
+                if [ $check -eq 1 ]; then
+                    line=$(grep -n "always-use-proxy=false" $path | cut -d ':' -f1)
                     if [ "$line" != "" ]; then
                         sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $path > /dev/null
                     fi
                     
                     # recheck again
-                    checkAgain=$(grep -c "always-use-proxy=false" $path > /dev/null)
+                    checkAgain=$(grep -c "always-use-proxy=false" $path)
                     if [ $checkAgain -ne 0 ]; then
                         echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'always-use-proxy=false' to 'true' before restarting!!";echo
                     else
@@ -370,7 +370,7 @@ if [ $success -eq 1 ]; then
             
                 # RaspiBolt / RaspiBlitz / Bare Metal LND
                 if [ -f /etc/systemd/system/lnd.service ]; then
-
+                    echo "Restarting lnd.service ..."
                     if systemctl restart lnd.service > /dev/null; then
                         echo "> lnd.service successfully restarted";echo
                     else
@@ -379,7 +379,7 @@ if [ $success -eq 1 ]; then
 
                 # RaspiBlitz CLN
                 elif [ -f /etc/systemd/system/lightningd.service ]; then
-
+                    echo "Restarting lighningd.service ..."
                     if systemctl restart lightningd.service > /dev/null; then
                         echo "> lightningd.service successfully restarted";echo
                     else 
@@ -388,7 +388,7 @@ if [ $success -eq 1 ]; then
 
                 # RaspiBolt / Bare Metal CLN
                 elif [ -f /etc/systemd/system/cln.service ]; then
-
+                    echo "Restarting cln.service ..."
                     if systemctl restart cln.service > /dev/null; then
                         echo "> cln.service successfully restarted";echo
                     else
