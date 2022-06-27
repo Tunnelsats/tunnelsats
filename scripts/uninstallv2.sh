@@ -10,6 +10,21 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Restart required: Ask user if we should proceed anyway
+options='Yes No'
+PS3='CAUTION! Uninstalling TunnelSats requires a mandatory restart of your lightning implementation. Do you really want to proceed? '
+select option in $options
+do
+    if [ "$option" == "No" ]; then
+        echo "> Exiting process.";echo
+        exit 1
+    else
+        echo "> OK, proceeding... ";echo
+    fi
+break
+done
+
+
 # check if docker
 isDocker=0
 if [ "$(hostname)" == "umbrel" ] || \
@@ -19,6 +34,7 @@ if [ "$(hostname)" == "umbrel" ] || \
    [ -d /embassy-data/package-data/volumes/lnd ]; then
     isDocker=1
 fi
+
 
 # get VPN data
 if [ -f /etc/wireguard/tunnelsatsv2.conf ]; then
@@ -360,19 +376,20 @@ done
 
 
 # ask user if we should restart nonDocker automatically
-if [ $success -eq 1 ]; then
-  
-    kickoffs='Yes No'
-    PS3='Do you want to automatically restart lightning service now? '
-
-    select kickoff in $kickoffs
-    do
-        if [ "$kickoff" == "No" ]
-        then
-            echo;echo -e "Please check your lightning configuration file and remove/restore previous settings.\nAfterwards please restart the lightning implementation or reboot the system.";echo
-            break
-        else
-         
+#if [ $success -eq 1 ]; then
+#  
+#    kickoffs='Yes No'
+#    PS3='Do you want to automatically restart lightning service now? '
+#
+#    select kickoff in $kickoffs
+#    do
+#        if [ "$kickoff" == "No" ]
+#        then
+#            echo;echo -e "Please check your lightning configuration file and remove/restore previous settings.\nAfterwards please restart the lightning implementation or reboot the system.";echo
+#            break
+#        else
+#         
+echo "Restarting lightning implementation now..."
             if [ $isDocker -eq 1 ]; then
          
                 echo "Restarting docker services..."
@@ -414,15 +431,14 @@ if [ $success -eq 1 ]; then
                     else
                         echo "> ERR: cln.service could not be restarted.";echo
                     fi
-
                 fi
             fi
-       fi
-    break
-    done
 
-fi
-
+#       fi
+#    break
+#    done
+#
+#fi
 
 echo "VPN setup uninstalled!";echo
 
