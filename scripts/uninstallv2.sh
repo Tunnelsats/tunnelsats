@@ -195,8 +195,8 @@ fi
 #Flush nftables and enable old nftables.conf
 #Flush table if exist to avoid redundant rules
 if nft list table inet tunnelsatsv2 &> /dev/null; then
-    echo "> Flushing tunnelsats nftable rules...";echo
-    if nft flush table inet tunnelsatsv2 &> /dev/null; then echo "Done."; fi
+    echo "Flushing tunnelsats nftable rules..."
+    if nft flush table inet tunnelsatsv2 &> /dev/null; then echo "> Done";echo; fi
 fi
 
 if [ -f /etc/nftablespriortunnelsats.backup ]; then
@@ -220,7 +220,7 @@ select kickoff in $kickoffs
 do
     if [ "$kickoff" == "No" ]
     then
-        echo "> leaving system as is, proceeding..."
+        echo "> leaving system as is, proceeding...";echo
         break
     else
         echo
@@ -316,7 +316,7 @@ do
 
             if [ "$path" != "" ]; then
                 check=$(grep -c "always-use-proxy=false" $path > /dev/null)
-                if [ $check -ne 0 ]; then
+                if [ "${check}" -gt 0 ]; then
                     line=$(grep -n "always-use-proxy=false" $path | cut -d ':' -f1 > /dev/null)
                     if [ "$line" != "" ]; then
                         sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $path > /dev/null
@@ -368,7 +368,8 @@ if [ $success -eq 1 ]; then
             
             else #nonDocker
             
-                if [ "$imp" == "lnd" ] && [ -f /etc/systemd/system/lnd.service ]; then
+                # RaspiBolt / RaspiBlitz / Bare Metal LND
+                if [ -f /etc/systemd/system/lnd.service ]; then
 
                     if systemctl restart lnd.service > /dev/null; then
                         echo "> lnd.service successfully restarted";echo
@@ -376,7 +377,8 @@ if [ $success -eq 1 ]; then
                         echo "> ERR: lnd.service could not be restarted.";echo
                     fi
 
-                elif [ "$imp" == "cln" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+                # RaspiBlitz CLN
+                elif [ -f /etc/systemd/system/lightningd.service ]; then
 
                     if systemctl restart lightningd.service > /dev/null; then
                         echo "> lightningd.service successfully restarted";echo
@@ -384,7 +386,8 @@ if [ $success -eq 1 ]; then
                         echo "> ERR: lightningd.service could not be restarted.";echo
                     fi
 
-                elif [ "$imp" == "cln" ] && [ -f /etc/systemd/system/cln.service ]; then
+                # RaspiBolt / Bare Metal CLN
+                elif [ -f /etc/systemd/system/cln.service ]; then
 
                     if systemctl restart cln.service > /dev/null; then
                         echo "> cln.service successfully restarted";echo
