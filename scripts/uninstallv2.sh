@@ -412,17 +412,17 @@ fi
 
 select kickoff in $kickoffs
 do
-    if [ "$kickoff" == "No" ]
+    if [ "$kickoff" == "Yes" ]
     then
-        echo "> leaving system as is, proceeding...";echo
-        break
-    else
         echo
         if [[ $isDocker -eq 1 ]] && apt-get remove -yqq nftables wireguard-tools || apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
             echo "> Components removed";echo
         else
             echo "> ERR: components could not be removed. Please check manually.";echo
         fi
+    else
+        echo "> leaving system as is, proceeding...";echo
+        break    
     fi
 break
 done
