@@ -280,7 +280,7 @@ do
                     sed -i "s/tor.skip-proxy-for-clearnet-targets=true/tor.skip-proxy-for-clearnet-targets=false/g" "$path" > /dev/null
                    
                     # recheck again
-                    checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" "$path" > /dev/null)
+                    checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" "$path")
                     if [ $checkAgain -ne 0 ]; then
                         echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!";echo
                     else
