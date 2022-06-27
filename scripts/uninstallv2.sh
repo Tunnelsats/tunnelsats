@@ -20,6 +20,12 @@ if [ "$(hostname)" == "umbrel" ] || \
     isDocker=1
 fi
 
+# get VPN data
+if [ -f /etc/wireguard/tunnelsatsv2.conf ]; then
+    vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
+    vpnExternalPort=$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')
+fi
+
 # intro
 echo "
 ##############################
@@ -319,7 +325,7 @@ do
                 if [ $check -eq 1 ]; then
                     line=$(grep -n "always-use-proxy=false" $path | cut -d ':' -f1)
                     if [ "$line" != "" ]; then
-                        sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $path > /dev/null
+                        sed '${line}d' $path > /dev/null
                     fi
                     
                     # recheck again
@@ -330,6 +336,23 @@ do
                         success=1
                         echo "> Hybrid Mode deactivated successfully.";echo
                     fi
+                fi
+                
+                # Umbrel 0.5: restore default configuration
+                if [ "$path" == "/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml" ]; then
+                    uncomment=$(grep -n "#\- \-\-bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735" $path | cut -d ':' -f1)
+                    if [ "$uncomment" != "" ]; then
+                        sed -i 's/#\- \-\-bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735/\- \-\-bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735/g' $path > /dev/null
+                    fi
+                    deleteBind=(grep -n "\- \-\-bind-addr=0.0.0.0:9735" $path | cut -d ':' -f1)
+                    if [ "$deleteBind" != "" ]; then
+                        sed '${deleteBind}d' $path > /dev/null
+                    fi
+                    deleteAnnounceAddr=(grep -n "\- \-\-announce-addr=${vpnExternalIP}:${vpnExternalPort}" $path | cut -d ':' -f1)
+                    if [ "$deleteAnnounceAddr" != "" ]; then
+                        sed '${deleteAnnounceAddr}d' $path > /dev/null
+                    fi
+                    echo "> Umbrel 0.5+: hybrid mode deactivated and configuration restored"
                 fi
             fi
         fi
