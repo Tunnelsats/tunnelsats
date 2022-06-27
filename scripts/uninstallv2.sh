@@ -5,8 +5,8 @@
 # Usage: sudo bash uninstall.sh
 
 # check if sudo
-if [ "$EUID" -ne 0 ]
-then echo "Please run as root (with sudo)";echo
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run as root (with sudo)";echo
     exit 1
 fi
 
@@ -27,45 +27,43 @@ echo "
 #      Uninstall Script      #
 ##############################";echo
 
+if [ $isDocker -eq 0 ]; then
 
-# remove splitting.timer systemd (v1)
-if [ -f /etc/systemd/system/splitting.timer ]; then
-  echo "Removing splitting systemd timer...";
-  systemctl stop splitting.timer > /dev/null
-  systemctl disable splitting.timer > /dev/null
-  rm /etc/systemd/system/splitting.timer > /dev/null
-  echo "> splitting.timer: removed";echo
-fi
+    # remove splitting.timer systemd (v1)
+    if [ -f /etc/systemd/system/splitting.timer ]; then
+        echo "Removing splitting systemd timer...";
+        systemctl stop splitting.timer > /dev/null
+        systemctl disable splitting.timer > /dev/null
+        rm /etc/systemd/system/splitting.timer > /dev/null
+        echo "> splitting.timer: removed";echo
+    fi
 
-# remove splitting.service systemd
-if [ -f /etc/systemd/system/splitting.service ]; then
-  echo "Removing splitting systemd service...";
-  systemctl stop splitting.service > /dev/null
-  systemctl disable splitting.service > /dev/null
-  rm /etc/systemd/system/splitting.service > /dev/null
-  echo "> splitting.service: removed";echo
-fi
+    # remove splitting.service systemd
+    if [ -f /etc/systemd/system/splitting.service ]; then
+        echo "Removing splitting systemd service...";
+        systemctl stop splitting.service > /dev/null
+        systemctl disable splitting.service > /dev/null
+        rm /etc/systemd/system/splitting.service > /dev/null
+        echo "> splitting.service: removed";echo
+    fi
 
-sleep 2
-
-# remove timer and systemd services
-if [ $isDocker -eq 1 ]; then
+else
  
-  if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
-    echo "Removing tunnelsats docker network timer..."
-    systemctl stop tunnelsats-docker-network.timer > /dev/null
-    systemctl disable tunnelsats-docker-network.timer > /dev/null
-    rm /etc/systemd/system/tunnelsats-docker-network.timer > /dev/null
-    echo "> tunnelsats docker network timer removed";echo
-  fi
-  
-  if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
-    echo "Removing tunnelsats docker network service..."
-    systemctl stop tunnelsats-docker-network.service > /dev/null
-    systemctl disable tunnelsats-docker-network.service > /dev/null
-    rm /etc/systemd/system/tunnelsats-docker-network.service > /dev/null
-    echo "> tunnelsats docker network timer removed";echo
-  fi
+    if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
+        echo "Removing tunnelsats docker network timer..."
+        systemctl stop tunnelsats-docker-network.timer > /dev/null
+        systemctl disable tunnelsats-docker-network.timer > /dev/null
+        rm /etc/systemd/system/tunnelsats-docker-network.timer > /dev/null
+        echo "> tunnelsats docker network timer removed";echo
+    fi
+    
+    if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
+        echo "Removing tunnelsats docker network service..."
+        systemctl stop tunnelsats-docker-network.service > /dev/null
+        systemctl disable tunnelsats-docker-network.service > /dev/null
+        rm /etc/systemd/system/tunnelsats-docker-network.service > /dev/null
+        echo "> tunnelsats docker network timer removed";echo
+    fi
 
 fi
 
@@ -75,34 +73,34 @@ sleep 2
 # remove ufw setting (port rule)
 checkufw=$(ufw version 2> /dev/null | grep -c Canonical)
 if [ $checkufw -eq 1 ]; then
-  vpnExternalPort="$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')" > /dev/null
-  echo "Checking firewall and removing VPN port..."
-  ufw disable > /dev/null
-  ufw delete allow from any to any port $vpnExternalPort comment '# VPN Tunnelsats' > /dev/null
-  ufw --force enable > /dev/null
-  echo "> VPN rule removed";echo
+    vpnExternalPort="$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')" > /dev/null
+    echo "Checking firewall and removing VPN port..."
+    ufw disable > /dev/null
+    ufw delete allow from any to any port "$vpnExternalPort" comment '# VPN Tunnelsats' > /dev/null
+    ufw --force enable > /dev/null
+    echo "> VPN rule removed";echo
 fi
 
 sleep 2
 
 # remove wg-quick@tunnelsats service
 if [ -f /lib/systemd/system/wg-quick@.service ]; then
-  echo "Removing wireguard systemd service..."
-  # remove v1
-  if [ -f /etc/wireguard/tunnelsats.conf ]; then
-    wg-quick down tunnelsats > /dev/null
-    systemctl stop wg-quick@tunnelsats > /dev/null
-    systemctl disable wg-quick@tunnelsats > /dev/null
-  fi
-  
-  if wg-quick down tunnelsatsv2 > /dev/null && \
-     systemctl stop wg-quick@tunnelsatsv2 > /dev/null && \
-     systemctl disable wg-quick@tunnelsatsv2 > /dev/null && \
-     [ ! -f /etc/systemd/systemd/wg-quick@tunnelsatsv2 ]; then
-    echo "> wireguard systemd service disabled and removed";echo
-  else
-    echo "> ERR: could not remove /etc/systemd/systemd/wg-quick@tunnelsatsv2. Please check manually.";echo
-  fi
+    echo "Removing wireguard systemd service..."
+    # remove v1
+    if [ -f /etc/wireguard/tunnelsats.conf ]; then
+        wg-quick down tunnelsats > /dev/null
+        systemctl stop wg-quick@tunnelsats > /dev/null
+        systemctl disable wg-quick@tunnelsats > /dev/null
+    fi
+    
+    if wg-quick down tunnelsatsv2 > /dev/null && \
+        systemctl stop wg-quick@tunnelsatsv2 > /dev/null && \
+        systemctl disable wg-quick@tunnelsatsv2 > /dev/null && \
+        [ ! -f /etc/systemd/systemd/wg-quick@tunnelsatsv2 ]; then
+        echo "> wireguard systemd service disabled and removed";echo
+    else
+        echo "> ERR: could not remove /etc/systemd/systemd/wg-quick@tunnelsatsv2. Please check manually.";echo
+    fi
 fi
 
 sleep 2
@@ -110,12 +108,12 @@ sleep 2
 
 # remove wg-quick@tunnelsatsv2.service.d
 if [ -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d  ] && [ $isDocker -eq 1 ]; then
-  echo "Removing wg-quick@tunnelsatsv2.service.d..."
-  if rm -r /etc/systemd/system/wg-quick@tunnelsatsv2.service.d; then
-    echo "> /etc/systemd/system/wg-quick@tunnelsatsv2.service.d removed";echo
-  else
-    echo "> ERR: could not remove /etc/systemd/systemd/wg-quick@tunnelsatsv2.service.d. Please check manually.";echo
-  fi
+    echo "Removing wg-quick@tunnelsatsv2.service.d..."
+    if rm -r /etc/systemd/system/wg-quick@tunnelsatsv2.service.d; then
+        echo "> /etc/systemd/system/wg-quick@tunnelsatsv2.service.d removed";echo
+    else
+        echo "> ERR: could not remove /etc/systemd/systemd/wg-quick@tunnelsatsv2.service.d. Please check manually.";echo
+    fi
 fi
 
 sleep 2
@@ -123,57 +121,57 @@ sleep 2
 
 #remove docker-tunnelsats network
 if [ $isDocker -eq 1 ]; then
-  #Disconnect all containers from the network first
-  #Removing rules from routing table
-  echo "Removing tunnelsats specific routing rules..."  
-  ip route flush table 51820
+    #Disconnect all containers from the network first
+    #Removing rules from routing table
+    echo "Removing tunnelsats specific routing rules..."  
+    ip route flush table 51820
 
-  echo "Disconnecting containers from docker-tunnelsats network..."  
-  docker inspect docker-tunnelsats | jq .[].Containers | grep Name | sed 's/[\",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats  %'
-  
-  checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
-  if [ $checkdockernetwork -ne 0 ]; then 
-    echo "Removing docker-tunnelsats network..."  
-    if docker network rm "docker-tunnelsats" > /dev/null; then
-      echo "> docker-tunnelsats network removed";echo
-    else
-      echo "> ERR: could not remove docker-tunnelsats network. Please check manually.";echo
+    echo "Disconnecting containers from docker-tunnelsats network..."  
+    docker inspect docker-tunnelsats | jq .[].Containers | grep Name | sed 's/[\",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats  %'
+    
+    checkdockernetwork=$(docker network ls  2> /dev/null | grep -c "docker-tunnelsats")
+    if [ $checkdockernetwork -ne 0 ]; then 
+        echo "Removing docker-tunnelsats network..."  
+        if docker network rm "docker-tunnelsats" > /dev/null; then
+            echo "> docker-tunnelsats network removed";echo
+        else
+            echo "> ERR: could not remove docker-tunnelsats network. Please check manually.";echo
+        fi
     fi
-  fi
 fi
 
 sleep 2
 
 # remove killswitch requirement for umbrel startup
-if [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  ] && [ $isDocker -eq 1 ]; then
-  echo "Removing tunnelsats_killswitch.conf..."
-  if rm /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf ; then
-    rm -r /etc/systemd/system/umbrel-startup.service.d > /dev/null
-    echo "> /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  removed";echo
-  else
-    echo "> ERR: could not remove /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf . Please check manually.";echo
-  fi
+if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  ]; then
+    echo "Removing tunnelsats_killswitch.conf..."
+    if rm /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf ; then
+        rm -r /etc/systemd/system/umbrel-startup.service.d > /dev/null
+        echo "> /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  removed";echo
+    else
+        echo "> ERR: could not remove /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf. Please check manually.";echo
+    fi
 fi
 
 sleep 2
 
 #reset lnd
 if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lnd.service.bak ]; then
-  if mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service; then
-    echo "> lnd.service prior to tunnelsats successfully reset";echo
-  else 
-    echo "> ERR: Not able to reset /etc/systemd/system/lnd.service Please check manually.";echo
-  fi
+    if mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service; then
+        echo "> lnd.service prior to tunnelsats successfully reset";echo
+    else 
+        echo "> ERR: Not able to reset /etc/systemd/system/lnd.service Please check manually.";echo
+    fi
 fi
 
 
 #reset lightningd
 if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lightnind.service.bak ]; then
-  if mv /etc/systemd/system/lightnind.service.bak /etc/systemd/system/lightningd.service; then
-    echo "> lightningd.service prior to tunnelsats successfully reset";echo
-  else 
-    echo "> ERR: Not able to reset /etc/systemd/system/lightningd.service Please check manually.";echo
-  fi
+    if mv /etc/systemd/system/lightnind.service.bak /etc/systemd/system/lightningd.service; then
+        echo "> lightningd.service prior to tunnelsats successfully reset";echo
+    else 
+        echo "> ERR: Not able to reset /etc/systemd/system/lightningd.service Please check manually.";echo
+    fi
 fi
 
 
@@ -197,13 +195,15 @@ fi
 #Flush nftables and enable old nftables.conf
 #Flush table if exist to avoid redundant rules
 if nft list table inet tunnelsatsv2 &> /dev/null; then
-    echo "> Flushing tunnelsats nftable rules";echo
-    nft flush table inet tunnelsatsv2
+    echo "> Flushing tunnelsats nftable rules...";echo
+    if nft flush table inet tunnelsatsv2 &> /dev/null; then echo "Done."; fi
 fi
 
 if [ -f /etc/nftablespriortunnelsats.backup ]; then
-     mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf 
-     echo "> Prior nftables.conf now active. To enable it restart nftables.service or restart system ";echo
+    echo "Recovering old nftables ruleset..."
+    if mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf; then
+        echo "> Prior nftables.conf now active. To enable it restart nftables.service or restart system.";echo
+    fi
 fi
 
 sleep 2
@@ -211,147 +211,132 @@ sleep 2
 # uninstall cgroup-tools, nftables, wireguard
 kickoffs='Yes No'
 if [ $isDocker -eq 1 ]; then
-  PS3='Do you really want to uninstall nftables and wireguard via apt remove? '
+    PS3='Do you really want to uninstall nftables and wireguard via apt-get remove? '
 else
-  PS3='Do you really want to uninstall cgroup-tools, nftables and wireguard via apt remove? '
+    PS3='Do you really want to uninstall cgroup-tools, nftables and wireguard via apt-get remove? '
 fi
 
 select kickoff in $kickoffs
 do
-   if [ "$kickoff" == "No" ]
-   then
-     echo
-     break
-   else
-     echo
-     if [[ $isDocker -eq 1 ]] && apt-get remove -yqq nftables wireguard-tools || apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
-       echo "> Packages removed";echo
-     else
-       echo "> ERR: packages could not be removed. Please check manually.";echo
-     fi
-   fi
+    if [ "$kickoff" == "No" ]
+    then
+        echo "> leaving system as is, proceeding..."
+        break
+    else
+        echo
+        if [[ $isDocker -eq 1 ]] && apt-get remove -yqq nftables wireguard-tools || apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
+            echo "> Components removed";echo
+        else
+            echo "> ERR: components could not be removed. Please check manually.";echo
+        fi
+    fi
 break
 done
 
+sleep 2
 
 # Make sure to disable hybrid mode to prevent IP leakage
-echo "Trying to automatically detect setup and deactivate hybrid mode...";echo
-# check setup
-path="null"
-imp="null"
-if [ -f /mnt/hdd/lnd/lnd.conf ]; then #RaspiBlitz LND
-  path="/mnt/hdd/lnd/lnd.conf"
-  imp="lnd"
-elif [ -f /mnt/hdd/app-data/.lightning/config ]; then #RaspiBlitz CLN
-  path="/mnt/hdd/app-data/.lightning/config"
-  imp="cln"
-elif [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then #Umbrel < 0.5 LND
-  path="/home/umbrel/umbrel/lnd/lnd.conf"
-  imp="lnd"
-elif [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then #Umbrel 0.5+ LND
-  path="/home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf"
-  imp="lnd"
-elif [ -f /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml ]; then # Umbrel 0.5+ CLN
-  path="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"
-  imp="cln"
-elif [ -f /data/lnd/lnd.conf ]; then #RaspiBolt LND
-  path="/data/lnd/lnd.conf"
-  imp="lnd"
-elif [ -f /data/cln/config ]; then #RaspiBolt CLN
-  path="/data/cln/config"
-  imp="cln"
-elif [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then #Start9
- path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"
- imp="lnd"
-elif [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then #myNode
- path="/mnt/hdd/mynode/lnd/lnd.conf"
- imp="lnd"
-fi
-
-# TODO: BETTER DETECTION AND REMOVAL
-
-# RaspiBlitz: try to recover cl/lnd.check.sh and run it once
-if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
-    echo "RaspiBlitz: Trying to restore safety check 'lnd.check.sh'..."
-    if [ -f /home/admin/config.scripts/lnd.check.bak ]; then
-      mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
-      bash /home/admin/config.scripts/lnd.check.sh > /dev/null
-      echo "> Safety check for lnd.conf found and restored";echo
-    else
-      echo "> Backup of 'lnd.check.sh' not found";echo
-    fi
-elif [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
-  if [ -f /home/admin/config.scripts/cl.check.bak ]; then
-    mv /home/admin/config.scripts/cl.check.bak /home/admin/config.scripts/cl.check.sh
-    bash /home/admin/config.scripts/cl.check.sh
-    echo "> Safety check for cln config found and restored";echo
-  else
-    echo "> Backup of 'cl.check.sh' not found";echo
-  fi    
-fi
-
-# try to modify lnd config file
 success=0
-if [ "$path" != "null" ] && [ "$imp" == "lnd" ]; then
+imps="LND CLN"
+PS3="Which lightning implementation was set to hybrid mode at TunnelSats installation? "
+select i in $imps
+do
 
-  check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
-  if [ $check -ne 0 ]; then
-    lines=$(grep -n "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
-    for i in $lines
-    do
-      sed "${i}d" $path > /dev/null
-    done
-  fi
-  
-  # recheck again
-  checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
-  if [ $checkAgain -eq 0 ]; then
-    success=1
-    echo "> Hybrid Mode deactivated.";echo
-  else
-    echo "> Could not deactivate hybrid mode!! Please check your LND configuration file and set 'tor.skip-proxy-for-clearnet-targets=false' before restarting!!";echo
-  fi
-  
-fi
+    if [ "$i" == "LND" ]; then
 
-# check CLN (Umbrel 0.5)
-umbrelPath="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"
-if [ -f $umbrelPath ] && [ "$imp" == "cln" ]; then
+        # RaspiBlitz: try to recover lnd.check.sh
+        if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
+            echo "RaspiBlitz: Trying to restore with safety check 'lnd.check.sh'..."
+            if [ -f /home/admin/config.scripts/lnd.check.bak ]; then
+                mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
+                if bash /home/admin/config.scripts/lnd.check.sh > /dev/null; then
+                    success=1
+                    echo "> Safety check for lnd.conf found and restored";echo
+                fi
+            else
+                echo "> Backup of 'lnd.check.sh' not found, proceeding with manual deactivation...";echo
+            fi
+        fi
 
-  line=$(grep -n "\- \-\-always-use-proxy=false" $umbrelPath | cut -d ':' -f1 > /dev/null)
-  if [ "$line" != "" ]; then
-    sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $umbrelPath > /dev/null
-  fi 
-  
-  # recheck again
-  checkAgain=$(grep -c "always-use-proxy=true" $umbrelPath > /dev/null)
-  if [ $checkAgain -eq 1 ]; then
-    success=1
-    echo "> Hybrid Mode deactivated.";echo
-  else
-    echo "> Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=true' before restarting!!";echo
-  fi
-  
-fi
+        # do it manually
+        if [ $success -eq 0 ]; then
+            path=""
+            if [ -f /mnt/hdd/lnd/lnd.conf ]; then path="/mnt/hdd/lnd/lnd.conf"; fi 
+            if [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/lnd/lnd.conf"; fi
+            if [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf"; fi
+            if [ -f /data/lnd/lnd.conf ]; then path="/data/lnd/lnd.conf"; fi 
+            if [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"; fi
+            if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
 
-# check CLN (RaspiBlitz) - recovery via cl.check.sh failed
-if [ "$path" == "/mnt/hdd/app-data/.lightning/config" ] && [ "$imp" == "cln" ]; then
-  
-  line=$(grep -n "always-use-proxy=false" $path > /dev/null)
-  if [ "$line" != "" ]; then
-    sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $path > /dev/null
-  fi
-  
-  # recheck again
-  checkAgain=$(grep -c "always-use-proxy=true" $path > /dev/null)
-  if [ $checkAgain -eq 1 ]; then
-    success=1
-    echo "> Hybrid Mode deactivated.";echo
-  else
-    echo "> Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=true' before restarting!!";echo
-  fi  
-  
-fi
+            if [ "$path" != "" ]; then
+                check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
+                if [ $check -ne 0 ]; then
+                    line=$(grep -n "tor.skip-proxy-for-clearnet-targets=true" $path | cut -d ':' -f1 > /dev/null)
+                    if [ "$line" != "" ]; then
+                        sed -i 's/tor.skip-proxy-for-clearnet-targets=true/tor.skip-proxy-for-clearnet-targets=false/g' $path > /dev/null
+                    fi
+                    
+                    # recheck again
+                    checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" $path > /dev/null)
+                    if [ $checkAgain -ne 0 ]; then
+                        echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!";echo
+                    else
+                        success=1
+                        echo "> Hybrid Mode deactivated successfully.";echo
+                    fi
+                fi
+            fi
+        fi
+    fi 
+
+
+    if [ "$i" == "CLN" ]; then
+
+        # check CLN (RaspiBlitz)
+        # RaspiBlitz: try to recover cl.check.sh
+        if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+            echo "RaspiBlitz: Trying to restore with safety check 'cl.check.sh'..."
+            if [ -f /home/admin/config.scripts/cl.check.bak ]; then
+                mv /home/admin/config.scripts/cl.check.bak /home/admin/config.scripts/cl.check.sh
+                if bash /home/admin/config.scripts/cl.check.sh; then
+                    success=1
+                    echo "> Safety check for cln config found and restored";echo
+                fi
+            else
+                echo "> Backup of 'cl.check.sh' not found, proceeding with manual deactivation...";echo
+            fi    
+        fi
+
+        # do it manually
+        if [ $success -eq 0 ]; then
+            path=""
+            if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
+            if [ -f /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml ]; then path="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"; fi
+            if [ -f /data/cln/config ]; then path="/data/cln/config"; fi
+
+            if [ "$path" != "" ]; then
+                check=$(grep -c "always-use-proxy=false" $path > /dev/null)
+                if [ $check -ne 0 ]; then
+                    line=$(grep -n "always-use-proxy=false" $path | cut -d ':' -f1 > /dev/null)
+                    if [ "$line" != "" ]; then
+                        sed -i 's/always-use-proxy=false/always-use-proxy=true/g' $path > /dev/null
+                    fi
+                    
+                    # recheck again
+                    checkAgain=$(grep -c "always-use-proxy=false" $path > /dev/null)
+                    if [ $checkAgain -ne 0 ]; then
+                        echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'always-use-proxy=false' to 'true' before restarting!!";echo
+                    else
+                        success=1
+                        echo "> Hybrid Mode deactivated successfully.";echo
+                    fi
+                fi
+            fi
+        fi
+    fi
+break
+done
+
 
 
 # ask user if we should restart nonDocker automatically
@@ -362,53 +347,53 @@ if [ $success -eq 1 ]; then
 
     select kickoff in $kickoffs
     do
-       if [ "$kickoff" == "No" ]
-       then
-         echo;echo -e "Please check your lightning configuration file and remove/restore previous settings.\nAfterwards please restart the lightning implementation or reboot the system.";echo
-         break
-       else
+        if [ "$kickoff" == "No" ]
+        then
+            echo;echo -e "Please check your lightning configuration file and remove/restore previous settings.\nAfterwards please restart the lightning implementation or reboot the system.";echo
+            break
+        else
          
-         if [ $isDocker -eq 1 ]; then
+            if [ $isDocker -eq 1 ]; then
          
-           echo "Restarting docker services..."
-           systemctl daemon-reload > /dev/null
-           systemctl restart docker > /dev/null
-           echo "> Restarted docker.service to ensure clean setup"
+                echo "Restarting docker services..."
+                systemctl daemon-reload > /dev/null
+                systemctl restart docker > /dev/null
+                echo "> Restarted docker.service to ensure clean setup"
 
-           # Restart containers
-           if  [ -f /home/umbrel/umbrel/scripts/start ]; then
-             /home/umbrel/umbrel/scripts/start > /dev/null
-             echo "> Restarted umbrel containers";echo  
-           fi
-           
-         else #nonDocker
-         
-           if [ "$imp" == "lnd" ] && [ -f /etc/systemd/system/lnd.service ]; then
+                # Restart containers
+                if  [ -f /home/umbrel/umbrel/scripts/start ]; then
+                    /home/umbrel/umbrel/scripts/start > /dev/null
+                    echo "> Restarted umbrel containers";echo  
+                fi
+            
+            else #nonDocker
+            
+                if [ "$imp" == "lnd" ] && [ -f /etc/systemd/system/lnd.service ]; then
 
-             if systemctl restart lnd.service > /dev/null; then
-               echo "> lnd.service successfully restarted";echo
-             else
-               echo "> ERR: lnd.service could not be restarted.";echo
-             fi
+                    if systemctl restart lnd.service > /dev/null; then
+                        echo "> lnd.service successfully restarted";echo
+                    else
+                        echo "> ERR: lnd.service could not be restarted.";echo
+                    fi
 
-           elif [ "$imp" == "cln" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+                elif [ "$imp" == "cln" ] && [ -f /etc/systemd/system/lightningd.service ]; then
 
-             if systemctl restart lightningd.service > /dev/null; then
-               echo "> lightningd.service successfully restarted";echo
-             else 
-               echo "> ERR: lightningd.service could not be restarted.";echo
-             fi
+                    if systemctl restart lightningd.service > /dev/null; then
+                        echo "> lightningd.service successfully restarted";echo
+                    else 
+                        echo "> ERR: lightningd.service could not be restarted.";echo
+                    fi
 
-           elif [ "$imp" == "cln" ] && [ -f /etc/systemd/system/cln.service ]; then
+                elif [ "$imp" == "cln" ] && [ -f /etc/systemd/system/cln.service ]; then
 
-             if systemctl restart cln.service > /dev/null; then
-               echo "> cln.service successfully restarted";echo
-             else
-              echo "> ERR: cln.service could not be restarted.";echo
-             fi
+                    if systemctl restart cln.service > /dev/null; then
+                        echo "> cln.service successfully restarted";echo
+                    else
+                        echo "> ERR: cln.service could not be restarted.";echo
+                    fi
 
-           fi
-         fi
+                fi
+            fi
        fi
     break
     done
