@@ -128,7 +128,7 @@ sleep 2
 # check wireguard
 echo "Checking wireguard installation..."
 checkwg=$(wg -v 2> /dev/null | grep -c "wireguard-tools")
-if [ ! -d /etc/wireguard ] && [ $checkwg -eq 0 ]; then
+if [ $checkwg -eq 0 ]; then
     echo "Installing wireguard..."
     if apt-get install -y wireguard > /dev/null; then
         echo "> wireguard installed";echo
