@@ -14,23 +14,27 @@ fi
 # intro
 echo "
 ##############################
-         TunnelSats v2        
-        Uninstall Script      
+#       TunnelSats v2        #
+#      Uninstall Script      #
 ##############################";echo
 
 
 # Restart required: Ask user if we should proceed anyway
-options='Yes No'
-PS3='CAUTION! Uninstalling TunnelSats requires a mandatory restart of your lightning implementation. Do you really want to proceed? '
-select option in $options
+
+while true
 do
-    if [ "$option" == "Yes" ]; then
-        echo "> OK, proceeding... ";echo
-    else
-        echo "> Exiting process.";echo
-        exit 1
-    fi
-break
+   read -p "CAUTION! Uninstalling TunnelSats requires a mandatory restart of your lightning implementation. Do you really want to proceed? (Y/N) " answer
+
+
+  case $answer in
+   [yY]* ) echo "> OK, proceeding... ";echo
+           break;;
+
+   [nN]* ) echo "> Exiting process.";echo
+            exit 1
+            break;;
+   * )     echo "Just enter Y or N, please.";;
+  esac
 done
 
 
@@ -54,13 +58,13 @@ fi
 
 # Make sure to disable hybrid mode to prevent IP leakage
 success=0
-imps="LND CLN"
-PS3="Which lightning implementation was set to hybrid mode at TunnelSats installation? "
-select i in $imps
+while true
 do
+    read -p "Which lightning implementation was set to hybrid mode at TunnelSats installation? (LND|CLN) " answer
 
-    if [ "$i" == "LND" ]; then
 
+  case $answer in
+   lnd|LND* ) 
         # RaspiBlitz: try to recover lnd.check.sh
         if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
             echo "RaspiBlitz: Removing dependendency lnd.service.d ..."
@@ -109,10 +113,9 @@ do
                 fi
             fi
         fi
-    
-    elif [ "$i" == "CLN" ]; then
+           break;;
 
-        # check CLN (RaspiBlitz)
+   cln|CLN* )     # check CLN (RaspiBlitz)
         # RaspiBlitz: try to recover cl.check.sh
         if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
             echo "RaspiBlitz: Removing dependendency lightningd.service.d ..."
@@ -178,12 +181,9 @@ do
                 fi
             fi
         fi
-    else
-        echo "Please choose a given option.";echo
-        exit 1
-    fi
-    
-break
+            break;;
+   * )     echo "Just enter LND or CLN, please.";;
+  esac
 done
 
 
@@ -199,7 +199,7 @@ if [ $isDocker -eq 1 ]; then
     # Restart containers
     if  [ -f /home/umbrel/umbrel/scripts/start ]; then
         /home/umbrel/umbrel/scripts/start > /dev/null
-        echo "> Restarted umbrel containers";echo
+        echo "> Restarted umbrel containers";echo  
     fi
             
 else #nonDocker
@@ -434,28 +434,27 @@ fi
 sleep 2
 
 # uninstall cgroup-tools, nftables, wireguard
-kickoffs='Yes No'
-if [ $isDocker -eq 1 ]; then
-    PS3='Do you really want to uninstall nftables and wireguard via apt-get remove? '
-else
-    PS3='Do you really want to uninstall cgroup-tools, nftables and wireguard via apt-get remove? '
-fi
-
-select kickoff in $kickoffs
+while true
 do
-    if [ "$kickoff" == "Yes" ]
-    then
-        echo
-        if [[ $isDocker -eq 1 ]] && apt-get remove -yqq nftables wireguard-tools || apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
-            echo "> Components removed";echo
-        else
-            echo "> ERR: components could not be removed. Please check manually.";echo
-        fi
-    else
-        echo "> leaving system as is, proceeding...";echo
-        break    
-    fi
-break
+  if [ $isDocker -eq 1 ]; then
+      read -p "Do you really want to uninstall nftables and wireguard via apt-get remove? (Y/N) " answer
+
+  else
+      read -p "Do you really want to uninstall cgroup-tools, nftables and wireguard via apt-get remove?(Y/N) " answer
+  fi
+
+  case $answer in
+   [yY]* ) if [[ $isDocker -eq 1 ]] && apt-get remove -yqq nftables wireguard-tools || apt-get remove -yqq cgroup-tools nftables wireguard-tools; then
+              echo "> Components removed";echo
+           else
+              echo "> ERR: components could not be removed. Please check manually.";echo
+           fi
+           break;;
+
+   [nN]* )  echo "> leaving system as is, proceeding...";echo
+            break;;
+   * )     echo "Just enter Y or N, please.";;
+  esac
 done
 
 
