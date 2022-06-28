@@ -63,6 +63,14 @@ do
 
         # RaspiBlitz: try to recover lnd.check.sh
         if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
+            echo "RaspiBlitz: Removing dependendency lnd.service.d ..."
+            if [ -f  /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf ] && ! rm /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf &> /dev/null; then
+               echo "> ERR: Failed to remove dependency /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf";echo
+               exit 1
+            fi
+            systemctl daemon-reload &> /dev/null
+
+
             echo "RaspiBlitz: Trying to restore with safety check 'lnd.check.sh'..."
             if [ -f /home/admin/config.scripts/lnd.check.bak ]; then
                 mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
@@ -109,6 +117,14 @@ do
         # check CLN (RaspiBlitz)
         # RaspiBlitz: try to recover cl.check.sh
         if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+            echo "RaspiBlitz: Removing dependendency lightningd.service.d ..."
+            if [ -f  /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf ] && ! rm /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf &> /dev/null; then
+               echo "> ERR: Failed to remove dependency /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf";echo
+               exit 1
+            fi
+            systemctl daemon-reload &> /dev/null
+
+
             echo "RaspiBlitz: Trying to restore with safety check 'cl.check.sh'..."
             if [ -f /home/admin/config.scripts/cl.check.bak ]; then
                 mv /home/admin/config.scripts/cl.check.bak /home/admin/config.scripts/cl.check.sh
@@ -221,23 +237,36 @@ fi
 # remove splitting services
 if [ $isDocker -eq 0 ]; then
 
-    # remove splitting.timer systemd (v1)
-    if [ -f /etc/systemd/system/splitting.timer ]; then
-        echo "Removing splitting systemd timer...";
-        systemctl stop splitting.timer > /dev/null
-        systemctl disable splitting.timer > /dev/null
-        rm /etc/systemd/system/splitting.timer > /dev/null
-        echo "> splitting.timer: removed";echo
+    # remove tunnelsats-splitting-processes.timer systemd (v1)
+    if [ -f /etc/systemd/system/tunnelsats-splitting-processes.timer ]; then
+        echo "Removing tunnelsats-splitting-processes systemd timer...";
+        systemctl stop tunnelsats-splitting-processes.timer > /dev/null
+        systemctl disable tunnelsats-splitting-processes.timer > /dev/null
+        rm /etc/systemd/system/tunnelsats-splitting-processes.timer > /dev/null
+        echo "> tunnelsats-splitting-processes.timer: removed";echo
     fi
 
-    # remove splitting.service systemd
-    if [ -f /etc/systemd/system/splitting.service ]; then
-        echo "Removing splitting systemd service...";
-        systemctl stop splitting.service > /dev/null
-        systemctl disable splitting.service > /dev/null
-        rm /etc/systemd/system/splitting.service > /dev/null
-        echo "> splitting.service: removed";echo
+    # remove tunnelsats-splitting-processes.service systemd
+    if [ -f /etc/systemd/system/tunnelsats-splitting-processes.service ]; then
+        echo "Removing tunnelsats-splitting-processes systemd service...";
+        systemctl stop tunnelsats-splitting-processes.service > /dev/null
+        systemctl disable tunnelsats-splitting-processes.service > /dev/null
+        rm /etc/systemd/system/tunnelsats-splitting-processes.service > /dev/null
+        echo "> tunnelsats-splitting-processes.service: removed";echo
     fi
+
+
+     # remove tunnelsats-create-cgroup.service systemd
+    if [ -f /etc/systemd/system/tunnelsats-create-cgroup.service ]; then
+        echo "Removing tunnelsats-create-cgroup systemd service...";
+        systemctl stop tunnelsats-create-cgroup.service > /dev/null
+        systemctl disable tunnelsats-create-cgroup.service > /dev/null
+        rm /etc/systemd/system/tunnelsats-create-cgroup.service > /dev/null
+        echo "> tunnelsats-create-cgroup.service: removed";echo
+    fi
+
+
+
 
 else
  
@@ -267,9 +296,9 @@ checkufw=$(ufw version 2> /dev/null | grep -c "Canonical")
 if [ $checkufw -eq 1 ]; then
     vpnExternalPort="$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')" > /dev/null
     echo "Checking firewall and removing VPN port..."
-    ufw disable > /dev/null
-    ufw delete allow from any to any port "$vpnExternalPort" comment '# VPN Tunnelsats' > /dev/null
-    ufw --force enable > /dev/null
+    #ufw disable > /dev/null
+    ufw delete allow from any to any port "$vpnExternalPort" comment '# VPN Tunnelsats' &> /dev/null
+    #ufw --force enable > /dev/null
     echo "> VPN rule removed";echo
 fi
 
@@ -379,23 +408,25 @@ if [ $isDocker -eq 0 ]; then
         cgdelete net_cls:/splitted_processes 2> /dev/null
         echo "> Control Group Splitted Processes removed";echo
     else
-        echo "> ERR: Could not remove cgroup.";echo
+        echo "> ERR: Could not remove cgroup net_cls subgroup.";echo
     fi
 fi
 
 
 #Flush nftables and enable old nftables.conf
 #Flush table if exist to avoid redundant rules
-if nft list table inet tunnelsatsv2 &> /dev/null; then
-    echo "Flushing tunnelsats nftable rules..."
-    if nft flush table inet tunnelsatsv2 &> /dev/null; then echo "> Done";echo; fi
-fi
+if [ $isDocker -eq 1 ]; then
+  if nft list table inet tunnelsatsv2 &> /dev/null; then
+      echo "Flushing tunnelsats nftable rules..."
+      if nft flush table inet tunnelsatsv2 &> /dev/null; then echo "> Done";echo; fi
+  fi
 
-if [ -f /etc/nftablespriortunnelsats.backup ]; then
-    echo "Recovering old nftables ruleset..."
-    if mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf; then
-        echo "> Prior nftables.conf now active. To enable it restart nftables.service or restart system.";echo
-    fi
+  if [ -f /etc/nftablespriortunnelsats.backup ]; then
+      echo "Recovering old nftables ruleset..."
+      if mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf; then
+          echo "> Prior nftables.conf now active. To enable it restart nftables.service or restart system.";echo
+      fi
+  fi
 fi
 
 sleep 2

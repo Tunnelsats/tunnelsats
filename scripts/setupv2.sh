@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0 
-patch=3
+patch=4
 
 
 #Helper
@@ -47,12 +47,12 @@ if [ "$(hostname)" == "umbrel" ] || \
 fi
 
 # intro
-echo "
+echo -e "
 ###############################
-#        TunnelSats v2        #
-#        Setup Script         #
-#        Version:             #
-#        v$major.$minor.$patch#
+#\tTunnelSats v2\t
+#\tVersion:\t
+#\tSetup Script:\t
+#\tv$major.$minor.$patch\t
 ###############################";echo
 
 # check for downloaded tunnelsatsv2.conf, exit if not available
@@ -282,110 +282,240 @@ sleep 2
 
 if [ $isDocker -eq 0 ]; then
 
-  # setup lnd/clnfor splitting
+  # setup for cgroup
   # create file
-  echo "Creating lightning splitting.sh file in /etc/wireguard/..."
+  echo "Creating cgroup tunnelsats-create-cgroup.sh file in /etc/wireguard/..."
   echo "#!/bin/sh
 set -e
 dir_netcls=\"/sys/fs/cgroup/net_cls\"
-torsplitting=\"/sys/fs/cgroup/net_cls/splitted_processes\"
+splitted_processes=\"/sys/fs/cgroup/net_cls/splitted_processes\"
 modprobe cls_cgroup
 if [ ! -d \"\$dir_netcls\" ]; then
   mkdir \$dir_netcls
   mount -t cgroup -o net_cls none \$dir_netcls
   echo \"> Successfully added cgroup net_cls subsystem\"
 fi
-if [ ! -d \"\$torsplitting\" ]; then
+if [ ! -d \"\$splitted_processes\" ]; then
   mkdir /sys/fs/cgroup/net_cls/splitted_processes
   echo 1118498  > /sys/fs/cgroup/net_cls/splitted_processes/net_cls.classid
+  chmod 666  /sys/fs/cgroup/net_cls/splitted_processes/tasks
   echo \"> Successfully added Mark for net_cls subsystem\"
 else
   echo \"> Mark for net_cls subsystem already present\"
 fi
-# add Lightning pid(s) to cgroup
-pgrep -x lnd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
-pgrep -x lightningd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' > /dev/null
-count=\$(cat /sys/fs/cgroup/net_cls/splitted_processes/tasks | wc -l)
-if [ \$count -eq 0 ];then
-  echo \"> ERR: no pids added to file\"
-  exit 1
-else
-  echo \"> \${count} Process(es) successfully excluded\"
-fi
-" > /etc/wireguard/splitting.sh
+" > /etc/wireguard/tunnelsats-create-cgroup.sh
 
-  if [ -f /etc/wireguard/splitting.sh ]; then
-    echo "> /etc/wireguard/splitting.sh created.";echo
+chmod +x /etc/wireguard/tunnelsats-create-cgroup.sh
+
+  if [ -f /etc/wireguard/tunnelsats-create-cgroup.sh ]; then
+    echo "> /etc/wireguard/tunnelsats-create-cgroup.sh created.";echo
   else
-    echo "> ERR: /etc/wireguard/splitting.sh was not created. Please check for errors.";
+    echo "> ERR: /etc/wireguard/tunnelsats-create-cgroup.sh was not created. Please check for errors.";
     exit 1
   fi
 
   # run it once
-  if [ -f /etc/wireguard/splitting.sh ]; then
-      echo "> splitting.sh created, executing...";
+  if [ -f /etc/wireguard/tunnelsats-create-cgroup.sh ]; then
+      echo "> tunnelsats-create-cgroup.sh created, executing...";
       # run
-      bash /etc/wireguard/splitting.sh
-      echo "> Split-tunneling successfully executed";echo
+      bash /etc/wireguard/tunnelsats-create-cgroup.sh
+      echo "> Created tunnelsats cgroup successfully";echo
   else
-      echo "> ERR: splitting.sh execution failed";echo
+      echo "> ERR: tunnelsats-create-cgroup.sh execution failed";echo
       exit 1
   fi
 
 
   # enable systemd service
   # create systemd file
-  echo "Creating splitting systemd service..."
+  echo "Creating cgroup systemd service..."
   # LND
-  if [ ! -f /etc/systemd/system/splitting.service ] && [ -f /etc/systemd/system/lnd.service ]; then
+  if [ -f /etc/systemd/system/lnd.service ]; then
       echo "[Unit]
-Description=Splitting Lightning Traffic after Restart
-# Make sure it starts when lightning service is running (thats why restart settings are crucial here)
-Requires=lnd.service
-After=lnd.service
+Description=Creating cgroup for Splitting lightning traffic
 StartLimitInterval=200
 StartLimitBurst=5
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/bash /etc/wireguard/splitting.sh
+ExecStart=/usr/bin/bash /etc/wireguard/tunnelsats-create-cgroup.sh
 [Install]
 WantedBy=multi-user.target
-" > /etc/systemd/system/splitting.service
-  elif  [ ! -f /etc/systemd/system/splitting.service ] && [ -f /etc/systemd/system/lightningd.service ]; then
+" > /etc/systemd/system/tunnelsats-create-cgroup.service
+  elif [ -f /etc/systemd/system/lightningd.service ]; then
       echo "[Unit]
-Description=Splitting Lightning Traffic after Restart
-# Make sure it starts when lightning service is running (thats why restart settings are crucial here)
-Requires=lightningd.service
-After=lightningd.service
+Description=Creating cgroup for Splitting lightning traffic
 StartLimitInterval=200
 StartLimitBurst=5
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/bash /etc/wireguard/splitting.sh
+ExecStart=/usr/bin/bash /etc/wireguard/tunnelsats-create-cgroup.sh
 [Install]
 WantedBy=multi-user.target
-" > /etc/systemd/system/splitting.service
+" > /etc/systemd/system/tunnelsats-create-cgroup.service
   fi
 
-  # enable and start splitting.service
-  if [ -f /etc/systemd/system/splitting.service ]; then
+  # enable and start tunnelsats-create-cgroup.service
+  if [ -f /etc/systemd/system/tunnelsats-create-cgroup.service ]; then
     systemctl daemon-reload > /dev/null
-    if systemctl enable splitting.service > /dev/null && \
-       systemctl start splitting.service > /dev/null; then
-       echo "> splitting.service: systemd service enabled and started";echo
+    if systemctl enable tunnelsats-create-cgroup.service > /dev/null && \
+       systemctl start tunnelsats-create-cgroup.service > /dev/null; then
+       echo "> tunnelsats-create-cgroup.service: systemd service enabled and started";echo
     else
-       echo "> ERR: splitting.service could not be enabled or started. Please check for errors.";echo
+       echo "> ERR: tunnelsats-create-cgroup.service could not be enabled or started. Please check for errors.";echo
     fi
   else
-    echo "> ERR: splitting.service was not created. Please check for errors.";echo
+    echo "> ERR: tunnelsats-create-cgroup.service was not created. Please check for errors.";echo
     exit 1
   fi
+
+    #Adding tunnelsats-create-cgroup requirement to lnd/cln
+  if [ -f /etc/systemd/system/lnd.service ]; then
+      if [ ! -d /etc/systemd/system/lnd.service.d ]; then
+          mkdir /etc/systemd/system/lnd.service.d > /dev/null
+      fi 
+      echo "#Don't edit this file its generated by tunnelsats scripts
+      [Unit]
+    Description=lnd needs cgroup before it can start
+    Requires=tunnelsats-create-cgroup.service
+    After=tunnelsats-create-cgroup.service
+    " > /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf 
+    
+    systemctl daemon-reload
+    systemctl reload lnd.service 
+
+  
+
+  elif [ -f /etc/systemd/system/lightningd.service ]; then
+
+     if [ ! -d /etc/systemd/system/lightningd.service.d ]; then
+          mkdir /etc/systemd/system/lightningd.service.d > /dev/null
+      fi 
+      echo "#Don't edit this file its generated by tunnelsats scripts
+      [Unit]
+    Description=lightningd needs cgroup before it can start
+    Requires=tunnelsats-create-cgroup.service
+    After=tunnelsats-create-cgroup.service
+    " > /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf 
+
+
+    systemctl daemon-reload
+    systemctl reload lightningd.service 
+   
+  fi 
+
+#Create lightning splitting.service
+
+# create file
+  echo "Creating tunnelsats-splitting-processes.sh file in /etc/wireguard/..."
+  echo "#!/bin/sh
+  # add Lightning pid(s) to cgroup
+  pgrep -x lnd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' &> /dev/null
+  pgrep -x lightningd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' &> /dev/null
+  count=\$(cat /sys/fs/cgroup/net_cls/splitted_processes/tasks | wc -l)
+  if [ \$count -eq 0 ];then
+    echo \"> ERR: no pids added to file\"
+    exit 1
+  else
+    echo \"> \${count} Process(es) successfully excluded\"
+  fi
+  
+  " > /etc/wireguard/tunnelsats-splitting-processes.sh 
+
+  chmod +x /etc/wireguard/tunnelsats-splitting-processes.sh
+  
+  if [ -f /etc/wireguard/tunnelsats-splitting-processes.sh ]; then
+    echo "> /etc/wireguard/tunnelsats-splitting-processes.sh created"
+    chmod +x /etc/wireguard/tunnelsats-splitting-processes.sh
+  else
+    echo "> ERR: /etc/wireguard/tunnelsats-splitting-processes.sh was not created. Please check for errors."
+    exit 1
+  fi
+
+  # run it once
+  if [ -f /etc/wireguard/tunnelsats-splitting-processes.sh ]; then
+      echo "> tunnelsats-splitting-processes.sh created, executing...";
+      # run
+      bash /etc/wireguard/tunnelsats-splitting-processes.sh
+      echo "> tunnelsats-splitting-processes.sh successfully executed";echo
+  else
+      echo "> ERR: tunnelsats-splitting-processes.sh execution failed";echo
+      exit 1
+  fi
+
+  # enable systemd service
+  # create systemd file
+  echo "Creating tunnelsats-splitting-processes systemd service..."
+  if [ ! -f /etc/systemd/system/tunnelsats-splitting-processes.sh ]; then
+    
+      echo "[Unit]
+  Description=Adding Lightning Process to the tunnel
+  StartLimitInterval=200
+  StartLimitBurst=5
+  [Service]
+  Type=oneshot
+  ExecStart=/bin/bash /etc/wireguard/tunnelsats-splitting-processes.sh
+  [Install]
+  WantedBy=multi-user.target
+  " > /etc/systemd/system/tunnelsats-splitting-processes.service
+
+      echo "[Unit]
+  Description=1min timer for tunnelsats-splitting-processes.service
+  [Timer]
+  OnBootSec=60
+  OnUnitActiveSec=60
+  Persistent=true
+  [Install]
+  WantedBy=timers.target
+      " > /etc/systemd/system/tunnelsats-splitting-processes.timer
+      
+      if [ -f /etc/systemd/system/tunnelsats-splitting-processes.service ]; then
+        echo "> tunnelsats-splitting-processes.service created"
+      else
+        echo "> ERR: tunnelsats-splitting-processes.service not created. Please check for errors.";echo
+	    exit 1
+      fi
+      if [ -f /etc/systemd/system/tunnelsats-splitting-processes.timer ]; then
+        echo "> tunnelsats-splitting-processes.timer created"
+      else
+        echo "> ERR: tunnelsats-splitting-processes.timer not created. Please check for errors.";echo
+	    exit 1
+      fi
+
+  fi  
+
+  # enable and start tunnelsats-docker-network.service
+  if [ -f /etc/systemd/system/tunnelsats-splitting-processes.service ]; then
+    systemctl daemon-reload > /dev/null
+    if systemctl enable tunnelsats-splitting-processes.service > /dev/null && \
+      systemctl start tunnelsats-splitting-processes.service > /dev/null; then
+      echo "> tunnelsats-splitting-processes.servicee: systemd service enabled and started"
+    else
+      echo "> ERR: tunnelsats-splitting-processes.service could not be enabled or started. Please check for errors.";echo
+      exit 1
+    fi
+      # Docker: enable timer
+    if [ -f /etc/systemd/system/tunnelsats-splitting-processes.timer ]; then
+      if systemctl enable tunnelsats-splitting-processes.timer > /dev/null && \
+        systemctl start tunnelsats-splitting-processes.timer > /dev/null; then
+        echo "> tunnelsats-splitting-processes.timer: systemd timer enabled and started";echo
+      else
+        echo "> ERR: tunnelsats-splitting-processes.timer: systemd timer could not be enabled or started. Please check for errors.";echo
+        exit 1
+      fi
+    fi
+  else
+    echo "> ERR: tunnelsats-splitting-processes.service was not created. Please check for errors.";echo
+    exit 1
+  fi
+
+
 fi
 
-
 sleep 2
+
+
 
 #Start lightning implementation in cggroup when non docker
 #changing respective .service file
@@ -397,6 +527,14 @@ if [ $isDocker -eq 0 ]; then
    if sed -i'.bak' 's/ExecStart=/ExecStart=\/usr\/bin\/cgexec -g net_cls:splitted_processes /g' /etc/systemd/system/lnd.service ; then
       echo "> lnd.service updated now starts in cgroup tunnelsats";echo
       echo "> backup saved under /etc/systemd/system/lnd.service.bak";echo
+      systemctl daemon-reload 
+      echo "> lnd.service restarting ...";echo
+      if systemctl restart lnd.service; then 
+          echo "> lnd.service restarted";echo
+      else 
+         echo "> ERR: not able to restart lnd.service. Please check for errors.";echo
+         exit 1
+      fi 
 
    else
       echo "> ERR: not able to change /etc/systemd/system/lnd.service. Please check for errors.";echo
@@ -407,6 +545,14 @@ if [ $isDocker -eq 0 ]; then
     if sed -i'.bak' 's/ExecStart=/ExecStart=\/usr\/bin\/cgexec -g net_cls:splitted_processes /g' /etc/systemd/system/lightningd.service ; then
       echo "> lightnind.service updated now starts in cgroup tunnelsats";echo
       echo "> backup saved under /etc/systemd/system/lightnind.service.bak";echo
+      systemctl daemon-reload 
+      echo "> lightnind.service restarting ...";echo
+      if systemctl restart lightningd.service; then 
+          echo "> lightningd.service restarted";echo
+      else 
+         echo "> ERR: not able to restart lightningd.service. Please check for errors.";echo
+         exit 1
+      fi 
 
     else
       echo "> ERR: not able to change /etc/systemd/system/lightnind.service. Please check for errors.";echo
@@ -607,32 +753,34 @@ if [ $isDocker -eq 1 ]; then
       fi
 
     fi
-  fi
-fi
 
-# enable and start tunnelsats-docker-network.service
-if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
-  systemctl daemon-reload > /dev/null
-  if systemctl enable tunnelsats-docker-network.service > /dev/null && \
-     systemctl start tunnelsats-docker-network.service > /dev/null; then
-    echo "> tunnelsats-docker-network.service: systemd service enabled and started"
-  else
-    echo "> ERR: tunnelsats-docker-network.service could not be enabled or started. Please check for errors.";echo
-    exit 1
   fi
-    # Docker: enable timer
-  if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
-    if systemctl enable tunnelsats-docker-network.timer > /dev/null && \
-       systemctl start tunnelsats-docker-network.timer > /dev/null; then
-      echo "> tunnelsats-docker-network.timer: systemd timer enabled and started";echo
+
+  # enable and start tunnelsats-docker-network.service
+  if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
+    systemctl daemon-reload > /dev/null
+    if systemctl enable tunnelsats-docker-network.service > /dev/null && \
+      systemctl start tunnelsats-docker-network.service > /dev/null; then
+      echo "> tunnelsats-docker-network.service: systemd service enabled and started"
     else
-      echo "> ERR: tunnelsats-docker-network.timer: systemd timer could not be enabled or started. Please check for errors.";echo
+      echo "> ERR: tunnelsats-docker-network.service could not be enabled or started. Please check for errors.";echo
       exit 1
     fi
+      # Docker: enable timer
+    if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
+      if systemctl enable tunnelsats-docker-network.timer > /dev/null && \
+        systemctl start tunnelsats-docker-network.timer > /dev/null; then
+        echo "> tunnelsats-docker-network.timer: systemd timer enabled and started";echo
+      else
+        echo "> ERR: tunnelsats-docker-network.timer: systemd timer could not be enabled or started. Please check for errors.";echo
+        exit 1
+      fi
+    fi
+  else
+    echo "> ERR: tunnelsats-docker-network.service was not created. Please check for errors.";echo
+    exit 1
   fi
-else
-  echo "> ERR: tunnelsats-docker-network.service was not created. Please check for errors.";echo
-  exit 1
+
 fi
 
 sleep 2
