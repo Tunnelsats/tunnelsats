@@ -49,22 +49,10 @@ fi
 # intro
 echo -e "
 ###############################
-<<<<<<< HEAD
-#\tTunnelSats v2\t
-#\tVersion:\t
-#\tSetup Script:\t
-#\tv$major.$minor.$patch\t
-||||||| 695f533
-#        TunnelSats v2        #
-#        Setup Script         #
-#        Version:             #
-#        v$major.$minor.$patch#
-=======
          TunnelSats v2        
          Setup Script         
          Version:             
          v$major.$minor.$patch
->>>>>>> 5917a64a1bbf539de21732d2b41930148986cc64
 ###############################";echo
 
 # check for downloaded tunnelsatsv2.conf, exit if not available
