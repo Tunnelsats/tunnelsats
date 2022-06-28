@@ -293,18 +293,6 @@ fi
 sleep 2
 
 
-# remove ufw setting (port rule)
-checkufw=$(ufw version 2> /dev/null | grep -c "Canonical")
-if [ $checkufw -eq 1 ]; then
-    vpnExternalPort="$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')" > /dev/null
-    echo "Checking firewall and removing VPN port..."
-    #ufw disable > /dev/null
-    ufw delete allow from any to any port "$vpnExternalPort" comment '# VPN Tunnelsats' &> /dev/null
-    #ufw --force enable > /dev/null
-    echo "> VPN rule removed";echo
-fi
-
-sleep 2
 
 # remove wg-quick@tunnelsats service
 if [ -f /lib/systemd/system/wg-quick@.service ]; then
