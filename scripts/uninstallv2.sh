@@ -298,19 +298,18 @@ sleep 2
 if [ -f /lib/systemd/system/wg-quick@.service ]; then
     echo "Removing wireguard systemd service..."
     # remove v1
-    if [ -f /etc/wireguard/tunnelsats.conf ]; then
-        wg-quick down tunnelsats > /dev/null
+    if [ -f /etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsats.service ]; then
         systemctl stop wg-quick@tunnelsats > /dev/null
         systemctl disable wg-quick@tunnelsats > /dev/null
     fi
     
-    if wg-quick down tunnelsatsv2 > /dev/null && \
-        systemctl stop wg-quick@tunnelsatsv2 > /dev/null && \
-        systemctl disable wg-quick@tunnelsatsv2 > /dev/null && \
-        [ ! -f /etc/systemd/systemd/wg-quick@tunnelsatsv2 ]; then
-        echo "> wireguard systemd service disabled and removed";echo
-    else
-        echo "> ERR: could not remove /etc/systemd/systemd/wg-quick@tunnelsatsv2. Please check manually.";echo
+    if [ -f /etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsatsv2.service ]; then
+        if systemctl stop wg-quick@tunnelsatsv2 > /dev/null && \
+            systemctl disable wg-quick@tunnelsatsv2 > /dev/null; then 
+            echo "> wireguard systemd service disabled and removed";echo
+        else
+            echo "> ERR: could not remove /etc/systemd/systemd/wg-quick@tunnelsatsv2. Please check manually.";echo
+        fi
     fi
 fi
 
