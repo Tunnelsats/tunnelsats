@@ -383,7 +383,6 @@ WantedBy=multi-user.target
     " > /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf 
     
     systemctl daemon-reload
-    systemctl reload lnd.service 
 
   
 
@@ -401,7 +400,6 @@ WantedBy=multi-user.target
 
 
     systemctl daemon-reload
-    systemctl reload lightningd.service 
    
   fi 
 
