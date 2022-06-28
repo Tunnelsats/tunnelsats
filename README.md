@@ -5,7 +5,7 @@
 ## Prelude and Objective ##
 The lightning network functions in rapid growing speed as infrastructure for payments across the globe between merchants, creators, consumers, institutions and investors alike. Hence the key pillars of sustained growth are their nodes, by providing _reliable_, _liquid_, _discoverable_, _trustless_ and _fast_ connection points between those parties. For fast communication establishing clearnet connections between nodes is inevitable. 
 
-The effort of creating a valuable "clearnet over VPN" node - which we laid out [here](https://blckbx.github.io/lnd-hybrid-mode/) and [here](https://github.com/TrezorHannes/Dual-LND-Hybrid-VPS) - is quite high and intense because it touches several disciplinaries not every node runner is comfortable with. Required knowledge of the command line, firewall handling, network details, trust in and choosing of a suitable VPN provider that offers all the features we need and cares about privacy and, of course, the configuration of the lightning node itself makes it easy to just "leave it as is". Therefore we came to the conclusion that this process has to be simplified **a lot**. In the last few weeks we put together all the pieces that we think provide the best of both worlds to make it as easy as possible to go hybrid. 
+The effort of creating a valuable "clearnet over VPN" node - which we laid out [here](https://blckbx.github.io/lnd-hybrid-mode/) and [here](https://github.com/TrezorHannes/Dual-LND-Hybrid-VPS) - is quite high and intense because it touches several disciplines not every node runner is comfortable with. Required knowledge of the command line, firewall handling, network details, trust in and choosing of a suitable VPN provider that offers all the features we need and cares about privacy and security and, of course, the configuration of the lightning node itself makes it easy to just "leave it as is". Therefore we came to the conclusion that this process has to be simplified **a lot**. In the last few weeks we put together all the pieces that we think provide the best of both worlds to make it as easy as possible to go hybrid. 
 
 Although thinking this is a suitable way of providing a "hybrid service", we want to emphasize to carefully read through the guide below, make an educated decision by yourself if you want to go clearnet over VPN.
 
@@ -20,7 +20,6 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - [Enabling hybrid mode](#enabling-hybrid-mode)
   - [LND](#lnd)
   - [CLN](#cln)
-- [Verify Connection](#verify-connection)
 - [Uninstall](#uninstall)
 - [Deep Dive](#deep-dive)
 - [Further Help](#further-help)
@@ -52,38 +51,38 @@ In order to understand the provided scripts and steps we gonna take a deep dive 
 
 ## Install: ##
 
-WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGuard servers in various countries to choose from. 
+WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGuard servers and quantum-safe VPN tunnels in various countries to choose from. 
 
 1) Go to [tunnelsats.com](https://www.tunnelsats.com), select a country of your choice (preferably close to your real location for faster connection speed) and choose how long you want to use the service (1 to 12 months).
 
 2) Pay the lightning invoice.
 
-3) Copy, download or send the wireguard configuration (file: `tunnelsats.conf` - please do NOT rename this file) to your local computer and transfer it to your node.
+3) Copy, download or send the wireguard configuration (file: `tunnelsatsv2.conf` - please do NOT rename this file) to your local computer and transfer it to your node.
 
 4) Download the setup script onto your node.
 
   Download setup script:
   
   ```sh
-  $ wget https://github.com/blckbx/tunnelsats/raw/main/scripts/setup.sh
+  $ wget https://github.com/blckbx/tunnelsats/raw/main/scripts/setupv2.sh
   ```
 
-  Copy your WireGuard config file (`tunnelsats.conf`) to the same directory where `setup.sh` is located. If you need to transfer it to your node, use `scp` like so:
+  Copy your WireGuard config file (`tunnelsatsv2.conf`) to the same directory where `setupv2.sh` is located. If you need to transfer it to your node, use `scp` like so:
   
   ```sh
-  $ scp tunnelsats.conf <user>@<ip/hostname>:/<path-to-home-dir>
+  $ scp tunnelsatsv2.conf <user>@<ip/hostname>:/<path-to-home-dir>
   ```
   
-  e.g. for Umbrel: ` scp tunnelsats.conf umbrel@umbrel.local:/home/umbrel/ `
+  e.g. for Umbrel: ` scp tunnelsatsv2.conf umbrel@umbrel.local:/home/umbrel/ `
   
 
-  Make sure that both files (tunnelsats.conf and setup.sh) are located in the same directory. Then start it:
+  Make sure that both files (tunnelsatsv2.conf and setupv2.sh) are located in the same directory. Then start it:
   
   ```sh
-  $ sudo bash setup.sh
+  $ sudo bash setupv2.sh
   ```
   
-  If everything went fine, your selected VPN's credentials and further instructions are shown to adjust the lightning configuration file. Copy to file or write them down for later use:
+  If everything went fine, your selected VPN's credentials and further instructions are shown to adjust the lightning configuration file. Copy to file or write them down for later use (e.g. LND config):
   
   ```ini
   #########################################
@@ -107,13 +106,13 @@ Before applying any changes to your config files, please __always__ create a bac
   $ sudo cp /path/to/lnd.conf /path/to/lnd.conf.backup
   ```
 
-⚠️ __Important Notice__: The following parts show how to configure LND and CLN implementations for hybrid mode. Regarding the status of this project, we currently only support one lightning implementation at a time. This means: If you plan to run both LND and CLN in parallel, only one is routed over VPN and the other defaults to Tor-only. Nevertheless, it is possible to choose or switch default ports on various node setups. This requires deep technical knowledge of the setup and is therefore not recommended!
+⚠️ __Important Notice__: The following parts show how to configure LND and CLN implementations for hybrid mode. Regarding the status of this project, we currently only support one lightning implementation at a time. This means: If you plan to run both LND and CLN in parallel, only one (which listens on port 9735) is routed over VPN, others default to Tor-only. Nevertheless, it is possible to choose or switch default ports on various node setups.
 
 <br/>
 
 ### LND
 
-Running LND only requires a few parameters to be checked and set to activate hybrid mode. Locate `lnd.conf` depending on your node setup. See the [FAQ](https://blckbx.github.io/tunnelsats/FAQ.html#where-do-i-find-my-lndconf-file) for some default path examples.
+Running LND only requires a few parameters to be checked and set to activate hybrid mode. Locate `lnd.conf` depending on your node setup. See the [FAQ](https://blckbx.github.io/tunnelsats/FAQ.html#where-do-i-find-my-lndconf-file) for some default path examples. Just append the lines shown at the end of the setupv2.sh process to your lnd config file:
 
   ```ini
   [Application Options]
@@ -130,7 +129,7 @@ Running LND only requires a few parameters to be checked and set to activate hyb
 
 ### CLN
 
-With CLN it is a bit trickier. Most node setups like Umbrel, RaspiBolt, RaspiBlitz etc. default CLN's daemon port to the number `9736`. So in order to route CLN clearnet over VPN, we need to change CLN's default port to `9735`. 
+With CLN it's a bit trickier. Most node setups like Umbrel, RaspiBolt, RaspiBlitz etc. default CLN's daemon port to the number `9736`. So in order to route CLN clearnet over VPN, we need to change CLN's default port to `9735`. 
 
 The following shows how to edit non-docker CLN configuration:
 
@@ -142,11 +141,11 @@ announce-addr={vpnIP}:{vpnPort}
 always-use-proxy=false
 ```
 
-On docker based systems this can look very differently. The following shows how to enable hybrid on Umbrel v0.5+:
+On docker based systems this looks very differently. The following shows how to enable hybrid on Umbrel v0.5+:
 
-- Apps installed: Bitcoin, CLN
+- Apps installed: Bitcoin, CLN (LND may NOT be installed at the same time)
 - Working Directory: `~/umbrel/app-data/core-lightning/`
-- Files to look at: `export.sh`, `docker-compose.yml`
+- Files to look for: `export.sh`, `docker-compose.yml`
 - Changes to be made: 
 
 export.sh: change port number from 9736 to 9735
@@ -157,10 +156,12 @@ change to
 ```ini
 export APP_CORE_LIGHTNING_DAEMON_PORT="9735"
 ```
-docker-compose.yml: add two new parameters to `command` section. these are `always-use-proxy=false` and `announce-addr=`
+
+docker-compose.yml: add two new parameters to `command` section. these are `always-use-proxy=false` and `announce-addr=` and comment out `- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735`.
+
 ```ini
   lightningd:
-    image: lncm/clightning:v0.11.0@sha256:75e0ce04d644f34b07bc8a3b92e58b3db4e3c06bdc0e0cecd1669bc3b2d53421
+    image: lncm/clightning:...
     restart: on-failure
     ports:
       - ${APP_CORE_LIGHTNING_DAEMON_PORT}:9735
@@ -182,7 +183,7 @@ docker-compose.yml: add two new parameters to `command` section. these are `alwa
 change to (replace {vpnIP}:{vpnPort} with the VPN IP and port received running `setup.sh`)
 ```ini
 lightningd:
-    image: lncm/clightning:v0.11.0@sha256:75e0ce04d644f34b07bc8a3b92e58b3db4e3c06bdc0e0cecd1669bc3b2d53421
+    image: lncm/clightning:...
     restart: on-failure
     ports:
       - ${APP_CORE_LIGHTNING_DAEMON_PORT}:9735
@@ -205,47 +206,26 @@ lightningd:
         ipv4_address: ${APP_CORE_LIGHTNING_DAEMON_IP}
 ```
 
-⚠️ __Important Notice:__ Please uncomment or remove any other `listen=` parameters like `listen=localhost`, `externalip=` and / or `externalhosts=` settings. They can potentially interfere with VPN settings. In summary:
+⚠️ __Important Notice:__ Especially for LND configurations, please uncomment or remove any other `externalip=` and / or `externalhosts=` settings. They can potentially interfere with VPN settings. In summary:
 
   ```ini
   # Uncomment any of these parameters if present:
-  #listen=localhost
   #externalip=...
   #externalhosts=...
   ```
   
-After enabling hybrid mode in related configuration files, restart the lightning implementation for changes to take effect! Before doing so, verify the established VPN connection with commands provided in the following part. 
+⚠️ After enabling hybrid mode in related configuration files, restart the lightning implementation for changes to take effect! Before doing so, verify the established VPN connection with commands provided in the following part. 
 
 <br/>
 
-## Verify Connection: ##
-
-When all is set and done, you can verify the established VPN connection. To do so, we take a look at some VPN connection statistics: `sudo wg show`
-This shows some information about the establised tunnel:
-
-```ini
-interface: tunnelsats
-  public key: <server pubkey>
-  private key: (hidden)
-  listening port: 11111
-  fwmark: 0xaaabbb
-
-peer: <peer pubkey>
-  endpoint: <vpn ip>:51820
-  allowed ips: 0.0.0.0/0, ::/0
-  latest handshake: 7 seconds ago
-  transfer: x.xx MiB received, xx.xx MiB sent
-```
-
-<br/>
 
 ## Uninstall: ##
 
-To restore all applied changes made to your node setup, download and run the uninstall script. Furthermode remove entries from configuration files.
+To restore all applied changes made to your node setup, download and run the uninstallv2 script. Furthermore remove entries from configuration files.
 
   ```sh
-  $ wget https://github.com/blckbx/tunnelsats/raw/main/scripts/uninstall.sh
-  $ sudo bash uninstall.sh
+  $ wget https://github.com/blckbx/tunnelsats/raw/main/scripts/uninstallv2.sh
+  $ sudo bash uninstallv2.sh
   ```
 Restore your configuration from with the backup file you (hopefully) created on setting up hybrid mode. 
 
@@ -253,19 +233,17 @@ Restore your configuration from with the backup file you (hopefully) created on 
 
 ## Deep Dive: ##
 
-What is the `setup.sh` script doing in detail?
+What is the `setupv2.sh` script doing in detail?
 
 1) Checking if required components are already installed and if not, installing them. These are: `cgroup-tools` (for split-tunneling Tor), `nftables` (VPN rules) and `wireguard` (VPN software).
 
-2) Checking if `tunnelsats.conf` exists in current directory (must be the same directory where setup script is located).
+2) Checking if `tunnelsatsv2.conf` exists in current directory (must be the same directory where setup script is located).
 
 3) Setting up "split-tunneling" to exclude Tor from VPN usage as systemd service to run after Tor (re)starts.
 
 4) Enabling and starting required systemd services (wg-quick@.service, splitting.service).
 
-5) Setting ufw port rules (if installed) to open up the VPN provided forwarded port.
-
-6) Adding nftables ruleset to client system to enable kill-switching and prevent DNS leakage.
+5) Adding nftables ruleset to client system to enable kill-switching and prevent DNS leakage.
 
 <br/>
 
