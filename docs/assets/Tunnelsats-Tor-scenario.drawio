@@ -1,0 +1,186 @@
+<mxfile host="app.diagrams.net" modified="2022-06-29T13:02:18.046Z" agent="5.0 (X11; CrOS x86_64 14695.85.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36" etag="0KvzwXREO3pLbrEiOhq0" version="20.0.0" type="github">
+  <diagram name="Page-1" id="822b0af5-4adb-64df-f703-e8dfc1f81529">
+    <mxGraphModel dx="1179" dy="676" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" background="#283618" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-64" value="" style="endArrow=none;dashed=1;html=1;rounded=1;strokeColor=#DDA15E;fillColor=#BC6C25;shape=link;labelBackgroundColor=#283618;fontColor=#FEFAE0;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="286" y="740" as="sourcePoint" />
+            <mxPoint x="284" y="259" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="dzVO0lP-Pr6NHZDjBj-I-7" value="&lt;b&gt;&lt;font color=&quot;#4d4d4d&quot;&gt;Internet&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;/font&gt;&lt;/b&gt;" style="verticalLabelPosition=middle;aspect=fixed;html=1;verticalAlign=middle;strokeColor=#DDA15E;align=center;outlineConnect=0;shape=mxgraph.citrix.cloud;fillColor=#BC6C25;labelPosition=center;fontColor=#FEFAE0;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="22.490000000000002" y="209" width="273.03" height="178.19" as="geometry" />
+        </mxCell>
+        <mxCell id="dzVO0lP-Pr6NHZDjBj-I-4" value="&lt;b&gt;&lt;font color=&quot;#4d4d4d&quot;&gt;Internet&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;/font&gt;&lt;/b&gt;" style="verticalLabelPosition=middle;aspect=fixed;html=1;verticalAlign=middle;strokeColor=#DDA15E;align=center;outlineConnect=0;shape=mxgraph.citrix.cloud;fillColor=#BC6C25;labelPosition=center;fontColor=#FEFAE0;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="532.44" y="214.91" width="325.13" height="212.19" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-67" value="" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#BC6C25;strokeColor=#DDA15E;fontColor=#FEFAE0;" parent="1" vertex="1">
+          <mxGeometry x="99.00999999999999" y="147" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="DgfKNXVbrJm1uEiCSvom-1" value="Home Router" style="verticalLabelPosition=top;aspect=fixed;html=1;verticalAlign=bottom;strokeColor=none;align=right;outlineConnect=0;shape=mxgraph.citrix.router;labelPosition=left;fillColor=#BC6C25;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="131.5" y="529" width="55" height="36.5" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-39" value="LND &lt;br&gt;Tunnel" style="edgeStyle=orthogonalEdgeStyle;shape=link;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fillColor=#BC6C25;strokeColor=#DDA15E;labelBackgroundColor=#283618;fontColor=#FEFAE0;labelBorderColor=#FFFFFF;" parent="1" source="DgfKNXVbrJm1uEiCSvom-3" target="f5En9RY3kI0PJLUmDjsn-25" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-41" value="" style="edgeStyle=orthogonalEdgeStyle;shape=link;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#DDA15E;fillColor=#BC6C25;labelBackgroundColor=#283618;fontColor=#FEFAE0;" parent="1" source="DgfKNXVbrJm1uEiCSvom-3" target="f5En9RY3kI0PJLUmDjsn-40" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="639.57" y="547" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="DgfKNXVbrJm1uEiCSvom-3" value="Firewall" style="verticalLabelPosition=bottom;aspect=fixed;html=1;verticalAlign=top;strokeColor=none;align=center;outlineConnect=0;shape=mxgraph.citrix.firewall;fillColor=#BC6C25;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="534.57" y="500.75" width="75" height="93" as="geometry" />
+        </mxCell>
+        <mxCell id="DgfKNXVbrJm1uEiCSvom-4" value="&lt;b&gt;Lightning Node&lt;br&gt;@Home&lt;/b&gt;" style="verticalLabelPosition=bottom;aspect=fixed;html=1;verticalAlign=top;strokeColor=none;align=center;outlineConnect=0;shape=mxgraph.citrix.license_server;fillColor=#BC6C25;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="126.5" y="623" width="65" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;shape=link;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;" parent="1" source="DgfKNXVbrJm1uEiCSvom-4" target="DgfKNXVbrJm1uEiCSvom-1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="66" y="431" as="sourcePoint" />
+            <mxPoint x="76" y="391" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;shape=link;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;startArrow=none;" parent="1" source="f5En9RY3kI0PJLUmDjsn-15" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="285.48571428571427" y="549.25" as="sourcePoint" />
+            <mxPoint x="159" y="481" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-17" value="" style="edgeStyle=orthogonalEdgeStyle;shape=link;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;" parent="1" source="f5En9RY3kI0PJLUmDjsn-15" target="f5En9RY3kI0PJLUmDjsn-8" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-8" value="&lt;b&gt;&lt;font color=&quot;#4d4d4d&quot;&gt;Lightning / Internet&lt;/font&gt;&lt;/b&gt;" style="verticalLabelPosition=middle;aspect=fixed;html=1;verticalAlign=middle;strokeColor=#DDA15E;align=center;outlineConnect=0;shape=mxgraph.citrix.cloud;fillColor=#BC6C25;labelPosition=center;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="67.07" y="261" width="183.87" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-25" value="Home Router" style="verticalLabelPosition=bottom;aspect=fixed;html=1;verticalAlign=top;strokeColor=none;align=right;outlineConnect=0;shape=mxgraph.citrix.router;labelPosition=left;fillColor=#BC6C25;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="397.00000000000006" y="529" width="55" height="36.5" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-26" value="&lt;b&gt;Lightning Node&lt;br&gt;@Home&lt;/b&gt;" style="verticalLabelPosition=bottom;aspect=fixed;html=1;verticalAlign=top;strokeColor=none;align=center;outlineConnect=0;shape=mxgraph.citrix.license_server;fillColor=#BC6C25;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="392.00000000000006" y="623" width="65" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-27" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;shape=link;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;" parent="1" source="f5En9RY3kI0PJLUmDjsn-26" target="f5En9RY3kI0PJLUmDjsn-25" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="331.5" y="439" as="sourcePoint" />
+            <mxPoint x="341.5" y="399" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-28" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;shape=link;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;" parent="1" source="f5En9RY3kI0PJLUmDjsn-25" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="550.9857142857144" y="557.25" as="sourcePoint" />
+            <mxPoint x="424.50000000000006" y="489" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-29" value="" style="edgeStyle=orthogonalEdgeStyle;shape=link;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;" parent="1" source="f5En9RY3kI0PJLUmDjsn-30" target="f5En9RY3kI0PJLUmDjsn-31" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="568" y="394" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="424" y="365" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-30" value="Tor Onion Network" style="verticalLabelPosition=top;aspect=fixed;html=1;verticalAlign=bottom;strokeColor=none;align=left;outlineConnect=0;shape=mxgraph.citrix.role_secure_access;fillColor=#BC6C25;gradientDirection=south;labelPosition=right;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="405.50000000000006" y="451" width="38" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-31" value="&lt;b&gt;&lt;font color=&quot;#4d4d4d&quot;&gt;Lightning&lt;/font&gt;&lt;/b&gt;" style="verticalLabelPosition=middle;aspect=fixed;html=1;verticalAlign=middle;strokeColor=#DDA15E;align=center;outlineConnect=0;shape=mxgraph.citrix.cloud;fillColor=#BC6C25;labelPosition=center;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="610.25" y="299" width="196.13" height="128" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-40" value="&lt;b&gt;Tunnelsats VPS&lt;/b&gt;" style="verticalLabelPosition=bottom;aspect=fixed;html=1;verticalAlign=top;strokeColor=none;align=center;outlineConnect=0;shape=mxgraph.citrix.chassis;fillColor=#BC6C25;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="639.57" y="458.5" width="137.5" height="177.5" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-44" value="LND&lt;br&gt;Tunnel" style="edgeStyle=orthogonalEdgeStyle;shape=link;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fillColor=#BC6C25;strokeColor=#DDA15E;labelBackgroundColor=#283618;fontColor=#FEFAE0;labelBorderColor=#FFFFFF;" parent="1" source="f5En9RY3kI0PJLUmDjsn-45" target="f5En9RY3kI0PJLUmDjsn-46" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-55" value="" style="edgeStyle=orthogonalEdgeStyle;shape=link;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#DDA15E;fillColor=#BC6C25;labelBackgroundColor=#283618;fontColor=#FEFAE0;" parent="1" source="f5En9RY3kI0PJLUmDjsn-45" target="f5En9RY3kI0PJLUmDjsn-40" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-45" value="Firewall" style="verticalLabelPosition=bottom;aspect=fixed;html=1;verticalAlign=top;strokeColor=none;align=center;outlineConnect=0;shape=mxgraph.citrix.firewall;fillColor=#BC6C25;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="800.57" y="500.75" width="75" height="93" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-46" value="Home Router" style="verticalLabelPosition=bottom;aspect=fixed;html=1;verticalAlign=top;strokeColor=none;align=left;outlineConnect=0;shape=mxgraph.citrix.router;labelPosition=right;fillColor=#BC6C25;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="947.0000000000001" y="529" width="55" height="36.5" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-47" value="&lt;b&gt;Lightning Node&lt;br&gt;@Home&lt;/b&gt;" style="verticalLabelPosition=bottom;aspect=fixed;html=1;verticalAlign=top;strokeColor=none;align=center;outlineConnect=0;shape=mxgraph.citrix.license_server;fillColor=#BC6C25;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="942.0000000000001" y="623" width="65" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-48" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;shape=link;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;" parent="1" source="f5En9RY3kI0PJLUmDjsn-47" target="f5En9RY3kI0PJLUmDjsn-46" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="881.5000000000001" y="439" as="sourcePoint" />
+            <mxPoint x="891.5000000000001" y="399" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-49" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;shape=link;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;" parent="1" source="f5En9RY3kI0PJLUmDjsn-46" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1100.9857142857143" y="557.25" as="sourcePoint" />
+            <mxPoint x="974.5000000000001" y="489" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-50" value="" style="edgeStyle=orthogonalEdgeStyle;shape=link;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;" parent="1" source="f5En9RY3kI0PJLUmDjsn-51" edge="1" target="f5En9RY3kI0PJLUmDjsn-31">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="807.57" y="329" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="974" y="363" />
+              <mxPoint x="810" y="363" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-51" value="Tor Onion Network" style="verticalLabelPosition=top;aspect=fixed;html=1;verticalAlign=bottom;strokeColor=none;align=right;outlineConnect=0;shape=mxgraph.citrix.role_secure_access;fillColor=#BC6C25;gradientDirection=south;labelPosition=left;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="955.5000000000001" y="451" width="38" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-59" value="Firewalled&amp;nbsp;&lt;br&gt;Clearnet" style="edgeStyle=orthogonalEdgeStyle;shape=link;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#DDA15E;fillColor=#BC6C25;width=55.51724137931035;labelBackgroundColor=#283618;fontColor=#FEFAE0;" parent="1" source="f5En9RY3kI0PJLUmDjsn-40" target="f5En9RY3kI0PJLUmDjsn-31" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="603.5699999999998" y="557.2758620689654" as="sourcePoint" />
+            <mxPoint x="649.57" y="557.2758620689654" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-66" value="Tor Only&amp;nbsp;&lt;br&gt;Setup" style="text;strokeColor=none;fillColor=none;html=1;fontSize=24;fontStyle=1;verticalAlign=middle;align=center;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="109.00999999999999" y="167" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-68" value="" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#BC6C25;strokeColor=#DDA15E;fontColor=#FEFAE0;" parent="1" vertex="1">
+          <mxGeometry x="457" y="141" width="476" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-69" value="Tunnel&amp;nbsp;&lt;img draggable=&quot;false&quot; class=&quot;emoji emoji-small&quot; src=&quot;https://webz.telegram.org/img-apple-64/26a1.png&quot; alt=&quot;⚡&quot; style=&quot;box-sizing: border-box ; vertical-align: 0px ; border-style: none ; background: 0% 0% / 1.25rem no-repeat rgb(33 , 33 , 33) ; color: rgba(0 , 0 , 0 , 0) ; display: inline-block ; width: 1.25rem ; height: 1.25rem ; overflow: hidden ; margin: 0px 1px -5px ; font-family: &amp;#34;roboto&amp;#34; , , &amp;#34;blinkmacsystemfont&amp;#34; , &amp;#34;apple color emoji&amp;#34; , &amp;#34;segoe ui&amp;#34; , &amp;#34;oxygen&amp;#34; , &amp;#34;ubuntu&amp;#34; , &amp;#34;cantarell&amp;#34; , &amp;#34;fira sans&amp;#34; , &amp;#34;droid sans&amp;#34; , &amp;#34;helvetica neue&amp;#34; , sans-serif ; font-size: 16px ; font-weight: 400&quot;&gt;&amp;nbsp;Sats Setup with &lt;br&gt;Clearnet Hybrid and Tor split Tunnel" style="text;strokeColor=none;fillColor=none;html=1;fontSize=24;fontStyle=1;verticalAlign=middle;align=center;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="657" y="157" width="86.5" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="dzVO0lP-Pr6NHZDjBj-I-5" value="" style="edgeStyle=orthogonalEdgeStyle;shape=link;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;" edge="1" parent="1" source="f5En9RY3kI0PJLUmDjsn-25" target="dzVO0lP-Pr6NHZDjBj-I-4">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="508.76" y="278.0185714285715" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="323" y="547" />
+              <mxPoint x="323" y="317" />
+            </Array>
+            <mxPoint x="322.99571428571426" y="363.99" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="dzVO0lP-Pr6NHZDjBj-I-6" value="" style="edgeStyle=orthogonalEdgeStyle;shape=link;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;" edge="1" parent="1" source="f5En9RY3kI0PJLUmDjsn-46" target="dzVO0lP-Pr6NHZDjBj-I-4">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1110.44" y="306.9985714285714" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1054" y="321" />
+            </Array>
+            <mxPoint x="1018" y="553" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="dzVO0lP-Pr6NHZDjBj-I-8" value="" style="edgeStyle=orthogonalEdgeStyle;shape=link;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;" edge="1" parent="1" source="DgfKNXVbrJm1uEiCSvom-1" target="dzVO0lP-Pr6NHZDjBj-I-7">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="244.44000000000005" y="312.9985714285714" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="16" y="298" />
+            </Array>
+            <mxPoint x="109" y="543.2271428571428" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-15" value="Tor Onion Network" style="verticalLabelPosition=top;aspect=fixed;html=1;verticalAlign=bottom;strokeColor=none;align=right;outlineConnect=0;shape=mxgraph.citrix.role_secure_access;fillColor=#BC6C25;gradientDirection=south;labelPosition=left;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
+          <mxGeometry x="140" y="451" width="38" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="dzVO0lP-Pr6NHZDjBj-I-9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;shape=link;fillColor=#BC6C25;labelBackgroundColor=#283618;strokeColor=#DDA15E;fontColor=#FEFAE0;endArrow=none;" edge="1" parent="1" source="DgfKNXVbrJm1uEiCSvom-1" target="f5En9RY3kI0PJLUmDjsn-15">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="159" y="529" as="sourcePoint" />
+            <mxPoint x="159" y="481" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
