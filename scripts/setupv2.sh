@@ -571,6 +571,7 @@ if [ $isDocker -eq 1 ]; then
   echo "Applying KillSwitch to Docker setup..."
   #Get main interface  
   mainif=$(ip route | grep default | cut -d' ' -f5)
+  localsubnet="$(hostname -I | awk '{print $1}' | cut -d"." -f1-3)".0/24
 
   #Get docker umbrel lnd/cln ip address
 
@@ -612,7 +613,7 @@ if [ $isDocker -eq 1 ]; then
     #block traffic from lighting containers
     chain forward {
       type filter hook forward priority filter; policy accept;
-      oifname $mainif ip saddr @killswitch_tunnelsats counter  drop
+      oifname $mainif ip daddr != $localsubnet ip saddr @killswitch_tunnelsats counter  drop
     }
   }" >  /etc/nftables.conf
     
