@@ -138,7 +138,7 @@ $ scp tunnelsatsv2.conf umbrel@umbrel.local:/home/umbrel/
 
 ### How does it actually look like, how am I connected?
 See the current network setup in a comparison between your Tor only setup vs the new setup as a flowchart
-![Flowchart Diagram](/docs/assets/Tunnelsats-Tor-scenario.drawio.png)
+![Flowchart Diagram](/docs/assets/Tunnelsats-Tor-scenario.drawio%20(1).png)
 
 <br/>
 
