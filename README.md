@@ -239,7 +239,7 @@ What is the `setupv2.sh` script doing in detail?
 
 2) Checking if `tunnelsatsv2.conf` exists in current directory (must be the same directory where setup script is located).
 
-3) Setting up "split-tunneling" to exclude Tor from VPN usage as systemd service to run after Tor (re)starts.
+3) Setting up "split-tunneling" to only include lightning P2P traffic in VPN usage.
 
 4) Enabling and starting required systemd services (wg-quick@.service, splitting.service).
 
