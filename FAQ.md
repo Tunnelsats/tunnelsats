@@ -27,7 +27,7 @@
 ## Frequently asked Questions
 
 ### Why should I use this service?
-Providing Lightning ⚡ Services is about privacy, reliability, connectivity, speed and liquidity. Relying your node connectivity to a single service **Tor** is a risk regarding connectivity and network stability, as anyone running a lightning node can testify. With Hybrid[^1] connectivity, you offer your payment and routing services to be [faster](https://blog.lnrouter.app/lightning-payment-speed-2022), more reliable, and yet, there is a privacy concern when you do it with your home-IP: you both expose your _rough_ location of your node, potentially your home and your node's system to attacks from the internet. With our solution **Tunnel⚡Sats**, you get the best of both worlds. Your node and home IP stays hidden, behind Tor and our VPS public IP address, which will be your node's face to the public internet and is shared with other users. You may see higher reliability causing not only higher uptime, fewer peer nodes offline, but also greater routing numbers. This isn't a promise, but an eventually expected outcome. 
+Providing Lightning ⚡ Services is about privacy, reliability, connectivity, speed and liquidity. Relying your node connectivity to a single service **Tor** is a risk regarding connectivity and network stability, as anyone running a lightning node can testify. With Hybrid[^1] connectivity, you offer your payment and routing services to be [faster](https://blog.lnrouter.app/lightning-payment-speed-2022), more reliable, and yet, there is a privacy concern when you do it with your home-IP: you both expose your _rough_ location of your node, potentially your home and your node's system to attacks from the internet. With our solution **Tunnel⚡Sats**, you get the best of both worlds. Your node and home IP stays hidden, behind Tor and our VPS public IP address, which will be your node's face to the public internet, is shared with other peers. You may see higher reliability causing not only higher uptime, fewer offline peer nodes but also greater routing numbers. This isn't a promise, but an eventually expected outcome. 
 
 You also provide better user experience for customers actually using lightning as a payment system, which you could argue is the largest benefit.
 
@@ -36,9 +36,9 @@ You also provide better user experience for customers actually using lightning a
 ### Why choose Tunnel⚡Sats over other VPN providers?
 Running a lightning nodes behind a VPN requires a range of features public VPN providers usually do not offer. **Tunnel⚡Sats** is specially designed for the lightning node use case in mind. So we pack up everything that's needed:
 - static VPN IP: no more disconnects due to changing VPN IPs and no hassle setting up Dynamic DNS
-- static forwarded Ports: assign VPN's port to your node config and you are good to go
+- static forwarded ports: assign VPN's port to your node config and you are good to go
 - secure VPN tunnels: we provide quantum-safe VPN tunnels using pre-shared keys
-- split-tunneling: we exclude everything else besides lightning p2p traffic from the VPN network. Contrary to "Tor over VPN", this enables redundancy of connectivity for your node meaning: If Tor goes down, VPN still plays nice and vice versa (which should never happen). 
+- split-tunneling: we exclude everything else besides lightning p2p traffic from the VPN network. Contrary to "Tor over VPN", this enables redundancy of connectivity over Tor for your node meaning: If Tor goes down, VPN still plays nice and vice versa (which should never happen). 
 
 <br/>
 
@@ -55,7 +55,7 @@ We don't store packets or logfiles from or to your node once the tunnel is estab
 <br/>
 
 ### What options do I have if I'm not happy?
-This is still beta status, so please be bare with us. If you experience issues, please contact us and let us know. We are approachable and can discuss whatever is bugging you and see how we can find a solution.
+This is still beta status, so please bear with us. If you experience issues, please contact us and let us know. We are approachable and can discuss whatever is bugging you and see how we can find a solution.
 
 <br/>
 
@@ -148,7 +148,7 @@ On console, run the following wireguard command to see some connection statistic
 <br/>
 
 ### Tuning Tor
-Although we can speed up clearnet to clearnet connections, we still have to use the Tor network to reach out to Tor-only nodes. There have been some experiments going on to stabilize Tor connectivity and minimize its issues. Some of them might be worth trying out. These options are added to the `torrc` file:
+Although we can speed up clearnet to clearnet connections, we still have to use the Tor network to reach out to Tor-only nodes. There have been some experiments going on to stabilize Tor connectivity and minimize its issues. Some of them might be worth trying out. These options are added at the very end of the `torrc` file:
 ```ini
 LongLivedPorts 21,22,706,1863,5050,5190,5222,5223,6523,6667,6697,8300,9735,9736,9911
 CircuitBuildTimeout 3
