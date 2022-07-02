@@ -120,7 +120,7 @@ Running LND only requires a few parameters to be checked and set to activate hyb
   externalip={vpnIP}:{vpnPort} #these infos are provided at the end of the setup.sh script
   
   [Tor]
-  # set steamisolation to 'false' if it's currently set 'true'. if it's not set at all, just leave it out
+  # set streamisolation to 'false' if currently set 'true'. if not set at all, just leave it out
   tor.streamisolation=false
   tor.skip-proxy-for-clearnet-targets=true
   ```
@@ -157,7 +157,7 @@ change to
 export APP_CORE_LIGHTNING_DAEMON_PORT="9735"
 ```
 
-docker-compose.yml: add two new parameters to `command` section. these are `always-use-proxy=false` and `announce-addr=` and comment out `- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735`.
+docker-compose.yml: add three new parameters to `command` section. these are `bind=0.0.0.0:9735`, `always-use-proxy=false` and `announce-addr=` and comment out `- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735`.
 
 ```ini
   lightningd:
@@ -249,7 +249,7 @@ What is the `setupv2.sh` script doing in detail?
 
 ## Further Help: ##
 
-Please review the [FAQ](FAQ.md) for further help. 
+Please review the [FAQ](FAQ.md) for further help.
 If you need any other help setting up hybrid mode over VPN
 or just want to have a chat with us, join our [Tunnel⚡Sats](https://t.me/+NJylaUom-rxjYjU6) Telegram group.
 
