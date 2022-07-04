@@ -58,6 +58,7 @@ fi
 
 # Make sure to disable hybrid mode to prevent IP leakage
 success=0
+lnImplementation=""
 while true
 do
     read -p "Which lightning implementation was set to hybrid mode at TunnelSats installation? (LND|CLN) " answer
@@ -66,6 +67,7 @@ do
   case $answer in
    lnd|LND* ) 
         # RaspiBlitz: try to recover lnd.check.sh
+        lnImplementation="lnd"
         if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
             echo "RaspiBlitz: Removing dependendency lnd.service.d ..."
             if [ -f  /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf ] && ! rm /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf &> /dev/null; then
@@ -116,6 +118,7 @@ do
            break;;
 
    cln|CLN* )     # check CLN (RaspiBlitz)
+        lnImplementation="cln"
         # RaspiBlitz: try to recover cl.check.sh
         if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
             echo "RaspiBlitz: Removing dependendency lightningd.service.d ..."
@@ -317,7 +320,7 @@ fi
 sleep 2
 
 #reset lnd
-if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lnd.service.bak ]; then
+if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lnd.service.bak ] && [ "$lnImplementation" == "lnd" ]; then
     if mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service; then
         echo "> lnd.service prior to tunnelsats successfully reset";echo
     else 
@@ -327,8 +330,8 @@ fi
 
 
 #reset lightningd
-if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lightnind.service.bak ]; then
-    if mv /etc/systemd/system/lightnind.service.bak /etc/systemd/system/lightningd.service; then
+if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lightningd.service.bak ] && [ "$lnImplementation" == "cln" ]; then
+    if mv /etc/systemd/system/lightningd.service.bak /etc/systemd/system/lightningd.service; then
         echo "> lightningd.service prior to tunnelsats successfully reset";echo
     else 
         echo "> ERR: Not able to reset /etc/systemd/system/lightningd.service Please check manually.";echo
@@ -348,7 +351,7 @@ if [ $isDocker -eq 0 ]; then
         cgdelete net_cls:/splitted_processes 2> /dev/null
         echo "> Control Group Splitted Processes removed";echo
     else
-        echo "> ERR: Could not remove cgroup net_cls subgroup.";echo
+        echo "> cgroup net_cls subgroup already deleted";echo
     fi
 fi
 
@@ -394,7 +397,7 @@ if [ $isDocker -eq 1 ]; then
 else #nonDocker
     systemctl daemon-reload > /dev/null
     # RaspiBolt / RaspiBlitz / Bare Metal LND
-    if [ -f /etc/systemd/system/lnd.service ]; then
+    if [ -f /etc/systemd/system/lnd.service ] && [ "$lnImplementation" == "lnd" ]; then
          echo "Restarting lnd.service ..."
          if systemctl restart lnd.service > /dev/null; then
             echo "> lnd.service successfully restarted";echo
@@ -403,7 +406,7 @@ else #nonDocker
          fi
 
     # RaspiBlitz CLN
-    elif [ -f /etc/systemd/system/lightningd.service ]; then
+    elif [ -f /etc/systemd/system/lightningd.service ]&& [ "$lnImplementation" == "cln" ]; then
          echo "Restarting lighningd.service ..."
          if systemctl restart lightningd.service > /dev/null; then
             echo "> lightningd.service successfully restarted";echo
@@ -412,7 +415,7 @@ else #nonDocker
          fi
 
      # RaspiBolt / Bare Metal CLN
-     elif [ -f /etc/systemd/system/cln.service ]; then
+     elif [ -f /etc/systemd/system/cln.service ] && [ "$lnImplementation" == "cln" ]; then
         echo "Restarting cln.service ..."
         if systemctl restart cln.service > /dev/null; then
             echo "> cln.service successfully restarted";echo

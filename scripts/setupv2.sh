@@ -55,6 +55,30 @@ echo -e "
          v$major.$minor.$patch
 ###############################";echo
 
+
+# Check which implementation the user wants to tunnel
+
+lnImplementation=""
+
+while true
+do
+    read -p "Which lightning implementation do you want to tunnel, please make sure the implementation runs on port 9735? Supported are LND and CLN for now ⚡️:" answer
+
+
+  case $answer in
+      lnd|LND* ) echo "> Setting up Tunneling for LND on port 9735 ";echo
+                 lnImplementation="lnd"
+                 break;;
+
+      cln|CLN* )  echo "> Setting up Tunneling for CLN on port 9735 ";echo
+                  lnImplementation="cln"
+                  break;;
+             * ) echo "Enter LND or CLN, please.";;
+  esac
+done
+
+
+
 # check for downloaded tunnelsatsv2.conf, exit if not available
 # get current directory
 directory=$(dirname -- "$(readlink -fn -- "$0")")
@@ -68,12 +92,12 @@ fi
 
 
 # RaspiBlitz: deactivate config checks
-if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
+if [ "$(hostname)" == "raspberrypi" ] && [ "$lnImplementation" == "lnd" ]; then
     if [ -f /home/admin/config.scripts/lnd.check.sh ]; then
         mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak
         echo "RaspiBlitz detected, lnd conf safety check removed";echo
     fi
-elif [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
+elif [ "$(hostname)" == "raspberrypi" ] && [ "$lnImplementation" == "cln" ]; then
   if [ -f /home/admin/config.scripts/cl.check.sh ]; then
     mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak
     echo "RaspiBlitz detected, cln conf safety check removed";echo
@@ -329,32 +353,17 @@ chmod +x /etc/wireguard/tunnelsats-create-cgroup.sh
   # enable systemd service
   # create systemd file
   echo "Creating cgroup systemd service..."
-  # LND
-  if [ -f /etc/systemd/system/lnd.service ]; then
-      echo "[Unit]
-Description=Creating cgroup for Splitting lightning traffic
-StartLimitInterval=200
-StartLimitBurst=5
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/bin/bash /etc/wireguard/tunnelsats-create-cgroup.sh
-[Install]
-WantedBy=multi-user.target
-" > /etc/systemd/system/tunnelsats-create-cgroup.service
-  elif [ -f /etc/systemd/system/lightningd.service ]; then
-      echo "[Unit]
-Description=Creating cgroup for Splitting lightning traffic
-StartLimitInterval=200
-StartLimitBurst=5
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/bin/bash /etc/wireguard/tunnelsats-create-cgroup.sh
-[Install]
-WantedBy=multi-user.target
-" > /etc/systemd/system/tunnelsats-create-cgroup.service
-  fi
+  echo "[Unit]
+    Description=Creating cgroup for Splitting lightning traffic
+    StartLimitInterval=200
+    StartLimitBurst=5
+    [Service]
+    Type=oneshot
+    RemainAfterExit=yes
+    ExecStart=/usr/bin/bash /etc/wireguard/tunnelsats-create-cgroup.sh
+    [Install]
+    WantedBy=multi-user.target
+    " > /etc/systemd/system/tunnelsats-create-cgroup.service
 
   # enable and start tunnelsats-create-cgroup.service
   if [ -f /etc/systemd/system/tunnelsats-create-cgroup.service ]; then
@@ -371,7 +380,7 @@ WantedBy=multi-user.target
   fi
 
     #Adding tunnelsats-create-cgroup requirement to lnd/cln
-  if [ -f /etc/systemd/system/lnd.service ]; then
+  if [ "$lnImplementation" == "lnd"  ]; then
       if [ ! -d /etc/systemd/system/lnd.service.d ]; then
           mkdir /etc/systemd/system/lnd.service.d > /dev/null
       fi 
@@ -386,7 +395,7 @@ WantedBy=multi-user.target
 
   
 
-  elif [ -f /etc/systemd/system/lightningd.service ]; then
+  elif [ "$lnImplementation" == "cln"  ]; then
 
      if [ ! -d /etc/systemd/system/lightningd.service.d ]; then
           mkdir /etc/systemd/system/lightningd.service.d > /dev/null
@@ -449,8 +458,6 @@ WantedBy=multi-user.target
     
       echo "[Unit]
   Description=Adding Lightning Process to the tunnel
-  StartLimitInterval=200
-  StartLimitBurst=5
   [Service]
   Type=oneshot
   ExecStart=/bin/bash /etc/wireguard/tunnelsats-splitting-processes.sh
@@ -461,8 +468,8 @@ WantedBy=multi-user.target
       echo "[Unit]
   Description=1min timer for tunnelsats-splitting-processes.service
   [Timer]
-  OnBootSec=60
-  OnUnitActiveSec=60
+  OnBootSec=10
+  OnUnitActiveSec=10
   Persistent=true
   [Install]
   WantedBy=timers.target
@@ -520,7 +527,7 @@ sleep 2
 
 if [ $isDocker -eq 0 ]; then
 
-  if [ -f /etc/systemd/system/lnd.service ]; then
+  if [ "$lnImplementation" == "lnd"  ]; then
 
    if  [ ! -f /etc/systemd/system/lnd.service.bak ]; then
       cp /etc/systemd/system/lnd.service /etc/systemd/system/lnd.service.bak
@@ -550,13 +557,13 @@ if [ $isDocker -eq 0 ]; then
       fi
 
     else
-          echo "> /etc/systemd/system/lnd.service already already starts in cgroup tunnelsats";echo
+          echo "> /etc/systemd/system/lnd.service already  starts in cgroup tunnelsats";echo
     fi
 
-  elif [ -f /etc/systemd/system/lightningd.service ]; then
+  elif [ "$lnImplementation" == "cln"  ]; then
 
     if  [ ! -f /etc/systemd/system/lightningd.service.bak ]; then
-      cp /etc/systemd/system/lnd.service /etc/systemd/system/lightningd.service.bak
+      cp /etc/systemd/system/lightningd.service /etc/systemd/system/lightningd.service.bak
     fi
 
     #Check if lightningd.service already has cgexec command included
@@ -567,10 +574,10 @@ if [ $isDocker -eq 0 ]; then
 
 
         if sed -i 's/ExecStart=/ExecStart=\/usr\/bin\/cgexec -g net_cls:splitted_processes /g' /etc/systemd/system/lightningd.service ; then
-          echo "> lightnind.service updated now starts in cgroup tunnelsats";echo
-          echo "> backup saved under /etc/systemd/system/lightnind.service.bak";echo
+          echo "> lightningd.service updated now starts in cgroup tunnelsats";echo
+          echo "> backup saved under /etc/systemd/system/lightningd.service.bak";echo
           systemctl daemon-reload 
-          echo "> lightnind.service restarting ...";echo
+          echo "> lightningd.service restarting ...";echo
           if systemctl restart lightningd.service; then 
               echo "> lightningd.service restarted";echo
           else 
@@ -579,10 +586,10 @@ if [ $isDocker -eq 0 ]; then
           fi 
 
         else
-          echo "> ERR: not able to change /etc/systemd/system/lightnind.service. Please check for errors.";echo
+          echo "> ERR: not able to change /etc/systemd/system/lightningd.service. Please check for errors.";echo
         fi
     else
-        echo "> /etc/systemd/system/lightningd.service already already starts in cgroup tunnelsats";echo
+        echo "> /etc/systemd/system/lightningd.service already starts in cgroup tunnelsats";echo
     fi
 
   fi
@@ -899,33 +906,41 @@ echo "______________________________________________________________________
 
 These are your personal VPN credentials for your lightning configuration.";echo
 
-echo "LND:
-#########################################
-[Application Options]
-listen=0.0.0.0:9735
-externalip=${vpnExternalIP}:${vpnExternalPort}
-[Tor]
-tor.streamisolation=false
-tor.skip-proxy-for-clearnet-targets=true
-#########################################";echo
+if [ "$lnImplementation" == "lnd"  ]; then 
 
-echo "CLN:
-###############################################################################
-Umbrel 0.5+
-(edit /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml file 
-in section 'lightningd' - 'command' as follows):
-comment out the following line: 
-#- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735
-add the following lines:
-- --bind-addr=0.0.0.0:9735
-- --announce-addr=${vpnExternalIP}:${vpnExternalPort}
-- --always-use-proxy=false
+  echo "LND:
+  #########################################
+  [Application Options]
+  listen=0.0.0.0:9735
+  externalip=${vpnExternalIP}:${vpnExternalPort}
+  [Tor]
+  tor.streamisolation=false
+  tor.skip-proxy-for-clearnet-targets=true
+  #########################################";echo
 
-Native CLN (config file):
-bind-addr=0.0.0.0:9735
-announce-addr=${vpnExternalIP}:${vpnExternalPort}
-always-use-proxy=false
-###############################################################################";echo
+fi 
+
+if [ "$lnImplementation" == "cln"  ]; then 
+
+  echo "CLN:
+  ###############################################################################
+  Umbrel 0.5+
+  (edit /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml file 
+  in section 'lightningd' - 'command' as follows):
+  comment out the following line: 
+  #- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735
+  add the following lines:
+  - --bind-addr=0.0.0.0:9735
+  - --announce-addr=${vpnExternalIP}:${vpnExternalPort}
+  - --always-use-proxy=false
+
+  Native CLN (config file):
+  bind-addr=0.0.0.0:9735
+  announce-addr=${vpnExternalIP}:${vpnExternalPort}
+  always-use-proxy=false
+  ###############################################################################";echo
+
+fi
 
 echo "Please save them in a file or write them down for later use.
 
