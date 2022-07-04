@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0 
-patch=4
+patch=5
 
 
 #Helper
@@ -522,38 +522,67 @@ if [ $isDocker -eq 0 ]; then
 
   if [ -f /etc/systemd/system/lnd.service ]; then
 
-   if sed -i'.bak' 's/ExecStart=/ExecStart=\/usr\/bin\/cgexec -g net_cls:splitted_processes /g' /etc/systemd/system/lnd.service ; then
-      echo "> lnd.service updated now starts in cgroup tunnelsats";echo
-      echo "> backup saved under /etc/systemd/system/lnd.service.bak";echo
-      systemctl daemon-reload 
-      echo "> lnd.service restarting ...";echo
-      if systemctl restart lnd.service; then 
-          echo "> lnd.service restarted";echo
-      else 
-         echo "> ERR: not able to restart lnd.service. Please check for errors.";echo
-         exit 1
-      fi 
-
-   else
-      echo "> ERR: not able to change /etc/systemd/system/lnd.service. Please check for errors.";echo
+   if  [ ! -f /etc/systemd/system/lnd.service.bak ]; then
+      cp /etc/systemd/system/lnd.service /etc/systemd/system/lnd.service.bak
    fi
+
+   #Check if lnd.service already has cgexec command included
+
+    check=$(grep -c "cgexec" /etc/systemd/system/lnd.service)
+
+    if [ $check -eq 0 ]; then 
+
+
+      if sed -i 's/ExecStart=/ExecStart=\/usr\/bin\/cgexec -g net_cls:splitted_processes /g' /etc/systemd/system/lnd.service ; then
+          echo "> lnd.service updated now starts in cgroup tunnelsats";echo
+          echo "> backup saved under /etc/systemd/system/lnd.service.bak";echo
+          systemctl daemon-reload 
+          echo "> lnd.service restarting ...";echo
+          if systemctl restart lnd.service; then 
+              echo "> lnd.service restarted";echo
+          else 
+            echo "> ERR: not able to restart lnd.service. Please check for errors.";echo
+            exit 1
+          fi 
+
+      else
+          echo "> ERR: not able to change /etc/systemd/system/lnd.service. Please check for errors.";echo
+      fi
+
+    else
+          echo "> /etc/systemd/system/lnd.service already already starts in cgroup tunnelsats";echo
+    fi
 
   elif [ -f /etc/systemd/system/lightningd.service ]; then
 
-    if sed -i'.bak' 's/ExecStart=/ExecStart=\/usr\/bin\/cgexec -g net_cls:splitted_processes /g' /etc/systemd/system/lightningd.service ; then
-      echo "> lightnind.service updated now starts in cgroup tunnelsats";echo
-      echo "> backup saved under /etc/systemd/system/lightnind.service.bak";echo
-      systemctl daemon-reload 
-      echo "> lightnind.service restarting ...";echo
-      if systemctl restart lightningd.service; then 
-          echo "> lightningd.service restarted";echo
-      else 
-         echo "> ERR: not able to restart lightningd.service. Please check for errors.";echo
-         exit 1
-      fi 
+    if  [ ! -f /etc/systemd/system/lightningd.service.bak ]; then
+      cp /etc/systemd/system/lnd.service /etc/systemd/system/lightningd.service.bak
+    fi
 
+    #Check if lightningd.service already has cgexec command included
+
+    check=$(grep -c "cgexec" /etc/systemd/system/lightningd.service)
+
+    if [ $check -eq 0 ]; then 
+
+
+        if sed -i 's/ExecStart=/ExecStart=\/usr\/bin\/cgexec -g net_cls:splitted_processes /g' /etc/systemd/system/lightningd.service ; then
+          echo "> lightnind.service updated now starts in cgroup tunnelsats";echo
+          echo "> backup saved under /etc/systemd/system/lightnind.service.bak";echo
+          systemctl daemon-reload 
+          echo "> lightnind.service restarting ...";echo
+          if systemctl restart lightningd.service; then 
+              echo "> lightningd.service restarted";echo
+          else 
+            echo "> ERR: not able to restart lightningd.service. Please check for errors.";echo
+            exit 1
+          fi 
+
+        else
+          echo "> ERR: not able to change /etc/systemd/system/lightnind.service. Please check for errors.";echo
+        fi
     else
-      echo "> ERR: not able to change /etc/systemd/system/lightnind.service. Please check for errors.";echo
+        echo "> /etc/systemd/system/lightningd.service already already starts in cgroup tunnelsats";echo
     fi
 
   fi
