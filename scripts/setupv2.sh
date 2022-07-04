@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0 
-patch=5
+patch=6
 
 
 #Helper
@@ -130,12 +130,25 @@ echo "Checking wireguard installation..."
 checkwg=$(wg -v 2> /dev/null | grep -c "wireguard-tools")
 if [ $checkwg -eq 0 ]; then
     echo "Installing wireguard..."
-    if apt-get install -y wireguard > /dev/null; then
-        echo "> wireguard installed";echo
-    else
-        echo "> failed to install wireguard";echo
-        exit 1
+    
+    # Debian 10 Buster workaround / RaspiBlitz / myNode
+    codename=$(lsb_release -c 2> /dev/null | awk '{print $2}')
+    if [ "$codename" == "buster" ]; then
+    	if apt-get install -y -t buster-backports wireguard > /dev/null; then
+ 	    echo "> wireguard installed";echo
+        else
+	    echo "> failed to install wireguard";echo
+	    exit 1
+	fi	
+    else  # everyone else
+    	if apt-get install -y wireguard > /dev/null; then
+        	echo "> wireguard installed";echo
+    	else
+        	echo "> failed to install wireguard";echo
+        	exit 1
+    	fi
     fi
+    
 else
     echo "> wireguard found";echo
 fi
