@@ -850,7 +850,7 @@ echo "Verifying tunnel ..."
 if [ $isDocker -eq 0 ]; then
   ipHome=$(curl --silent https://api.ipify.org)
   ipVPN=$(cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
-  if [ "$ipHome" != "$ipVPN" ]; then
+  if [ "$ipHome" != "$ipVPN" ] && valid_ipv4 $ipHome  &&  valid_ipv4 $ipVPN ; then
       echo "> Tunnel is active
       Your ISP external IP: ${ipHome} 
       Your Tunnelsats external IP: ${ipVPN}";echo
