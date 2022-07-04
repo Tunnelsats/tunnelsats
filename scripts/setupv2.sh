@@ -190,7 +190,7 @@ if [ $isDocker -eq 1 ]; then
   done
 
   #Flush any rules which are still present from failed interface starts
-  ip route flush table 51820
+  ip route flush table 51820 &> /dev/null
 
 
 else
@@ -249,13 +249,13 @@ PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0\n
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1\n
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
 \n
-PostUp = nft add table inet %i\n
-PostUp = nft add chain inet %i prerouting '{type filter hook prerouting priority mangle; policy accept;}'; nft add rule inet %i prerouting meta mark set ct mark\n
-PostUp = nft add chain inet %i mangle '{type route hook output priority mangle; policy accept;}'; nft add rule inet %i mangle meta mark != 0x3333 meta cgroup 1118498 meta mark set 0xdeadbeef\n
-PostUp = nft add chain inet %i nat'{type nat hook postrouting priority srcnat; policy accept;}'; nft insert rule inet %i nat fib saddr type != local oif != %i ct mark 0xdeadbeef drop;nft add rule inet %i nat oif != \"lo\" ct mark 0xdeadbeef masquerade\n
-PostUp = nft add chain inet %i postroutingmangle'{type filter hook postrouting priority mangle; policy accept;}'; nft add rule inet %i postroutingmangle meta mark 0xdeadbeef ct mark set meta mark\n
+PostUp = nft add table ip %i\n
+PostUp = nft add chain ip %i prerouting '{type filter hook prerouting priority mangle; policy accept;}'; nft add rule ip %i prerouting meta mark set ct mark\n
+PostUp = nft add chain ip %i mangle '{type route hook output priority mangle; policy accept;}'; nft add rule ip %i mangle meta mark != 0x3333 meta cgroup 1118498 meta mark set 0xdeadbeef\n
+PostUp = nft add chain ip %i nat'{type nat hook postrouting priority srcnat; policy accept;}'; nft insert rule ip %i nat fib saddr type != local oif != %i ct mark 0xdeadbeef drop;nft add rule ip %i nat oif != \"lo\" ct mark 0xdeadbeef masquerade\n
+PostUp = nft add chain ip %i postroutingmangle'{type filter hook postrouting priority mangle; policy accept;}'; nft add rule ip %i postroutingmangle meta mark 0xdeadbeef ct mark set meta mark\n
 \n
-PostDown = nft delete table inet %i\n
+PostDown = nft delete table ip %i\n
 PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del not from all fwmark 0xdeadbeef table 51820\n
 PostDown = ip route flush table 51820\n
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
@@ -642,12 +642,12 @@ if [ $isDocker -eq 1 ]; then
   
    fi
    #Flush table if exist to avoid redundant rules
-   if nft list table inet tunnelsatsv2 &> /dev/null; then
-      nft flush table inet tunnelsatsv2
+   if nft list table ip tunnelsatsv2 &> /dev/null; then
+      nft flush table ip tunnelsatsv2
    fi
 
         echo "#!/sbin/nft -f
-    table inet tunnelsatsv2 {
+    table ip tunnelsatsv2 {
     set killswitch_tunnelsats {
       type ipv4_addr
       elements = { $dockertunnelsatsip, $result }
@@ -708,7 +708,7 @@ if [ $isDocker -eq 1 ]; then
   fi
 
   #Check if kill switch is in place
-  checkKillSwitch=$(nft list chain inet tunnelsatsv2 forward | grep -c "oifname")
+  checkKillSwitch=$(nft list chain ip tunnelsatsv2 forward | grep -c "oifname")
   if [ $checkKillSwitch -eq 0 ]; then
     echo "> ERR: Killswitch failed to activate. Please check for errors.";echo
     exit 1
@@ -864,7 +864,7 @@ if [ $isDocker -eq 0 ]; then
   ipHome=$(curl --silent https://api.ipify.org)
   ipVPN=$(cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
   if [ "$ipHome" != "$ipVPN" ] && valid_ipv4 $ipHome  &&  valid_ipv4 $ipVPN ; then
-      echo "> Tunnel is active
+      echo "> Tunnel is  active ✅
       Your ISP external IP: ${ipHome} 
       Your Tunnelsats external IP: ${ipVPN}";echo
   else
