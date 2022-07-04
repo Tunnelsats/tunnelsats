@@ -265,6 +265,8 @@ PostUp = nft add chain ip %i prerouting '{type filter hook prerouting priority m
 PostUp = nft add chain ip %i mangle '{type route hook output priority mangle; policy accept;}'; nft add rule ip %i mangle meta mark != 0x3333 meta cgroup 1118498 meta mark set 0xdeadbeef\n
 PostUp = nft add chain ip %i nat'{type nat hook postrouting priority srcnat; policy accept;}'; nft insert rule ip %i nat fib saddr type != local oif != %i ct mark 0xdeadbeef drop;nft add rule ip %i nat oif != \"lo\" ct mark 0xdeadbeef masquerade\n
 PostUp = nft add chain ip %i postroutingmangle'{type filter hook postrouting priority mangle; policy accept;}'; nft add rule ip %i postroutingmangle meta mark 0xdeadbeef ct mark set meta mark\n
+PostUp = nft add chain ip %i input'{type filter hook input priority filter; policy accept;}'; nft add rule ip %i input iifname %i  ct state established,related counter accept; nft add rule ip %i input iifname %i tcp dport != 9735 counter drop; nft add rule ip %i input iifname %i udp dport != 9735 counter drop\n
+
 \n
 PostDown = nft delete table ip %i\n
 PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del not from all fwmark 0xdeadbeef table 51820\n
@@ -650,6 +652,14 @@ if [ $isDocker -eq 1 ]; then
     chain forward {
       type filter hook forward priority filter; policy accept;
       oifname $mainif ip daddr != $localsubnet ip saddr @killswitch_tunnelsats counter  drop
+    }
+    #restrict traffic from the tunnelsats network other than the lightning traffic
+    chain input {
+      type filter hook input priority filter; policy accept;
+      iifname tunnelsatsv2  ct state established,related counter accept
+      iifname tunnelsatsv2   tcp dport != 9735 counter drop 
+      iifname tunnelsatsv2   udp dport != 9735 counter drop 
+
     }
   }" >  /etc/nftables.conf
     
