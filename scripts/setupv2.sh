@@ -545,15 +545,7 @@ if [ $isDocker -eq 0 ]; then
       if sed -i 's/ExecStart=/ExecStart=\/usr\/bin\/cgexec -g net_cls:splitted_processes /g' /etc/systemd/system/lnd.service ; then
           echo "> lnd.service updated now starts in cgroup tunnelsats";echo
           echo "> backup saved under /etc/systemd/system/lnd.service.bak";echo
-          systemctl daemon-reload 
-          echo "> lnd.service restarting ...";echo
-          if systemctl restart lnd.service; then 
-              echo "> lnd.service restarted";echo
-          else 
-            echo "> ERR: not able to restart lnd.service. Please check for errors.";echo
-            exit 1
-          fi 
-
+          systemctl daemon-reload  
       else
           echo "> ERR: not able to change /etc/systemd/system/lnd.service. Please check for errors.";echo
       fi
@@ -581,12 +573,6 @@ if [ $isDocker -eq 0 ]; then
           systemctl daemon-reload 
           echo "> lightningd.service restarting ...";echo
           if systemctl restart lightningd.service; then 
-              echo "> lightningd.service restarted";echo
-          else 
-            echo "> ERR: not able to restart lightningd.service. Please check for errors.";echo
-            exit 1
-          fi 
-
         else
           echo "> ERR: not able to change /etc/systemd/system/lightningd.service. Please check for errors.";echo
         fi
@@ -928,6 +914,17 @@ if [ "$lnImplementation" == "lnd"  ]; then
   tor.skip-proxy-for-clearnet-targets=true
   #########################################";echo
 
+  if [ $isDocker -eq 0 ]; then
+
+    echo "Restart lnd afterwards via the command:
+    sudo systemctl restart lnd";echo
+  else
+     echo "Restart lnd afterwards via the command:
+      sudo /home/umbrel/umbrel/scripts/stop (umbrel)
+      sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
+
+  fi
+
 fi 
 
 if [ "$lnImplementation" == "cln"  ]; then 
@@ -949,6 +946,18 @@ if [ "$lnImplementation" == "cln"  ]; then
   announce-addr=${vpnExternalIP}:${vpnExternalPort}
   always-use-proxy=false
   ###############################################################################";echo
+
+
+  if [ $isDocker -eq 0 ]; then
+
+    echo "Restart lightningd afterwards via the command:
+    sudo systemctl restart lightningd";echo
+  else
+     echo "Restart lightningd afterwards via the command:
+      sudo /home/umbrel/umbrel/scripts/stop (umbrel)
+      sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
+  fi
+fi
 
 fi
 
