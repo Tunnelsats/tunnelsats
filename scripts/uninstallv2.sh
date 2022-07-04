@@ -187,54 +187,6 @@ do
 done
 
 
-# forced lightning restart
-echo "Restarting lightning implementation now..."
-if [ $isDocker -eq 1 ]; then
- 
-    echo "Restarting docker services..."
-    systemctl daemon-reload > /dev/null
-    systemctl restart docker > /dev/null
-    echo "> Restarted docker.service to ensure clean setup"
-
-    # Restart containers
-    if  [ -f /home/umbrel/umbrel/scripts/start ]; then
-        /home/umbrel/umbrel/scripts/start > /dev/null
-        echo "> Restarted umbrel containers";echo  
-    fi
-            
-else #nonDocker
-            
-    # RaspiBolt / RaspiBlitz / Bare Metal LND
-    if [ -f /etc/systemd/system/lnd.service ]; then
-         echo "Restarting lnd.service ..."
-         if systemctl restart lnd.service > /dev/null; then
-            echo "> lnd.service successfully restarted";echo
-         else
-            echo "> ERR: lnd.service could not be restarted.";echo
-         fi
-
-    # RaspiBlitz CLN
-    elif [ -f /etc/systemd/system/lightningd.service ]; then
-         echo "Restarting lighningd.service ..."
-         if systemctl restart lightningd.service > /dev/null; then
-            echo "> lightningd.service successfully restarted";echo
-         else 
-            echo "> ERR: lightningd.service could not be restarted.";echo
-         fi
-
-     # RaspiBolt / Bare Metal CLN
-     elif [ -f /etc/systemd/system/cln.service ]; then
-        echo "Restarting cln.service ..."
-        if systemctl restart cln.service > /dev/null; then
-            echo "> cln.service successfully restarted";echo
-        else
-            echo "> ERR: cln.service could not be restarted.";echo
-        fi
-    fi
-fi
-
-
-
 
 # remove splitting services
 if [ $isDocker -eq 0 ]; then
@@ -293,7 +245,6 @@ fi
 sleep 2
 
 
-
 # remove wg-quick@tunnelsats service
 if [ -f /lib/systemd/system/wg-quick@.service ]; then
     echo "Removing wireguard systemd service..."
@@ -334,7 +285,7 @@ if [ $isDocker -eq 1 ]; then
     #Disconnect all containers from the network first
     #Removing rules from routing table
     echo "Removing tunnelsats specific routing rules..."  
-    ip route flush table 51820
+    ip route flush table 51820 &> /dev/null
 
     echo "Disconnecting containers from docker-tunnelsats network..."  
     docker inspect docker-tunnelsats | jq .[].Containers | grep Name | sed 's/[\",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats  %'
@@ -405,9 +356,13 @@ fi
 #Flush nftables and enable old nftables.conf
 #Flush table if exist to avoid redundant rules
 if [ $isDocker -eq 1 ]; then
+  if nft list table ip tunnelsatsv2 &> /dev/null; then
+      echo "Deleting ip tunnelsats nftable..."
+      if nft delete table ip tunnelsatsv2 &> /dev/null; then echo "> Done";echo; fi
+  fi
+  #Make sure old legacy table type inet gets also deleted if present
   if nft list table inet tunnelsatsv2 &> /dev/null; then
-      echo "Flushing tunnelsats nftable rules..."
-      if nft flush table inet tunnelsatsv2 &> /dev/null; then echo "> Done";echo; fi
+      if nft delete table inet tunnelsatsv2 &> /dev/null; then echo "> Done";echo; fi
   fi
 
   if [ -f /etc/nftablespriortunnelsats.backup ]; then
@@ -419,6 +374,58 @@ if [ $isDocker -eq 1 ]; then
 fi
 
 sleep 2
+
+
+# forced lightning restart
+echo "Restarting lightning implementation now..."
+if [ $isDocker -eq 1 ]; then
+ 
+    echo "Restarting docker services..."
+    systemctl daemon-reload > /dev/null
+    systemctl restart docker > /dev/null
+    echo "> Restarted docker.service to ensure clean setup"
+
+    # Restart containers
+    if  [ -f /home/umbrel/umbrel/scripts/start ]; then
+        /home/umbrel/umbrel/scripts/start > /dev/null
+        echo "> Restarted umbrel containers";echo  
+    fi
+            
+else #nonDocker
+    systemctl daemon-reload > /dev/null
+    # RaspiBolt / RaspiBlitz / Bare Metal LND
+    if [ -f /etc/systemd/system/lnd.service ]; then
+         echo "Restarting lnd.service ..."
+         if systemctl restart lnd.service > /dev/null; then
+            echo "> lnd.service successfully restarted";echo
+         else
+            echo "> ERR: lnd.service could not be restarted.";echo
+         fi
+
+    # RaspiBlitz CLN
+    elif [ -f /etc/systemd/system/lightningd.service ]; then
+         echo "Restarting lighningd.service ..."
+         if systemctl restart lightningd.service > /dev/null; then
+            echo "> lightningd.service successfully restarted";echo
+         else 
+            echo "> ERR: lightningd.service could not be restarted.";echo
+         fi
+
+     # RaspiBolt / Bare Metal CLN
+     elif [ -f /etc/systemd/system/cln.service ]; then
+        echo "Restarting cln.service ..."
+        if systemctl restart cln.service > /dev/null; then
+            echo "> cln.service successfully restarted";echo
+        else
+            echo "> ERR: cln.service could not be restarted.";echo
+        fi
+    fi
+fi
+
+
+
+
+
 
 # uninstall cgroup-tools, nftables, wireguard
 while true
