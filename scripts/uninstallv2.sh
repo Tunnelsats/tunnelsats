@@ -57,7 +57,6 @@ fi
 
 
 # Make sure to disable hybrid mode to prevent IP leakage
-success=0
 while true
 do
     read -p "Which lightning implementation was set to hybrid mode at TunnelSats installation? (LND|CLN) " answer
@@ -79,7 +78,6 @@ do
             if [ -f /home/admin/config.scripts/lnd.check.bak ]; then
                 mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
                 if bash /home/admin/config.scripts/lnd.check.sh > /dev/null; then
-                    success=1
                     echo "> Safety check for lnd.conf found and restored";echo
                 fi
             else
@@ -88,32 +86,29 @@ do
         fi
 
         # do it manually
-        if [ $success -eq 0 ]; then
-            path=""
-            if [ -f /mnt/hdd/lnd/lnd.conf ]; then path="/mnt/hdd/lnd/lnd.conf"; fi 
-            if [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/lnd/lnd.conf"; fi
-            if [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf"; fi
-            if [ -f /data/lnd/lnd.conf ]; then path="/data/lnd/lnd.conf"; fi 
-            if [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"; fi
-            if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
+        path=""
+        if [ -f /mnt/hdd/lnd/lnd.conf ]; then path="/mnt/hdd/lnd/lnd.conf"; fi 
+        if [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/lnd/lnd.conf"; fi
+        if [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf"; fi
+        if [ -f /data/lnd/lnd.conf ]; then path="/data/lnd/lnd.conf"; fi 
+        if [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"; fi
+        if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
 
-            if [ "$path" != "" ]; then
-                check=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" "$path")
-                if [ $check -ne 0 ]; then
-                    sed -i "s/tor.skip-proxy-for-clearnet-targets=true/tor.skip-proxy-for-clearnet-targets=false/g" "$path" > /dev/null
-                   
-                    # recheck again
-                    checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets=true" "$path")
-                    if [ $checkAgain -ne 0 ]; then
-                        echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!";echo
-                    else
-                        success=1
-                        echo "> Hybrid Mode deactivated successfully.";echo
-                    fi
+        if [ "$path" != "" ]; then
+            check=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
+            if [ $check -ne 0 ]; then
+                sed -i "tor.skip-proxy-for-clearnet-targets/d" "$path"
+                
+                # recheck again
+                checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
+                if [ $checkAgain -ne 0 ]; then
+                    echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!";echo
+                else
+                    echo "> Hybrid Mode deactivated successfully.";echo
                 fi
             fi
         fi
-           break;;
+        break;;
 
    cln|CLN* )     # check CLN (RaspiBlitz)
         # RaspiBlitz: try to recover cl.check.sh
@@ -125,12 +120,10 @@ do
             fi
             systemctl daemon-reload &> /dev/null
 
-
             echo "RaspiBlitz: Trying to restore with safety check 'cl.check.sh'..."
             if [ -f /home/admin/config.scripts/cl.check.bak ]; then
                 mv /home/admin/config.scripts/cl.check.bak /home/admin/config.scripts/cl.check.sh
                 if bash /home/admin/config.scripts/cl.check.sh; then
-                    success=1
                     echo "> Safety check for cln config found and restored";echo
                 fi
             else
@@ -139,49 +132,45 @@ do
         fi
 
         # do it manually
-        if [ $success -eq 0 ]; then
-            path=""
-            if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
-            if [ -f /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml ]; then path="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"; fi
-            if [ -f /data/cln/config ]; then path="/data/cln/config"; fi
+        path=""
+        if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
+        if [ -f /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml ]; then path="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"; fi
+        if [ -f /data/cln/config ]; then path="/data/cln/config"; fi
 
-            if [ "$path" != "" ]; then
-                check=$(grep -c "always-use-proxy=false" "$path")
-                if [ $check -eq 1 ]; then
-                    line=$(grep -n "always-use-proxy=false" "$path" | cut -d ':' -f1)
-                    if [ "$line" != "" ]; then
-                        sed -i "${line}d" "$path" > /dev/null
-                    fi
-                    
-                    # recheck again
-                    checkAgain=$(grep -c "always-use-proxy=false" "$path")
-                    if [ $checkAgain -ne 0 ]; then
-                        echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=false' to 'true' before restarting!!";echo
-                    else
-                        success=1
-                        echo "> Hybrid Mode deactivated successfully.";echo
-                    fi
-                fi
+        if [ "$path" != "" ]; then
+            check=$(grep -c "always-use-proxy=false" "$path")
+            if [ $check -ne 0 ]; then
+                sed -i "s/always-use-proxy=false/always-use-proxy=true/g" "$path" > /dev/null
+                sed -i "s/always-use-proxy=0/always-use-proxy=1/g" "$path" > /dev/null
                 
-                # Umbrel 0.5: restore default configuration
-                if [ "$path" == "/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml" ]; then
-                    uncomment=$(grep -n "#- --bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735" "$path" | cut -d ':' -f1)
-                    if [ "$uncomment" != "" ]; then
-                        sed -i "s/#- --bind-addr/- --bind-addr/g" "$path" > /dev/null
-                    fi
-                    deleteBind=$(grep -n "bind-addr=0\.0\.0\.0\:9735" "$path" | cut -d ':' -f1)
-                    if [ "$deleteBind" != "" ]; then
-                        sed -i "${deleteBind}d" "$path" > /dev/null
-                    fi
-                    deleteAnnounceAddr=$(grep -n "announce-addr=" "$path" | cut -d ':' -f1)
-                    if [ "$deleteAnnounceAddr" != "" ]; then
-                        sed -i "${deleteAnnounceAddr}d" "$path" > /dev/null
-                    fi                    
-                    echo "> Umbrel 0.5+: hybrid mode deactivated and configuration restored";echo
+                # recheck again
+                checkAgain=$(grep -c "always-use-proxy=false" "$path")
+                if [ $checkAgain -ne 0 ]; then
+                    echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=false' to 'true' before restarting!!";echo
+                else
+                    echo "> Hybrid Mode deactivated successfully.";echo
                 fi
             fi
+             
+            # Umbrel 0.5: restore default configuration
+            if [ "$path" == "/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml" ]; then
+                uncomment=$(grep -n "#- --bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735" "$path" | cut -d ':' -f1)
+                if [ "$uncomment" != "" ]; then
+                    sed -i "s/#- --bind-addr/- --bind-addr/g" "$path" > /dev/null
+                fi
+                deleteBind=$(grep -n "bind-addr=0\.0\.0\.0\:9735" "$path" | cut -d ':' -f1)
+                if [ "$deleteBind" != "" ]; then
+                    sed -i "${deleteBind}d" "$path" > /dev/null
+                fi
+                deleteAnnounceAddr=$(grep -n "announce-addr=" "$path" | cut -d ':' -f1)
+                if [ "$deleteAnnounceAddr" != "" ]; then
+                    sed -i "${deleteAnnounceAddr}d" "$path" > /dev/null
+                fi                    
+                echo "> Umbrel 0.5+: hybrid mode deactivated and configuration restored";echo
+            fi
         fi
-            break;;
+    fi
+    break;;
    * )     echo "Just enter LND or CLN, please.";;
   esac
 done
