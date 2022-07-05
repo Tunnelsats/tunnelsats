@@ -408,6 +408,7 @@ if [ $isDocker -eq 1 ]; then
   fi
   #Make sure old legacy table type inet gets also deleted if present
   if nft list table inet tunnelsatsv2 &> /dev/null; then
+      echo "Deleting inet tunnelsats nftable..."
       if nft delete table inet tunnelsatsv2 &> /dev/null; then echo "> Done";echo; fi
   fi
 
