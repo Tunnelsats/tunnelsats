@@ -483,7 +483,8 @@ else
     CLN:   always-use-proxy=true
     LND:   tor.skip-proxy-for-clearnet-targets=false
     Restart lightning service with
-    sudo systemctl restart  lnd.service or lightningd.service";echo
+    sudo /home/umbrel/umbrel/scripts/stop (umbrel)
+    sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
 fi
 
 # the end
