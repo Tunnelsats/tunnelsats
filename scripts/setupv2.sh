@@ -902,6 +902,11 @@ echo "______________________________________________________________________
 
 These are your personal VPN credentials for your lightning configuration.";echo
 
+# echo "INFO: Tunnel⚡️Sats only support one lightning process on a single node.
+# Meaning that running lnd and cln simultaneously via the tunnel will not work.
+# Only the process which listens on 9735 will be reachable via the tunnel";echo 
+
+
 if [ "$lnImplementation" == "lnd"  ]; then 
 
   echo "LND:

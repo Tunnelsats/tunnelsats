@@ -23,7 +23,7 @@ echo "
 
 while true
 do
-   read -p "CAUTION! Uninstalling TunnelSats requires a mandatory restart of your lightning implementation. Do you really want to proceed? (Y/N) " answer
+   read -p "CAUTION! Uninstalling TunnelSats will force your lighting process to stop. Do you really want to proceed? (Y/N) " answer
 
 
   case $answer in
@@ -71,7 +71,7 @@ do
         echo "Ensure lnd lightning process is stopped ..."
 
         if [ $isDocker -eq 1 ]; then
-            container=sudo docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}'
+            container=docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}'
             if  [ ! -z $container ]; then
                 if docker network disconnect docker-tunnelsats $container &> /dev/null && docker stop $container &> /dev/null; then
                     echo "> Successfully stopped $container docker container";echo
@@ -146,7 +146,7 @@ do
    
     
         if [ $isDocker -eq 1 ]; then
-          container=sudo docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}'
+          container=docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}'
             if  [ ! -z $container ]; then
                 if docker network disconnect docker-tunnelsats $container && docker stop $container &> /dev/null; then
                     echo "> Successfully stopped $container docker container";echo
@@ -461,8 +461,8 @@ done
 
 
 echo "VPN setup uninstalled!";echo
-
-echo "Next Steps:";echo
+echo "______________________________________________________________________
+Next Steps: to follow:";echo
 
 
 if [ $isDocker -eq 1 ]; then
