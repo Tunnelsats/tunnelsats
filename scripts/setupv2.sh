@@ -435,7 +435,7 @@ chmod +x /etc/wireguard/tunnelsats-create-cgroup.sh
   pgrep -x lightningd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' &> /dev/null
   count=\$(cat /sys/fs/cgroup/net_cls/splitted_processes/tasks | wc -l)
   if [ \$count -eq 0 ];then
-    echo \"> ERR: no pids added to file\"
+    echo \"> no available lightning processes available for tunneling\"
   else
     echo \"> \${count} Process(es) successfully excluded\"
   fi
@@ -942,6 +942,8 @@ echo "Please save them in a file or write them down for later use.
 
 A more detailed guide is available at: https://blckbx.github.io/tunnelsats/
 Afterwards please restart LND / CLN for changes to take effect.
+VPN setup completed!";echo
+
 
 if [ $isDocker -eq 0 ]; then
 
@@ -953,7 +955,6 @@ if [ $isDocker -eq 0 ]; then
       sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
 fi
 
-VPN setup completed!";echo
 
 # the end
 exit 0

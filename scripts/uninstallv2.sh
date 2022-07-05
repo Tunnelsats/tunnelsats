@@ -80,12 +80,14 @@ do
                 fi 
             fi
         elif [ -f /etc/systemd/system/lnd.service ]; then
-            if systemctl is-active lnd.service &> /dev/null && systemctl stop lnd.service &> /dev/null ;then
-               echo "> Successfully stopped lnd.service";echo
-            else 
-                echo "> ERR: Failed to stop lnd.service, please stop manually and retry";echo
-                exit 1  
-            fi 
+            if systemctl is-active lnd.service &> /dev/null ;then
+                if systemctl stop lnd.service &> /dev/null; then
+                    echo "> Successfully stopped lnd.service";echo
+                else 
+                    echo "> ERR: Failed to stop lnd.service, please stop manually and retry";echo
+                    exit 1  
+                fi 
+            fi
         fi
 
 
@@ -152,13 +154,16 @@ do
                 fi
             fi
         elif [ -f /etc/systemd/system/lightningd.service ]; then
-            if systemctl is-active lightningd.service &> /dev/null && systemctl stop lightningd.service &> /dev/null ;then
-               echo "> Successfully stopped lightningd.service";echo
-            else 
-                echo "> ERR: Failed to stop lightningd.service, please stop manually and retry";echo
-                exit 1  
-            fi 
+            if systemctl is-active lightningd.service &> /dev/null ;then
+                if systemctl stop lightningd.service &> /dev/null; then
+                    echo "> Successfully stopped lightningd.service";echo
+                else 
+                    echo "> ERR: Failed to stop lightningd.service, please stop manually and retry";echo
+                    exit 1  
+                fi 
+            fi
         fi
+
 
       # check CLN (RaspiBlitz)
         lnImplementation="cln"
