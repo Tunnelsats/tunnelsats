@@ -73,12 +73,17 @@ do
         if [ $isDocker -eq 1 ]; then
             container=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}')
             if  [ ! -z $container ]; then
-                if docker network disconnect docker-tunnelsats $container &> /dev/null && docker stop $container &> /dev/null; then
+                if docker stop $container &> /dev/null; then
+                    #try disconnecting network if present
+                    docker network disconnect docker-tunnelsats $container &> /dev/null
+                    docker rm $container &> /dev/null;
                     echo "> Successfully stopped $container docker container";echo
                 else
                     echo "> ERR: Failed to stop $container container, please stop manually and retry";echo
                     exit 1  
                 fi 
+            else
+                echo "> No lightning container active, proceeding ...";echo
             fi
         elif [ -f /etc/systemd/system/lnd.service ]; then
             if systemctl is-active lnd.service &> /dev/null ;then
@@ -148,12 +153,17 @@ do
         if [ $isDocker -eq 1 ]; then
           container=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}')
             if  [ ! -z $container ]; then
-                if docker network disconnect docker-tunnelsats $container && docker stop $container &> /dev/null; then
+                if  docker stop $container &> /dev/null; then
+                    #try disconnecting network if present
+                     docker network disconnect docker-tunnelsats $container &> /dev/null
+                     docker rm $container &> /dev/null;
                     echo "> Successfully stopped $container docker container";echo
                 else
                     echo "> ERR: Failed to stop $container container, please stop manually and retry";echo
                     exit 1  
                 fi
+            else
+                echo "> No lightning container active, proceeding ...";echo
             fi
         elif [ -f /etc/systemd/system/lightningd.service ]; then
             if systemctl is-active lightningd.service &> /dev/null ;then
