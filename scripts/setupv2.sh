@@ -62,7 +62,7 @@ lnImplementation=""
 
 while true
 do
-    read -p "Which lightning implementation do you want to tunnel, please make sure the implementation runs on port 9735? Supported are LND and CLN for now ⚡️:" answer
+    read -p "Which lightning implementation do you want to tunnel? Supported are LND and CLN for now ⚡️:" answer
 
 
   case $answer in

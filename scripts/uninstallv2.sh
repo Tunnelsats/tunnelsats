@@ -69,7 +69,7 @@ do
    lnd|LND* ) 
 
         #First stop lightning process|container
-        echo "Stopping lnd lightning process ..."
+        echo "Ensure lnd lightning process is stopped ..."
 
         if [ $isDocker -eq 1 ]; then
             container=sudo docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}'
@@ -143,7 +143,7 @@ do
    cln|CLN* )  
 
         #First stop lightning process|container
-        echo "Stopping clightning lightning process ..."
+        echo "Ensure clightning process is stopped ..."
    
     
         if [ $isDocker -eq 1 ]; then
