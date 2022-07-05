@@ -97,7 +97,7 @@ do
         if [ "$path" != "" ]; then
             check=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
             if [ $check -ne 0 ]; then
-                sed -i "tor.skip-proxy-for-clearnet-targets/d" "$path"
+                sed -i "/tor.skip-proxy-for-clearnet-targets/d" "$path"
                 
                 # recheck again
                 checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
