@@ -71,8 +71,13 @@ do
         echo "Stopping lnd lightning process ..."
 
         if [ $isDocker -eq 1 ]; then
-            if docker ps --format 'table {{.Names}}' | grep -E "^lnd$" &> /dev/null && docker stop lnd &> /dev/null; then
-               echo "> Successfully stopped lnd docker container";echo
+            if docker ps --format 'table {{.Names}}' | grep -E "^lnd$" &> /dev/null; then
+                if docker stop lnd &> /dev/null; then
+                    echo "> Successfully stopped lnd docker container";echo
+                else
+                    echo "> ERR: Failed to stop lnd container, please stop manually and retry";echo
+                    exit 1  
+                fi 
             fi
         elif [ -f /etc/systemd/system/lnd.service ]; then
             if systemctl is-active lnd.service &> /dev/null && systemctl stop lnd.service &> /dev/null ;then
@@ -139,7 +144,12 @@ do
     
         if [ $isDocker -eq 1 ]; then
             if docker ps --format 'table {{.Names}}' | grep -E "clightning$" &> /dev/null && docker stop clightning &> /dev/null; then
-               echo "> Successfully stopped clighting docker container";echo
+                if docker stop clightning &> /dev/null; then
+                    echo "> Successfully stopped clighting docker container";echo
+                else
+                    echo "> ERR: Failed to stop clightning container, please stop manually and retry";echo
+                    exit 1  
+                fi
             fi
         elif [ -f /etc/systemd/system/lightningd.service ]; then
             if systemctl is-active lightningd.service &> /dev/null && systemctl stop lightningd.service &> /dev/null ;then
