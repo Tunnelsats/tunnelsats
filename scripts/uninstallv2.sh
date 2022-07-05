@@ -71,7 +71,7 @@ do
         echo "Ensure lnd lightning process is stopped ..."
 
         if [ $isDocker -eq 1 ]; then
-            container=docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}'
+            container=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}')
             if  [ ! -z $container ]; then
                 if docker network disconnect docker-tunnelsats $container &> /dev/null && docker stop $container &> /dev/null; then
                     echo "> Successfully stopped $container docker container";echo
@@ -146,7 +146,7 @@ do
    
     
         if [ $isDocker -eq 1 ]; then
-          container=docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}'
+          container=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}')
             if  [ ! -z $container ]; then
                 if docker network disconnect docker-tunnelsats $container && docker stop $container &> /dev/null; then
                     echo "> Successfully stopped $container docker container";echo
