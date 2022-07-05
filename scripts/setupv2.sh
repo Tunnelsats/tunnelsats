@@ -436,7 +436,6 @@ chmod +x /etc/wireguard/tunnelsats-create-cgroup.sh
   count=\$(cat /sys/fs/cgroup/net_cls/splitted_processes/tasks | wc -l)
   if [ \$count -eq 0 ];then
     echo \"> ERR: no pids added to file\"
-    exit 1
   else
     echo \"> \${count} Process(es) successfully excluded\"
   fi

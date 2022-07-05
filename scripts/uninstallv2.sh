@@ -66,6 +66,24 @@ do
 
   case $answer in
    lnd|LND* ) 
+
+        #First stop lightning process|container
+        echo "Stopping lnd lightning process ..."
+
+        if [ $isDocker -eq 1 ]; then
+            if docker ps --format 'table {{.Names}}' | grep -E "^lnd$" &> /dev/null && docker stop lnd &> /dev/null; then
+               echo "> Successfully stopped lnd docker container";echo
+            fi
+        elif [ -f /etc/systemd/system/lnd.service ]; then
+            if systemctl is-active lnd.service &> /dev/null && systemctl stop lnd.service &> /dev/null ;then
+               echo "> Successfully stopped lnd.service";echo
+            else 
+                echo "> ERR: Failed to stop lnd.service, please stop manually and retry";echo
+                exit 1  
+            fi 
+        fi
+
+
         # RaspiBlitz: try to recover lnd.check.sh
         lnImplementation="lnd"
         if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
@@ -113,7 +131,26 @@ do
         fi
         break;;
 
-   cln|CLN* )     # check CLN (RaspiBlitz)
+   cln|CLN* )  
+
+        #First stop lightning process|container
+        echo "Stopping clightning lightning process ..."
+   
+    
+        if [ $isDocker -eq 1 ]; then
+            if docker ps --format 'table {{.Names}}' | grep -E "clightning$" &> /dev/null && docker stop clightning &> /dev/null; then
+               echo "> Successfully stopped clighting docker container";echo
+            fi
+        elif [ -f /etc/systemd/system/lightningd.service ]; then
+            if systemctl is-active lightningd.service &> /dev/null && systemctl stop lightningd.service &> /dev/null ;then
+               echo "> Successfully stopped lightningd.service";echo
+            else 
+                echo "> ERR: Failed to stop lightningd.service, please stop manually and retry";echo
+                exit 1  
+            fi 
+        fi
+
+      # check CLN (RaspiBlitz)
         lnImplementation="cln"
         # RaspiBlitz: try to recover cl.check.sh
         if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
@@ -311,6 +348,7 @@ sleep 2
 #reset lnd
 if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lnd.service.bak ] && [ "$lnImplementation" == "lnd" ]; then
     if mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service; then
+        systemctl daemon-reload > /dev/null
         echo "> lnd.service prior to tunnelsats successfully reset";echo
     else 
         echo "> ERR: Not able to reset /etc/systemd/system/lnd.service Please check manually.";echo
@@ -321,6 +359,7 @@ fi
 #reset lightningd
 if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lightningd.service.bak ] && [ "$lnImplementation" == "cln" ]; then
     if mv /etc/systemd/system/lightningd.service.bak /etc/systemd/system/lightningd.service; then
+        systemctl daemon-reload > /dev/null
         echo "> lightningd.service prior to tunnelsats successfully reset";echo
     else 
         echo "> ERR: Not able to reset /etc/systemd/system/lightningd.service Please check manually.";echo
@@ -368,50 +407,13 @@ fi
 sleep 2
 
 
-# forced lightning restart
-echo "Restarting lightning implementation now..."
 if [ $isDocker -eq 1 ]; then
- 
     echo "Restarting docker services..."
     systemctl daemon-reload > /dev/null
+    #docker needs to be restarted here bc nftables stop and therefore deletes all docker iptable rules
+    #which ensure proper container networking
     systemctl restart docker > /dev/null
     echo "> Restarted docker.service to ensure clean setup"
-
-    # Restart containers
-    if  [ -f /home/umbrel/umbrel/scripts/start ]; then
-        /home/umbrel/umbrel/scripts/start > /dev/null
-        echo "> Restarted umbrel containers";echo  
-    fi
-            
-else #nonDocker
-    systemctl daemon-reload > /dev/null
-    # RaspiBolt / RaspiBlitz / Bare Metal LND
-    if [ -f /etc/systemd/system/lnd.service ] && [ "$lnImplementation" == "lnd" ]; then
-         echo "Restarting lnd.service ..."
-         if systemctl restart lnd.service > /dev/null; then
-            echo "> lnd.service successfully restarted";echo
-         else
-            echo "> ERR: lnd.service could not be restarted.";echo
-         fi
-
-    # RaspiBlitz CLN
-    elif [ -f /etc/systemd/system/lightningd.service ]&& [ "$lnImplementation" == "cln" ]; then
-         echo "Restarting lighningd.service ..."
-         if systemctl restart lightningd.service > /dev/null; then
-            echo "> lightningd.service successfully restarted";echo
-         else 
-            echo "> ERR: lightningd.service could not be restarted.";echo
-         fi
-
-     # RaspiBolt / Bare Metal CLN
-     elif [ -f /etc/systemd/system/cln.service ] && [ "$lnImplementation" == "cln" ]; then
-        echo "Restarting cln.service ..."
-        if systemctl restart cln.service > /dev/null; then
-            echo "> cln.service successfully restarted";echo
-        else
-            echo "> ERR: cln.service could not be restarted.";echo
-        fi
-    fi
 fi
 
 
@@ -446,5 +448,26 @@ done
 
 echo "VPN setup uninstalled!";echo
 
+echo "Next Steps:";echo
+
+
+if [ $isDocker -eq 1 ]; then
+    echo "
+    Double Check if proxy is set in the lightning conf file
+    CLN:   always-use-proxy=true
+    LND:   tor.skip-proxy-for-clearnet-targets=false
+    Restart lightning container with
+    docker start lnd|clightning";echo
+else
+    echo "
+    Double Check if proxy is set in the lightning conf file
+    CLN:   always-use-proxy=true
+    LND:   tor.skip-proxy-for-clearnet-targets=false
+    Restart lightning service with
+    sudo systemctl restart  lnd.service or lightningd.service";echo
+fi
+
 # the end
 exit 0
+
+
