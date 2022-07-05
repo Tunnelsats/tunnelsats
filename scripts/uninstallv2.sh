@@ -476,15 +476,15 @@ if [ $isDocker -eq 1 ]; then
     CLN:   always-use-proxy=true
     LND:   tor.skip-proxy-for-clearnet-targets=false
     Restart lightning container with
-    docker start $container";echo
+    sudo /home/umbrel/umbrel/scripts/stop (umbrel)
+    sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
 else
     echo "
     Double Check if proxy is set in the lightning conf file
     CLN:   always-use-proxy=true
     LND:   tor.skip-proxy-for-clearnet-targets=false
     Restart lightning service with
-    sudo /home/umbrel/umbrel/scripts/stop (umbrel)
-    sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
+    sudo systemctl restart  lnd.service | lightningd.service";echo
 fi
 
 # the end
