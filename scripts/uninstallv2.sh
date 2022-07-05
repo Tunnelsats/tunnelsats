@@ -59,6 +59,7 @@ fi
 # Make sure to disable hybrid mode to prevent IP leakage
 success=0
 lnImplementation=""
+container=""
 while true
 do
     read -p "Which lightning implementation was set to hybrid mode at TunnelSats installation? (LND|CLN) " answer
@@ -71,11 +72,12 @@ do
         echo "Stopping lnd lightning process ..."
 
         if [ $isDocker -eq 1 ]; then
-            if docker ps --format 'table {{.Names}}' | grep -E "^lnd$" &> /dev/null; then
-                if docker network disconnect docker-tunnelsats lnd &> /dev/null && docker stop lnd &> /dev/null; then
-                    echo "> Successfully stopped lnd docker container";echo
+            container=sudo docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}'
+            if  [ ! -z $container ]; then
+                if docker network disconnect docker-tunnelsats $container &> /dev/null && docker stop $container &> /dev/null; then
+                    echo "> Successfully stopped $container docker container";echo
                 else
-                    echo "> ERR: Failed to stop lnd container, please stop manually and retry";echo
+                    echo "> ERR: Failed to stop $container container, please stop manually and retry";echo
                     exit 1  
                 fi 
             fi
@@ -145,11 +147,12 @@ do
    
     
         if [ $isDocker -eq 1 ]; then
-            if docker ps --format 'table {{.Names}}' | grep -E "clightning$" &> /dev/null && docker stop clightning &> /dev/null; then
-                if docker network disconnect docker-tunnelsats clightning && docker stop clightning &> /dev/null; then
-                    echo "> Successfully stopped clighting docker container";echo
+          container=sudo docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}'
+            if  [ ! -z $container ]; then
+                if docker network disconnect docker-tunnelsats $container && docker stop $container &> /dev/null; then
+                    echo "> Successfully stopped $container docker container";echo
                 else
-                    echo "> ERR: Failed to stop clightning container, please stop manually and retry";echo
+                    echo "> ERR: Failed to stop $container container, please stop manually and retry";echo
                     exit 1  
                 fi
             fi
@@ -473,7 +476,7 @@ if [ $isDocker -eq 1 ]; then
     CLN:   always-use-proxy=true
     LND:   tor.skip-proxy-for-clearnet-targets=false
     Restart lightning container with
-    docker start lnd|clightning";echo
+    docker start $container";echo
 else
     echo "
     Double Check if proxy is set in the lightning conf file
