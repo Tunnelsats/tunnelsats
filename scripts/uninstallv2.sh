@@ -50,14 +50,13 @@ fi
 
 
 # get VPN data
-if [ -f /etc/wireguard/tunnelsatsv2.conf ]; then
-    vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
-    vpnExternalPort=$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')
-fi
+#if [ -f /etc/wireguard/tunnelsatsv2.conf ]; then
+#    vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
+#    vpnExternalPort=$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')
+#fi
 
 
 # Make sure to disable hybrid mode to prevent IP leakage
-success=0
 lnImplementation=""
 container=""
 while true
@@ -115,7 +114,7 @@ do
             fi
         fi
 
-        # do it manually
+        # modify LND configuration
         path=""
         if [ -f /mnt/hdd/lnd/lnd.conf ]; then path="/mnt/hdd/lnd/lnd.conf"; fi 
         if [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/lnd/lnd.conf"; fi
@@ -190,7 +189,7 @@ do
             fi    
         fi
 
-        # do it manually
+        # modify CLN configuration
         path=""
         if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
         if [ -f /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml ]; then path="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"; fi
@@ -265,9 +264,6 @@ if [ $isDocker -eq 0 ]; then
         rm /etc/systemd/system/tunnelsats-create-cgroup.service > /dev/null
         echo "> tunnelsats-create-cgroup.service: removed";echo
     fi
-
-
-
 
 else
  
@@ -351,7 +347,7 @@ fi
 sleep 2
 
 # remove killswitch requirement for umbrel startup
-if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  ]; then
+if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf ]; then
     echo "Removing tunnelsats_killswitch.conf..."
     if rm /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf ; then
         rm -r /etc/systemd/system/umbrel-startup.service.d > /dev/null
@@ -445,7 +441,6 @@ while true
 do
   if [ $isDocker -eq 1 ]; then
       read -p "Do you really want to uninstall nftables and wireguard via apt-get remove? (Y/N) " answer
-
   else
       read -p "Do you really want to uninstall cgroup-tools, nftables and wireguard via apt-get remove?(Y/N) " answer
   fi
@@ -472,7 +467,7 @@ echo "Next Steps:";echo
 
 if [ $isDocker -eq 1 ]; then
     echo "
-    Double Check if proxy is set in the lightning conf file
+    Double check if proxy is set in the lightning conf file
     CLN:   always-use-proxy=true
     LND:   tor.skip-proxy-for-clearnet-targets=false
     Restart lightning container with
@@ -480,11 +475,11 @@ if [ $isDocker -eq 1 ]; then
     sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
 else
     echo "
-    Double Check if proxy is set in the lightning conf file
+    Double check if proxy is set in the lightning conf file
     CLN:   always-use-proxy=true
     LND:   tor.skip-proxy-for-clearnet-targets=false
     Restart lightning service with
-    sudo systemctl restart  lnd.service | lightningd.service";echo
+    sudo systemctl restart lnd.service | lightningd.service";echo
 fi
 
 # the end
