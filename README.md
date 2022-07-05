@@ -11,6 +11,7 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 
 <br/>
 
+<!-- omit in toc -->
 ## Table of Content ##
 
 - [Prelude and Objective](#prelude-and-objective)
@@ -26,7 +27,7 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 
 <br/>
 
-## Preconditions: ##
+## Preconditions ##
 
 - OS: Debian-/Ubuntu-based (apt-get required)
 - LND latest (minimum requirement `0.14.2-beta`)
@@ -37,7 +38,7 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 
 <br/>
 
-## How this works: ##
+## How this works ##
 
 In order to understand the provided scripts and steps we gonna take a deep dive into our service. It is split into three parts: 
 
@@ -49,7 +50,7 @@ In order to understand the provided scripts and steps we gonna take a deep dive 
 
 <br/>
 
-## Install: ##
+## Install ##
 
 WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGuard servers and quantum-safe VPN tunnels in various countries to choose from. 
 
@@ -64,7 +65,7 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   Download setup script:
   
   ```sh
-  $ wget https://github.com/blckbx/tunnelsats/raw/main/scripts/setupv2.sh
+  $ wget -O setupv2.sh https://github.com/blckbx/tunnelsats/raw/main/scripts/setupv2.sh
   ```
 
   Copy your WireGuard config file (`tunnelsatsv2.conf`) to the same directory where `setupv2.sh` is located. If you need to transfer it to your node, use `scp` like so:
@@ -219,19 +220,19 @@ lightningd:
 <br/>
 
 
-## Uninstall: ##
+## Uninstall ##
 
 To restore all applied changes made to your node setup, download and run the uninstallv2 script. Furthermore remove entries from configuration files.
 
   ```sh
-  $ wget https://github.com/blckbx/tunnelsats/raw/main/scripts/uninstallv2.sh
+  $ wget -O uninstallv2.sh https://github.com/blckbx/tunnelsats/raw/main/scripts/uninstallv2.sh
   $ sudo bash uninstallv2.sh
   ```
 Restore your configuration from with the backup file you (hopefully) created on setting up hybrid mode. 
 
 <br/>
 
-## Deep Dive: ##
+## Deep Dive ##
 
 What is the `setupv2.sh` script doing in detail?
 
@@ -247,7 +248,7 @@ What is the `setupv2.sh` script doing in detail?
 
 <br/>
 
-## Further Help: ##
+## Further Help ##
 
 Please review the [FAQ](FAQ.md) for further help.
 If you need any other help setting up hybrid mode over VPN
