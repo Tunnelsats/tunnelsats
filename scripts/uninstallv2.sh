@@ -169,7 +169,6 @@ do
                 echo "> Umbrel 0.5+: hybrid mode deactivated and configuration restored";echo
             fi
         fi
-    fi
     break;;
    * )     echo "Just enter LND or CLN, please.";;
   esac
