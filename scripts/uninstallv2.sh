@@ -72,7 +72,7 @@ do
 
         if [ $isDocker -eq 1 ]; then
             if docker ps --format 'table {{.Names}}' | grep -E "^lnd$" &> /dev/null; then
-                if docker stop lnd &> /dev/null; then
+                if docker network disconnect docker-tunnelsats lnd &> /dev/null && docker stop lnd &> /dev/null; then
                     echo "> Successfully stopped lnd docker container";echo
                 else
                     echo "> ERR: Failed to stop lnd container, please stop manually and retry";echo
@@ -146,7 +146,7 @@ do
     
         if [ $isDocker -eq 1 ]; then
             if docker ps --format 'table {{.Names}}' | grep -E "clightning$" &> /dev/null && docker stop clightning &> /dev/null; then
-                if docker stop clightning &> /dev/null; then
+                if docker network disconnect docker-tunnelsats clightning && docker stop clightning &> /dev/null; then
                     echo "> Successfully stopped clighting docker container";echo
                 else
                     echo "> ERR: Failed to stop clightning container, please stop manually and retry";echo
