@@ -104,18 +104,18 @@ do
             if [ -f  /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf ] && ! rm /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf &> /dev/null; then
                echo "> ERR: Failed to remove dependency /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf";echo
                exit 1
+            else
+                echo "> lnd.service.d dependency removed";echo
             fi
             systemctl daemon-reload &> /dev/null
 
 
-            echo "RaspiBlitz: Trying to restore with safety check 'lnd.check.sh'..."
             if [ -f /home/admin/config.scripts/lnd.check.bak ]; then
+                echo "RaspiBlitz: Restoring 'lnd.check.sh'..."
                 mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
                 if bash /home/admin/config.scripts/lnd.check.sh > /dev/null; then
                     echo "> Safety check for lnd.conf found and restored";echo
                 fi
-            else
-                echo "> Backup of 'lnd.check.sh' not found, proceeding with manual deactivation...";echo
             fi
         fi
 
@@ -131,6 +131,7 @@ do
         if [ "$path" != "" ]; then
             check=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
             if [ $check -ne 0 ]; then
+            
                 sed -i "/tor.skip-proxy-for-clearnet-targets/d" "$path"
                 
                 # recheck again
@@ -138,7 +139,7 @@ do
                 if [ $checkAgain -ne 0 ]; then
                     echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!";echo
                 else
-                    echo "> Hybrid Mode deactivated successfully.";echo
+                    echo "> Hybrid Mode successfully deactivated";echo
                 fi
             fi
         fi
@@ -188,15 +189,13 @@ do
             fi
             systemctl daemon-reload &> /dev/null
 
-            echo "RaspiBlitz: Trying to restore with safety check 'cl.check.sh'..."
             if [ -f /home/admin/config.scripts/cl.check.bak ]; then
+                echo "RaspiBlitz: Restoring 'cl.check.sh'..."
                 mv /home/admin/config.scripts/cl.check.bak /home/admin/config.scripts/cl.check.sh
-                if bash /home/admin/config.scripts/cl.check.sh; then
+                if bash /home/admin/config.scripts/cl.check.sh > /dev/null; then
                     echo "> Safety check for cln config found and restored";echo
                 fi
-            else
-                echo "> Backup of 'cl.check.sh' not found, proceeding with manual deactivation...";echo
-            fi    
+            fi
         fi
 
         # modify CLN configuration
@@ -206,13 +205,14 @@ do
         if [ -f /data/cln/config ]; then path="/data/cln/config"; fi
 
         if [ "$path" != "" ]; then
-            check=$(grep -c "always-use-proxy=false" "$path")
+            check=$(grep -c "always-use-proxy=false\|always-use-proxy=0" "$path")
             if [ $check -ne 0 ]; then
+            
                 sed -i "s/always-use-proxy=false/always-use-proxy=true/g" "$path" > /dev/null
                 sed -i "s/always-use-proxy=0/always-use-proxy=1/g" "$path" > /dev/null
                 
                 # recheck again
-                checkAgain=$(grep -c "always-use-proxy=false" "$path")
+                checkAgain=$(grep -c "always-use-proxy=false\|always-use-proxy=0" "$path")
                 if [ $checkAgain -ne 0 ]; then
                     echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=false' to 'true' before restarting!!";echo
                 else
@@ -429,6 +429,7 @@ if [ $isDocker -eq 1 ]; then
   fi
 fi
 
+
 sleep 2
 
 
@@ -440,9 +441,6 @@ if [ $isDocker -eq 1 ]; then
     systemctl restart docker > /dev/null
     echo "> Restarted docker.service to ensure clean setup"
 fi
-
-
-
 
 
 
@@ -477,7 +475,7 @@ Next Steps: to follow:";echo
 
 if [ $isDocker -eq 1 ]; then
     echo "
-    Double check if proxy is set in the lightning conf file
+    Double check if proxy is correctly set in the lightning conf file
     CLN:   always-use-proxy=true
     LND:   tor.skip-proxy-for-clearnet-targets=false
     Restart lightning container with
@@ -485,7 +483,7 @@ if [ $isDocker -eq 1 ]; then
     sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
 else
     echo "
-    Double check if proxy is set in the lightning conf file
+    Double check if proxy is correctly set in the lightning conf file
     CLN:   always-use-proxy=true
     LND:   tor.skip-proxy-for-clearnet-targets=false
     Restart lightning service with
