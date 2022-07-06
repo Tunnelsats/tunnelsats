@@ -104,10 +104,10 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
 Before applying any changes to your config files, please __always__ create a backup! For example:
 
   ```sh
-  $ sudo cp /path/to/lnd.conf /path/to/lnd.conf.backup
+  $ cp /path/to/lnd.conf /path/to/lnd.conf.backup
   ```
 
-⚠️ __Important Notice__: The following parts show how to configure LND and CLN implementations for hybrid mode. Regarding the status of this project, we currently only support one lightning implementation at a time. This means: If you plan to run both LND and CLN in parallel, only one (which listens on port 9735) is routed over VPN, others default to Tor-only. Nevertheless, it is possible to choose or switch default ports on various node setups.
+⚠️ __Important Notice__: The following parts show how to configure LND and CLN implementations for hybrid mode. Regarding the status of this project, we currently only support one lightning implementation at a time. This means: If you plan to run both LND and CLN in parallel, only one (the one listening on port 9735) is routed over VPN, other ones default to Tor-only. Nevertheless, it is possible to bind or switch default ports on various node setups.
 
 <br/>
 
@@ -130,11 +130,9 @@ Running LND only requires a few parameters to be checked and set to activate hyb
 
 ### CLN
 
-With CLN it's a bit trickier. Most node setups like Umbrel, RaspiBolt, RaspiBlitz etc. default CLN's daemon port to the number `9736`. So in order to route CLN clearnet over VPN, we need to change CLN's default port to `9735`. 
+With CLN it's a bit trickier. Most node setups like Umbrel, RaspiBolt, RaspiBlitz etc. default CLN's daemon port to `9736`. So in order to route CLN clearnet over VPN, we need to change CLN's default port to `9735`. The following shows how to edit non-docker CLN configuration:
 
-The following shows how to edit non-docker CLN configuration:
-
-Locate the data directory of your CLN installation. By default CLN's configuration is stored in a file named `config`. Edit the file and look out for network settings section. Configured to hybrid it should look like this:
+Locate data directory of your CLN installation. By default CLN's configuration is stored in a file named `config`. Edit the file and look out for network settings section. Configured to hybrid it should look like this:
 
 ```ini
 bind-addr=0.0.0.0:9735
@@ -142,14 +140,14 @@ announce-addr={vpnIP}:{vpnPort}
 always-use-proxy=false
 ```
 
-On docker based systems this looks very differently. The following shows how to enable hybrid on Umbrel v0.5+:
+On docker-based systems this might look very different. The following shows how to enable hybrid on Umbrel v0.5+:
 
 - Apps installed: Bitcoin, CLN (LND may NOT be installed at the same time)
 - Working Directory: `~/umbrel/app-data/core-lightning/`
 - Files to look for: `export.sh`, `docker-compose.yml`
 - Changes to be made: 
 
-export.sh: change port number from 9736 to 9735
+__export.sh__: change port number from 9736 to 9735
 ```ini
 export APP_CORE_LIGHTNING_DAEMON_PORT="9736"
 ```
@@ -158,7 +156,7 @@ change to
 export APP_CORE_LIGHTNING_DAEMON_PORT="9735"
 ```
 
-docker-compose.yml: add three new parameters to `command` section. these are `bind=0.0.0.0:9735`, `always-use-proxy=false` and `announce-addr=` and comment out `- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735`.
+__docker-compose.yml__: add three new parameters to `command` section. these are `bind=0.0.0.0:9735`, `always-use-proxy=false` and `announce-addr=` and comment out `- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735`.
 
 ```ini
   lightningd:
@@ -215,7 +213,7 @@ lightningd:
   #externalhosts=...
   ```
   
-⚠️ After enabling hybrid mode in related configuration files, restart the lightning implementation for changes to take effect! Before doing so, verify the established VPN connection with commands provided in the following part. 
+⚠️ After enabling hybrid mode in related configuration files, restart the lightning implementation for changes to take effect!
 
 <br/>
 
@@ -228,7 +226,7 @@ To restore all applied changes made to your node setup, download and run the uni
   $ wget -O uninstallv2.sh https://github.com/blckbx/tunnelsats/raw/main/scripts/uninstallv2.sh
   $ sudo bash uninstallv2.sh
   ```
-Restore your configuration from with the backup file you (hopefully) created on setting up hybrid mode. 
+Restore your configuration from with the backup file you (hopefully) created on setting up hybrid mode. The uninstall script will take care of the most important part to prevent real IP leaks by disabling/removing hybrid settings in respective configuration files.
 
 <br/>
 
@@ -238,20 +236,20 @@ What is the `setupv2.sh` script doing in detail?
 
 1) Checking if required components are already installed and if not, installing them. These are: `cgroup-tools` (for split-tunneling Tor), `nftables` (VPN rules) and `wireguard` (VPN software).
 
-2) Checking if `tunnelsatsv2.conf` exists in current directory (must be the same directory where setup script is located).
+2) Checking if `tunnelsatsv2.conf` exists in current directory (must be the same directory where setupv2 script is located).
 
 3) Setting up "split-tunneling" to only include lightning P2P traffic in VPN usage.
 
-4) Enabling and starting required systemd services (wg-quick@.service, splitting.service).
+4) Enabling and starting required systemd services (wg-quick@.service, splitting.service) or network container for docker-based solutions.
 
-5) Adding nftables ruleset to client system to enable kill-switching and prevent DNS leakage.
+5) Adding client-side nftables ruleset enabling kill-switching and preventing DNS leakage.
 
 <br/>
 
 ## Further Help ##
 
 Please review the [FAQ](FAQ.md) for further help.
-If you need any other help setting up hybrid mode over VPN
+If you need help setting up hybrid mode over VPN
 or just want to have a chat with us, join our [Tunnel⚡Sats](https://t.me/+NJylaUom-rxjYjU6) Telegram group.
 
 ____________________________________________________________
