@@ -159,6 +159,7 @@ NumEntryGuards 8
 ```
 
 <br/>
+
 ### What does v2 stand for?
 In v2 we changed the way traffic is routed to our VPNs. Instead of tunneling all node traffic and excluding processes like Tor and ssh, we now only tunnel lightning p2p traffic coming from port 9735 over VPN and leave the rest as is. This makes it possible to connect remotely to your node via gRPC/Rest and other interfaces and services.
 
