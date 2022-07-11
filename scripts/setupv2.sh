@@ -774,7 +774,7 @@ if [ $isDocker -eq 1 ]; then
   Description=5min timer for tunnelsats-docker-network.service
   [Timer]
   OnBootSec=60
-  OnUnitActiveSec=300
+  OnUnitActiveSec=60
   Persistent=true
   [Install]
   WantedBy=timers.target
