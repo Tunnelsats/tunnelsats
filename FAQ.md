@@ -4,6 +4,7 @@
 - [Why should I use this service?](#why-should-i-use-this-service)
 - [Why choose Tunnel⚡Sats over other VPN providers?](#why-choose-tunnelsats-over-other-vpn-providers)
 - [Is your service reliable?](#is-your-service-reliable)
+- [Which setups are supported?](#which-setups-are-supported)
 - [Do you store my data? If so, which one and how do you use it?](#do-you-store-my-data-if-so-which-one-and-how-do-you-use-it)
 - [What options do I have if I'm not happy?](#what-options-do-i-have-if-im-not-happy)
 - [How can I extend my subscription?](#how-can-i-extend-my-subscription)
@@ -15,9 +16,9 @@
 - [Why shouldn't I just do it myself?](#why-shouldnt-i-just-do-it-myself)
 - [Why are you charging fees?](#why-are-you-charging-fees)
 - [Where do I find my lightning configuration file?](#where-do-i-find-my-lightning-configuration-file)
-- [How to transfer `tunnelsats.conf` to my node?](#how-to-transfer-tunnelsatsconf-to-my-node)
+- [How to transfer `tunnelsatsv2.conf` to my node?](#how-to-transfer-tunnelsatsv2conf-to-my-node)
 - [How does it actually look like, how am I connected?](#how-does-it-actually-look-like-how-am-i-connected)
-- [How can I verify that my connection is routed over VPN?](#how-can-i-verify-that-my-connection-is-routed-over-vpn)
+- [How can I verify that my VPN connection is online and active?](#how-can-i-verify-that-my-vpn-connection-is-online-and-active)
 - [Tuning Tor](#tuning-tor)
 - [What does v2 stand for?](#what-does-v2-stand-for)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
@@ -47,10 +48,21 @@ We use premium VPS Services with tight SLAs and proven, recorded high uptime (99
 
 <br/>
 
+### Which setups are supported?
+To date we successfully tested the following setups:
+
+- RaspiBlitz (LND / CLN)
+- Umbrel < v0.5 (LND)
+- Umbrel 0.5 (LND / CLN not recommended yet)
+- myNode (LND)
+- RaspiBolt /bare metal (LND/CLN)
+
+<br />
+
 ### Do you store my data? If so, which one and how do you use it?
 We don't log IPs in our Webserver access data. We also offer an .onion website to allow for even greater anonymity: http://tunnelpasz3fpxhuw6obb5tpuqkxmcmvqh7asx5vkqfwe7ix74ry22ad.onion
 
-We don't store packets or logfiles from or to your node once the tunnel is established. What we do store: We store the payment hash as accounting confirmation in LNBits. We do have to keep your node's IP address in memory for the the tunnel connection alive, which will be discarded once you disconnect. Hence it's extremely important to save your Wireguard configuration files, because there is no way for us to re-retrieve that information.
+We don't store packets or logfiles from or to your node once the tunnel is established. What we do store: We store the payment hash as accounting confirmation in LNBits. We do have to keep your node's IP address in memory for the tunnel connection to stay alive, which will be discarded once you disconnect. Hence it's extremely important to save your Wireguard configuration file because there is no way for us to re-retrieve that information.
 
 <br/>
 
@@ -138,7 +150,7 @@ $ scp tunnelsatsv2.conf umbrel@umbrel.local:/home/umbrel/
 
 ### How does it actually look like, how am I connected?
 See the current network setup in a comparison between your Tor only setup vs the new setup as a flowchart
-![Flowchart Diagram](/docs/assets/Tunnelsats-Tor-scenario.drawio%20(1).png)
+![Flowchart Diagram](/docs/assets/Tunnelsats-Tor-scenario.drawio.png)
 
 <br/>
 
