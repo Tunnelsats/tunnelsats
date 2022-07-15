@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0 
-patch=8
+patch=9
 
 
 #Helper
@@ -157,7 +157,7 @@ if [ $checkwg -eq 0 ]; then
     
     # Debian 10 Buster workaround / RaspiBlitz / myNode
     codename=$(lsb_release -c 2> /dev/null | awk '{print $2}')
-    if [ "$codename" == "buster" ]; then
+    if [ "$codename" == "buster" ] && [ "$(hostname)" != "umbrel" ]; then
     	if apt-get install -y -t buster-backports wireguard > /dev/null; then
  	    echo "> wireguard installed";echo
         else
