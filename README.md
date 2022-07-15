@@ -60,7 +60,7 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
 
 3) Copy, download or send the wireguard configuration (file: `tunnelsatsv2.conf` - please do NOT rename this file) to your local computer and transfer it to your node.
 
-4) Backup `tunnelsatsv2.conf` to a safe place (node system updates may delete the setup)
+4) Backup `tunnelsatsv2.conf` to a safe place (to prevent deletion on updates, for example on RaspiBlitz create a new directory called `/tunnelsats/` and save the config file in there: `/mnt/hdd/app-data/tunnelsats/`)
 
 5) Download the setup script onto your node.
 
