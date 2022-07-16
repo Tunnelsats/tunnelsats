@@ -21,6 +21,7 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - [Enabling hybrid mode](#enabling-hybrid-mode)
   - [LND](#lnd)
   - [CLN](#cln)
+- [Renew Subscription](#renew-subscription)
 - [Uninstall](#uninstall)
 - [Deep Dive](#deep-dive)
 - [Further Help](#further-help)
@@ -219,6 +220,15 @@ lightningd:
 
 <br/>
 
+## Renew Subscription
+
+Renewing a subscription is simple. Important part is to remember your valid date and get a new `tunnelsatsv2.conf` file before date expires. For renewal:
+- make sure to stop LND/CLN or the node completely 
+- redo the setup procedure again by placing `setupv2.sh` and new `tunnelsatsv2.conf` file into the same directory and 
+- executing the shell script once again (because initial setup still applies, most installation steps will get skipped). 
+- Restart LND/CLN process or node setup afterwards. 
+
+<br />
 
 ## Uninstall ##
 
