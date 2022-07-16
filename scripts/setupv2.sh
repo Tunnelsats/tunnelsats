@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0 
-patch=10
+patch=11
 
 
 #Helper
@@ -939,7 +939,7 @@ if [ "$lnImplementation" == "cln"  ]; then
   (edit /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml file 
   in section 'lightningd' - 'command' as follows):
   comment out the following line: 
-  #- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735
+  #- --bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735
   add the following lines:
   - --bind-addr=0.0.0.0:9735
   - --announce-addr=${vpnExternalIP}:${vpnExternalPort}
@@ -962,10 +962,10 @@ VPN setup completed!";echo
 
 if [ $isDocker -eq 0 ]; then
 
-    echo "Restart $lnImplementation afterwards via the command:
+    echo "Restart ${lnImplementation} afterwards via the command:
     sudo systemctl restart ${lnImplementation}.service";echo
   else
-     echo "Restart $lnImplementation on umbrel afterwards via the command:
+     echo "Restart ${lnImplementation} on umbrel afterwards via the command:
       sudo /home/umbrel/umbrel/scripts/stop (umbrel)
       sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
 fi
