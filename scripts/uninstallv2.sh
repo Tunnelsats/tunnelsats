@@ -4,6 +4,13 @@
 #
 # Usage: sudo bash uninstall.sh
 
+#VERSION NUMBER of uninstallv2.sh
+#Update if your make a significant change
+##########UPDATE IF YOU MAKE A NEW RELEASE#############
+major=0
+minor=0 
+patch=5
+
 # check if sudo
 if [ "$EUID" -ne 0 ]; then
     echo "Please run as root (with sudo)";echo
@@ -14,8 +21,9 @@ fi
 # intro
 echo "
 ##############################
-#       TunnelSats v2        #
-#      Uninstall Script      #
+       TunnelSats v2
+      Uninstall Script
+      v$major.$minor.$patch
 ##############################";echo
 
 
