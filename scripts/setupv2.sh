@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0 
-patch=9
+patch=10
 
 
 #Helper
@@ -962,10 +962,10 @@ VPN setup completed!";echo
 
 if [ $isDocker -eq 0 ]; then
 
-    echo "Restart lnd|cln afterwards via the command:
-    sudo systemctl restart lightningd.service|lnd.service";echo
+    echo "Restart $lnImplementation afterwards via the command:
+    sudo systemctl restart ${lnImplementation}.service";echo
   else
-     echo "Restart lnd|cln on umbrel afterwards via the command:
+     echo "Restart $lnImplementation on umbrel afterwards via the command:
       sudo /home/umbrel/umbrel/scripts/stop (umbrel)
       sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
 fi
