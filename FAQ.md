@@ -21,6 +21,7 @@
 - [How can I verify that my VPN connection is online and active?](#how-can-i-verify-that-my-vpn-connection-is-online-and-active)
 - [Tuning Tor](#tuning-tor)
 - [What does v2 stand for?](#what-does-v2-stand-for)
+- [Do you offer full-service VPNs too?](#do-you-offer-full-service-vpns-too)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
 
 <br/>
@@ -176,6 +177,11 @@ NumEntryGuards 8
 In v2 we changed the network architecture compared to v1 where all traffic was directed via the VPN except Tor and ssh. This approach resulted in a lot of exceptions for different users. For example, if you were running ThunderHub on your node with v1, you were not able to access it via the external clearnet. In v2 we are now isolating only lightning traffic via the VPN meaning that all traffic not routed via your local proxy or not destined for your local network will be directed through the tunnel. This means apps like ThunderHub which run locally on your node are not tunneled and are accessible from the external clearnet. Nothing changes for your setup except for the lightning process. You will have no problems accessing your node from the external clearnet via ssh. So keep in mind that in case you want to access the gRPC or REST interface form the external clearnet, it will not be possible. In this case services like ZeroTier are recommended which let's you access your node as if it would be in your local network. Normally accessing your nodes gRPC or REST API from the external clearnet shouldn't be a general use case, it's recommended to access the API via the local network or on the same computer resulting in better efficiency.
 
 <br/>
+
+### Do you offer full-service VPNs too?
+In short: No. Currently we are specializing VPN usage for the sole purpose of lightning node running. If you are looking for a privacy-preserving, lightning-payment enabled VPN provider, we recommend to take a look at [LNVPN.net](https://lnvpn.net).
+
+<br />
 
 ### I have some ideas to make this better. Where can I provide feedback or offer help?
 Great! Please do not hesitate to reach out via [Telegram](https://t.me/+NJylaUom-rxjYjU6), [Twitter](https://twitter.com/tunnelsats), eMail (info @ tunnelsats.com) or log an issue here on Github with your detailed ideas or feature requests. We always look forward to partner with great thinkers and doers.
