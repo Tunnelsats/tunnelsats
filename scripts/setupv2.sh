@@ -757,8 +757,6 @@ if [ $isDocker -eq 1 ]; then
   # create systemd file
   echo "Creating tunnelsats-docker-network.sh systemd service..."
   if [ ! -f /etc/systemd/system/tunnelsats-docker-network.sh ]; then
-    # if we are on Umbrel || Start9 (Docker solutions), create a timer to restart and re-check Tor/ssh pids
-    if [ $isDocker -eq 1 ]; then
       echo "[Unit]
   Description=Adding Lightning Container to the tunnel
   StartLimitInterval=200
@@ -792,8 +790,6 @@ if [ $isDocker -eq 1 ]; then
         echo "> ERR: tunnelsats-docker-network.timer not created. Please check for errors.";echo
 	    exit 1
       fi
-
-    fi
 
   fi
 
