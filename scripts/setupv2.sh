@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0 
-patch=11
+patch=12
 
 
 #Helper
@@ -42,6 +42,7 @@ if [ "$(hostname)" == "umbrel" ] || \
    [ -f /home/umbrel/umbrel/lnd/lnd.conf ] || \
    [ -d /home/umbrel/umbrel/app-data/lightning ] || \
    [ -d /home/umbrel/umbrel/app-data/core-lightning ] || \
+   [ -d /home/$USER/umbrel ] || \
    [ -d /embassy-data/package-data/volumes/lnd ]; then
   isDocker=1
 fi
