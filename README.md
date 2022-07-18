@@ -137,85 +137,43 @@ With CLN it's a bit trickier. Most node setups like Umbrel, RaspiBolt, RaspiBlit
 
 Locate data directory of your CLN installation. By default CLN's configuration is stored in a file named `config`. Edit the file and look out for network settings section. Configured to hybrid it should look like this:
 
-```ini
-bind-addr=0.0.0.0:9735
-announce-addr={vpnIP}:{vpnPort}
-always-use-proxy=false
-```
+  ```ini
+  bind-addr=0.0.0.0:9735
+  announce-addr={vpnIP}:{vpnPort}
+  always-use-proxy=false
+  ```
 
 On docker-based systems this might look very different. The following shows how to enable hybrid on Umbrel v0.5+:
 
 - Apps installed: Bitcoin, CLN (LND may NOT be installed at the same time)
 - Working Directory: `~/umbrel/app-data/core-lightning/`
-- Files to look for: `export.sh`, `docker-compose.yml`
+- File to look for: `export.sh`
 - Changes to be made: 
 
 __export.sh__: change port number from 9736 to 9735
-```ini
-export APP_CORE_LIGHTNING_DAEMON_PORT="9736"
-```
+  ```ini
+  export APP_CORE_LIGHTNING_DAEMON_PORT="9736"
+  ```
 change to
-```ini
-export APP_CORE_LIGHTNING_DAEMON_PORT="9735"
-```
+  ```ini
+  export APP_CORE_LIGHTNING_DAEMON_PORT="9735"
+  ```
 
-__docker-compose.yml__: add three new parameters to `command` section. these are `bind=0.0.0.0:9735`, `always-use-proxy=false` and `announce-addr=` and comment out `- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735`.
+⚠️ __Important Notice:__ On updates of CLN app `export.sh` is getting reset. So this change has to be done after every update procedure of CLN!  
 
-```ini
-  lightningd:
-    image: lncm/clightning:...
-    restart: on-failure
-    ports:
-      - ${APP_CORE_LIGHTNING_DAEMON_PORT}:9735
-    command:
-      - --bitcoin-rpcconnect=${APP_BITCOIN_NODE_IP}
-      - --bitcoin-rpcuser=${APP_BITCOIN_RPC_USER}
-      - --bitcoin-rpcpassword=${APP_BITCOIN_RPC_PASS}
-      - --proxy=${TOR_PROXY_IP}:${TOR_PROXY_PORT}
-      - --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735
-      - --addr=statictor:${TOR_PROXY_IP}:29051
-      - --tor-service-password=${TOR_PASSWORD}
-      #- --grpc-port=${APP_CORE_LIGHTNING_DAEMON_GRPC_PORT}
-    volumes:
-      - "${APP_DATA_DIR}/data/lightningd:/data/.lightning"
-    networks:
-      default:
-        ipv4_address: ${APP_CORE_LIGHTNING_DAEMON_IP}
-```
-change to (replace {vpnIP}:{vpnPort} with the VPN IP and port received running `setup.sh`)
-```ini
-lightningd:
-    image: lncm/clightning:...
-    restart: on-failure
-    ports:
-      - ${APP_CORE_LIGHTNING_DAEMON_PORT}:9735
-    command:
-      - --bitcoin-rpcconnect=${APP_BITCOIN_NODE_IP}
-      - --bitcoin-rpcuser=${APP_BITCOIN_RPC_USER}
-      - --bitcoin-rpcpassword=${APP_BITCOIN_RPC_PASS}
-      - --proxy=${TOR_PROXY_IP}:${TOR_PROXY_PORT}
-      #- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735
-      - --addr=statictor:${TOR_PROXY_IP}:29051
-      - --tor-service-password=${TOR_PASSWORD}
-      - --bind-addr=0.0.0.0:9735
-      - --announce-addr={vpnIP}:{vpnPort}
-      - --always-use-proxy=false
-      #- --grpc-port=${APP_CORE_LIGHTNING_DAEMON_GRPC_PORT}
-    volumes:
-      - "${APP_DATA_DIR}/data/lightningd:/data/.lightning"
-    networks:
-      default:
-        ipv4_address: ${APP_CORE_LIGHTNING_DAEMON_IP}
-```
+Additionally we create a persistent CLN config file (if not already provided. Umbrel 0.5+ does not initially.):
 
-⚠️ __Important Notice:__ Especially for LND configurations, please uncomment or remove any other `externalip=` and / or `externalhosts=` settings. They can potentially interfere with VPN settings. In summary:
+  ```sh
+  $ nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config
+  ``` 
+and enter the following settings:
 
   ```ini
-  # Uncomment any of these parameters if present:
-  #externalip=...
-  #externalhosts=...
+  bind-addr=10.9.9.9:9735
+  always-use-proxy=false
+  announce-addr={vpnIP}:{vpnPort}
   ```
-  
+
 ⚠️ After enabling hybrid mode in related configuration files, restart the lightning implementation for changes to take effect!
 
 <br/>
