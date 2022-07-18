@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0 
-patch=5
+patch=6
 
 # check if sudo
 if [ "$EUID" -ne 0 ]; then
@@ -23,7 +23,7 @@ echo "
 ##############################
        TunnelSats v2
       Uninstall Script
-      v$major.$minor.$patch
+       v$major.$minor.$patch
 ##############################";echo
 
 
@@ -52,6 +52,7 @@ if [ "$(hostname)" == "umbrel" ] || \
    [ -f /home/umbrel/umbrel/lnd/lnd.conf ] || \
    [ -d /home/umbrel/umbrel/app-data/lightning ] || \
    [ -d /home/umbrel/umbrel/app-data/core-lightning ] || \
+   [ -d /home/"$USER"/umbrel ] || \
    [ -d /embassy-data/package-data/volumes/lnd ]; then
     isDocker=1
 fi
@@ -142,7 +143,7 @@ do
             
                 sed -i "/tor.skip-proxy-for-clearnet-targets/d" "$path"
                 
-                # recheck again
+                # recheck
                 checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
                 if [ $checkAgain -ne 0 ]; then
                     echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!";echo
@@ -209,7 +210,7 @@ do
         # modify CLN configuration
         path=""
         if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
-        if [ -f /home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml ]; then path="/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml"; fi
+        if [ -f /home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config ]; then path="/home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"; fi
         if [ -f /data/cln/config ]; then path="/data/cln/config"; fi
 
         if [ "$path" != "" ]; then
@@ -219,7 +220,7 @@ do
                 sed -i "s/always-use-proxy=false/always-use-proxy=true/g" "$path" > /dev/null
                 sed -i "s/always-use-proxy=0/always-use-proxy=1/g" "$path" > /dev/null
                 
-                # recheck again
+                # recheck
                 checkAgain=$(grep -c "always-use-proxy=false\|always-use-proxy=0" "$path")
                 if [ $checkAgain -ne 0 ]; then
                     echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=false' to 'true' before restarting!!";echo
@@ -228,21 +229,38 @@ do
                 fi
             fi
              
-            # Umbrel 0.5: restore default configuration
-            if [ "$path" == "/home/umbrel/umbrel/app-data/core-lightning/docker-compose.yml" ]; then
-                uncomment=$(grep -n "#- --bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735" "$path" | cut -d ':' -f1)
-                if [ "$uncomment" != "" ]; then
-                    sed -i "s/#- --bind-addr/- --bind-addr/g" "$path" > /dev/null
-                fi
-                deleteBind=$(grep -n "bind-addr=0\.0\.0\.0\:9735" "$path" | cut -d ':' -f1)
+            # Umbrel 0.5+ CLN: restore default configuration
+            if [ "$path" == "/home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config" ]; then
+                deleteBind=$(grep -n "^bind-addr" "$path" | cut -d ':' -f1)
                 if [ "$deleteBind" != "" ]; then
                     sed -i "${deleteBind}d" "$path" > /dev/null
                 fi
-                deleteAnnounceAddr=$(grep -n "announce-addr=" "$path" | cut -d ':' -f1)
+                deleteAnnounceAddr=$(grep -n "^announce-addr" "$path" | cut -d ':' -f1)
                 if [ "$deleteAnnounceAddr" != "" ]; then
                     sed -i "${deleteAnnounceAddr}d" "$path" > /dev/null
-                fi                    
-                echo "> Umbrel 0.5+: hybrid mode deactivated and configuration restored";echo
+                fi
+                
+                # recheck
+                checkAgain=$(grep -c "always-use-proxy=false\|always-use-proxy=0" "$path")
+                if [ $checkAgain -ne 0 ]; then
+                    echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set 'always-use-proxy=false' to 'true' before restarting!!";echo
+                else
+                    echo "> Umbrel 0.5+: hybrid mode deactivated and configuration restored.";echo
+                fi
+            fi
+            # Umbrel 0.5+ CLN: restore assigned port
+            if [ "$path" == "home/umbrel/umbrel/app-data/core-lightning/exports.sh" ]; then
+                getPort=$(grep -n "export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"" | cut -d ':' -f1)
+                if [ "$getPort" != "" ]; then
+                    sed -i "s/export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"/export APP_CORE_LIGHTNING_DAEMON_PORT=\"9736\"/g" "$path" > /dev/null
+                fi
+                #recheck
+               checkAgain=$(grep -c "export APP_CORE_LIGHTNING_DAEMON_PORT=\"9736\"" "$path")
+                if [ $checkAgain -ne 0 ]; then
+                    echo "> Restoring assigned port failed. Please check ${path} file and set APP_CORE_LIGHTNING_DAEMON_PORT=\"9736\".";echo
+                else
+                    echo "> Umbrel 0.5+ CLN: port assignment successfully restored.";echo
+                fi                
             fi
         fi
     break;;
@@ -364,6 +382,7 @@ fi
 
 sleep 2
 
+
 # remove killswitch requirement for umbrel startup
 if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf ]; then
     echo "Removing tunnelsats_killswitch.conf..."
@@ -376,6 +395,7 @@ if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service.d/tunn
 fi
 
 sleep 2
+
 
 #reset lnd
 if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lnd.service.bak ] && [ "$lnImplementation" == "lnd" ]; then
@@ -437,7 +457,6 @@ if [ $isDocker -eq 1 ]; then
   fi
 fi
 
-
 sleep 2
 
 
@@ -483,12 +502,12 @@ Next Steps: to follow:";echo
 
 if [ $isDocker -eq 1 ]; then
     echo "
-    Double check if proxy is correctly set in the lightning conf file
+    Double check if proxy is correctly set in the config file
     CLN:   always-use-proxy=true
     LND:   tor.skip-proxy-for-clearnet-targets=false
     Restart lightning container with
-    sudo /home/umbrel/umbrel/scripts/stop (umbrel)
-    sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
+    sudo /home/umbrel/umbrel/scripts/stop (Umbrel)
+    sudo /home/umbrel/umbrel/scripts/start (Umbrel)";echo
 else
     echo "
     Double check if proxy is correctly set in the lightning conf file
