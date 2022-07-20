@@ -178,6 +178,44 @@ In v2 we changed the network architecture compared to v1 where all traffic was d
 
 <br/>
 
+
+### Running tunnelsatsv2 and mullvad in parallel?
+
+Yes this is possible, but you have to make some adjustments.
+First you have to make sure the startup order is first mullvad then tunnelsats leading to the following ip rules
+```
+0:  from all lookup local
+32760:  from all lookup main suppress_prefixlength 0
+32761:  from all fwmark 0xdeadbeef lookup 51820
+32762:  not from all fwmark 0x6d6f6c65 lookup 1836018789
+32766:  from all lookup main
+32767:  from all lookup default
+```
+In addition you have to create an additional nftable to circumvent the mullvad firewall rules. Create a file called exclude.rules and input the following content
+```
+table inet excludeTraffic {
+  chain allowIncoming {
+    type filter hook input priority -100; policy accept;
+    ip saddr  ip_of_tunnelsats_vpn ct mark set 0x00000f41 meta mark set 0x6d6f6c65
+    iifname tunnelsatsv2 ct mark set 0x00000f41;
+  }
+
+
+  chain allowOutgoing {
+    type route hook output priority -100; policy accept;
+    ip daddr  ip_of_tunnelsats_vpn ct mark set 0x00000f41 meta mark set 0x6d6f6c65
+    oifname tunnelsatsv2 ct mark set 0x00000f41;
+  }
+}
+
+```
+Replace the ip_of_tunnelsats_vpn with the ip of the related tunnelsats vpn server and flush this file with `sudo nft -f exclude.rules`. Now you should be able to run Mullvad and Tunnelsats in parallel
+
+
+
+<br/>
+
+
 ### Do you offer full-service VPNs too?
 In short: No. Currently we are specializing VPN usage for the sole purpose of lightning node running. If you are looking for a privacy-preserving, lightning-payment enabled VPN provider, we recommend to take a look at [LNVPN.net](https://lnvpn.net).
 
