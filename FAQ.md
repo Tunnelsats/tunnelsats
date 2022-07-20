@@ -76,7 +76,7 @@ This is still beta status, so please bear with us. If you experience issues, ple
 Let's say you bought the 1 month for testing the services and all is going great. Now your subscription is coming to an end and you like to extend it to add another 3 months. Since we don't offer a login-service (yet), you need to remember your subscription end date and before expiry
 - buy a new subscription
 - download or transfer via email the new configuration file from the website 
-- copy and replace old configuration file with the new one in `/etc/wireguard`
+- copy and replace old configuration file with the new one in `/etc/wireguard/`
 - adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalIP (LND) or announce-addr (CLN))
 - restart wireguard and lightning: `sudo systemctl restart wg-quick@tunnelsatsv2` and your lightning implementation
 
@@ -118,7 +118,7 @@ We have invested significant amount of hours into building out the infrastructur
 <br/>
 
 ### Where do I find my lightning configuration file?
-Every node software (RaspiBlitz, RaspiBolt, Umbrel, Start9, myNode, etc.) has its own directory where it keeps data of the underlying lightning implementation. As far as we know, the current (06/2022) directories are:
+Every node software (RaspiBlitz, RaspiBolt, Umbrel, Start9, myNode, etc.) has its own directory where it keeps data of the underlying lightning implementation. As far as we know, the current (07/2022) directories are:
 
 LND:
 ```ini
@@ -134,7 +134,7 @@ CLN:
 ```ini
 RaspiBlitz: /mnt/hdd/app-data/.lightning/config
 RaspiBolt: /data/cln/config
-Umbrel 0.5+: /home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin/ (file initially not present)
+Umbrel 0.5+: /home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config (file has to be created manually)
 ```
 
 <br/>
@@ -156,7 +156,7 @@ See the current network setup in a comparison between your Tor only setup vs the
 <br/>
 
 ### How can I verify that my VPN connection is online and active?
-On console, run the following wireguard command to see some connection statistics, especially latest handshake: `sudo wg show`
+On console, run the following wireguard command to see some connection statistics, especially check latest handshake for an active VPN connection: `sudo wg show`
 
 <br/>
 
@@ -164,9 +164,6 @@ On console, run the following wireguard command to see some connection statistic
 Although we can speed up clearnet to clearnet connections, we still have to use the Tor network to reach out to Tor-only nodes. There have been some experiments going on to stabilize Tor connectivity and minimize its issues. Some of them might be worth trying out. These options are added at the very end of the `torrc` file:
 ```ini
 LongLivedPorts 21,22,706,1863,5050,5190,5222,5223,6523,6667,6697,8300,9735,9736,9911
-CircuitBuildTimeout 3
-KeepalivePeriod 60
-NewCircuitPeriod 20
 UseEntryGuards 1
 NumEntryGuards 8
 ```
