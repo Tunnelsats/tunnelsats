@@ -21,6 +21,7 @@
 - [How can I verify that my VPN connection is online and active?](#how-can-i-verify-that-my-vpn-connection-is-online-and-active)
 - [Tuning Tor](#tuning-tor)
 - [What does v2 stand for?](#what-does-v2-stand-for)
+- [Running tunnelsatsv2 and mullvad in parallel?](#running-tunnelsatsv2-and-mullvad-in-parallel)
 - [Do you offer full-service VPNs too?](#do-you-offer-full-service-vpns-too)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
 
@@ -177,9 +178,7 @@ In v2 we changed the network architecture compared to v1 where all traffic was d
 
 
 ### Running tunnelsatsv2 and mullvad in parallel?
-
-Yes this is possible, but you have to make some adjustments.
-First you have to make sure the startup order is first mullvad then tunnelsats leading to the following ip rules
+Yes, this is possible, but you have to make some adjustments. First you have to make sure the startup order is first mullvad then tunnelsats leading to the following ip rules
 ```
 0:  from all lookup local
 32760:  from all lookup main suppress_prefixlength 0
