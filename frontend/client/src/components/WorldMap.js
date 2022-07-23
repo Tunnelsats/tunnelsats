@@ -47,7 +47,7 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
 
     _defineProperty(_assertThisInitialized(_this), "onMapClick", function (area) {
       if (_this.props.selected === area) {
-        _this.props.onSelect(null);
+        _this.props.onSelect(area);
       } else {
         _this.props.onSelect(area);
       }
