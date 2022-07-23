@@ -38,7 +38,6 @@
 	}
 
 	function carry(o) {
-		var c;
 		for (var i = 0; i < 16; ++i) {
 			o[(i + 1) % 16] += (i < 15 ? 1 : 38) * Math.floor(o[i] / 65536);
 			o[i] &= 0xffff;

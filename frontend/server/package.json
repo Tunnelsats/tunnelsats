@@ -1,7 +1,7 @@
 {
-  "name": "lnvpn",
+  "name": "tunnelsats",
   "version": "1.0.0",
-  "description": "Simple vpn with Lightning",
+  "description": "VPN for LN node runners",
   "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -9,14 +9,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LightRider5/lnvpn.git"
+    "url": "git+https://github.com/blckbx/tunnelsats.git"
   },
   "author": "LightRider",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/LightRider5/lnvpn/issues"
+    "url": "https://github.com/blckbx/tunnelsats/issues"
   },
-  "homepage": "https://github.com/LightRider5/lnvpn#readme",
+  "homepage": "https://tunnelsats.com",
   "dependencies": {
     "@sendgrid/mail": "^7.6.2",
     "axios": "^0.26.1",

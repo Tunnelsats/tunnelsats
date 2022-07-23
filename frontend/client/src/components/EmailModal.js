@@ -32,10 +32,10 @@ const EmailModal = (props) => {
             </InputGroup>
         </Modal.Body>
         <Modal.Footer className="emailbuttons">
-          <Button variant="danger" onClick={props.handleClose}>
+          <Button variant="outline-secondary" onClick={props.handleClose}>
             Close
           </Button>
-          <Button variant="success" onClick={() => {props.handleClose();props.sendEmail(emailAddress)}}>
+          <Button variant="outline-warning" onClick={() => {props.handleClose();props.sendEmail(emailAddress)}}>
             Send Email
           </Button>
         </Modal.Footer>

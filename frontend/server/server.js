@@ -4,7 +4,6 @@ const bodyParser = require("body-parser")
 const axios = require('axios');
 var nodemailer = require('nodemailer');
 var dayjs = require('dayjs');
-const { btoa } = require('buffer');
 
 const app = express();
 var payment_hash,payment_request;
@@ -56,36 +55,40 @@ io.on('connection', (socket) => {
   })
 
   socket.on('getWireguardConfig',(publicKey,presharedKey,priceDollar,country) => {
-    getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country),priceDollar).then(result => socket.emit('reciveConfigData',result))
+    getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country)).then(result => socket.emit('reciveConfigData',result))
   })
 
 });
 
 //Transforms country into server
-var getServer = (countrySelector) => {
-  var server
-  if (countrySelector == 1){
-  var server = process.env.IP_GER
+var getServer = (country) => {
+  var server;
+  if (country == "eu"){
+    server = process.env.IP_EU
   }
-  if (countrySelector == 2){
-    var server = process.env.IP_USA
+  if (country == "na"){
+    server = process.env.IP_USA
   }
-  if (countrySelector == 3){
-    var server = process.env.IP_CAD
+  if (country == "sa"){
+    server = process.env.IP_LATAM
   }
-  if (countrySelector == 4){
-    var server = process.env.IP_UK
+  if (country == "af"){
+    server = process.env.IP_AFRICA
   }
-  if (countrySelector == 5){
-    var server = process.env.IP_SGP
+  if (country == "as"){
+    server = process.env.IP_ASIA
   }
-  return server
+  if (country == "oc"){
+    server = process.env.IP_OCEANIA
+  }  
+  return server;
 }
 
 
 // Transforms duration into timestamp
 var getTimeStamp = (selectedValue) =>{
-
+  
+  var date;
   if(selectedValue == 0.1){
     date = addMonths(date = new Date(),1)
     return date
@@ -120,7 +123,7 @@ var getTimeStamp = (selectedValue) =>{
 
 // Get Invoice Function
 async function getInvoice(amount) {
-  var satoshis = await getPrice().then((result) => { return result})
+  var satoshis = await getPrice().then((result) => { return result }).catch(error => {return error;});
   return axios({
   method: "post",
   url: process.env.URL_INVOICE_API,
@@ -131,30 +134,32 @@ async function getInvoice(amount) {
     "memo": getTimeStamp(amount),
     "webhook" : process.env.URL_WEBHOOK
   }
-    }).then(function (respons){
-      payment_request = respons.data.payment_request;
-      payment_hash = respons.data.payment_hash;
+    }).then(function (response){
+      payment_request = response.data.payment_request;
+      payment_hash = response.data.payment_hash;
       return {payment_hash,payment_request}
     }).catch(error => {
       return error
     });
-}
+};
 
 // Get Bitcoin Price in Satoshi per Dollar
 async function getPrice() {
   return axios({
     method: "get",
     url: process.env.URL_PRICE_API
-  }).then(function (respons){
-     const priceBTC = (respons.data.USD.buy);
+  }).then(function (response){
+     const priceBTC = (response.data.USD.buy);
      var priceOneDollar = (100000000 / priceBTC);
-     return priceOneDollar
-  })
+     return priceOneDollar;
+  }).catch(error => {
+    return error;
+  });
 };
 
 
 // Get Wireguard Config
-async function getWireguardConfig(publicKey,presharedKey,timestamp,server,priceDollar) {
+async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
 
    const request1 = {
     method: 'post',
@@ -172,34 +177,54 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server,priceD
     }
    };
 
-   var response1 = await axios(request1);
+   var response1 = await axios(request1).catch(error => { return error });
 
-   if (response1) {
+    if(!response1) {
+      response1 = await axios(request1).catch(error => { return error });
+
+    } else {
+
       const request2 = {
-      method: 'post',
-      url: server+'portFwd',
-      headers: {
-       'Content-Type': 'application/json',
-       'Authorization': process.env.AUTH
-      },
-      data: {
-       "keyID": response1.data.keyID
-      }
-     };
+        method: 'post',
+        url: server+'portFwd',
+        headers: {
+        'Content-Type': 'application/json',
+        'Authorization': process.env.AUTH
+        },
+        data: {
+        "keyID": response1.data.keyID
+        }
+      };
 
-     var response2 = await axios(request2);
-
-     response1.data['portFwd'] = response2.data.portFwd;
-     return response1.data;
+     var response2 = await axios(request2).catch(error => { return error });
+      
+     if(!response2) {
+      response2 = await axios(request2).catch(error => { return error });
+     } else {
+      response1.data['portFwd'] = response2.data.portFwd;
+      return response1.data;
+     }
     }
-}
+};
 
 
 // Parse Date object to string format: YYYY-MMM-DD hh:mm:ss A
 const parseDate = (date) => {
   var durationEnd = dayjs(date).format("YYYY-MMM-DD hh:mm:ss A")
   return durationEnd
-}
+};
+
+// translate IP to DNS
+async function getDNS(ipAddress) {
+  var dns;
+  if (ipAddress == "46.101.122.181") dns = process.env.DNS_EU;
+  if (ipAddress == "159.223.176.115") dns = process.env.DNS_US;
+//   if (ipAddress == "") dns = process.env.DNS_AFRICA;  
+//   if (ipAddress == "") dns = process.env.DNS_LATAM;
+//   if (ipAddress == "") dns = process.env.DNS_ASIA;
+//   if (ipAddress == "") dns = process.env.DNS_OCEANIA;
+  return dns;
+};
 
 
 // Send Wireguard config file via email
@@ -245,17 +270,19 @@ async function sendEmail(emailAddress,configData,date) {
 
   // console.log("Message sent: %s", info.messageId);
 
-}
+};
 
 // Check for Invoice
 async function checkInvoice(hash) {
   return axios({
        method: "get",
        url: process.env.URL_INVOICE_API +"/"+hash,
-       headers: { "X-Api-Key": process.env.INVOICE_KEY}
-  }).then(function (respons){
-       if(respons.data.paid)  {
-          return respons.data.details.payment_hash
+       headers: { "X-Api-Key": process.env.INVOICE_KEY }
+  }).then(function (response){
+       if(response.data.paid)  {
+          return response.data.details.payment_hash;
        }
+  }).catch(error => { 
+    return error 
   })
-}
+};

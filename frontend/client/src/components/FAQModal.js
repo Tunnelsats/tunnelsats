@@ -1,5 +1,5 @@
 import React from 'react'
-import {Modal,Button,ListGroup} from 'react-bootstrap'
+import {Modal,Button} from 'react-bootstrap'
 
 
 const FAQModal = (props) => {
@@ -17,6 +17,7 @@ const FAQModal = (props) => {
       show={props.show}
       onHide={props.handleClose}
       centered
+      fullscreen={true}
     >
       <Modal.Header closeButton>
         <Modal.Title>
@@ -25,51 +26,62 @@ const FAQModal = (props) => {
       </Modal.Header>
       <Modal.Body>
         <div>
-            <h4>What is this?</h4>
-            <p>With LNVPN we've build a very simple VPN pay-as-you-go service paid via Bitcoin Lightning. Instead of paying around 5$ every month with your credit card for the piviledge of being able to use a VPN service every now and then we provide you with a VPN connection on servers in different countries for one hour for only 10 cents in US$ -- paid via ⚡!</p>
+
+           <h4>Server Status</h4>
+
+	      <Button variant="success">🇪🇺 <br></br>EU</Button>{'  '}
+	      <Button variant="success">🇺🇸 <br></br>USA</Button>{'  '}
+	      <Button variant="success">🇨🇦 <br></br>CAD</Button>{'  '}
+	      <Button variant="danger">🇬🇧 <br></br>UK</Button>{'  '}
+              <Button variant="secondary">🇸🇬 <br></br>SGP</Button>
+
+             <p></p>
+
+            <h4>About</h4>
+            <p>With Tunnel⚡Sats we try to bring hybrid mode to lightning node runners in an easy, guided and pre-configured way. Offering setup scripts for almost every node setup out there and chosen VPN WireGuard servers in various countries that can be rent for certain timeframes and pay anonymously via Bitcoin Lightning ⚡!</p>
 
             <h4>How does it work?</h4>
             <p>
-            Very simple: On this website you automatically generate WireGuard VPN keys via JavaScript inside of your browser. After selecting a country where your VPN endpoint should be located and a desired validity of your connection you click "Get Invoice" to get a QR code which you can scan with a Bitcoin Lightning capable wallet like <a href="https://phoenix.acinq.co/">Phoenix</a>, <a href="https://muun.com/">Muun</a>, <a href="https://breez.technology/">Breez</a> or <a href="https://bluewallet.io/">BlueWallet</a>. After a successful payment, the website reloads and presents you a new QR code and the message PAID. You can now scan the QR code with the WireGuard App on <a href="https://play.google.com/store/apps/details?id=com.wireguard.android&hl=de&gl=US">Android Google Play</a> or on the <a href="https://apps.apple.com/us/app/wireguard/id1441195209">Apple App Store</a>. If you want to use the VPN connection on your PC or Mac you can download the WireGuard configuration file to import it into <a href="https://www.wireguard.com/install/">WireGuard for Windows and MacOS</a>. You can as well send the configuration to yourself via Email to use it later on another divice.
+            On this website you automatically generate WireGuard VPN keys via JavaScript inside of your browser. After selecting a country, click "Generate Invoice" to receive a QR code or an invoice URL which can be scanned with Bitcoin Lightning capable wallets like <a href="https://blixtwallet.github.io" target="_blank" rel="noreferrer">Blixt Wallet</a>, <a href="https://phoenix.acinq.co/" target="_blank" rel="noreferrer">Phoenix</a>, <a href="https://muun.com/" target="_blank" rel="noreferrer">Muun</a>, <a href="https://breez.technology/" target="_blank" rel="noreferrer">Breez</a> or <a href="https://bluewallet.io/" target="_blank" rel="noreferrer">BlueWallet</a> or pay by copying the invoice string. After successful payment, the website reloads and provides the WireGuard configuration file to download or send via email.
             </p>
 
-            <h4> What services did you use to build this, which VPN service do you use?</h4>
+            <h4> What services are used?</h4>
             <p>
-            For this website, we use the service<a href="https://legend.lnbits.com/">LNBits</a> for lightning payments, Sendgrid for (optionally) sending WireGuard config file via email, React and socket.IO for WebSockets.
-            On the VPN endpoints we don't use a commercial VPN service but our rented virtual servers from Hetzner (FI and US), Contabo (SG) and OVH (UK and CA) with <a href="https://github.com/Mawthuq-Software/wireguard-manager-and-api">Wireguard Manager And API</a> managing the WireGuard setup and keys.
+            As payment backend we use <a href="https://legend.lnbits.com/" target="_blank" rel="noreferrer">LNBits</a> for lightning payments, to send WireGuard config files via email we use our own mailserver and to provide this frontend React and WebSockets are being imported.
+            As for the VPN endpoints, we make use of our own rented virtual servers from Digital Ocean (EU), Y (SG) and Z (US) with <a href="https://github.com/Mawthuq-Software/wireguard-manager-and-api" target="_blank" rel="noreferrer">WireGuard Manager and API</a> managing the WireGuard setup and accounts safely.
             </p>
 
-            <h4>What data do you store about your users? How anonymous is this? What privacy do you offer?</h4>
+            <h4>What about data storage and privacy?</h4>
             <p>
-            On the lnvpn.net website, we don't use cookies and we only store the first half of your ip address in our webserver logs. For example the IP 1.12.123.234 would be stored as 1.12.0.0.
-            On the VPN endpoints we store your WireGuard public key, the PSK and the total amount of bandwidth you used. While you maintain an active connection to a LNVPN VPN endpoint, we have to keep your IP address in memory, but after 5 minutes of inactivity we remove your IP address from memory. We never store it on disk.
-            As payments are only possible via Bitcoin Lightning, we don't know where the money comes from, we can only verify whether an invoice was paid or not 🤷.
-            If you use the "Send via email" feature for your WireGuard configuration, the email is send via <a href="https://sendgrid.com/">Sendgrid</a>.
+            On the website, we don't use cookies and we only store the first half of your ip address in our webserver logs. For example the IP 1.12.123.234 would be stored as 1.12.0.0.
+            On the VPN endpoints we store your WireGuard public key, preshared key, forwarded ports and total amount of bandwidth you used. While maintaining an active connection to a VPN endpoint, we have to keep your IP address in memory. We never store it on disk.
+            As payments are only possible via Bitcoin Lightning, we don't know where the Satoshis comes from, we can only verify whether an invoice was paid or not.
+            If you use "Send via email" feature for transfering your WireGuard configuration, the email is sent via our own mailserver.
             </p>
-            <h4>What happens after the timeframe I paid my VPN for?</h4>
+            <h4>What happens on expiration of the paid period?</h4>
             <p>
             You won't be able to transfer any data over the VPN connection anymore. Your VPN client may indicate it is successfully connected, though.
             </p>
 
             <h4>Is there a data transfer limit?</h4>
             <p>
-            Currently, we have four data plans:
-              <ul id="dataplanlist">
-                  <li>1 hour = 1GB</li>
-                  <li>1 day = 5GB</li>
-                  <li>1 week = 10GB</li>
-                  <li>1 month = 30GB</li>
-              </ul>
+            Currently, we offer 100GB per month which should be good enough even for bigger nodes with lots of channels.
             </p>
+
+            <h4>Do you also offer full-service VPNs?</h4>
+            <p>
+            No, currently this service is focused on providing fast VPN connectivity for routing nodes on the lightning network. But if you are looking for privacy-preserving, lightning payment-enabled, full-service VPNs, we recommend to take a look at <a href="https://lnvpn.net" target="_blank" rel="noreferrer">lnvpn.net</a>.
+            </p>
+
 
             <h4>Who build this?</h4>
             <p>
-            From Node Runnners for Node Runners
+            From Node Runnners for Node Runners 🧡
             </p>
         </div>
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="danger" onClick={props.handleClose}>Close</Button>
+        <Button variant="outline-warning" onClick={props.handleClose}>Close</Button>
       </Modal.Footer>
     </Modal>
 
