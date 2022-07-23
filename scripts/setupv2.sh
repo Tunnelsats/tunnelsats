@@ -600,9 +600,14 @@ if [ $isDocker -eq 1 ]; then
 
   #Get docker umbrel lnd/cln ip address
 
-  dockerlndip=$(grep LND_IP /home/umbrel/umbrel/.env | cut -d= -f2)
-  if [ -d /home/umbrel/umbrel/app-data/core-lightning ]; then
-    dockerclnip=$(grep APP_CORE_LIGHTNING_DAEMON_IP /home/umbrel/umbrel/app-data/core-lightning/exports.sh | cut -d "\"" -f2)
+
+
+  dockerlndip=$(grep LND_IP /home/$USER/umbrel/.env 2> /dev/null  | cut -d= -f2)
+  dockerlndip=${dockerlndip:-"10.21.21.9"}
+  
+
+  if [ -d /home/$USER/umbrel/app-data/core-lightning ]; then
+    dockerclnip=$(grep APP_CORE_LIGHTNING_DAEMON_IP /home/$USER/umbrel/app-data/core-lightning/exports.sh | cut -d "\"" -f2)
   else
     dockerclnip=""
   fi
