@@ -70,8 +70,6 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
       
     });
 
-    _defineProperty(_assertThisInitialized(_this), "disabled", function() { return 'map-unavailable' });
-
     _defineProperty(_assertThisInitialized(_this), "render", function () {
       return /*#__PURE__*/React.createElement("div", {
         className: "row"
