@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=14
+patch=15
 
 
 #Helper
@@ -296,16 +296,12 @@ if [ -f "$directory"/tunnelsatsv2.conf ]; then
     echo "> ERR: tunnelsatsv2.conf not found in /etc/wireguard/. Please check for errors.";echo
   fi   
 
-  line=$(grep -n "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | cut -d ":" -f1)
-  if [ "$line" != "" ]; then
-    line="$(($line+1))"
-    
-    if [ $isDocker -eq 1 ]; then
-      echo -e $inputDocker 2> /dev/null >> /etc/wireguard/tunnelsatsv2.conf
-    else
-      echo -e $inputNonDocker 2> /dev/null >> /etc/wireguard/tunnelsatsv2.conf
-    fi
+  if [ $isDocker -eq 1 ]; then
+    echo -e $inputDocker 2> /dev/null >> /etc/wireguard/tunnelsatsv2.conf
+  else
+    echo -e $inputNonDocker 2> /dev/null >> /etc/wireguard/tunnelsatsv2.conf
   fi
+
   # check
   check=$(grep -c "FwMark" /etc/wireguard/tunnelsatsv2.conf)
   if [ $check -gt 0 ]; then
@@ -314,7 +310,6 @@ if [ -f "$directory"/tunnelsatsv2.conf ]; then
     echo "> ERR: network rules not applied";echo
   fi
 fi
-
 
 sleep 2
 
