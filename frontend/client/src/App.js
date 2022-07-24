@@ -66,10 +66,8 @@ function App() {
 
   function checkCountry() {
     // filter unavailable continents
-    if(country == 'af' ||
-       country == 'sa' ||
-       country == 'as' ||
-       country == 'oc') {
+    if(country == 'af' || country == 'sa' ||
+       country == 'as' || country == 'oc') {
       togglePopup();
     } else { // get invoice
       getInvoice(priceDollar);
@@ -133,7 +131,7 @@ function App() {
     if((clientPaymentHash !== undefined)){
       checkInvoice();
     }
-    // refresh pricePerDollar
+    // refresh pricePerDollar on start
     getPrice();
   });
   
@@ -142,7 +140,7 @@ function App() {
     socket.emit('getPrice');
   }
   socket.on('recievePrice', price => {
-    console.log(`recievePrice: `+price);
+    console.log(`${getDate()} App.js: server.getPrice(): `+price);
     setBtcPerDollar(Math.trunc(Math.round(price)));
   });
 
@@ -176,7 +174,7 @@ function App() {
   });
 
   //Get wireguard config from Server
-  socket.off('reciveConfigData').on('reciveConfigData',wireguardConfig => {
+  socket.off('recieveConfigData').on('recieveConfigData',wireguardConfig => {
     console.log(`${getDate()} App.js: got msg reciveConfigData`);
     setSpinner(false);
     setPaymentrequest(buildConfigFile(wireguardConfig).join('\n'));
@@ -192,7 +190,7 @@ function App() {
     'Address = '+serverResponse.ipv4Address,
     'DNS = '+serverResponse.dns,
     '#VPNPort = '+serverResponse.portFwd,
-    '#ValidUntil = '+serverResponse.subExpiry,
+    '#ValidUntil = '+getTimeStamp(priceDollar).toISOString(),
     ' ',
     '[Peer]',
     'PublicKey = '+serverResponse.publicKey,

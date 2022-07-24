@@ -29,7 +29,6 @@ app.get('/', function (req, res) {
 
 // Invoice Webhook
 app.post(process.env.WEBHOOK, (req, res) => {
-
     io.sockets.emit('invoicePaid',req.body.payment_hash)
     res.status(200).end()
 })
@@ -42,7 +41,6 @@ io.on('connection', (socket) => {
 
   // Checks for a paid Invoice after reconnect
   socket.on('checkInvoice',(clientPaymentHash) => {
-
     checkInvoice(clientPaymentHash).then(result => io.sockets.emit('invoicePaid',result))
   })
 
@@ -50,12 +48,13 @@ io.on('connection', (socket) => {
   socket.on('getInvoice',(amount) =>{
     getInvoice(amount).then(result => socket.emit("lnbitsInvoice",result))
   })
+
   socket.on('sendEmail',(emailAddress,configData,date) => {
-  sendEmail(emailAddress,configData,date).then(result => console.log(result))
+    sendEmail(emailAddress,configData,date).then(result => console.log(result))
   })
 
   socket.on('getWireguardConfig',(publicKey,presharedKey,priceDollar,country) => {
-    getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country)).then(result => socket.emit('reciveConfigData',result))
+    getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country)).then(result => socket.emit('recieveConfigData',result))
   })
 
   socket.on('getPrice', () => {
@@ -185,9 +184,7 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
 
     if(!response1) {
       response1 = await axios(request1).catch(error => { return error });
-
     } else {
-
       const request2 = {
         method: 'post',
         url: server+'portFwd',

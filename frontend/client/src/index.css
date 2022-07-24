@@ -229,6 +229,10 @@ title {
   min-width: 50%;
 }
 
+#main_modal img {
+  max-width: 10%;
+}
+
 .modal-footer{
   display: contents;
 }

@@ -1,5 +1,5 @@
  var getTimeStamp = (selectedValue) =>{
-    var date = new Date()
+    var date = new Date();
 
     if(selectedValue == 0.1){
       date = addMonths(date = new Date(),1)
@@ -22,7 +22,6 @@
 
       return date
     }
-
 
     function addMonths(date = new Date(), months) {
       var d = date.getDate();

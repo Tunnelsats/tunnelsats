@@ -3,6 +3,7 @@ import {useState,useRef} from 'react';
 import {QRCodeCanvas} from 'qrcode.react';
 import {Modal,Button,Spinner,Overlay,Tooltip,Collapse,Alert}from 'react-bootstrap';
 import EmailModal from './EmailModal';
+import {success} from '../media/ok-512.png';
 
 function InvoiceModal(props) {
   const [visibleEmailModal, setShowEmailModal] = useState(false);
@@ -11,7 +12,7 @@ function InvoiceModal(props) {
 
 
   const [showTooltip, setShowTooltip] = useState(false);
-  const [openCollapse, setOpen] = useState(false);
+  const [openCollapse, setOpen] = useState(true);
   const target = useRef(null);
 
 
@@ -71,8 +72,9 @@ function InvoiceModal(props) {
             <div>
               {props.isConfigModal ?
                 //<QRCodeCanvas value={props.value} size={256} /> :
-                <QRCodeCanvas value={props.value} size={0}/> :
-                <a href={"lightning:" + props.value}>
+                //<QRCodeCanvas value={props.value} size={0}/> 
+                <img src={success} alt=""/>
+                : <a href={"lightning:" + props.value}>
                   <QRCodeCanvas value={props.value} size={256} />
                 </a>
               }
@@ -89,7 +91,7 @@ function InvoiceModal(props) {
           </p>
 
           <p id='expirydate'>
-            Valid until: {props.expiryDate.toString()}<br></br>
+            Valid until: {props.expiryDate.toISOString()}<br></br>
             Make sure to save your config before closing. Otherwise it is lost.
           </p>
 
