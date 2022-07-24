@@ -716,11 +716,11 @@ if [ $isDocker -eq 1 ]; then
   echo "Creating tunnelsats-docker-network.sh file in /etc/wireguard/..."
   echo "#!/bin/sh
   set -e
-  lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print \$2}')
+  lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 0.0.0.0:9735 | awk '{print \$2}')
   checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
   if [ \$checkdockernetwork -ne 0 ] && [ ! -z \$lightningcontainer ]; then
     if ! docker inspect \$lightningcontainer | grep -c \"tunnelsats\" > /dev/null; then
-    docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  &> /dev/null
+    docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  > /dev/null
     fi
   fi
   " > /etc/wireguard/tunnelsats-docker-network.sh 
