@@ -8,14 +8,15 @@ import InvoiceModal from './components/InvoiceModal';
 import  './wireguard.js';
 import {getTimeStamp} from './timefunction.js';
 import HeaderInfo from './components/HeaderInfo';
-import FAQModal from './components/FAQModal';
+//import FAQModal from './components/FAQModal';
 import LoginModal from './components/LoginModal';
 import logo from './media/tunnelsats_headerlogo_beta2.png';
 import twitter from './media/twitter-512.png';
 import telegram from './media/telegram-512.png';
 import github from './media/github-512.png';
+import tipjar from './media/heart-512.png';
 import WorldMap from "./components/WorldMap";
-import axios from 'axios';
+//import axios from 'axios';
 
 import Popup from './components/Popup';
 
@@ -37,7 +38,7 @@ var isPaid=false;
 function App() {
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
   const [priceDollar, updatePrice] = useState(8.5);
-  const [btcPerDollar, setBtcPerDollar] = useState(100000000 / 22000);
+  const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/22000));
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
@@ -50,9 +51,9 @@ function App() {
   const renderConfigModal = () => showConfigModal(true);
   const hideConfigModal = () => showConfigModal(false);
   //FAQ - Modal
-  const [isFAQModal, showFAQModal] = useState(false)
-  const renderFAQModal = () => showFAQModal(true);
-  const hideFAQModal = () => showFAQModal(false);
+  //const [isFAQModal, showFAQModal] = useState(false)
+  //const renderFAQModal = () => showFAQModal(true);
+  //const hideFAQModal = () => showFAQModal(false);
   //LoginModal
   const [isLoginModal, showLoginModal] = useState(false);
   const renderLoginModal = () => showLoginModal(true);
@@ -80,10 +81,12 @@ function App() {
     }
   };
 
-
+  // fetch btc price per dollar
   useEffect(() => {
     // fetch btc price
     const request = setInterval(() => {
+      getPrice();
+      /*
       var result = axios.get('https://blockchain.info/ticker').then(response => {
         return (Math.round(100000000 /response?.data.USD.buy))
       });
@@ -91,7 +94,8 @@ function App() {
         console.log(`axios/sats: `+sats)
         setBtcPerDollar(sats);
       });
-    }, 60000); // 1min
+      */
+    }, 300000); // 5min
     // clearing intervals
     return () => clearInterval(request);
   }, []);
@@ -129,6 +133,17 @@ function App() {
     if((clientPaymentHash !== undefined)){
       checkInvoice();
     }
+    // refresh pricePerDollar
+    getPrice();
+  });
+  
+  // get current btc per dollar
+  const getPrice = () => {
+    socket.emit('getPrice');
+  }
+  socket.on('recievePrice', price => {
+    console.log(`recievePrice: `+price);
+    setBtcPerDollar(Math.trunc(Math.round(price)));
   });
 
   // check invoice
@@ -278,8 +293,6 @@ function App() {
           showPaymentAlert = {showPaymentSuccessfull}
           />
 
-          <FAQModal show={isFAQModal} handleClose={hideFAQModal} />
-
           <div className='price'>
             <h3>{(Math.trunc(priceDollar*btcPerDollar)).toLocaleString()} <i class="fak fa-satoshisymbol-solidtilt"/></h3>
           </div>
@@ -292,6 +305,7 @@ function App() {
             <Row>
               <Col><a href="https://twitter.com/TunnelSats" target="_blank" rel="noreferrer"><img src={twitter} alt="Twitter" /></a></Col>
               <Col><a href="https://github.com/blckbx/tunnelsats" target="_blank" rel="noreferrer"><img src={github} alt="GitHub" /></a></Col>
+              <Col><a href="https://staging.lnbits.tunnelsats.com/tipjar/4" target="_blank" rel="noreferrer"><img src={tipjar} alt="Donation" /></a></Col>
               <Col><a href="https://t.me/+NJylaUom-rxjYjU6" target="_blank" rel="noreferrer"><img src={telegram} alt="Telegram" /></a></Col>
             </Row>
           </div>

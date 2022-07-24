@@ -274,6 +274,7 @@ button.close {
   height: 40px;
   margin-right: 15px;
   margin-left: 15px;
+  opacity: 0.5;  
 }
 
 #faq_modal {

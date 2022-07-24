@@ -58,6 +58,10 @@ io.on('connection', (socket) => {
     getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country)).then(result => socket.emit('reciveConfigData',result))
   })
 
+  socket.on('getPrice', () => {
+    getPrice().then(result => socket.emit('recievePrice', result))
+  })
+
 });
 
 //Transforms country into server
@@ -217,8 +221,8 @@ const parseDate = (date) => {
 // translate IP to DNS
 async function getDNS(ipAddress) {
   var dns;
-  if (ipAddress == "46.101.122.181") dns = process.env.DNS_EU;
-  if (ipAddress == "159.223.176.115") dns = process.env.DNS_US;
+  if (ipAddress == "process.env.IP_EU") dns = process.env.DNS_EU;
+  if (ipAddress == "process.env.IP_US") dns = process.env.DNS_US;
 //   if (ipAddress == "") dns = process.env.DNS_AFRICA;  
 //   if (ipAddress == "") dns = process.env.DNS_LATAM;
 //   if (ipAddress == "") dns = process.env.DNS_ASIA;
