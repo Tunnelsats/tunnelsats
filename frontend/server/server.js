@@ -34,7 +34,7 @@ app.post(process.env.WEBHOOK, (req, res) => {
     res.status(200).end()
 })
 
-httpServer.listen(5000);
+httpServer.listen(process.env.PORT);
 // Finish Server Setup
 
 // Socket Connections
