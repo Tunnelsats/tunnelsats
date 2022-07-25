@@ -76,9 +76,9 @@ To date we successfully tested the following setups:
 
 - RaspiBlitz (LND / CLN)
 - Umbrel < v0.5 (LND)
-- Umbrel 0.5 (LND / CLN not recommended yet)
+- Umbrel v0.5+ (LND / CLN not recommended yet or be tech-savvy)
 - myNode (LND)
-- RaspiBolt /bare metal (LND/CLN)
+- RaspiBolt / Bare Metal (LND / CLN)
 
 <br />
 
@@ -95,10 +95,10 @@ This is still beta status, so please bear with us. If you experience issues, ple
 <br/>
 
 ### How can I extend my subscription?
-Let's say you bought the 1 month for testing the services and all is going great. Now your subscription is coming to an end and you like to extend it to add another 3 months. Since we don't offer a login-service (yet), you need to remember your subscription end date and before expiry
+Let's say you bought the 1 month for testing the services and all is going great. Now your subscription is coming to an end and you like to extend it to add another 3 months. Since we don't offer a login-service (yet), you need to remember your subscription end date (look it up in your Wireguard config file: #ValidUntil (mind this is UTC time format)) and before expiry
 - buy a new subscription
 - download or transfer via email the new configuration file from the website 
-- copy and replace old configuration file with the new one in `/etc/wireguard/`
+- redo installation procedure: place config file in same directory `with setupv2.sh` and run it again
 - adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalIP (LND) or announce-addr (CLN))
 - restart wireguard and lightning: `sudo systemctl restart wg-quick@tunnelsatsv2` and your lightning implementation
 
