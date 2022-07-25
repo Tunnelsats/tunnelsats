@@ -4,6 +4,9 @@
 - [Why should I use this service?](#why-should-i-use-this-service)
 - [Why choose Tunnel⚡Sats over other VPN providers?](#why-choose-tunnelsats-over-other-vpn-providers)
 - [Is your service reliable?](#is-your-service-reliable)
+- [What services are used?](#what-services-are-used)
+- [What about data storage and privacy?](#what-about-data-storage-and-privacy)
+- [Is there a data transfer limit?](#is-there-a-data-transfer-limit)
 - [Which setups are supported?](#which-setups-are-supported)
 - [Do you store my data? If so, which one and how do you use it?](#do-you-store-my-data-if-so-which-one-and-how-do-you-use-it)
 - [What options do I have if I'm not happy?](#what-options-do-i-have-if-im-not-happy)
@@ -23,6 +26,7 @@
 - [What does v2 stand for?](#what-does-v2-stand-for)
 - [Running tunnelsatsv2 and mullvad in parallel?](#running-tunnelsatsv2-and-mullvad-in-parallel)
 - [Do you offer full-service VPNs too?](#do-you-offer-full-service-vpns-too)
+- [Who built this?](#who-built-this)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
 
 <br/>
@@ -38,6 +42,7 @@ You also provide better user experience for customers actually using lightning a
 
 ### Why choose Tunnel⚡Sats over other VPN providers?
 Running a lightning nodes behind a VPN requires a range of features public VPN providers usually do not offer. **Tunnel⚡Sats** is specially designed for the lightning node use case in mind. So we pack up everything that's needed:
+- anonymous payment method via Lightning (we don't see the sender of the payment)
 - static VPN IP: no more disconnects due to changing VPN IPs and no hassle setting up Dynamic DNS
 - static forwarded ports: assign VPN's port to your node config and you are good to go
 - secure VPN tunnels: we provide quantum-safe VPN tunnels using pre-shared keys
@@ -49,6 +54,22 @@ Running a lightning nodes behind a VPN requires a range of features public VPN p
 We use premium VPS Services with tight SLAs and proven, recorded high uptime (99,99%). We also setup servers across different service providers to allow for switching in case something out of our control happens. We also setup tight monitoring systems for our VMs, with alert mechanisms and coverage by 3 people in operations. That said, we're early in our offering and happily provide regular uptime metrics when we enter beta phase, to provide more objective reliability data here.
 
 <br/>
+
+### What services are used?
+As payment backend we use <a href="https://legend.lnbits.com/" target="_blank" rel="noreferrer">LNBits</a> for lightning payments, to send WireGuard config files via email we use our own mailserver and to provide this frontend React and WebSockets are being imported.
+As for the VPN endpoints, we make use of our own rented virtual servers from Digital Ocean (EU) and (US) with <a href="https://github.com/Mawthuq-Software/wireguard-manager-and-api" target="_blank" rel="noreferrer">WireGuard Manager and API</a> managing the WireGuard setup and accounts safely.
+
+<br />
+
+### What about data storage and privacy?
+On the website, no cookies and only first half of IP addresses is stored in our webserver logs. For example the IP 1.12.123.234 becomes 1.12.0.0. On the VPN endpoints we store WireGuard public keys, preshared keys, forwarded ports and total amount of bandwidth used. While maintaining an active connection to a VPN endpoint, the client's IP address has to be kept in memory. We never store it on disk. As payments are only possible via lightning, we don't know where the satoshis comes from, we can only verify whether an invoice was paid or not. If you use "Send via email" feature to transfer the WireGuard configuration file, the email is sent via our own mailserver.
+
+<br />
+
+### Is there a data transfer limit?
+Currently, 100GB per month are being offered. This should be enough traffic even for bigger nodes with lots of channels.
+
+<br />
 
 ### Which setups are supported?
 To date we successfully tested the following setups:
@@ -207,13 +228,15 @@ table inet excludeTraffic {
 ```
 Replace the ip_of_tunnelsats_vpn with the ip of the related tunnelsats vpn server and flush this file with `sudo nft -f exclude.rules`. Now you should be able to run Mullvad and Tunnelsats in parallel
 
-
-
 <br/>
-
 
 ### Do you offer full-service VPNs too?
 In short: No. Currently we are specializing VPN usage for the sole purpose of lightning node running. If you are looking for a privacy-preserving, lightning-payment enabled VPN provider, we recommend to take a look at [LNVPN.net](https://lnvpn.net).
+
+<br />
+
+### Who built this?
+From Node Runnners for Node Runners 🧡
 
 <br />
 

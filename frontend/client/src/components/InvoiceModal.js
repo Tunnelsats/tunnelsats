@@ -3,7 +3,7 @@ import {useState,useRef} from 'react';
 import {QRCodeCanvas} from 'qrcode.react';
 import {Modal,Button,Spinner,Overlay,Tooltip,Collapse,Alert}from 'react-bootstrap';
 import EmailModal from './EmailModal';
-import {success} from '../media/ok-512.png';
+import success from '../media/ok-512.png';
 
 function InvoiceModal(props) {
   const [visibleEmailModal, setShowEmailModal] = useState(false);

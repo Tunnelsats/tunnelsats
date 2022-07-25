@@ -162,7 +162,6 @@ a:active {
   padding: 10px;
 }
 
-
 .input-group-text{
   min-width: 150px;
 }
@@ -238,7 +237,7 @@ title {
 }
 
 #guide_row {
-  text-align:   right;
+  text-align: right;
 }
 
 #emailModal span.input-group-text{
@@ -250,7 +249,7 @@ title {
 
 #paid_message{
   text-align: center;
-  color:green;
+  color: green;
 }
 
 canvas{

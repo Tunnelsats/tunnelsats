@@ -6,14 +6,12 @@ const HeaderInfo = () => {
     <div>
         <Alert variant="secondary">
             {/* <Alert.Heading>How it works:</Alert.Heading> */}
-              <p>TunnelSats provides pre-configured setup scripts for lightning nodes enabling hybrid mode (clearnet & Tor connectivity) and offers paid VPN servers in various countries and fixed timeframes. Our VPNs come with automatically enabled forwarding ports that are used to interconnect with other lightning nodes.
-               <br></br><b>- STAGING -</b>
-               <br></br><b>How Tunnel⚡️Sats works</b>
-               <br></br>1) Generate random keys, select a preferred continent, your desired time period and pay with lightning to receive the WireGuard configuration file for your lightning setup.
-               <br></br>
-               <br></br>2) Download setup script to install required VPN components, configure your node setup for hybrid mode to exclude Tor traffic from VPN usage (redundancy of connectivity).
-               <br></br>
-               <br></br>For detailed installation instructions please read the TunnelSats <a href="https://blckbx.github.io/tunnelsats/" target="_blank" rel="noreferrer">guide</a> and <a href="https://blckbx.github.io/tunnelsats/FAQ.html" target="_blank" rel="noreferrer">FAQ</a> page.
+              <p>Tunnel⚡️Sats provides pre-configured setup scripts for lightning nodes enabling hybrid mode through clearnet & Tor connectivity and offers paid VPN servers in various continents and fixed periods of time. Our VPNs come with automatically enabled forwarding ports used to connect with other lightning nodes.
+              <br></br><b>- STAGING -</b>
+              <br></br><b>How Tunnel⚡️Sats works</b>
+              <br></br>Select preferred continent and period of time and pay invoice via lightning to receive the WireGuard configuration file. Download setup script to automatically install required components and configure your node setup for hybrid mode.
+              <br></br>
+              <br></br>For detailed installation instructions please read the TunnelSats <a href="https://blckbx.github.io/tunnelsats/" target="_blank" rel="noreferrer">guide</a> and <a href="https://blckbx.github.io/tunnelsats/FAQ.html" target="_blank" rel="noreferrer">FAQ</a> page.
               </p>
             <hr />
               <p className="mb-0">

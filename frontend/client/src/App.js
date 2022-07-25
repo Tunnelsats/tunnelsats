@@ -10,7 +10,7 @@ import {getTimeStamp} from './timefunction.js';
 import HeaderInfo from './components/HeaderInfo';
 //import FAQModal from './components/FAQModal';
 import LoginModal from './components/LoginModal';
-import logo from './media/tunnelsats_headerlogo_beta2.png';
+import logo from './media/tunnelsats_headerlogo3.png';
 import twitter from './media/twitter-512.png';
 import telegram from './media/telegram-512.png';
 import github from './media/github-512.png';
@@ -62,37 +62,22 @@ function App() {
   // World Map
   const [country, updateCountry] = useState('eu');
   const [isOpen, setIsOpen] = useState(false);
-  const togglePopup = () => { setIsOpen(!isOpen); }  
+  const togglePopup = () => { setIsOpen(!isOpen); };
 
-  function checkCountry() {
-    // filter unavailable continents
-    if(country == 'af' || country == 'sa' ||
-       country == 'as' || country == 'oc') {
-      togglePopup();
-    } else { // get invoice
-      getInvoice(priceDollar);
-      showInvoiceModal();
-      hideConfigModal();
-      updatePaymentrequest();
-      setSpinner(true);
-      isPaid=false;
-    }
-  };
+  /* WorldMap Continent Codes
+    AF = Africa
+    NA = North America (US+CAD)
+    SA = South America (LatAm)
+    EU = Europe
+    AS = Asia
+    OC = Oceania (AUS+NZ)
+  */
 
   // fetch btc price per dollar
   useEffect(() => {
     // fetch btc price
     const request = setInterval(() => {
       getPrice();
-      /*
-      var result = axios.get('https://blockchain.info/ticker').then(response => {
-        return (Math.round(100000000 /response?.data.USD.buy))
-      });
-      result.then(function(sats) {
-        console.log(`axios/sats: `+sats)
-        setBtcPerDollar(sats);
-      });
-      */
     }, 300000); // 5min
     // clearing intervals
     return () => clearInterval(request);
@@ -116,17 +101,17 @@ function App() {
 
   //Updates the QR-Code
   const updatePaymentrequest = () => {
-    socket.on('lnbitsInvoice',invoiceData => {
+    socket.on('lnbitsInvoice', invoiceData => {
       console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
       setPaymentrequest(invoiceData.payment_request);
       clientPaymentHash = invoiceData.payment_hash;
       setSpinner(false);
-    })
-  };
+    }
+  )};
 
   //Connect to WebSocket Server
   socket.off('connect').on('connect', () => {
-    console.log(`${getDate()} App.js: got msg connect`)
+    console.log(`${getDate()} App.js: connect`)
     //Checks for already paid invoice if browser switche tab on mobile
     if((clientPaymentHash !== undefined)){
       checkInvoice();
@@ -296,7 +281,14 @@ function App() {
           </div>
 
           <div className='main-buttons'>
-              <Button onClick={() => { checkCountry(); }} variant="outline-warning">Generate Invoice</Button>
+              <Button onClick={() => { 
+                getInvoice(priceDollar);
+                showInvoiceModal();
+                hideConfigModal();
+                updatePaymentrequest();
+                setSpinner(true);
+                isPaid=false;
+               }} variant="outline-warning">Generate Invoice</Button>
           </div>
 
           <div className='footer-text'>
