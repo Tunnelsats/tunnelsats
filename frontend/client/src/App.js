@@ -9,7 +9,7 @@ import  './wireguard.js';
 import {getTimeStamp} from './timefunction.js';
 import HeaderInfo from './components/HeaderInfo';
 //import FAQModal from './components/FAQModal';
-import LoginModal from './components/LoginModal';
+//import LoginModal from './components/LoginModal';
 import logo from './media/tunnelsats_headerlogo3.png';
 import twitter from './media/twitter-512.png';
 import telegram from './media/telegram-512.png';
@@ -17,8 +17,7 @@ import github from './media/github-512.png';
 import tipjar from './media/heart-512.png';
 import WorldMap from "./components/WorldMap";
 //import axios from 'axios';
-
-import Popup from './components/Popup';
+//import Popup from './components/Popup';
 
 // helper
 const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString()
@@ -55,14 +54,14 @@ function App() {
   //const renderFAQModal = () => showFAQModal(true);
   //const hideFAQModal = () => showFAQModal(false);
   //LoginModal
-  const [isLoginModal, showLoginModal] = useState(false);
-  const renderLoginModal = () => showLoginModal(true);
-  const hideLoginModal = () => showLoginModal(false);
+  //const [isLoginModal, showLoginModal] = useState(false);
+  //const renderLoginModal = () => showLoginModal(true);
+  //const hideLoginModal = () => showLoginModal(false);
   
   // World Map
   const [country, updateCountry] = useState('eu');
   const [isOpen, setIsOpen] = useState(false);
-  const togglePopup = () => { setIsOpen(!isOpen); };
+  //const togglePopup = () => { setIsOpen(!isOpen); };
 
   /* WorldMap Continent Codes
     AF = Africa
@@ -175,7 +174,7 @@ function App() {
     'Address = '+serverResponse.ipv4Address,
     'DNS = '+serverResponse.dns,
     '#VPNPort = '+serverResponse.portFwd,
-    '#ValidUntil = '+getTimeStamp(priceDollar).toISOString(),
+    '#ValidUntil (UTC time)= '+getTimeStamp(priceDollar).toISOString(),
     ' ',
     '[Peer]',
     'PublicKey = '+serverResponse.publicKey,
@@ -223,10 +222,12 @@ function App() {
               <Nav.Link href="https://blckbx.github.io/tunnelsats" target="_blank" rel="noreferrer">Guide</Nav.Link>
               <Nav.Link href="https://blckbx.github.io/tunnelsats/FAQ.html" target="_blank" rel="noreferrer">FAQ</Nav.Link>
             </Nav>
+            {/*}
             <Nav>
               <Button onClick={() => renderLoginModal()} variant="outline-info">Login</Button>
               <LoginModal show={isLoginModal} handleClose={hideLoginModal} />
             </Nav>
+            */}
           </Container>
         </Navbar>
       </Container>
@@ -241,7 +242,8 @@ function App() {
           
           <WorldMap selected={country} onSelect={updateCountry}/>
 
-          { isOpen && <Popup
+          {/*
+            isOpen && <Popup
             content={<>
             <b>Continent currently unavailable!</b>
             <p>We are sorry, selected continent {country.toUpperCase()} is currently unavailable!</p>
@@ -249,7 +251,7 @@ function App() {
             </>}
             handleClose={togglePopup}
             />
-          }
+          */}
 
           <KeyInput
           publicKey={keyPair.publicKey}
@@ -295,7 +297,7 @@ function App() {
             <Row>
               <Col><a href="https://twitter.com/TunnelSats" target="_blank" rel="noreferrer"><img src={twitter} alt="Twitter" /></a></Col>
               <Col><a href="https://github.com/blckbx/tunnelsats" target="_blank" rel="noreferrer"><img src={github} alt="GitHub" /></a></Col>
-              <Col><a href="https://staging.lnbits.tunnelsats.com/tipjar/4" target="_blank" rel="noreferrer"><img src={tipjar} alt="Donation" /></a></Col>
+              <Col><a href="https://lnbits.tunnelsats.com/tipjar/1" target="_blank" rel="noreferrer"><img src={tipjar} alt="Donation" /></a></Col>
               <Col><a href="https://t.me/+NJylaUom-rxjYjU6" target="_blank" rel="noreferrer"><img src={telegram} alt="Telegram" /></a></Col>
             </Row>
           </div>

@@ -37,7 +37,7 @@ body{
       background-color: black;
   }
   .main-middle{
-    max-width: 50%;
+    max-width: 750px;
     margin-top: 5vh;
     align-items: center;
     flex-direction: column;

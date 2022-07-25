@@ -54,7 +54,8 @@ io.on('connection', (socket) => {
   })
 
   socket.on('getWireguardConfig',(publicKey,presharedKey,priceDollar,country) => {
-    getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country)).then(result => socket.emit('recieveConfigData',result))
+    getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country))
+    .then(result => socket.emit('recieveConfigData',result))
   })
 
   socket.on('getPrice', () => {
@@ -94,22 +95,22 @@ var getTimeStamp = (selectedValue) =>{
   var date;
   if(selectedValue == 0.1){
     date = addMonths(date = new Date(),1)
-    return date
+    return date;
   }
 
   if(selectedValue == 8.5){
     date = addMonths(date = new Date(),3)
-    return date
+    return date;
   }
 
   if(selectedValue == 16){
     date = addMonths(date = new Date(),6)
-    return date
+    return date;
   }
 
   if(selectedValue == 28.5){
     date = addMonths(date = new Date(),12)
-    return date
+    return date;
   }
 
   function addMonths(date = new Date(), months) {
@@ -126,7 +127,9 @@ var getTimeStamp = (selectedValue) =>{
 
 // Get Invoice Function
 async function getInvoice(amount) {
-  var satoshis = await getPrice().then((result) => { return result }).catch(error => {return error;});
+  var satoshis = await getPrice()
+                        .then((result) => { return result })
+                        .catch(error => { return error });
   return axios({
   method: "post",
   url: process.env.URL_INVOICE_API,
