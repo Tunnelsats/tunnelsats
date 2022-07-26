@@ -272,12 +272,45 @@ button.close {
 .footer-text a {
   color: black;
 }
-.footer-text img {
-  width: 40px;
-  height: 40px;
+.icon {
+  display: inline-block;
+  background-size: cover;
+  width: 30px;
+  height: 30px;
   margin-right: 15px;
   margin-left: 15px;
-  opacity: 0.5;  
+}
+.icon-twitter {
+  background-image: url('./media/twitter-128.png');
+  opacity: 0.5;
+}
+.icon-twitter:hover {
+  background-image: url('./media/twitter-128c.png');
+  opacity: 1;
+}
+.icon-github {
+  background-image: url('./media/github-128.png');
+  opacity: 0.5;
+}
+.icon-github:hover {
+  background-image: url('./media/github-128.png');
+  opacity: 1;
+}
+.icon-heart {
+  background-image: url('./media/hearts-128.png');
+  opacity: 0.5;
+}
+.icon-heart:hover {
+  background-image: url('./media/hearts-128c.png');
+  opacity: 1;
+}
+.icon-telegram {
+  background-image: url('./media/telegram-128.png');
+  opacity: 0.5;
+}
+.icon-telegram:hover{
+  background-image: url('./media/telegram-128c.png');
+  opacity: 1;
 }
 
 #faq_modal {

@@ -11,16 +11,16 @@ import HeaderInfo from './components/HeaderInfo';
 //import FAQModal from './components/FAQModal';
 //import LoginModal from './components/LoginModal';
 import logo from './media/tunnelsats_headerlogo3.png';
-import twitter from './media/twitter-512.png';
-import telegram from './media/telegram-512.png';
-import github from './media/github-512.png';
-import tipjar from './media/heart-512.png';
+//import twitter from './media/twitter-128.png';
+//import telegram from './media/telegram-128.png';
+//import github from './media/github-128.png';
+//import tipjar from './media/hearts-128.png';
 import WorldMap from "./components/WorldMap";
 //import axios from 'axios';
 //import Popup from './components/Popup';
 
 // helper
-const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString()
+const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
 
 // WebSocket
 var socket =  io.connect('/', {
@@ -46,11 +46,11 @@ function App() {
   const closeInvoiceModal = () => setShowInvoiceModal(false);
   const showInvoiceModal = () => setShowInvoiceModal(true);
   //Modal Configdata
-  const [isConfigModal, showConfigModal] = useState(false)
+  const [isConfigModal, showConfigModal] = useState(false);
   const renderConfigModal = () => showConfigModal(true);
   const hideConfigModal = () => showConfigModal(false);
   //FAQ - Modal
-  //const [isFAQModal, showFAQModal] = useState(false)
+  //const [isFAQModal, showFAQModal] = useState(false);
   //const renderFAQModal = () => showFAQModal(true);
   //const hideFAQModal = () => showFAQModal(false);
   //LoginModal
@@ -60,7 +60,7 @@ function App() {
   
   // World Map
   const [country, updateCountry] = useState('eu');
-  const [isOpen, setIsOpen] = useState(false);
+  //const [isOpen, setIsOpen] = useState(false);
   //const togglePopup = () => { setIsOpen(!isOpen); };
 
   /* WorldMap Continent Codes
@@ -295,10 +295,10 @@ function App() {
 
           <div className='footer-text'>
             <Row>
-              <Col><a href="https://twitter.com/TunnelSats" target="_blank" rel="noreferrer"><img src={twitter} alt="Twitter" /></a></Col>
-              <Col><a href="https://github.com/blckbx/tunnelsats" target="_blank" rel="noreferrer"><img src={github} alt="GitHub" /></a></Col>
-              <Col><a href="https://lnbits.tunnelsats.com/tipjar/1" target="_blank" rel="noreferrer"><img src={tipjar} alt="Donation" /></a></Col>
-              <Col><a href="https://t.me/+NJylaUom-rxjYjU6" target="_blank" rel="noreferrer"><img src={telegram} alt="Telegram" /></a></Col>
+              <Col><a href="https://twitter.com/TunnelSats" target="_blank" rel="noreferrer"><span class="icon icon-twitter"></span></a></Col>
+              <Col><a href="https://github.com/blckbx/tunnelsats" target="_blank" rel="noreferrer"><span class="icon icon-github"></span></a></Col>
+              <Col><a href="https://lnbits.tunnelsats.com/tipjar/1" target="_blank" rel="noreferrer"><span class="icon icon-heart"></span></a></Col>
+              <Col><a href="https://t.me/+NJylaUom-rxjYjU6" target="_blank" rel="noreferrer"><span class="icon icon-telegram"></span></a></Col>
             </Row>
           </div>
 
@@ -307,6 +307,6 @@ function App() {
       </Container>
     </div>
   );
-}
+};
 
 export default App;
