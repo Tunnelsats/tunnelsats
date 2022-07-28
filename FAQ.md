@@ -75,8 +75,8 @@ Currently, 100GB per month are being offered. This should be enough traffic even
 At present we successfully tested the following setups:
 
 - RaspiBlitz (LND / CLN) v1.7.2
-- Umbrel-OS < v0.5 (LND)
-- Umbrel-OS v0.5+ (LND / CLN not yet recommended or be tech-savvy)
+- Umbrel-OS (LND)
+- Umbrel-OS (CLN not yet recommended or be tech-savvy)
 - myNode (LND) v0.2.x
 - (Raspi)Bolt (LND / CLN)
 
