@@ -72,13 +72,15 @@ Currently, 100GB per month are being offered. This should be enough traffic even
 <br />
 
 ### Which setups are supported?
-To date we successfully tested the following setups:
+At present we successfully tested the following setups:
 
-- RaspiBlitz (LND / CLN)
-- Umbrel < v0.5 (LND)
-- Umbrel v0.5+ (LND / CLN not recommended yet or be tech-savvy)
-- myNode (LND)
-- RaspiBolt / Bare Metal (LND / CLN)
+- RaspiBlitz (LND / CLN) v1.7.2
+- Umbrel-OS < v0.5 (LND)
+- Umbrel-OS v0.5+ (LND / CLN not yet recommended or be tech-savvy)
+- myNode (LND) v0.2.x
+- (Raspi)Bolt (LND / CLN)
+
+For other setups please get back to us on Telegram to discuss if it's viable to go with TunnelSats.
 
 <br />
 
@@ -99,7 +101,7 @@ Let's say you bought the 1 month for testing the services and all is going great
 - buy a new subscription
 - download or transfer via email the new configuration file from the website 
 - redo installation procedure: place config file in same directory `with setupv2.sh` and run it again
-- adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalIP (LND) or announce-addr (CLN))
+- adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalip (LND) or announce-addr (CLN))
 - restart wireguard and lightning: `sudo systemctl restart wg-quick@tunnelsatsv2` and your lightning implementation
 
 <br/>

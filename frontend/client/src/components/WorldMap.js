@@ -79,7 +79,7 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
         width: "672",
         height: "315",
         viewBox: "0 0 672 315",
-        id: "svg5249"
+        id: "svg5249"        
       }, /*#__PURE__*/React.createElement("defs", {
         id: "defs5257"
       }, /*#__PURE__*/React.createElement("linearGradient", {
@@ -151,7 +151,15 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
       }), /*#__PURE__*/React.createElement("path", {
         id: "path5828",
         d: "M333.694 102.073c2.108 1.235 3.815 2.096 6.053.893-1.875-1.272-3.754-.968-6.053-.893z"
-      })), /*#__PURE__*/React.createElement("g", {
+      })),
+      // circle FFM
+      React.createElement("circle", {
+        cx: "305",
+        cy: "72",
+        r: "3",
+        fill: "#4c619b"
+      }),
+      /*#__PURE__*/React.createElement("g", {
         id: "AS",
         className: _this.getClassname('as'),
         //onClick: _this.onMapClick.bind(_assertThisInitialized(_this), 'as')
@@ -282,7 +290,16 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
       }), /*#__PURE__*/React.createElement("path", {
         id: "path5808",
         d: "M143.03 142.054c-.368-.47-.964-.39-1.527-.383-.548.01-1.19.215-1.162.75.038.704.744.816 1.38.783.65-.033 1.143-.27 1.312-1.148z"
-      })), /*#__PURE__*/React.createElement("g", {
+      }),
+      // circle NY
+      React.createElement("circle", {
+        cx: "134",
+        cy: "90",
+        r: "3",
+        fill: "#4c619b"
+      }),
+      ),
+      /*#__PURE__*/React.createElement("g", {
         id: "OC",
         className: _this.getClassname('oc'),
         //onClick: _this.onMapClick.bind(_assertThisInitialized(_this), 'oc')
@@ -319,7 +336,8 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
       }), /*#__PURE__*/React.createElement("path", {
         id: "path5253",
         d: "M568.205 268.9c.088-.32.183-.597.225-.88.008-.057-.18-.14-.28-.214-.145.276-.297.552-.426.837-.003.01.227.12.48.257z"
-      }))));
+      }))
+      ));
     });
 
     return _this;

@@ -9,18 +9,22 @@ const app = express();
 var payment_hash,payment_request;
 require('dotenv').config()
 
+// helper
+const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString()
+
 const createServer = require('http');
 const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
   cors: {
-    origin: ["https://tunnelsats.com", "https://www.tunnelsats.com", "http://localhost", "http://127.0.0.1"],
+    origin: ["http://localhost:"+process.env.PORT],
+    methods: ["GET", "POST"],
     credentials: true
   }
 });
 
 // Set up the Webserver
 app.use(express.static(path.join(__dirname, '../client/build')));
-app.use(bodyParser.json())
+app.use(bodyParser.json());
 
 // Serving the index site
 app.get('/', function (req, res) {
@@ -31,13 +35,16 @@ app.get('/', function (req, res) {
 app.post(process.env.WEBHOOK, (req, res) => {
     io.sockets.emit('invoicePaid',req.body.payment_hash)
     res.status(200).end()
-})
+});
 
-httpServer.listen(process.env.PORT);
+httpServer.listen(process.env.PORT, '0.0.0.0');
+console.log(`${getDate()} httpServer listening on port ${process.env.PORT}`);
 // Finish Server Setup
 
 // Socket Connections
 io.on('connection', (socket) => {
+
+  console.log(`${getDate()} io.socket: connected`)
 
   // Checks for a paid Invoice after reconnect
   socket.on('checkInvoice',(clientPaymentHash) => {
@@ -121,7 +128,6 @@ var getTimeStamp = (selectedValue) =>{
     }
     return date;
   }
-
 }
 
 
@@ -198,35 +204,32 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
         data: {
         "keyID": response1.data.keyID
         }
-      };
+      }
 
-     var response2 = await axios(request2).catch(error => { return error });
+      var response2 = await axios(request2).catch(error => { return error });
       
-     if(!response2) {
-      response2 = await axios(request2).catch(error => { return error });
-     } else {
-      response1.data['portFwd'] = response2.data.portFwd;
-      return response1.data;
-     }
+      if(!response2) {
+        response2 = await axios(request2).catch(error => { return error });
+      } else {
+        response1.data['portFwd'] = response2.data.portFwd;
+        return response1.data;
+      }
     }
 };
 
 
 // Parse Date object to string format: YYYY-MMM-DD hh:mm:ss A
-const parseDate = (date) => {
-  var durationEnd = dayjs(date).format("YYYY-MMM-DD hh:mm:ss A")
-  return durationEnd
-};
+const parseDate = (date) => { return dayjs(date).format("YYYY-MMM-DD hh:mm:ss A") };
 
 // translate IP to DNS
 async function getDNS(ipAddress) {
   var dns;
-  if (ipAddress == "process.env.IP_EU") dns = process.env.DNS_EU;
-  if (ipAddress == "process.env.IP_US") dns = process.env.DNS_US;
-//   if (ipAddress == "") dns = process.env.DNS_AFRICA;  
-//   if (ipAddress == "") dns = process.env.DNS_LATAM;
-//   if (ipAddress == "") dns = process.env.DNS_ASIA;
-//   if (ipAddress == "") dns = process.env.DNS_OCEANIA;
+  if (ipAddress === process.env.IP_EU) dns = process.env.DNS_EU;
+  if (ipAddress === process.env.IP_US) dns = process.env.DNS_US;
+  if (ipAddress === process.env.IP_AFRICA) dns = process.env.DNS_AFRICA;  
+  if (ipAddress === process.env.IP_LATAM) dns = process.env.DNS_LATAM;
+  if (ipAddress === process.env.IP_ASIA) dns = process.env.DNS_ASIA;
+  if (ipAddress === process.env.IP_OCEANIA) dns = process.env.DNS_OCEANIA;
   return dns;
 };
 
@@ -263,17 +266,11 @@ async function sendEmail(emailAddress,configData,date) {
         }
       });
 
-   let info = await transporter
-               .sendMail(msg)
+   await transporter.sendMail(msg)
                .then(() => {}, error => {
                  console.error(error);
-               if (error.response) {
-                 console.error(error.response.body)
-               }
+               if (error.response) console.error(error.response.body);
               });
-
-  // console.log("Message sent: %s", info.messageId);
-
 };
 
 // Check for Invoice
@@ -283,10 +280,6 @@ async function checkInvoice(hash) {
        url: process.env.URL_INVOICE_API +"/"+hash,
        headers: { "X-Api-Key": process.env.INVOICE_KEY }
   }).then(function (response){
-       if(response.data.paid)  {
-          return response.data.details.payment_hash;
-       }
-  }).catch(error => { 
-    return error 
-  })
+       if(response.data.paid)  return response.data.details.payment_hash;
+  }).catch(error => { return error })
 };

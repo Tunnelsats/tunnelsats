@@ -7,7 +7,7 @@ const HeaderInfo = () => {
         <Alert variant="secondary">
             {/* <Alert.Heading>How it works:</Alert.Heading> */}
               <p>Tunnel⚡️Sats provides pre-configured setup scripts for lightning nodes enabling hybrid mode through clearnet & Tor connectivity and offers paid VPN servers in various continents and fixed periods of time. Our VPNs come with automatically enabled forwarding ports used to connect with other lightning nodes.
-              <br></br><b>- STAGING -</b>
+              <br></br>
               <br></br><b>How Tunnel⚡️Sats works</b>
               <br></br>Select preferred continent and period of time and pay invoice via lightning to receive the WireGuard configuration file. Download setup script to automatically install required components and configure your node setup for hybrid mode.
               <br></br>
