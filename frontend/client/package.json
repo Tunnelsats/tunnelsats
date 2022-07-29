@@ -5,13 +5,10 @@
   "dependencies": {
     "@emotion/react": "^11.8.2",
     "@emotion/styled": "^11.8.1",
-    "axios": "^0.26.1",
     "framer-motion": "^3.10.6",
     "jquery": "^3.6.0",
     "qrcode.react": "^3.0.1",
     "react": "^18.0.0",
-    "react-alert": "^7.0.3",
-    "react-alert-template-basic": "^1.0.2",
     "react-bootstrap": "^1.6.1",
     "react-dom": "^18.0.0",
     "react-scripts": "5.0.0",

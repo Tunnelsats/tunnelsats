@@ -16,7 +16,6 @@ import logo from './media/tunnelsats_headerlogo3.png';
 //import github from './media/github-128.png';
 //import tipjar from './media/hearts-128.png';
 import WorldMap from "./components/WorldMap";
-//import axios from 'axios';
 //import Popup from './components/Popup';
 
 // helper

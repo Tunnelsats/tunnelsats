@@ -23,6 +23,7 @@
     "body-parser": "^1.20.0",
     "dayjs": "^1.11.1",
     "dotenv": "^16.0.0",
+    "nodemailer": "^6.7.5",
     "express": "^4.17.3",
     "socket.io": "^4.4.1",
     "wireguard-tools": "^0.1.0"
