@@ -42,7 +42,7 @@ You also provide better user experience for customers actually using lightning a
 
 ### Why choose Tunnel⚡Sats over other VPN providers?
 Running a lightning nodes behind a VPN requires a range of features public VPN providers usually do not offer. **Tunnel⚡Sats** is specially designed for the lightning node use case in mind. So we pack up everything that's needed:
-- anonymous payment method via Lightning (we don't see the sender of the payment)
+- anonymous payment method via Lightning (we don't know the sender of the payment)
 - static VPN IP: no more disconnects due to changing VPN IPs and no hassle setting up Dynamic DNS
 - static forwarded ports: assign VPN's port to your node config and you are good to go
 - secure VPN tunnels: we provide quantum-safe VPN tunnels using pre-shared keys
@@ -85,9 +85,9 @@ For other setups please get back to us on Telegram to discuss if it's viable to 
 <br />
 
 ### Do you store my data? If so, which one and how do you use it?
-We don't log IPs in our Webserver access data. We also offer an .onion website to allow for even greater anonymity: http://tunnelpasz3fpxhuw6obb5tpuqkxmcmvqh7asx5vkqfwe7ix74ry22ad.onion
+We don't log IPs in our webserver access data. We also offer an .onion website to allow for even greater anonymity: [http://tunnelpasz3fpxhuw6obb5tpuqkxmcmvqh7asx5vkqfwe7ix74ry22ad.onion](http://tunnelpasz3fpxhuw6obb5tpuqkxmcmvqh7asx5vkqfwe7ix74ry22ad.onion)
 
-We don't store packets or logfiles from or to your node once the tunnel is established. What we do store: We store the payment hash as accounting confirmation in LNBits. We do have to keep your node's IP address in memory for the tunnel connection to stay alive, which will be discarded once you disconnect. Hence it's extremely important to save your Wireguard configuration file because there is no way for us to re-retrieve that information.
+We don't store packets or logfiles from or to your node once the tunnel is established. What we do store: We store the payment hash as accounting confirmation in LNBits. We do have to keep your node's IP address in memory for the tunnel connection to stay alive, which will be discarded once you disconnect. Hence it's extremely important to save your WireGuard configuration file because there is no way for us to re-retrieve that information.
 
 <br/>
 
@@ -97,7 +97,7 @@ This is still beta status, so please bear with us. If you experience issues, ple
 <br/>
 
 ### How can I extend my subscription?
-Let's say you bought the 1 month for testing the services and all is going great. Now your subscription is coming to an end and you like to extend it to add another 3 months. Since we don't offer a login-service (yet), you need to remember your subscription end date (look it up in your Wireguard config file: #ValidUntil (mind this is UTC time format)) and before expiry
+Let's say you bought the 1 month for testing the services and all is going great. Now your subscription is coming to an end and you like to extend it to add another 3 months. Since we don't offer a login-service (yet), you need to remember your subscription end date (look it up in your WireGuard config file: #ValidUntil (mind this is UTC time format)) and before expiry
 - buy a new subscription
 - download or transfer via email the new configuration file from the website 
 - redo installation procedure: place config file in same directory `with setupv2.sh` and run it again
@@ -164,7 +164,7 @@ Umbrel 0.5+: /home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin
 <br/>
 
 ### How to transfer `tunnelsatsv2.conf` to my node?
-The easiest way to transfer a file to a remote node is to use the cli command `scp`. Assuming that you run an Umbrel node and have downloaded the wireguard config file (tunnelsats.conf) to your computer, the `scp` command would look like this: 
+The easiest way to transfer a file to a remote node is to use the cli command `scp`. Assuming that you run an Umbrel node and have downloaded the WireGuard config file (tunnelsats.conf) to your computer, the `scp` command would look like this: 
 ```sh
 $ scp tunnelsatsv2.conf umbrel@umbrel.local:/home/umbrel/
 
@@ -180,7 +180,7 @@ See the current network setup in a comparison between your Tor only setup vs the
 <br/>
 
 ### How can I verify that my VPN connection is online and active?
-On console, run the following wireguard command to see some connection statistics, especially check latest handshake for an active VPN connection: `sudo wg show`
+On console, run the following WireGuard command to see some connection statistics, especially check latest handshake for an active VPN connection: `sudo wg show`
 
 <br/>
 
@@ -201,7 +201,7 @@ In v2 we changed the network architecture compared to v1 where all traffic was d
 
 
 ### Running tunnelsatsv2 and mullvad in parallel?
-Yes, this is possible, but you have to make some adjustments. First you have to make sure the startup order is first mullvad then tunnelsats leading to the following ip rules
+Yes, this is possible, but you have to make some adjustments. First, you have to make sure the startup order is mullvad first then TunnelSats leading to the following ip rules:
 ```
 0:  from all lookup local
 32760:  from all lookup main suppress_prefixlength 0
@@ -210,7 +210,7 @@ Yes, this is possible, but you have to make some adjustments. First you have to 
 32766:  from all lookup main
 32767:  from all lookup default
 ```
-In addition you have to create an additional nftable to circumvent the mullvad firewall rules. Create a file called exclude.rules and input the following content
+In addition, you have to create an additional nftable to circumvent the mullvad firewall rules. Create a file called `exclude.rules` and input the following content:
 ```
 table inet excludeTraffic {
   chain allowIncoming {
@@ -218,7 +218,6 @@ table inet excludeTraffic {
     ip saddr  ip_of_tunnelsats_vpn ct mark set 0x00000f41 meta mark set 0x6d6f6c65
     iifname tunnelsatsv2 ct mark set 0x00000f41;
   }
-
 
   chain allowOutgoing {
     type route hook output priority -100; policy accept;
@@ -228,7 +227,7 @@ table inet excludeTraffic {
 }
 
 ```
-Replace the ip_of_tunnelsats_vpn with the ip of the related tunnelsats vpn server and flush this file with `sudo nft -f exclude.rules`. Now you should be able to run Mullvad and Tunnelsats in parallel
+Replace the ip_of_tunnelsats_vpn with the ip of the related tunnelsats vpn server and flush this file with `sudo nft -f exclude.rules`. Now you should be able to run mullvad and TunnelSats in parallel.
 
 <br/>
 
@@ -243,7 +242,7 @@ From Node Runnners for Node Runners 🧡
 <br />
 
 ### I have some ideas to make this better. Where can I provide feedback or offer help?
-Great! Please do not hesitate to reach out via [Telegram](https://t.me/+NJylaUom-rxjYjU6), [Twitter](https://twitter.com/tunnelsats), eMail (info @ tunnelsats.com) or log an issue here on Github with your detailed ideas or feature requests. We always look forward to partner with great thinkers and doers.
+Great! Please do not hesitate to reach out via [Telegram](https://t.me/+NJylaUom-rxjYjU6), [Twitter](https://twitter.com/tunnelsats), email (info @ tunnelsats.com) or log an issue here on github with your detailed ideas or feature requests. We always look forward to partner with great thinkers and doers.
 
 <br/>
 <br/>

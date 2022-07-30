@@ -234,7 +234,7 @@ else
   done
 
    #Flush any rules which are still present from failed interface starts
-  ip route flush table 51820
+  ip route flush table 51820 &> /dev/null
 
 fi
 
