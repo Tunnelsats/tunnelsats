@@ -21,7 +21,7 @@ body{
   }
   .main-middle{
     max-width: 90%;
-    margin-top: 5vh;
+    margin-top: 2vh;
     align-items: center;
     flex-direction: column;
     border-radius: 30px;
@@ -38,7 +38,7 @@ body{
   }
   .main-middle{
     max-width: 750px;
-    margin-top: 5vh;
+    margin-top: 2vh;
     align-items: center;
     flex-direction: column;
     border-radius: 30px;
@@ -277,8 +277,6 @@ button.close {
   background-size: cover;
   width: 30px;
   height: 30px;
-  margin-right: 15px;
-  margin-left: 15px;
 }
 .icon-twitter {
   background-image: url('./media/twitter-128.png');

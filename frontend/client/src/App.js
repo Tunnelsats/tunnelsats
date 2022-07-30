@@ -214,7 +214,7 @@ function App() {
 
     <div>
       <Container>
-        <Navbar expand="lg" variant="dark" fixed="top">
+        <Navbar variant="dark" expanded="true">
           <Container>
             <Navbar.Brand href="#">Tunnel⚡️Sats</Navbar.Brand>
             <Nav className="me-auto">

@@ -597,12 +597,12 @@ if [ $isDocker -eq 1 ]; then
 
 
 
-  dockerlndip=$(grep LND_IP /home/$USER/umbrel/.env 2> /dev/null  | cut -d= -f2)
+  dockerlndip=$(grep LND_IP /home/"$USER"/umbrel/.env 2> /dev/null  | cut -d= -f2)
   dockerlndip=${dockerlndip:-"10.21.21.9"}
   
 
-  if [ -d /home/$USER/umbrel/app-data/core-lightning ]; then
-    dockerclnip=$(grep APP_CORE_LIGHTNING_DAEMON_IP /home/$USER/umbrel/app-data/core-lightning/exports.sh | cut -d "\"" -f2)
+  if [ -d /home/"$USER"/umbrel/app-data/core-lightning ]; then
+    dockerclnip=$(grep APP_CORE_LIGHTNING_DAEMON_IP /home/"$USER"/umbrel/app-data/core-lightning/exports.sh | cut -d "\"" -f2)
   else
     dockerclnip=""
   fi
@@ -951,9 +951,14 @@ VPN setup completed!";echo
 
 
 if [ $isDocker -eq 0 ]; then
+    clnServiceName="${lnImplementation}"
+    if [ "${lnImplementation,,}" == "cln" ]; then
+      clnServiceName="lightningd";
+      if [ -d /data/cln ]; then clnServiceName="cln"; fi
+    fi
     echo "Restart ${lnImplementation} afterwards via the command:
-    sudo systemctl restart ${lnImplementation}.service";echo
-  else
+    sudo systemctl restart ${clnServiceName}.service";echo
+else
     echo "Restart ${lnImplementation} on umbrel afterwards via the command:
     sudo /home/umbrel/umbrel/scripts/stop (umbrel)
     sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
