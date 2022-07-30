@@ -503,7 +503,7 @@ WantedBy=timers.target
     systemctl daemon-reload > /dev/null
     if systemctl enable tunnelsats-splitting-processes.service > /dev/null && \
       systemctl start tunnelsats-splitting-processes.service > /dev/null; then
-      echo "> tunnelsats-splitting-processes.servicee: systemd service enabled and started"
+      echo "> tunnelsats-splitting-processes.service: systemd service enabled and started"
     else
       echo "> ERR: tunnelsats-splitting-processes.service could not be enabled or started. Please check for errors.";echo
       exit 1
