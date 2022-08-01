@@ -1,25 +1,21 @@
  var getTimeStamp = (selectedValue) =>{
     var date = new Date();
 
-    if(selectedValue == 0.1){
+    if(selectedValue == 3){
       date = addMonths(date = new Date(),1)
-
       return date
     }
     if(selectedValue == 8.5){
       date = addMonths(date = new Date(),3)
-
       return date
     }
     if(selectedValue == 16){
       date = addMonths(date = new Date(),6)
-
       return date
     }
 
     if(selectedValue == 28.5){
       date = addMonths(date = new Date(),12)
-
       return date
     }
 
@@ -31,6 +27,6 @@
       }
       return date;
     }
-
   }
+
   export {getTimeStamp}

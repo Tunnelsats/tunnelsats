@@ -100,7 +100,7 @@ var getServer = (country) => {
 var getTimeStamp = (selectedValue) =>{
   
   var date;
-  if(selectedValue == 0.1){
+  if(selectedValue == 3){
     date = addMonths(date = new Date(),1)
     return date;
   }

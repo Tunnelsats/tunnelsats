@@ -4,7 +4,7 @@ const RuntimeSelector = (props) => {
   return (
     <div>
     <ToggleButtonGroup type="radio" name="options" id="runtimeselector" defaultValue={8.5} >
-      <ToggleButton id="tbg-radio-1" variant="secondary" value={0.1} onClick={props.onClick}>
+      <ToggleButton id="tbg-radio-1" variant="secondary" value={3} onClick={props.onClick}>
         1 <br></br> month
       </ToggleButton>
       <ToggleButton id="tbg-radio-2" variant="secondary" value={8.5} onClick={props.onClick}>
