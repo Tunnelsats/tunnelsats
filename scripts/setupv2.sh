@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=16
+patch=17
 
 
 #Helper
@@ -39,9 +39,6 @@ fi
 # check if docker
 isDocker=0
 if [ "$(hostname)" == "umbrel" ] || \
-   [ -f /home/umbrel/umbrel/lnd/lnd.conf ] || \
-   [ -d /home/umbrel/umbrel/app-data/lightning ] || \
-   [ -d /home/umbrel/umbrel/app-data/core-lightning ] || \
    [ -d "$HOME"/umbrel ] || \
    [ -d /embassy-data/package-data/volumes/lnd ]; then
   isDocker=1
@@ -401,10 +398,8 @@ Requires=tunnelsats-create-cgroup.service
 After=tunnelsats-create-cgroup.service
 " > /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf 
     
-    systemctl daemon-reload
-
+      systemctl daemon-reload > /dev/null
   
-
   elif [ "$lnImplementation" == "cln"  ]; then
 
      if [ ! -d /etc/systemd/system/lightningd.service.d ]; then
@@ -417,10 +412,9 @@ Requires=tunnelsats-create-cgroup.service
 After=tunnelsats-create-cgroup.service
 " > /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf 
 
+      systemctl daemon-reload > /dev/null
 
-    systemctl daemon-reload
-   
-  fi 
+  fi
 
 #Create lightning splitting.service
 
@@ -464,7 +458,7 @@ fi
   echo "Creating tunnelsats-splitting-processes systemd service..."
   if [ ! -f /etc/systemd/system/tunnelsats-splitting-processes.sh ]; then
     
-      echo "[Unit]
+    echo "[Unit]
 Description=Adding Lightning Process to the tunnel
 [Service]
 Type=oneshot
@@ -473,7 +467,7 @@ ExecStart=/bin/bash /etc/wireguard/tunnelsats-splitting-processes.sh
 WantedBy=multi-user.target
 " > /etc/systemd/system/tunnelsats-splitting-processes.service
 
-      echo "[Unit]
+    echo "[Unit]
 Description=1min timer for tunnelsats-splitting-processes.service
 [Timer]
 OnBootSec=10
@@ -481,21 +475,21 @@ OnUnitActiveSec=10
 Persistent=true
 [Install]
 WantedBy=timers.target
-      " > /etc/systemd/system/tunnelsats-splitting-processes.timer
+" > /etc/systemd/system/tunnelsats-splitting-processes.timer
       
-      if [ -f /etc/systemd/system/tunnelsats-splitting-processes.service ]; then
-        echo "> tunnelsats-splitting-processes.service created"
-      else
-        echo "> ERR: tunnelsats-splitting-processes.service not created. Please check for errors.";echo
+    if [ -f /etc/systemd/system/tunnelsats-splitting-processes.service ]; then
+      echo "> tunnelsats-splitting-processes.service created"
+    else
+      echo "> ERR: tunnelsats-splitting-processes.service not created. Please check for errors.";echo
 	    exit 1
-      fi
-      if [ -f /etc/systemd/system/tunnelsats-splitting-processes.timer ]; then
-        echo "> tunnelsats-splitting-processes.timer created"
-      else
-        echo "> ERR: tunnelsats-splitting-processes.timer not created. Please check for errors.";echo
-	    exit 1
-      fi
+    fi
 
+    if [ -f /etc/systemd/system/tunnelsats-splitting-processes.timer ]; then
+      echo "> tunnelsats-splitting-processes.timer created"
+    else
+      echo "> ERR: tunnelsats-splitting-processes.timer not created. Please check for errors.";echo
+	    exit 1
+    fi
   fi  
 
   # enable and start tunnelsats-docker-network.service
@@ -522,7 +516,6 @@ WantedBy=timers.target
     echo "> ERR: tunnelsats-splitting-processes.service was not created. Please check for errors.";echo
     exit 1
   fi
-
 fi
 
 sleep 2
@@ -536,9 +529,9 @@ if [ $isDocker -eq 0 ]; then
 
   if [ "$lnImplementation" == "lnd"  ]; then
 
-   if  [ ! -f /etc/systemd/system/lnd.service.bak ]; then
+    if  [ ! -f /etc/systemd/system/lnd.service.bak ]; then
       cp /etc/systemd/system/lnd.service /etc/systemd/system/lnd.service.bak
-   fi
+    fi
 
    #Check if lnd.service already has cgexec command included
     check=$(grep -c "cgexec" /etc/systemd/system/lnd.service)
@@ -547,7 +540,7 @@ if [ $isDocker -eq 0 ]; then
       if sed -i 's/ExecStart=/ExecStart=\/usr\/bin\/cgexec -g net_cls:splitted_processes /g' /etc/systemd/system/lnd.service ; then
           echo "> lnd.service updated now starts in cgroup tunnelsats";echo
           echo "> backup saved under /etc/systemd/system/lnd.service.bak";echo
-          systemctl daemon-reload 
+          systemctl daemon-reload > /dev/null
       else
           echo "> ERR: not able to change /etc/systemd/system/lnd.service. Please check for errors.";echo
       fi
@@ -568,7 +561,7 @@ if [ $isDocker -eq 0 ]; then
         if sed -i 's/ExecStart=/ExecStart=\/usr\/bin\/cgexec -g net_cls:splitted_processes /g' /etc/systemd/system/lightningd.service ; then
           echo "> lightningd.service updated now starts in cgroup tunnelsats";echo
           echo "> backup saved under /etc/systemd/system/lightningd.service.bak";echo
-          systemctl daemon-reload 
+          systemctl daemon-reload > /dev/null
         else
           echo "> ERR: not able to change /etc/systemd/system/lightningd.service. Please check for errors.";echo
         fi
@@ -584,8 +577,6 @@ fi
 sleep 2
 
 
-
-
 #Creating Killswitch to prevent any leakage
 if [ $isDocker -eq 1 ]; then
   echo "Applying KillSwitch to Docker setup..."
@@ -594,12 +585,11 @@ if [ $isDocker -eq 1 ]; then
   localsubnet="$(hostname -I | awk '{print $1}' | cut -d"." -f1-3)".0/24
 
   #Get docker umbrel lnd/cln ip address
-  dockerlndip=$(grep LND_IP /home/"$USER"/umbrel/.env 2> /dev/null  | cut -d= -f2)
+  dockerlndip=$(grep LND_IP "$HOME"/umbrel/.env 2> /dev/null | cut -d= -f2)
   dockerlndip=${dockerlndip:-"10.21.21.9"}
-  
 
-  if [ -d /home/"$USER"/umbrel/app-data/core-lightning ]; then
-    dockerclnip=$(grep APP_CORE_LIGHTNING_DAEMON_IP /home/"$USER"/umbrel/app-data/core-lightning/exports.sh | cut -d "\"" -f2)
+  if [ -d "$HOME"/umbrel/app-data/core-lightning ]; then
+    dockerclnip=$(grep APP_CORE_LIGHTNING_DAEMON_IP "$HOME"/umbrel/app-data/core-lightning/exports.sh | cut -d "\"" -f2)
   else
     dockerclnip=""
   fi
@@ -612,7 +602,7 @@ if [ $isDocker -eq 1 ]; then
     result="${dockerlndip}, ${dockerclnip}"
   fi
 
-  if [ -n "$mainif" ] ; then
+  if [ -n "$mainif" ]; then
 
     if [ -f /etc/nftables.conf ] && [ ! -f /etc/nftablespriortunnelsats.backup ]; then
       echo "> Info: tunnelsats replaces the whole /etc/nftables.conf, backup was saved to /etc/nftablespriortunnelsats.backup"
@@ -624,26 +614,25 @@ if [ $isDocker -eq 1 ]; then
       nft flush table ip tunnelsatsv2
    fi
 
-        echo "#!/sbin/nft -f
-    table ip tunnelsatsv2 {
-    set killswitch_tunnelsats {
-      type ipv4_addr
-      elements = { $dockertunnelsatsip, $result }
-    }
-    #block traffic from lighting containers
-    chain forward {
-      type filter hook forward priority filter; policy accept;
-      oifname $mainif ip daddr != $localsubnet ip saddr @killswitch_tunnelsats counter  drop
-    }
-    #restrict traffic from the tunnelsats network other than the lightning traffic
-    chain input {
-      type filter hook input priority filter; policy accept;
-      iifname tunnelsatsv2  ct state established,related counter accept
-      iifname tunnelsatsv2   tcp dport != 9735 counter drop 
-      iifname tunnelsatsv2   udp dport != 9735 counter drop 
-
-    }
-  }" >  /etc/nftables.conf
+    echo "#!/sbin/nft -f
+table ip tunnelsatsv2 {
+  set killswitch_tunnelsats {
+    type ipv4_addr
+    elements = { ${dockertunnelsatsip}, ${result} }
+  }
+  #block traffic from lighting containers
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    oifname ${mainif} ip daddr != ${localsubnet} ip saddr @killswitch_tunnelsats counter  drop
+  }
+  #restrict traffic from the tunnelsats network other than the lightning traffic
+  chain input {
+    type filter hook input priority filter; policy accept;
+    iifname tunnelsatsv2  ct state established,related counter accept
+    iifname tunnelsatsv2   tcp dport != 9735 counter drop 
+    iifname tunnelsatsv2   udp dport != 9735 counter drop 
+  }
+}" > /etc/nftables.conf
     
     
     # check application
@@ -666,19 +655,19 @@ if [ $isDocker -eq 1 ]; then
   systemctl daemon-reload > /dev/null
   if systemctl enable nftables > /dev/null && systemctl start nftables > /dev/null; then
 
+    if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
+      mkdir /etc/systemd/system/umbrel-startup.service.d > /dev/null
+    fi
 
-      if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
-          mkdir /etc/systemd/system/umbrel-startup.service.d > /dev/null
-      fi 
-      echo "[Unit]
+    echo "[Unit]
 Description=Forcing wg-quick to start after umbrel startup scripts
 # Make sure kill switch is in place before starting umbrel containers
 Requires=nftables.service
 After=nftables.service
-    " > /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
+" > /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf 
     
     #Start nftables service
-    systemctl daemon-reload
+    systemctl daemon-reload > /dev/null
     systemctl reload nftables > /dev/null; 
     if [ $? -eq 0 ]; then
       echo "> nftables systemd service started"
@@ -705,20 +694,20 @@ fi
 
 sleep 2
 
+
 #Add Monitor which connects the docker-tunnelsats network to the lightning container
 if [ $isDocker -eq 1 ]; then
   # create file
   echo "Creating tunnelsats-docker-network.sh file in /etc/wireguard/..."
   echo "#!/bin/sh
-  set -e
-  lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 0.0.0.0:9735 | awk '{print \$2}')
-  checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
-  if [ \$checkdockernetwork -ne 0 ] && [ ! -z \$lightningcontainer ]; then
-    if ! docker inspect \$lightningcontainer | grep -c \"tunnelsats\" > /dev/null; then
-    docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  > /dev/null
-    fi
+set -e
+lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 0.0.0.0:9735 | awk '{print \$2}')
+checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
+if [ \$checkdockernetwork -ne 0 ] && [ ! -z \$lightningcontainer ]; then
+  if ! docker inspect \$lightningcontainer | grep -c \"tunnelsats\" > /dev/null; then
+  docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  > /dev/null
   fi
-  " > /etc/wireguard/tunnelsats-docker-network.sh 
+fi" > /etc/wireguard/tunnelsats-docker-network.sh 
   
   if [ -f /etc/wireguard/tunnelsats-docker-network.sh ]; then
     echo "> /etc/wireguard/tunnelsats-docker-network.sh created"
@@ -743,39 +732,40 @@ if [ $isDocker -eq 1 ]; then
   # create systemd file
   echo "Creating tunnelsats-docker-network.sh systemd service..."
   if [ ! -f /etc/systemd/system/tunnelsats-docker-network.sh ]; then
-      echo "[Unit]
-  Description=Adding Lightning Container to the tunnel
-  StartLimitInterval=200
-  StartLimitBurst=5
-  [Service]
-  Type=oneshot
-  ExecStart=/bin/bash /etc/wireguard/tunnelsats-docker-network.sh
-  [Install]
-  WantedBy=multi-user.target
-  " > /etc/systemd/system/tunnelsats-docker-network.service
+    echo "[Unit]
+Description=Adding Lightning Container to the tunnel
+StartLimitInterval=200
+StartLimitBurst=5
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /etc/wireguard/tunnelsats-docker-network.sh
+[Install]
+WantedBy=multi-user.target
+" > /etc/systemd/system/tunnelsats-docker-network.service
 
-      echo "[Unit]
-  Description=5min timer for tunnelsats-docker-network.service
-  [Timer]
-  OnBootSec=60
-  OnUnitActiveSec=60
-  Persistent=true
-  [Install]
-  WantedBy=timers.target
-      " > /etc/systemd/system/tunnelsats-docker-network.timer
+    echo "[Unit]
+Description=5min timer for tunnelsats-docker-network.service
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+Persistent=true
+[Install]
+WantedBy=timers.target
+" > /etc/systemd/system/tunnelsats-docker-network.timer
       
-      if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
-        echo "> tunnelsats-docker-network.service created"
-      else
-        echo "> ERR: tunnelsats-docker-network.service not created. Please check for errors.";echo
+    if [ -f /etc/systemd/system/tunnelsats-docker-network.service ]; then
+      echo "> tunnelsats-docker-network.service created"
+    else
+      echo "> ERR: tunnelsats-docker-network.service not created. Please check for errors.";echo
 	    exit 1
-      fi
-      if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
-        echo "> tunnelsats-docker-network.timer created"
-      else
-        echo "> ERR: tunnelsats-docker-network.timer not created. Please check for errors.";echo
+    fi
+
+    if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
+      echo "> tunnelsats-docker-network.timer created"
+    else
+      echo "> ERR: tunnelsats-docker-network.timer not created. Please check for errors.";echo
 	    exit 1
-      fi
+    fi
 
   fi
 
@@ -799,6 +789,7 @@ if [ $isDocker -eq 1 ]; then
         exit 1
       fi
     fi
+
   else
     echo "> ERR: tunnelsats-docker-network.service was not created. Please check for errors.";echo
     exit 1
@@ -825,7 +816,8 @@ Requires=umbrel-startup.service
 After=umbrel-startup.service
 " > /etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf 
   fi
-  systemctl daemon-reload
+
+  systemctl daemon-reload > /dev/null
   systemctl restart wg-quick@tunnelsatsv2 > /dev/null; 
   if [ $? -eq 0 ]; then
     echo "> wireguard systemd service enabled and started";echo
@@ -833,6 +825,7 @@ After=umbrel-startup.service
     echo "> ERR: wireguard service could not be started. Please check for errors.";echo
     exit 1
   fi
+
 else
   echo "> ERR: wireguard service could not be enabled. Please check for errors.";echo
   exit 1
@@ -846,9 +839,9 @@ if [ $isDocker -eq 0 ]; then
   ipHome=$(curl --silent https://api.ipify.org)
   ipVPN=$(cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
   if [ "$ipHome" != "$ipVPN" ] && valid_ipv4 $ipHome  &&  valid_ipv4 $ipVPN ; then
-      echo "> Tunnel is  active ✅
-      Your ISP external IP: ${ipHome}
-      Your Tunnelsats external IP: ${ipVPN}";echo
+    echo "> Tunnel is  active ✅
+    Your ISP external IP: ${ipHome}
+    Your Tunnelsats external IP: ${ipVPN}";echo
   else
     echo "> ERR: Tunnelsats VPN Interface not successfully activated, check debug logs";echo
     exit 1
@@ -871,6 +864,7 @@ else #Docker
     echo "> Tunnel verification not checked. curlimages/curl not available for your system ";echo
     exit 1
   fi
+
 fi
 
 ## UFW firewall configuration
@@ -918,14 +912,14 @@ if [ "$lnImplementation" == "cln" ]; then
 ###############################################################################
 Umbrel 0.5+:
 create CLN config file 'config':
-  $ nano /home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config 
+  $ nano ${HOME}/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config 
 insert:
   bind-addr=10.9.9.9:9735
   announce-addr=${vpnExternalIP}:${vpnExternalPort}
   always-use-proxy=false
 
 edit 'export.sh':
-  $ nano /home/umbrel/umbrel/app-data/core-lightning/export.sh
+  $ nano ${HOME}/umbrel/app-data/core-lightning/export.sh
 change assigned port of APP_CORE_LIGHTNING_DAEMON_PORT from 9736 to 9735:
   export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"
 -------------------------------------------------
@@ -954,8 +948,8 @@ if [ $isDocker -eq 0 ]; then
     sudo systemctl restart ${clnServiceName}.service";echo
 else
     echo "Restart ${lnImplementation} on umbrel afterwards via the command:
-    sudo /home/umbrel/umbrel/scripts/stop (umbrel)
-    sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
+    sudo ${HOME}/umbrel/scripts/stop (umbrel)
+    sudo ${HOME}/umbrel/scripts/start (umbrel)";echo
 fi
 
 # the end

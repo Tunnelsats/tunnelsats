@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0 
-patch=6
+patch=7
 
 # check if sudo
 if [ "$EUID" -ne 0 ]; then
@@ -49,10 +49,7 @@ done
 # check if docker
 isDocker=0
 if [ "$(hostname)" == "umbrel" ] || \
-   [ -f /home/umbrel/umbrel/lnd/lnd.conf ] || \
-   [ -d /home/umbrel/umbrel/app-data/lightning ] || \
-   [ -d /home/umbrel/umbrel/app-data/core-lightning ] || \
-   [ -d /home/"$USER"/umbrel ] || \
+   [ -d "$HOME"/umbrel ] || \
    [ -d /embassy-data/package-data/volumes/lnd ]; then
     isDocker=1
 fi
@@ -72,24 +69,21 @@ while true
 do
     read -p "Which lightning implementation was set to hybrid mode at TunnelSats installation? (LND|CLN) " answer
 
-
   case $answer in
    lnd|LND* ) 
-
         #First stop lightning process|container
         echo "Ensure lnd lightning process is stopped ..."
-
         if [ $isDocker -eq 1 ]; then
             container=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}')
-            if  [ ! -z $container ]; then
-                if docker stop $container &> /dev/null; then
+            if  [ -n "$container" ]; then
+                if docker stop "$container" &> /dev/null; then
                     #try disconnecting network if present
-                    docker network disconnect docker-tunnelsats $container &> /dev/null
-                    docker rm $container &> /dev/null;
+                    docker network disconnect docker-tunnelsats "$container" &> /dev/null
+                    docker rm "$container" &> /dev/null;
                     echo "> Successfully stopped $container docker container";echo
                 else
                     echo "> ERR: Failed to stop $container container, please stop manually and retry";echo
-                    exit 1  
+                    exit 1
                 fi 
             else
                 echo "> No lightning container active, proceeding ...";echo
@@ -131,8 +125,8 @@ do
         # modify LND configuration
         path=""
         if [ -f /mnt/hdd/lnd/lnd.conf ]; then path="/mnt/hdd/lnd/lnd.conf"; fi 
-        if [ -f /home/umbrel/umbrel/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/lnd/lnd.conf"; fi
-        if [ -f /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then path="/home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf"; fi
+        if [ -f "$HOME"/umbrel/lnd/lnd.conf ]; then path="$HOME""/umbrel/lnd/lnd.conf"; fi
+        if [ -f "$HOME"/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then path="$HOME""/umbrel/app-data/lightning/data/lnd/lnd.conf"; fi
         if [ -f /data/lnd/lnd.conf ]; then path="/data/lnd/lnd.conf"; fi 
         if [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"; fi
         if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
@@ -162,11 +156,11 @@ do
     
         if [ $isDocker -eq 1 ]; then
           container=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}')
-            if  [ ! -z $container ]; then
-                if  docker stop $container &> /dev/null; then
+            if  [ -n "$container" ]; then
+                if  docker stop "$container" &> /dev/null; then
                     #try disconnecting network if present
-                     docker network disconnect docker-tunnelsats $container &> /dev/null
-                     docker rm $container &> /dev/null;
+                    docker network disconnect docker-tunnelsats "$container" &> /dev/null
+                    docker rm "$container" &> /dev/null;
                     echo "> Successfully stopped $container docker container";echo
                 else
                     echo "> ERR: Failed to stop $container container, please stop manually and retry";echo
@@ -210,7 +204,7 @@ do
         # modify CLN configuration
         path=""
         if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
-        if [ -f /home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config ]; then path="/home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"; fi
+        if [ -f "$HOME"/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config ]; then path="$HOME""/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"; fi
         if [ -f /data/cln/config ]; then path="/data/cln/config"; fi
 
         if [ "$path" != "" ]; then
@@ -230,7 +224,7 @@ do
             fi
              
             # Umbrel 0.5+ CLN: restore default configuration
-            if [ "$path" == "/home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config" ]; then
+            if [ "$path" == "$HOME""/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config" ]; then
                 deleteBind=$(grep -n "^bind-addr" "$path" | cut -d ':' -f1)
                 if [ "$deleteBind" != "" ]; then
                     sed -i "${deleteBind}d" "$path" > /dev/null
@@ -249,7 +243,7 @@ do
                 fi
             fi
             # Umbrel 0.5+ CLN: restore assigned port
-            if [ "$path" == "home/umbrel/umbrel/app-data/core-lightning/exports.sh" ]; then
+            if [ "$path" == "$HOME""/umbrel/app-data/core-lightning/exports.sh" ]; then
                 getPort=$(grep -n "export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"" | cut -d ':' -f1)
                 if [ "$getPort" != "" ]; then
                     sed -i "s/export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"/export APP_CORE_LIGHTNING_DAEMON_PORT=\"9736\"/g" "$path" > /dev/null
@@ -506,8 +500,8 @@ if [ $isDocker -eq 1 ]; then
     CLN:   always-use-proxy=true
     LND:   tor.skip-proxy-for-clearnet-targets=false
     Restart lightning container with
-    sudo /home/umbrel/umbrel/scripts/stop (Umbrel)
-    sudo /home/umbrel/umbrel/scripts/start (Umbrel)";echo
+    sudo ${HOME}/umbrel/scripts/stop (Umbrel)
+    sudo ${HOME}/umbrel/scripts/start (Umbrel)";echo
 else
     echo "
     Double check if proxy is correctly set in the lightning conf file
