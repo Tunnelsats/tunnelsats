@@ -31,7 +31,7 @@ echo "
 
 while true
 do
-   read -p "CAUTION! Uninstalling TunnelSats will force your lighting process to stop. Do you really want to proceed? (Y/N) " answer
+   read -p "CAUTION! Uninstalling TunnelSats will force your lightning process to stop. Do you really want to proceed? (Y/N) " answer
 
 
   case $answer in

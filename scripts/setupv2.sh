@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=15
+patch=16
 
 
 #Helper
@@ -21,7 +21,7 @@ function valid_ipv4()
     if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
         OIFS=$IFS
         IFS='.'
-        ip=($ip)
+        ip=("$ip")
         IFS=$OIFS
         [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 \
             && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
@@ -42,7 +42,7 @@ if [ "$(hostname)" == "umbrel" ] || \
    [ -f /home/umbrel/umbrel/lnd/lnd.conf ] || \
    [ -d /home/umbrel/umbrel/app-data/lightning ] || \
    [ -d /home/umbrel/umbrel/app-data/core-lightning ] || \
-   [ -d /home/"$USER"/umbrel ] || \
+   [ -d "$HOME"/umbrel ] || \
    [ -d /embassy-data/package-data/volumes/lnd ]; then
   isDocker=1
 fi
@@ -62,8 +62,7 @@ lnImplementation=""
 
 while true
 do
-    read -p "Which lightning implementation do you want to tunnel? Supported are LND and CLN for now ⚡️:" answer
-
+    read -p "Which lightning implementation do you want to tunnel? Supported are LND and CLN for now ⚡️: " answer
 
   case $answer in
       lnd|LND* ) echo "> Setting up Tunneling for LND on port 9735 ";echo
@@ -73,6 +72,7 @@ do
       cln|CLN* )  echo "> Setting up Tunneling for CLN on port 9735 ";echo
                   lnImplementation="cln"
                   break;;
+
              * ) echo "Enter LND or CLN, please.";;
   esac
 done
@@ -84,7 +84,7 @@ done
 directory=$(dirname -- "$(readlink -fn -- "$0")")
 echo "Looking for WireGuard config file..."
 if [ ! -f "$directory"/tunnelsatsv2.conf ]; then
-  echo "> ERR: tunnelsatsv2.conf not found. Please place it where this script is located.";echo
+  echo "> ERR: tunnelsatsv2.conf not found. Please place it in this script's location.";echo
   exit 1
 else
   echo "> tunnelsatsv2.conf found, proceeding.";echo
@@ -163,7 +163,7 @@ if [ $checkwg -eq 0 ]; then
         else
 	    echo "> failed to install wireguard";echo
 	    exit 1
-	fi	
+	fi
     else  # everyone else
     	if apt-get install -y wireguard > /dev/null; then
         	echo "> wireguard installed";echo
@@ -594,9 +594,6 @@ if [ $isDocker -eq 1 ]; then
   localsubnet="$(hostname -I | awk '{print $1}' | cut -d"." -f1-3)".0/24
 
   #Get docker umbrel lnd/cln ip address
-
-
-
   dockerlndip=$(grep LND_IP /home/"$USER"/umbrel/.env 2> /dev/null  | cut -d= -f2)
   dockerlndip=${dockerlndip:-"10.21.21.9"}
   
@@ -618,12 +615,10 @@ if [ $isDocker -eq 1 ]; then
   if [ -n "$mainif" ] ; then
 
     if [ -f /etc/nftables.conf ] && [ ! -f /etc/nftablespriortunnelsats.backup ]; then
-
       echo "> Info: tunnelsats replaces the whole /etc/nftables.conf, backup was saved to /etc/nftablespriortunnelsats.backup"
-
       mv /etc/nftables.conf /etc/nftablespriortunnelsats.backup
-  
    fi
+
    #Flush table if exist to avoid redundant rules
    if nft list table ip tunnelsatsv2 &> /dev/null; then
       nft flush table ip tunnelsatsv2
@@ -852,7 +847,7 @@ if [ $isDocker -eq 0 ]; then
   ipVPN=$(cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
   if [ "$ipHome" != "$ipVPN" ] && valid_ipv4 $ipHome  &&  valid_ipv4 $ipVPN ; then
       echo "> Tunnel is  active ✅
-      Your ISP external IP: ${ipHome} 
+      Your ISP external IP: ${ipHome}
       Your Tunnelsats external IP: ${ipVPN}";echo
   else
     echo "> ERR: Tunnelsats VPN Interface not successfully activated, check debug logs";echo
@@ -881,12 +876,11 @@ fi
 ## UFW firewall configuration
 vpnExternalPort=$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')
 vpnInternalPort="9735"
-checkufw=$(ufw version 2> /dev/null | grep -c "Canonical")
-if [ $checkufw -gt 0 ]; then
+checkUFW=$(ufw version 2> /dev/null | grep -c "Canonical")
+if [ $checkUFW -gt 0 ]; then
    echo "Checking for firewalls and adjusting settings if applicable...";
-   ufw disable > /dev/null
    ufw allow $vpnInternalPort comment '# VPN Tunnelsats' > /dev/null
-   ufw --force enable > /dev/null
+   ufw reload > /dev/null
    echo "> ufw detected. VPN port rule added";echo
 fi
 
@@ -963,7 +957,6 @@ else
     sudo /home/umbrel/umbrel/scripts/stop (umbrel)
     sudo /home/umbrel/umbrel/scripts/start (umbrel)";echo
 fi
-
 
 # the end
 exit 0

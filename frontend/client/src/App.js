@@ -2,21 +2,13 @@ import {Row, Col, Container, Button, Nav, Navbar} from 'react-bootstrap';
 import {io} from "socket.io-client";
 import {useState,useEffect} from 'react';
 import KeyInput from './components/KeyInput';
-//import Price from './components/Price';
 import RuntimeSelector from './components/RuntimeSelector';
 import InvoiceModal from './components/InvoiceModal';
 import  './wireguard.js';
 import {getTimeStamp} from './timefunction.js';
 import HeaderInfo from './components/HeaderInfo';
-//import FAQModal from './components/FAQModal';
-//import LoginModal from './components/LoginModal';
 import logo from './media/tunnelsats_headerlogo3.png';
-//import twitter from './media/twitter-128.png';
-//import telegram from './media/telegram-128.png';
-//import github from './media/github-128.png';
-//import tipjar from './media/hearts-128.png';
 import WorldMap from "./components/WorldMap";
-//import Popup from './components/Popup';
 
 // helper
 const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
@@ -36,7 +28,7 @@ var isPaid=false;
 function App() {
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
   const [priceDollar, updatePrice] = useState(8.5);
-  const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/22000));
+  const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
@@ -48,10 +40,6 @@ function App() {
   const [isConfigModal, showConfigModal] = useState(false);
   const renderConfigModal = () => showConfigModal(true);
   const hideConfigModal = () => showConfigModal(false);
-  //FAQ - Modal
-  //const [isFAQModal, showFAQModal] = useState(false);
-  //const renderFAQModal = () => showFAQModal(true);
-  //const hideFAQModal = () => showFAQModal(false);
   //LoginModal
   //const [isLoginModal, showLoginModal] = useState(false);
   //const renderLoginModal = () => showLoginModal(true);
@@ -59,8 +47,6 @@ function App() {
   
   // World Map
   const [country, updateCountry] = useState('eu');
-  //const [isOpen, setIsOpen] = useState(false);
-  //const togglePopup = () => { setIsOpen(!isOpen); };
 
   /* WorldMap Continent Codes
     AF = Africa
@@ -85,7 +71,7 @@ function App() {
   useEffect(() => {
     const timer = setInterval(() => {
       displayNewPair(window.wireguard.generateKeypair);
-      console.log(`newKeyPair`);
+      console.log(`${getDate()} newKeyPair`);
     }, 30000); // 30s
     // clearing intervals
     return () => clearInterval(timer);
@@ -122,7 +108,7 @@ function App() {
   const getPrice = () => {
     socket.emit('getPrice');
   }
-  socket.on('recievePrice', price => {
+  socket.on('receivePrice', price => {
     console.log(`${getDate()} App.js: server.getPrice(): `+price);
     setBtcPerDollar(Math.trunc(Math.round(price)));
   });
@@ -135,8 +121,8 @@ function App() {
 
   //Get the invoice
   const getInvoice = (price) => {
-    console.log(`${getDate()} App.js: getInvoice(price): `+price+`$`);
-    socket.emit('getInvoice', price);
+      console.log(`${getDate()} App.js: getInvoice(price): `+price+`$`);
+      socket.emit('getInvoice', price);
   };
 
   //GetWireguardConfig
@@ -157,8 +143,8 @@ function App() {
   });
 
   //Get wireguard config from Server
-  socket.off('recieveConfigData').on('recieveConfigData',wireguardConfig => {
-    console.log(`${getDate()} App.js: got msg reciveConfigData`);
+  socket.off('receiveConfigData').on('receiveConfigData',wireguardConfig => {
+    console.log(`${getDate()} App.js: got msg receiveConfigData`);
     setSpinner(false);
     setPaymentrequest(buildConfigFile(wireguardConfig).join('\n'));
   });
@@ -185,7 +171,9 @@ function App() {
 
   //Change Runtime
   const runtimeSelect = (e) =>{
-    updatePrice(e.target.value);
+    if(!isNaN(e.target.value)) {
+      updatePrice(e.target.value);
+    }
   };
 
 //  const countrySelect = (e) => {
@@ -241,17 +229,6 @@ function App() {
           
           <WorldMap selected={country} onSelect={updateCountry}/>
 
-          {/*
-            isOpen && <Popup
-            content={<>
-            <b>Continent currently unavailable!</b>
-            <p>We are sorry, selected continent {country.toUpperCase()} is currently unavailable!</p>
-            <Button variant="outline-warning"onClick={togglePopup}>Close</Button>
-            </>}
-            handleClose={togglePopup}
-            />
-          */}
-
           <KeyInput
           publicKey={keyPair.publicKey}
           privateKey={keyPair.privateKey}
@@ -283,12 +260,12 @@ function App() {
 
           <div className='main-buttons'>
               <Button onClick={() => { 
-                getInvoice(priceDollar);
-                showInvoiceModal();
-                hideConfigModal();
-                updatePaymentrequest();
-                setSpinner(true);
-                isPaid=false;
+                 getInvoice(priceDollar);
+                 showInvoiceModal();
+                 hideConfigModal();
+                 updatePaymentrequest();
+                 setSpinner(true);
+                 isPaid=false;
                }} variant="outline-warning">Generate Invoice</Button>
           </div>
 

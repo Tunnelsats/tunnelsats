@@ -62,11 +62,11 @@ io.on('connection', (socket) => {
 
   socket.on('getWireguardConfig',(publicKey,presharedKey,priceDollar,country) => {
     getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country))
-    .then(result => socket.emit('recieveConfigData',result))
+    .then(result => socket.emit('receiveConfigData',result))
   })
 
   socket.on('getPrice', () => {
-    getPrice().then(result => socket.emit('recievePrice', result))
+    getPrice().then(result => socket.emit('receivePrice', result))
   })
 
 });
