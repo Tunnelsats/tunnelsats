@@ -21,7 +21,7 @@ function valid_ipv4()
     if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
         OIFS=$IFS
         IFS='.'
-        ip=("$ip")
+        ip=($ip)
         IFS=$OIFS
         [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 \
             && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
@@ -42,7 +42,11 @@ if [ "$(hostname)" == "umbrel" ] || \
    [ -d "$HOME"/umbrel ] || \
    [ -d /embassy-data/package-data/volumes/lnd ]; then
   isDocker=1
+  echo "> Docker Setup was recognized";echo
+else
+  echo "> Non-Docker Setup was recognized";echo
 fi
+
 
 # intro
 echo -e "
