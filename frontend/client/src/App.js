@@ -58,14 +58,16 @@ function App() {
   */
 
   // fetch btc price per dollar
+  /*
   useEffect(() => {
     // fetch btc price
     const request = setInterval(() => {
       getPrice();
-    }, 300000); // 5min
-    // clearing intervals
+    }, 600000); // 10min
+    // clearing interval
     return () => clearInterval(request);
   }, []);
+  */
 
   // randomize wireguard keys
   useEffect(() => {
@@ -73,7 +75,7 @@ function App() {
       displayNewPair(window.wireguard.generateKeypair);
       console.log(`${getDate()} newKeyPair`);
     }, 30000); // 30s
-    // clearing intervals
+    // clearing interval
     return () => clearInterval(timer);
   }, []);
 
