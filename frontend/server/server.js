@@ -4,6 +4,10 @@ const bodyParser = require("body-parser")
 const axios = require('axios');
 var nodemailer = require('nodemailer');
 var dayjs = require('dayjs');
+const {logDim} = require('./logger')
+
+
+DEBUG = false
 
 const app = express();
 var payment_hash,payment_request;
@@ -16,9 +20,10 @@ const createServer = require('http');
 const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
   cors: {
-    origin: ["https://staging.tunnelsats.com", "https://tunnelsats.com"],
+    origin: ["https://staging.tunnelsats.com", "https://tunnelsats.com","http://localhost:3000"],
     methods: ["GET", "POST"],
     credentials: true
+
   }
 });
 
@@ -48,11 +53,13 @@ io.on('connection', (socket) => {
 
   // Checks for a paid Invoice after reconnect
   socket.on('checkInvoice',(clientPaymentHash) => {
+    DEBUG && logDim("checkInvoice() called")
     checkInvoice(clientPaymentHash).then(result => io.sockets.emit('invoicePaid',result))
   })
 
   // Getting the Invoice from lnbits and forwarding it to the frontend
   socket.on('getInvoice',(amount) =>{
+    DEBUG && logDim(`getInvoice() called`)
     getInvoice(amount).then(result => socket.emit("lnbitsInvoice",result))
   })
 
@@ -212,6 +219,7 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
         response2 = await axios(request2).catch(error => { return error });
       } else {
         response1.data['portFwd'] = response2.data.portFwd;
+        response1.data['dnsName'] = (server.replace(/^https?:\/\//, '')).replace(/\/manager\/$/, '');
         return response1.data;
       }
     }
@@ -220,18 +228,6 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
 
 // Parse Date object to string format: YYYY-MMM-DD hh:mm:ss A
 const parseDate = (date) => { return dayjs(date).format("YYYY-MMM-DD hh:mm:ss A") };
-
-// translate IP to DNS
-async function getDNS(ipAddress) {
-  var dns;
-  if (ipAddress === process.env.IP_EU) dns = process.env.DNS_EU;
-  if (ipAddress === process.env.IP_US) dns = process.env.DNS_US;
-  if (ipAddress === process.env.IP_AFRICA) dns = process.env.DNS_AFRICA;  
-  if (ipAddress === process.env.IP_LATAM) dns = process.env.DNS_LATAM;
-  if (ipAddress === process.env.IP_ASIA) dns = process.env.DNS_ASIA;
-  if (ipAddress === process.env.IP_OCEANIA) dns = process.env.DNS_OCEANIA;
-  return dns;
-};
 
 
 // Send Wireguard config file via email

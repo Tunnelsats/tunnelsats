@@ -13,6 +13,7 @@ import WorldMap from "./components/WorldMap";
 // helper
 const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
 
+
 // WebSocket
 var socket =  io.connect('/', {
   transports: ['polling'],
@@ -166,7 +167,7 @@ function App() {
     '[Peer]',
     'PublicKey = '+serverResponse.publicKey,
     'PresharedKey = '+keyPair.presharedKey,
-    'Endpoint = '+serverResponse.ipAddress+':'+serverResponse.listenPort,
+    'Endpoint = '+serverResponse.dnsName+':'+serverResponse.listenPort,
     'AllowedIPs = '+serverResponse.allowedIPs];
     return configArray;
   };
