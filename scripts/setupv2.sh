@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=18
+patch=19
 
 
 #Helper
@@ -403,7 +403,7 @@ Description=lnd needs cgroup before it can start
 Requires=tunnelsats-create-cgroup.service
 After=tunnelsats-create-cgroup.service
 Requires=wg-quick@tunnelsatsv2.service
-After=wg-quick@tunnelsatsv2..service
+After=wg-quick@tunnelsatsv2.service
 " > /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf 
 
    
@@ -421,7 +421,7 @@ Description=lightningd needs cgroup before it can start
 Requires=tunnelsats-create-cgroup.service
 After=tunnelsats-create-cgroup.service
 Requires=wg-quick@tunnelsatsv2.service
-After=wg-quick@tunnelsatsv2..service
+After=wg-quick@tunnelsatsv2.service
 " > /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf 
 
 
