@@ -13,7 +13,7 @@ const RuntimeSelector = (props) => {
       <ToggleButton id="tbg-radio-3" variant="secondary" value={16} onClick={props.onClick}>
         6 <br></br> months
       </ToggleButton>
-      <ToggleButton id="tbg-radio-4" variant="secondary" value={28.5} /*onClick={props.onClick}*/ disabled>
+      <ToggleButton id="tbg-radio-4" variant="secondary" value={28.5} onClick={props.onClick}>
         12 <br></br> months
       </ToggleButton>
     </ToggleButtonGroup>
