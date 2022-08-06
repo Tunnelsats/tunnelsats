@@ -402,7 +402,11 @@ WantedBy=multi-user.target
 Description=lnd needs cgroup before it can start
 Requires=tunnelsats-create-cgroup.service
 After=tunnelsats-create-cgroup.service
+Requires=wg-quick@tunnelsatsv2.service
+After=wg-quick@tunnelsatsv2..service
 " > /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf 
+
+   
     
       systemctl daemon-reload > /dev/null
   
@@ -416,7 +420,10 @@ After=tunnelsats-create-cgroup.service
 Description=lightningd needs cgroup before it can start
 Requires=tunnelsats-create-cgroup.service
 After=tunnelsats-create-cgroup.service
+Requires=wg-quick@tunnelsatsv2.service
+After=wg-quick@tunnelsatsv2..service
 " > /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf 
+
 
       systemctl daemon-reload > /dev/null
 
