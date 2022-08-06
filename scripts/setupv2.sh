@@ -285,7 +285,7 @@ PostUp = nft add chain ip %i input'{type filter hook input priority filter; poli
 
 \n
 PostDown = nft delete table ip %i\n
-PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del not from all fwmark 0xdeadbeef table 51820\n
+PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del from all fwmark 0xdeadbeef table 51820\n
 PostDown = ip route flush table 51820\n
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
 "
