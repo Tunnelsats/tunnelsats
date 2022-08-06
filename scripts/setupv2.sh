@@ -253,6 +253,7 @@ PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep
 PostUp = ip rule add from all table main suppress_prefixlength 0\n
 PostUp = ip route add blackhole default metric 3 table 51820\n
 PostUp = ip route add default dev %i metric 2 table 51820\n
+PostUp = ip route add  10.9.0.0/24 dev %i  proto kernel scope link; ping -c1 10.9.0.1\n
 \n
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0\n
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1\n
@@ -270,6 +271,7 @@ Table = off\n
 \n
 PostUp = ip rule add from all fwmark 0xdeadbeef table 51820;ip rule add from all table main suppress_prefixlength 0\n
 PostUp = ip route add default dev %i table 51820;\n
+PostUp = ip route add  10.9.0.0/24 dev %i  proto kernel scope link; ping -c1 10.9.0.1\n
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0\n
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1\n
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
