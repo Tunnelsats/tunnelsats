@@ -912,7 +912,7 @@ if [ "$lnImplementation" == "lnd" ]; then
 #########################################
 [Application Options]
 listen=0.0.0.0:9735
-externalip=${vpnExternalDNS}:${vpnExternalPort}
+externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 [Tor]
 tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
