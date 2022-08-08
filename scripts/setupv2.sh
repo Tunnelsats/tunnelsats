@@ -895,7 +895,7 @@ fi
 sleep 2
 
 # Instructions
-#vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
+vpnExternalDNS=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
 vpnExternalIP=$ipVPN
 echo "______________________________________________________________________
 
@@ -912,7 +912,7 @@ if [ "$lnImplementation" == "lnd" ]; then
 #########################################
 [Application Options]
 listen=0.0.0.0:9735
-externalip=${vpnExternalIP}:${vpnExternalPort}
+externalip=${vpnExternalDNS}:${vpnExternalPort}
 [Tor]
 tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
