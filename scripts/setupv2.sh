@@ -848,6 +848,7 @@ sleep 2
 
 #Check if tunnel works
 echo "Verifying tunnel ..."
+ipVPN=""
 if [ $isDocker -eq 0 ]; then
   ipHome=$(curl --silent https://api.ipify.org)
   ipVPN=$(cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
@@ -894,8 +895,8 @@ fi
 sleep 2
 
 # Instructions
-vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
-
+#vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
+vpnExternalIP=$ipVPN
 echo "______________________________________________________________________
 
 These are your personal VPN credentials for your lightning configuration.";echo
