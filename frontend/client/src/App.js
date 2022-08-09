@@ -28,7 +28,7 @@ var isPaid=false;
 
 function App() {
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
-  const [priceDollar, updatePrice] = useState(8.5);
+  const [priceDollar, updatePrice] = useState(0.01);
   const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
