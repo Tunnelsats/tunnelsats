@@ -848,7 +848,6 @@ sleep 2
 
 #Check if tunnel works
 echo "Verifying tunnel ..."
-ipVPN=""
 if [ $isDocker -eq 0 ]; then
   ipHome=$(curl --silent https://api.ipify.org)
   ipVPN=$(cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
@@ -896,7 +895,6 @@ sleep 2
 
 # Instructions
 vpnExternalDNS=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
-vpnExternalIP=$ipVPN
 echo "______________________________________________________________________
 
 These are your personal VPN credentials for your lightning configuration.";echo
@@ -929,17 +927,19 @@ create CLN config file 'config':
   $ nano ${HOME}/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config 
 insert:
   bind-addr=10.9.9.9:9735
-  announce-addr=${vpnExternalIP}:${vpnExternalPort}
+  announce-addr=${vpnExternalDNS}:${vpnExternalPort}
   always-use-proxy=false
 
 edit 'export.sh':
   $ nano ${HOME}/umbrel/app-data/core-lightning/export.sh
 change assigned port of APP_CORE_LIGHTNING_DAEMON_PORT from 9736 to 9735:
   export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"
+
 -------------------------------------------------
+
 Native CLN installation (config file):
   bind-addr=0.0.0.0:9735
-  announce-addr=${vpnExternalIP}:${vpnExternalPort}
+  announce-addr=${vpnExternalDNS}:${vpnExternalPort}
   always-use-proxy=false
 ###############################################################################";echo
 
