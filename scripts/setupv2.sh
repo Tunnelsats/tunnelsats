@@ -285,7 +285,7 @@ PostUp = nft add chain ip %i input'{type filter hook input priority filter; poli
 
 \n
 PostDown = nft delete table ip %i\n
-PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del not from all fwmark 0xdeadbeef table 51820\n
+PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del from all fwmark 0xdeadbeef table 51820\n
 PostDown = ip route flush table 51820\n
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
 "
@@ -848,6 +848,7 @@ sleep 2
 
 #Check if tunnel works
 echo "Verifying tunnel ..."
+ipVPN=""
 if [ $isDocker -eq 0 ]; then
   ipHome=$(curl --silent https://api.ipify.org)
   ipVPN=$(cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
@@ -894,8 +895,8 @@ fi
 sleep 2
 
 # Instructions
-vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
-
+vpnExternalDNS=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
+vpnExternalIP=$ipVPN
 echo "______________________________________________________________________
 
 These are your personal VPN credentials for your lightning configuration.";echo
@@ -911,7 +912,7 @@ if [ "$lnImplementation" == "lnd" ]; then
 #########################################
 [Application Options]
 listen=0.0.0.0:9735
-externalip=${vpnExternalIP}:${vpnExternalPort}
+externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 [Tor]
 tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
