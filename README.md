@@ -121,7 +121,7 @@ Running LND only requires a few parameters to be checked and set to activate hyb
   ```ini
   [Application Options]
   listen=0.0.0.0:9735
-  externalhosts={vpnDNS}:{vpnPort} #these infos are provided at the end of the setup.sh script
+  externalhosts={vpnDNS}:{vpnPort} #these infos are provided at the end of the setupv2.sh script
   
   [Tor]
   # set streamisolation to 'false' if currently set 'true'. if not set at all, just leave it out
