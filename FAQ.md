@@ -74,7 +74,7 @@ Currently, 100GB per month are being offered. This should be enough traffic even
 ### Which setups are supported?
 At present we successfully tested the following setups:
 
-- RaspiBlitz (LND / CLN) v1.8.0
+- RaspiBlitz (LND / CLN) v1.7.2/v1.8.0
 - Umbrel-OS (LND)
 - Umbrel-OS (CLN not yet recommended or be tech-savvy)
 - myNode (LND) v0.2.x
@@ -100,7 +100,7 @@ This is still beta status, so please bear with us. If you experience issues, ple
 Let's say you bought the 1 month for testing the services and all is going great. Now your subscription is coming to an end and you like to extend it to add another 3 months. Since we don't offer a login-service (yet), you need to remember your subscription end date (look it up in your WireGuard config file: #ValidUntil (mind this is UTC time format)) and before expiry
 - buy a new subscription
 - download or transfer via email the new configuration file from the website 
-- redo installation procedure: place config file in same directory `with setupv2.sh` and run it again
+- redo installation procedure: place config file in same directory with `setupv2.sh` and run it again
 - adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalhosts (LND) or announce-addr (CLN))
 - restart wireguard and lightning: `sudo systemctl restart wg-quick@tunnelsatsv2` and your lightning implementation
 
