@@ -10,23 +10,30 @@ import HeaderInfo from './components/HeaderInfo';
 import logo from './media/tunnelsats_headerlogo3.png';
 import WorldMap from "./components/WorldMap";
 
+
+
 // helper
 const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
 
+const DEBUG = true
 
 // WebSocket
-const socket = io.connect();
+let socket =  io.connect('http://localhost:5000');
+// let socket =  io.connect('/');
 
 // Consts
-var emailAddress;
-var clientPaymentHash;
-var isPaid=false;
+let emailAddress;
+let clientPaymentHash;
+let isPaid=false;
+
 
 
 function App() {
+
+
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
   const [priceDollar, updatePrice] = useState(0.01);
-  const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
+  const [satsPerDollar, setSatsPerDollar] = useState(Math.round(100000000/23000));
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
@@ -56,7 +63,7 @@ function App() {
   */
 
   // fetch btc price per dollar
-  /*
+  
   useEffect(() => {
     // fetch btc price
     const request = setInterval(() => {
@@ -65,19 +72,17 @@ function App() {
     // clearing interval
     return () => clearInterval(request);
   }, []);
-  */
+  
 
-  // randomize wireguard keys
-  /*
-  useEffect(() => {
-    const timer = setInterval(() => {
-      displayNewPair(window.wireguard.generateKeypair);
-      console.log(`${getDate()} newKeyPair`);
-    }, 30000); // 30s
-    // clearing interval
-    return () => clearInterval(timer);
-  }, []);
-  */
+  // // randomize wireguard keys
+  // useEffect(() => {
+  //   const timer = setInterval(() => {
+  //     displayNewPair(window.wireguard.generateKeypair);
+  //     DEBUG && console.log(`${getDate()} newKeyPair`);
+  //   }, 30000); // 30s
+  //   // clearing interval
+  //   return () => clearInterval(timer);
+  // }, []);
 
   //Successful payment alert
   const renderAlert = (show) => {
@@ -88,16 +93,18 @@ function App() {
   //Updates the QR-Code
   const updatePaymentrequest = () => {
     socket.on('lnbitsInvoice', invoiceData => {
-      console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
+      DEBUG && console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
+      console.log(`${getDate()} Paymenthash: ${invoiceData.payment_hash}, ${invoiceData.payment_request}`)
       setPaymentrequest(invoiceData.payment_request);
       clientPaymentHash = invoiceData.payment_hash;
       setSpinner(false);
     }
   )};
 
+
   //Connect to WebSocket Server
-  socket.off('connect').on('connect', () => {
-    console.log(`${getDate()} App.js: connect`)
+  socket.removeAllListeners("connect").on('connect', () => {
+    DEBUG && console.log(`${getDate()} App.js: connect with id: ${socket.id}`)
     //Checks for already paid invoice if browser switche tab on mobile
     if((clientPaymentHash !== undefined)){
       checkInvoice();
@@ -108,48 +115,48 @@ function App() {
   
   // get current btc per dollar
   const getPrice = () => {
-    socket.emit('getPrice');
+    socket.removeAllListeners('getPrice').emit('getPrice');
   }
-  socket.on('receivePrice', price => {
-    console.log(`${getDate()} App.js: server.getPrice(): `+price);
-    setBtcPerDollar(Math.trunc(Math.round(price)));
+  socket.off('receivePrice').on('receivePrice', price => {
+    DEBUG && console.log(`${getDate()} App.js: server.getPrice(): `+price);
+    setSatsPerDollar(Math.trunc(Math.round(price)));
   });
 
   // check invoice
   const checkInvoice = () => {
-      console.log(`${getDate()} App.js: checkInvoice(): `+clientPaymentHash);
+      DEBUG && console.log(`${getDate()} App.js: checkInvoice(): ${clientPaymentHash}`);
       socket.emit('checkInvoice',clientPaymentHash);
+
   };
 
   //Get the invoice
-  const getInvoice = (price) => {
-      console.log(`${getDate()} App.js: getInvoice(price): `+price+`$`);
-      socket.emit('getInvoice', price);
+  const getInvoice = (price,publicKey,presharedKey,priceDollar,country) => {
+      DEBUG && console.log(`${getDate()} App.js: getInvoice(price): `+price+`$`);
+      socket.emit('getInvoice', price,publicKey,presharedKey,priceDollar,country);
   };
 
-  //GetWireguardConfig
-  const getWireguardConfig = (publicKey,presharedKey,priceDollar,country) => {
-    console.log(`${getDate()} App.js: getWireguardConfig(): publicKey: `+publicKey+`, price: `+priceDollar+`$, country: `+country);
-    socket.emit('getWireguardConfig',publicKey,presharedKey,priceDollar,country);
-  };
 
   socket.off('invoicePaid').on('invoicePaid', paymentHash => {
-    console.log(`${getDate()} App.js: got msg 'invoicePaid': `+paymentHash+` clientPaymentHash: `+clientPaymentHash);
+    DEBUG && console.log(`${getDate()} App.js: got msg 'invoicePaid': `+paymentHash+` clientPaymentHash: `+clientPaymentHash);
+
     if((paymentHash === clientPaymentHash) && !isPaid)
     {
       renderAlert(true);
       isPaid = true;
       setSpinner(true);
-      getWireguardConfig(keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
     }
   });
 
+
   //Get wireguard config from Server
   socket.off('receiveConfigData').on('receiveConfigData',wireguardConfig => {
-    console.log(`${getDate()} App.js: got msg receiveConfigData`);
+    DEBUG && console.log(`${getDate()} App.js: got msg receiveConfigData`);
     setSpinner(false);
     setPaymentrequest(buildConfigFile(wireguardConfig).join('\n'));
   });
+
+
+  
 
   //Construct the Config File
   const buildConfigFile = (serverResponse) => {
@@ -159,6 +166,7 @@ function App() {
     '[Interface]',
     'PrivateKey = '+keyPair.privateKey,
     'Address = '+serverResponse.ipv4Address,
+    'DNS = '+serverResponse.dns,
     '#VPNPort = '+serverResponse.portFwd,
     '#ValidUntil (UTC time)= '+getTimeStamp(priceDollar).toISOString(),
     ' ',
@@ -194,7 +202,7 @@ function App() {
   };
 
   const sendEmail = (email,config,date) => {
-    console.log(`${getDate()} App.js: sendEmail(): `+email+`, validdate: `+date);
+    DEBUG && console.log(`${getDate()} App.js: sendEmail(): `+email+`, validdate: `+date);
     socket.emit('sendEmail',email,config,date);
   };
 
@@ -247,7 +255,7 @@ function App() {
           isConfigModal={isConfigModal}
           value={payment_request}
           download={() => {download("tunnelsatsv2.conf",payment_request)}}
-          showNewInvoice={() => {getInvoice(priceDollar);setSpinner(true)}}
+          showNewInvoice={() => {getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,country);setSpinner(true)}}
           handleClose={closeInvoiceModal}
           emailAddress = {emailAddress}
           expiryDate = {getTimeStamp(priceDollar)}
@@ -256,12 +264,12 @@ function App() {
           />
 
           <div className='price'>
-            <h3>{(Math.trunc(priceDollar*btcPerDollar)).toLocaleString()} <i class="fak fa-satoshisymbol-solidtilt"/></h3>
+            <h3>{(Math.trunc(priceDollar*satsPerDollar)).toLocaleString()} <i class="fak fa-satoshisymbol-solidtilt"/></h3>
           </div>
 
           <div className='main-buttons'>
               <Button onClick={() => { 
-                 getInvoice(priceDollar);
+                 getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
                  showInvoiceModal();
                  hideConfigModal();
                  updatePaymentrequest();
@@ -270,11 +278,19 @@ function App() {
                }} variant="outline-warning">Generate Invoice</Button>
           </div>
 
+
+          <div className='main-buttons'>
+              <Button onClick={() => { 
+                displayNewPair(window.wireguard.generateKeypair);
+                DEBUG && console.log(`${getDate()} newKeyPair: ${keyPair}`);
+                 }} variant="outline-info">New Keys</Button>
+          </div>
+
           <div className='footer-text'>
             <Row>
               <Col><a href="https://twitter.com/TunnelSats" target="_blank" rel="noreferrer"><span class="icon icon-twitter"></span></a></Col>
               <Col><a href="https://github.com/blckbx/tunnelsats" target="_blank" rel="noreferrer"><span class="icon icon-github"></span></a></Col>
-              <Col><a href="https://dev.lnbits.tunnelsats.com/tipjar/2" target="_blank" rel="noreferrer"><span class="icon icon-heart"></span></a></Col>
+              <Col><a href="https://lnbits.tunnelsats.com/tipjar/1" target="_blank" rel="noreferrer"><span class="icon icon-heart"></span></a></Col>
               <Col><a href="https://t.me/+NJylaUom-rxjYjU6" target="_blank" rel="noreferrer"><span class="icon icon-telegram"></span></a></Col>
             </Row>
           </div>

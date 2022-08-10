@@ -2,29 +2,96 @@ const express = require('express');
 const path = require('path');
 const bodyParser = require("body-parser")
 const axios = require('axios');
-var nodemailer = require('nodemailer');
-var dayjs = require('dayjs');
+const nodemailer = require('nodemailer');
+const dayjs = require('dayjs');
+const { SocksProxyAgent } = require('socks-proxy-agent');
+const fetch = require('node-fetch-commonjs');
+
 const {logDim} = require('./logger')
 
 
-DEBUG = false
+
+DEBUG = true
+
+
+// This array saves all invoices and wg keys (received by the client connection)
+// As soon as the invoice is paid the server sends the config information to the related client
+// This prevents sending all information to all clients and only sends a valid wg config to the related client
+// The socket is still open for all clients to connect to, therefore a maximum
+
+let invoiceWGKeysMap= []
+
+// Restrict entries to prevent an attack to fill the ram memory
+const MAXINVOICES = 100
+
+
 
 const app = express();
-var payment_hash,payment_request;
+let payment_hash,payment_request;
 require('dotenv').config()
 
 // helper
 const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString()
+function isEmpty(obj) {
+  return Object.keys(obj).length === 0;
+}
 
+
+
+// Telegram Settings
+const TELEGRAM_CHATID = process.env.TELEGRAM_CHATID || ''
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || ''
+// Tor Proxy for Telegram Bot
+const TELEGRAM_PROXY_HOST = process.env.TELEGRAM_PROXY_HOST || ''
+const TELEGRAM_PROXY_PORT = process.env.TELEGRAM_PROXY_PORT || ''
+
+// Telegram Bot
+
+// token looks like adsfasfdsf:adsfsadfasdfasfasdfasfd-asdfsf
+// chat_id looks like 1231231231
+const sayWithTelegram = async ({  message, parse_mode = 'HTML' }) => {
+  // parse_mode can be undefined, or 'MarkdownV2' or 'HTML'
+  // https://core.telegram.org/bots/api#html-style
+  let proxy = ''
+  if(TELEGRAM_PROXY_HOST != '' && TELEGRAM_PROXY_PORT != '') { proxy = `socks://${TELEGRAM_PROXY_HOST}:${TELEGRAM_PROXY_PORT}` }
+
+  const parseModeString = parse_mode ? `&parse_mode=${parse_mode}` : ''
+  try {
+
+    let endpoint = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHATID}&text=${encodeURIComponent(message)}${parseModeString}`
+    let opts = new URL(endpoint)
+    if (proxy === "") {
+      logDim(`sayWithTelegram()`)
+    } else {
+      opts.agent = new SocksProxyAgent(proxy)
+    }
+
+    const res = await fetch(opts)
+    const fullResponse = await res.json()
+    // logDim(`${getDate()} sayWithTelegramBot() result:`, JSON.stringify(fullResponse, null, 2))
+    return fullResponse
+    
+
+  } catch (e) {
+    logDim(`sayWithTelegram() aborted:`, e)
+    return null
+  }
+}
+
+
+
+// Server Settings
 const createServer = require('http');
+// const { rootCertificates } = require('tls');
 const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
   cors: {
-    origin: ["https://tunnelsats.com"],
-    methods: ["GET", "POST"],
-    credentials: true
+    // restrict to SOP (Same Origin Policy)
+    orgin: false
   }
 });
+
+
 
 // Set up the Webserver
 app.use(express.static(path.join(__dirname, '../client/build')));
@@ -35,51 +102,156 @@ app.get('/', function (req, res) {
   res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
 });
 
-// Invoice Webhook
+// Invoice Webhook for Lnbits
+// This API endpoint is called after an invoice is paid
 app.post(process.env.WEBHOOK, (req, res) => {
-    io.sockets.emit('invoicePaid',req.body.payment_hash)
-    res.status(200).end()
+
+   
+    const index = invoiceWGKeysMap.findIndex((client) => {
+      return client.paymentDetails.payment_hash === req.body.payment_hash
+     });
+
+      if(index !== -1) {
+    
+      const {paymentDetails, publicKey,presharedKey,priceDollar,country, id, amountSats } = invoiceWGKeysMap[index]
+
+      // Needed for now to notify the client to stop the spinner
+      io.to(id).emit('invoicePaid',paymentDetails.payment_hash)
+
+      // Looks through the invoice map saved into ram and sends the config ONLY to the relevant client
+      getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country))
+      .then(result => {io.to(id).emit('receiveConfigData',result)
+          logDim(`Successfully created wg entry for pubkey ${publicKey}`)
+          invoiceWGKeysMap.splice(index,1);
+
+
+          const serverDNS = getServer(country).replace(/^https?:\/\//, '').replace(/\/manager\/$/, '');
+          sayWithTelegram({message: `[Tunnelsats-Server.js] 🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(amountSats)}💰`})
+          .catch(error => logDim(error.message))
+
+          res.status(200).end()
+      })
+      .catch(error => {
+        sayWithTelegram({message: `[Tunnelsats-Server.js] 🔴 Creating New Subscription failed with ${error.message}`})
+        res.status(500).end()
+
+      })
+    } else {
+        logDim(`No Invoice and corresponding connection found in memory`)
+        res.status(500).end()
+    }
+
+  
 });
 
 httpServer.listen(process.env.PORT, '0.0.0.0');
 console.log(`${getDate()} httpServer listening on port ${process.env.PORT}`);
-// Finish Server Setup
+
+
+
 
 // Socket Connections
 io.on('connection', (socket) => {
 
-  console.log(`${getDate()} io.socket: connected`)
+  console.log(`${getDate()} ${socket.id} io.socket: connected`)
 
-  // Checks for a paid Invoice after reconnect
+ 
+  // Checks for a paid Invoice after reconnection of the client
+  // To allow for recovery in calse the client looses connection but pays the invoice
   socket.on('checkInvoice',(clientPaymentHash) => {
-    DEBUG && logDim("checkInvoice() called")
-    checkInvoice(clientPaymentHash).then(result => io.sockets.emit('invoicePaid',result))
+    DEBUG && logDim(`checkInvoice() called: ${socket.id}`)
+    checkInvoice(clientPaymentHash).then(result => {
+   
+      const index = invoiceWGKeysMap.findIndex((client) => {
+        return client.paymentDetails.payment_hash === result
+       });
+  
+        if(index !== -1) {
+         
+          const {paymentDetails, publicKey,presharedKey,priceDollar,country } = invoiceWGKeysMap[index]
+  
+          io.to(socket.id).emit('invoicePaid',paymentDetails.payment_hash)
+  
+          getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country))
+            .then(result => {io.to(socket.id).emit('receiveConfigData',result)
+                logDim(`Successfully created wg entry for pubkey ${publicKey}`)
+                invoiceWGKeysMap.splice(index,1);
+
+                const serverDNS = getServer(country).replace(/^https?:\/\//, '').replace(/\/manager\/$/, '');
+                sayWithTelegram({message: `[Tunnelsats-Server.js] 🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(amountSats)}💰`})
+
+
+          })
+            .catch(error => {
+              sayWithTelegram({message: `[Tunnelsats-Server.js] 🔴 Creating New Subscription failed with ${error.message}`})
+              DEBUG && logDim(error.message)
+        })
+      } else {
+          logDim(`No Invoice and corresponding connection found in memory ${socket.id}`)
+          logDim(`no way to recover this state in a secure manner | server crashed potentially`)
+
+      }
+  
+    }).catch((error)=> logDim(`${error.message}`))
   })
 
   // Getting the Invoice from lnbits and forwarding it to the frontend
-  socket.on('getInvoice',(amount) =>{
-    DEBUG && logDim(`getInvoice() called`)
-    getInvoice(amount).then(result => socket.emit("lnbitsInvoice",result))
-  })
+  socket.on('getInvoice',(amount,publicKey,presharedKey,priceDollar,country) =>{
+    DEBUG && logDim(`getInvoice() called id: ${socket.id}`)
+    
+
+    if (invoiceWGKeysMap.length <= MAXINVOICES){
+
+      getInvoice(amount).then(result => {
+      
+      socket.emit("lnbitsInvoice",result)
+
+      // Safes the client request related to the socket id including the payment_hash to later send the config data only to the right client
+      invoiceWGKeysMap.push({paymentDetails: result, publicKey: publicKey, presharedKey: presharedKey, priceDollar: priceDollar, country: country , id : socket.id, amountSats: amount })
+      DEBUG && console.log(invoiceWGKeysMap)
+
+      })
+      .catch(error => logDim(error.message))
+     }else {
+        logDim(`restrict overall invoices to ${MAXINVOICES} to prevent mem overflow `)
+     }
+
+    })
+  
 
   socket.on('sendEmail',(emailAddress,configData,date) => {
     sendEmail(emailAddress,configData,date).then(result => console.log(result))
   })
 
-  socket.on('getWireguardConfig',(publicKey,presharedKey,priceDollar,country) => {
-    getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country))
-    .then(result => socket.emit('receiveConfigData',result))
-  })
-
+  
   socket.on('getPrice', () => {
-    getPrice().then(result => socket.emit('receivePrice', result))
+    logDim(`getPrice() id: ${socket.id}`)
+    getPrice().then(result => io.to(socket.id).emit('receivePrice', result))
   })
 
-});
+  socket.on('disconnect', () => {
+    console.log(`User disconnected with ID: ${socket.id} `)
+
+    let index = 0
+
+    // Delete all user related invoices and wg information to free memory as soon as a user disconnects
+    // Needs to be a loop bc client can create more than one invoice (getNewInvoice)
+    while (index !== -1) {
+     index = invoiceWGKeysMap.findIndex((client) => {
+      return client.id === socket.id
+    });
+    if(index !== -1) {
+      invoiceWGKeysMap.splice(index,1);
+    }
+  }
+
+  })    
+
+})
 
 //Transforms country into server
-var getServer = (country) => {
-  var server;
+let getServer = (country) => {
+  let server;
   if (country == "eu"){
     server = process.env.IP_EU;
   }
@@ -103,10 +275,12 @@ var getServer = (country) => {
 
 
 // Transforms duration into timestamp
-var getTimeStamp = (selectedValue) =>{
+const getTimeStamp = (selectedValue) =>{
   
-  var date;
-  if(selectedValue == 0.01){
+  let date;
+
+
+  if(selectedValue == 3){
     date = addMonths(date = new Date(),1)
     return date;
   }
@@ -127,7 +301,7 @@ var getTimeStamp = (selectedValue) =>{
   }
 
   function addMonths(date = new Date(), months) {
-    var d = date.getDate();
+    let d = date.getDate();
     date.setMonth(date.getMonth() + +months);
     if (date.getDate() != d) {
       date.setDate(0);
@@ -136,19 +310,25 @@ var getTimeStamp = (selectedValue) =>{
   }
 }
 
+// Parse Date object to string format: YYYY-MMM-DD hh:mm:ss A
+const parseDate = (date) => { return dayjs(date).format("YYYY-MMM-DD hh:mm:ss A") };
+
+
+// API Calls using Axios
+
 
 // Get Invoice Function
 async function getInvoice(amount) {
-  var satoshis = await getPrice()
-                        .then((result) => { return result })
-                        .catch((error) => { return error });
+  // let satoshis = await getPrice()
+  //                       .then((result) => { return result })
+  //                       .catch(error => { return error });
   return axios({
   method: "post",
   url: process.env.URL_INVOICE_API,
   headers: { "X-Api-Key": process.env.INVOICE_KEY},
   data: {
     "out": false,
-    "amount": satoshis*amount,
+    "amount": Math.round(amount),
     "memo": getTimeStamp(amount),
     "webhook" : process.env.URL_WEBHOOK
   }
@@ -159,7 +339,7 @@ async function getInvoice(amount) {
         return {payment_hash,payment_request}
       }
     }).catch(error => {
-      return error
+      throw new Error(`Error - not able to get Invoice from lnbits \n ${error.message}`);
     });
 };
 
@@ -169,11 +349,9 @@ async function getPrice() {
     method: "get",
     url: process.env.URL_PRICE_API
   }).then(function (response){
-    if(response) {
-      const priceBTC = (response.data.USD.buy);
-      var priceOneDollar = (100000000 / priceBTC);
-      return priceOneDollar;
-    }
+     const priceBTC = (response.data.USD.buy);
+     let priceOneDollar = (100000000 / priceBTC);
+     return priceOneDollar;
   }).catch(error => {
     return error;
   });
@@ -199,11 +377,12 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
     }
    };
 
-   var response1 = await axios(request1).catch(error => { return error });
+   const response1 = await axios(request1).catch(error => { 
+      throw new Error(`Error - wgAPI createKey\n ${error.message}`);
+    });
 
-    if(!response1) {
-      response1 = await axios(request1).catch(error => { return error });
-    } else {
+
+    if (!isEmpty(response1.data)){
       const request2 = {
         method: 'post',
         url: server+'portFwd',
@@ -215,12 +394,11 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
         "keyID": response1.data.keyID
         }
       }
+      const response2 = await axios(request2).catch(error => { 
+        throw new Error(`Error - wgAPI portFwd\n ${error.message}`);
+       });
 
-      var response2 = await axios(request2).catch(error => { return error });
-      
-      if(!response2) {
-        response2 = await axios(request2).catch(error => { return error });
-      } else {
+      if(!isEmpty(response2.data)) {
         response1.data['portFwd'] = response2.data.portFwd;
         response1.data['dnsName'] = (server.replace(/^https?:\/\//, '')).replace(/\/manager\/$/, '');
         return response1.data;
@@ -228,9 +406,6 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
     }
 };
 
-
-// Parse Date object to string format: YYYY-MMM-DD hh:mm:ss A
-const parseDate = (date) => { return dayjs(date).format("YYYY-MMM-DD hh:mm:ss A") };
 
 
 // Send Wireguard config file via email
@@ -252,7 +427,7 @@ async function sendEmail(emailAddress,configData,date) {
       ],
     };
 
-   let transporter = nodemailer.createTransport({
+   const transporter = nodemailer.createTransport({
         host: process.env.EMAIL_HOST,
         port: process.env.EMAIL_PORT,
         secure: false, // true for 465, false for other ports
@@ -279,6 +454,11 @@ async function checkInvoice(hash) {
        url: process.env.URL_INVOICE_API +"/"+hash,
        headers: { "X-Api-Key": process.env.INVOICE_KEY }
   }).then(function (response){
-       if(response.data.paid) return response.data.details.payment_hash;
-  }).catch(error => { return error })
+       if(response.data.paid)  return response.data.details.payment_hash;
+       throw new Error(`Error - Invoice not paid ${hash}`)
+  }).catch(error => { 
+    throw new Error(`Error - fetching Invoice from Lnbits failed\n ${error.message}`);
+
+   })
+
 };

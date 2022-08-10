@@ -18,6 +18,10 @@
       date = addMonths(date = new Date(),12)
       return date
     }
+    date = addMonths(date = new Date(),1)
+    return date
+
+
 
     function addMonths(date = new Date(), months) {
       var d = date.getDate();

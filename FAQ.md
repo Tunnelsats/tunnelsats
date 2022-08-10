@@ -75,12 +75,18 @@ Currently, 100GB per month are being offered. This should be enough traffic even
 At present we successfully tested the following setups:
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 - RaspiBlitz (LND / CLN) v1.7.2/v1.8.0
 ||||||| parent of aa7dab2... guide/faq: ip2dns
 - RaspiBlitz (LND / CLN) v1.7.2
 =======
 - RaspiBlitz (LND / CLN) v1.8.0
 >>>>>>> aa7dab2... guide/faq: ip2dns
+||||||| parent of 1ce39c2... guide/faq: ip2dns
+- RaspiBlitz (LND / CLN) v1.8.0
+=======
+- RaspiBlitz (LND / CLN) v1.7.2/v1.8.0
+>>>>>>> 1ce39c2... guide/faq: ip2dns
 - Umbrel-OS (LND)
 - Umbrel-OS (CLN not yet recommended or be tech-savvy)
 - myNode (LND) v0.2.x
@@ -107,6 +113,7 @@ Let's say you bought the 1 month for testing the services and all is going great
 - buy a new subscription
 - download or transfer via email the new configuration file from the website 
 <<<<<<< HEAD
+<<<<<<< HEAD
 - redo installation procedure: place config file in same directory with `setupv2.sh` and run it again
 - adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalhosts (LND) or announce-addr (CLN))
 ||||||| parent of aa7dab2... guide/faq: ip2dns
@@ -114,6 +121,11 @@ Let's say you bought the 1 month for testing the services and all is going great
 - adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalip (LND) or announce-addr (CLN))
 =======
 - redo installation procedure: place config file in same directory `with setupv2.sh` and run it again
+||||||| parent of 1ce39c2... guide/faq: ip2dns
+- redo installation procedure: place config file in same directory `with setupv2.sh` and run it again
+=======
+- redo installation procedure: place config file in same directory with `setupv2.sh` and run it again
+>>>>>>> 1ce39c2... guide/faq: ip2dns
 - adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalhosts (LND) or announce-addr (CLN))
 >>>>>>> aa7dab2... guide/faq: ip2dns
 - restart wireguard and lightning: `sudo systemctl restart wg-quick@tunnelsatsv2` and your lightning implementation
