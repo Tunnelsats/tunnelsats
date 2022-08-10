@@ -92,7 +92,7 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   #########################################
   [Application Options]
   listen=0.0.0.0:9735
-  externalip={vpnIP}:{vpnPort}
+  externalhosts={vpnDNS}:{vpnPort}
   
   [Tor]
   tor.streamisolation=false
@@ -121,7 +121,7 @@ Running LND only requires a few parameters to be checked and set to activate hyb
   ```ini
   [Application Options]
   listen=0.0.0.0:9735
-  externalip={vpnIP}:{vpnPort} #these infos are provided at the end of the setup.sh script
+  externalhosts={vpnDNS}:{vpnPort} #these infos are provided at the end of the setup.sh script
   
   [Tor]
   # set streamisolation to 'false' if currently set 'true'. if not set at all, just leave it out
@@ -139,7 +139,7 @@ Locate data directory of your CLN installation. By default CLN's configuration i
 
   ```ini
   bind-addr=0.0.0.0:9735
-  announce-addr={vpnIP}:{vpnPort}
+  announce-addr={vpnDNS}:{vpnPort}
   always-use-proxy=false
   ```
 
@@ -171,7 +171,7 @@ and enter the following settings:
   ```ini
   bind-addr=10.9.9.9:9735
   always-use-proxy=false
-  announce-addr={vpnIP}:{vpnPort}
+  announce-addr={vpnDNS}:{vpnPort}
   ```
 
 ⚠️ After enabling hybrid mode in related configuration files, restart the lightning implementation for changes to take effect!
