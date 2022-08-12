@@ -157,7 +157,7 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
         cx: "305",
         cy: "72",
         r: "3",
-        fill: "#FFFFFF" /*"#4c619b"*/
+        fill: "#CC0000" /*"#4c619b"*/
       }),
       /*#__PURE__*/React.createElement("g", {
         id: "AS",
@@ -241,7 +241,7 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
         cx: "508",
         cy: "180",
         r: "3",
-        fill: "#FFFFFF" /*"#4c619b"*/
+        fill: "#CC0000" /*"#4c619b"*/
       }),
       /*#__PURE__*/React.createElement("g", {
         id: "NA",
@@ -304,7 +304,7 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
         cx: "134",
         cy: "90",
         r: "3",
-        fill: "#FFFFFF" /*"#4c619b"*/
+        fill: "#CC0000" /*"#4c619b"*/
       }),
       ),
       /*#__PURE__*/React.createElement("g", {
