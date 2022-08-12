@@ -54,7 +54,7 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
     });
 
     _defineProperty(_assertThisInitialized(_this), "getClassname", function (area) {
-      if (area === "af" || area === "sa" || area === "oc" || area === "as") {
+      if (area === "af" || area === "sa" || area === "oc") {
         return 'map-unavailable';
       }
 
@@ -157,12 +157,12 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
         cx: "305",
         cy: "72",
         r: "3",
-        fill: "#4c619b"
+        fill: "#FFFFFF" /*"#4c619b"*/
       }),
       /*#__PURE__*/React.createElement("g", {
         id: "AS",
         className: _this.getClassname('as'),
-        //onClick: _this.onMapClick.bind(_assertThisInitialized(_this), 'as')
+        onClick: _this.onMapClick.bind(_assertThisInitialized(_this), 'as')
       }, /*#__PURE__*/React.createElement("path", {
         id: "path5928",
         d: "M563.326 80.01l-.22-.625c-.09.068-.266.186-.26.196.11.183.242.35.37.524-.166 1.17 1.466 1.9.63 3.34-1.11 1.913-.78 2.61 1.426 4.105.115-.878-.667-2.7 1.068-2.09 2.394.834 4.014.275 5.508-1.74-2.823-1.23-5.67-2.47-8.522-3.71z"
@@ -235,7 +235,15 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
       }), /*#__PURE__*/React.createElement("path", {
         id: "path5810",
         d: "M355.887 101.243c-.717.492-.965.725-1.26.85-.454.193-.935.326-1.414.45-.946.25-.877.956-.203 1.133 1.005.262 1.867-.447 2.524-1.232.138-.164.14-.443.353-1.2z"
-      })), /*#__PURE__*/React.createElement("g", {
+      })), 
+      // circle Singapure
+      React.createElement("circle", {
+        cx: "508",
+        cy: "180",
+        r: "3",
+        fill: "#FFFFFF" /*"#4c619b"*/
+      }),
+      /*#__PURE__*/React.createElement("g", {
         id: "NA",
         className: _this.getClassname('na'),
         onClick: _this.onMapClick.bind(_assertThisInitialized(_this), 'na')
@@ -296,7 +304,7 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
         cx: "134",
         cy: "90",
         r: "3",
-        fill: "#4c619b"
+        fill: "#FFFFFF" /*"#4c619b"*/
       }),
       ),
       /*#__PURE__*/React.createElement("g", {
