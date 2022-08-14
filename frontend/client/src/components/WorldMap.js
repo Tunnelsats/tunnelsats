@@ -159,6 +159,16 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
         r: "3",
         fill: "#CC0000" /*"#4c619b"*/
       }),
+      React.createElement("circle", {
+        cx: "305",
+        cy: "72",
+        r: "3",
+        fill: "#CC0000" /*"#4c619b"*/
+      },
+      React.createElement("animate", { attributeType: "SVG", attributeName: "r", begin: "0s", dur: "2.5s", repeatCount: "indefinite", from: "1%", to: "3%" }),
+      React.createElement("animate", { attributeType: "CSS", attributeName: "stroke-width", begin: "0s", dur: "2.5s", repeatCount: "indefinite", from: "3%", to: "0%" }),
+      React.createElement("animate", { attributeType: "CSS", attributeName: "opacity", begin: "0s", dur: "2.5s", repeatCount: "indefinite", from: "0.75", to: "0" })
+      ),
       /*#__PURE__*/React.createElement("g", {
         id: "AS",
         className: _this.getClassname('as'),
@@ -243,6 +253,16 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
         r: "3",
         fill: "#CC0000" /*"#4c619b"*/
       }),
+      React.createElement("circle", {
+        cx: "508",
+        cy: "180",
+        r: "3",
+        fill: "#CC0000" /*"#4c619b"*/
+      },
+      React.createElement("animate", { attributeType: "SVG", attributeName: "r", begin: "0s", dur: "2.49s", repeatCount: "indefinite", from: "1%", to: "3%" }),
+      React.createElement("animate", { attributeType: "CSS", attributeName: "stroke-width", begin: "0s", dur: "2.49s", repeatCount: "indefinite", from: "3%", to: "0%" }),
+      React.createElement("animate", { attributeType: "CSS", attributeName: "opacity", begin: "0s", dur: "2.49s", repeatCount: "indefinite", from: "0.75", to: "0" })
+      ),
       /*#__PURE__*/React.createElement("g", {
         id: "NA",
         className: _this.getClassname('na'),
@@ -306,6 +326,16 @@ var ControlledWorldMap = /*#__PURE__*/function (_React$Component) {
         r: "3",
         fill: "#CC0000" /*"#4c619b"*/
       }),
+      React.createElement("circle", {
+        cx: "134",
+        cy: "90",
+        r: "3",
+        fill: "#CC0000" /*"#4c619b"*/
+      },
+      React.createElement("animate", { attributeType: "SVG", attributeName: "r", begin: "0s", dur: "2.51s", repeatCount: "indefinite", from: "1%", to: "3%" }),
+      React.createElement("animate", { attributeType: "CSS", attributeName: "stroke-width", begin: "0s", dur: "2.51s", repeatCount: "indefinite", from: "3%", to: "0%" }),
+      React.createElement("animate", { attributeType: "CSS", attributeName: "opacity", begin: "0s", dur: "2.51s", repeatCount: "indefinite", from: "0.75", to: "0" })
+      )
       ),
       /*#__PURE__*/React.createElement("g", {
         id: "OC",
