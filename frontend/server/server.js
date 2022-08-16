@@ -20,7 +20,7 @@ const createServer = require('http');
 const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
   cors: {
-    origin: ["https://staging.tunnelsats.com", "https://tunnelsats.com","http://localhost:3000"],
+    origin: ["https://dev.tunnelsats.com"],
     methods: ["GET", "POST"],
     credentials: true
 
