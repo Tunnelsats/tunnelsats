@@ -68,6 +68,7 @@ function App() {
   */
 
   // randomize wireguard keys
+  /*
   useEffect(() => {
     const timer = setInterval(() => {
       displayNewPair(window.wireguard.generateKeypair);
@@ -76,6 +77,7 @@ function App() {
     // clearing interval
     return () => clearInterval(timer);
   }, []);
+  */
 
   //Successful payment alert
   const renderAlert = (show) => {
