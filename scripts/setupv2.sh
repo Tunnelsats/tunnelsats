@@ -36,16 +36,6 @@ if [ "$EUID" -ne 0 ]
   exit 1
 fi
 
-# check if docker
-isDocker=0
-if [ "$(hostname)" == "umbrel" ] || \
-   [ -d "$HOME"/umbrel ] || \
-   [ -d /embassy-data/package-data/volumes/lnd ]; then
-  isDocker=1
-  echo "> Docker Setup was recognized";echo
-else
-  echo "> Non-Docker Setup was recognized";echo
-fi
 
 
 # intro
@@ -66,23 +56,23 @@ do
     1) RaspiBlitz
     2) Umbrel
     3) myNode
-    4) RaspiBolt / Bare Metal
-    " answer
+    4) RaspiBolt
+    > " answer
 
   case $answer in
-      1 )      echo "> RaspiBlitz";echo
+      1 )       echo "> RaspiBlitz";echo
                 isDocker=0
                 break;;
 
-      2 )      echo "> Umbrel";echo
+      2 )       echo "> Umbrel";echo
                 isDocker=1
                 break;;
       
-      3 )      echo "> myNode";echo
+      3 )       echo "> myNode";echo
                 isDocker=0
                 break;;
       
-      4 )      echo "> RaspiBolt";echo
+      4 )       echo "> RaspiBolt";echo
                 isDocker=0
                 break;;
 
