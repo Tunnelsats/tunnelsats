@@ -275,7 +275,7 @@ function App() {
             <Row>
               <Col><a href="https://twitter.com/TunnelSats" target="_blank" rel="noreferrer"><span class="icon icon-twitter"></span></a></Col>
               <Col><a href="https://github.com/blckbx/tunnelsats" target="_blank" rel="noreferrer"><span class="icon icon-github"></span></a></Col>
-              <Col><a href="https://lnbits.tunnelsats.com/lnurlp/1" target="_blank" rel="noreferrer"><span class="icon icon-heart"></span></a></Col>
+              <Col><a href="https://dev.lnbits.tunnelsats.com/tipjar/2" target="_blank" rel="noreferrer"><span class="icon icon-heart"></span></a></Col>
               <Col><a href="https://t.me/+NJylaUom-rxjYjU6" target="_blank" rel="noreferrer"><span class="icon icon-telegram"></span></a></Col>
             </Row>
           </div>
