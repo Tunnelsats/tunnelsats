@@ -18,14 +18,7 @@ const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : ne
 
 const createServer = require('http');
 const httpServer = createServer.createServer(app);
-const io = require("socket.io")(httpServer, {
-  cors: {
-    origin: ["https://dev.tunnelsats.com"],
-    methods: ["GET", "POST"],
-    credentials: true
-
-  }
-});
+const io = require("socket.io")(httpServer);
 
 // Set up the Webserver
 app.use(express.static(path.join(__dirname, '../client/build')));
@@ -82,22 +75,22 @@ io.on('connection', (socket) => {
 var getServer = (country) => {
   var server;
   if (country == "eu"){
-    server = process.env.IP_EU
+    server = process.env.IP_EU;
   }
   if (country == "na"){
-    server = process.env.IP_USA
+    server = process.env.IP_USA;
   }
   if (country == "sa"){
-    server = process.env.IP_LATAM
+    server = process.env.IP_LATAM;
   }
   if (country == "af"){
-    server = process.env.IP_AFRICA
+    server = process.env.IP_AFRICA;
   }
   if (country == "as"){
-    server = process.env.IP_ASIA
+    server = process.env.IP_ASIA;
   }
   if (country == "oc"){
-    server = process.env.IP_OCEANIA
+    server = process.env.IP_OCEANIA;
   }  
   return server;
 }
@@ -142,7 +135,7 @@ var getTimeStamp = (selectedValue) =>{
 async function getInvoice(amount) {
   var satoshis = await getPrice()
                         .then((result) => { return result })
-                        .catch(error => { return error });
+                        .catch((error) => { return error });
   return axios({
   method: "post",
   url: process.env.URL_INVOICE_API,
@@ -154,9 +147,11 @@ async function getInvoice(amount) {
     "webhook" : process.env.URL_WEBHOOK
   }
     }).then(function (response){
-      payment_request = response.data.payment_request;
-      payment_hash = response.data.payment_hash;
-      return {payment_hash,payment_request}
+      if(response) {
+        payment_request = response.data.payment_request;
+        payment_hash = response.data.payment_hash;
+        return {payment_hash,payment_request}
+      }
     }).catch(error => {
       return error
     });
@@ -168,9 +163,11 @@ async function getPrice() {
     method: "get",
     url: process.env.URL_PRICE_API
   }).then(function (response){
-     const priceBTC = (response.data.USD.buy);
-     var priceOneDollar = (100000000 / priceBTC);
-     return priceOneDollar;
+    if(response) {
+      const priceBTC = (response.data.USD.buy);
+      var priceOneDollar = (100000000 / priceBTC);
+      return priceOneDollar;
+    }
   }).catch(error => {
     return error;
   });
@@ -276,6 +273,6 @@ async function checkInvoice(hash) {
        url: process.env.URL_INVOICE_API +"/"+hash,
        headers: { "X-Api-Key": process.env.INVOICE_KEY }
   }).then(function (response){
-       if(response.data.paid)  return response.data.details.payment_hash;
+       if(response.data.paid) return response.data.details.payment_hash;
   }).catch(error => { return error })
 };

@@ -15,10 +15,7 @@ const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : ne
 
 
 // WebSocket
-var socket =  io.connect('/', {
-  transports: ['polling'],
-  withCredentials: true
-});
+const socket = io.connect();
 
 // Consts
 var emailAddress;
