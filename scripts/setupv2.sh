@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=19
+patch=20
 
 
 #Helper
@@ -36,16 +36,6 @@ if [ "$EUID" -ne 0 ]
   exit 1
 fi
 
-# check if docker
-isDocker=0
-if [ "$(hostname)" == "umbrel" ] || \
-   [ -d "$HOME"/umbrel ] || \
-   [ -d /embassy-data/package-data/volumes/lnd ]; then
-  isDocker=1
-  echo "> Docker Setup was recognized";echo
-else
-  echo "> Non-Docker Setup was recognized";echo
-fi
 
 
 # intro
@@ -56,6 +46,40 @@ echo -e "
          Version:             
          v$major.$minor.$patch
 ###############################";echo
+
+
+# Check if docker / non-docker
+isDocker=0
+while true
+do
+    read -p "What lightning node package are you running?: 
+    1) RaspiBlitz
+    2) Umbrel
+    3) myNode
+    4) RaspiBolt
+    > " answer
+
+  case $answer in
+      1 )       echo "> RaspiBlitz";echo
+                isDocker=0
+                break;;
+
+      2 )       echo "> Umbrel";echo
+                isDocker=1
+                break;;
+      
+      3 )       echo "> myNode";echo
+                isDocker=0
+                break;;
+      
+      4 )       echo "> RaspiBolt";echo
+                isDocker=0
+                break;;
+
+             * ) echo "Please enter a number from 1 to 4.";;
+  esac
+done
+
 
 
 # Check which implementation the user wants to tunnel
