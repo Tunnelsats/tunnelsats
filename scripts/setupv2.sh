@@ -66,7 +66,7 @@ do
     1) RaspiBlitz
     2) Umbrel
     3) myNode
-    4) RaspiBolt
+    4) RaspiBolt / Bare Metal
     " answer
 
   case $answer in
