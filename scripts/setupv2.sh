@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=20
+patch=21
 
 
 #Helper
@@ -56,7 +56,7 @@ do
     1) RaspiBlitz
     2) Umbrel
     3) myNode
-    4) RaspiBolt
+    4) RaspiBolt / Bare Metal
     > " answer
 
   case $answer in
@@ -72,7 +72,7 @@ do
                 isDocker=0
                 break;;
       
-      4 )       echo "> RaspiBolt";echo
+      4 )       echo "> RaspiBolt / Bare Metal";echo
                 isDocker=0
                 break;;
 
