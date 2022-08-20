@@ -7,7 +7,13 @@ var dayjs = require('dayjs');
 const {logDim} = require('./logger')
 
 
-DEBUG = false
+
+
+DEBUG = true
+
+let invoiceWGKeysMap= []
+
+let localSocket
 
 const app = express();
 var payment_hash,payment_request;
@@ -18,7 +24,19 @@ const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : ne
 
 const createServer = require('http');
 const httpServer = createServer.createServer(app);
-const io = require("socket.io")(httpServer);
+const io = require("socket.io")(httpServer, {
+  cors: {
+    // no CORS policy
+    orgin: false
+  }
+});
+
+// Helper
+function isEmpty(obj) {
+  return Object.keys(obj).length === 0;
+}
+
+
 
 // Set up the Webserver
 app.use(express.static(path.join(__dirname, '../client/build')));
@@ -31,45 +49,140 @@ app.get('/', function (req, res) {
 
 // Invoice Webhook
 app.post(process.env.WEBHOOK, (req, res) => {
-    io.sockets.emit('invoicePaid',req.body.payment_hash)
-    res.status(200).end()
+
+    let keyIDInvoice = ''
+   
+    const index = invoiceWGKeysMap.findIndex((client) => {
+      return client.paymentDetails.payment_hash === req.body.payment_hash
+     });
+
+      if(index !== -1) {
+       keyIDInvoice = invoiceWGKeysMap[index]
+
+      const {paymentDetails, publicKey,presharedKey,priceDollar,country, id } = keyIDInvoice
+
+
+      io.to(id).emit('invoicePaid',paymentDetails.payment_hash)
+
+      getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country))
+      .then(result => {io.to(id).emit('receiveConfigData',result)
+          logDim(`Successfully created wg entry for pubkey ${publicKey}`)
+          invoiceWGKeysMap.splice(index,1);
+          res.status(200).end()
+      })
+      .catch(error => {
+        console.log(error.message)
+        res.status(500).end()
+
+      })
+  
+    } else {
+        logDim(`No Invoice and corresponding connection found in memory`)
+        res.status(500).end()
+
+    }
+
+  
 });
 
 httpServer.listen(process.env.PORT, '0.0.0.0');
 console.log(`${getDate()} httpServer listening on port ${process.env.PORT}`);
 // Finish Server Setup
 
+
+
+
 // Socket Connections
 io.on('connection', (socket) => {
 
-  console.log(`${getDate()} io.socket: connected`)
+  console.log(`${getDate()} ${socket.id} io.socket: connected`)
 
+ 
   // Checks for a paid Invoice after reconnect
   socket.on('checkInvoice',(clientPaymentHash) => {
-    DEBUG && logDim("checkInvoice() called")
-    checkInvoice(clientPaymentHash).then(result => io.sockets.emit('invoicePaid',result))
+    DEBUG && logDim(`checkInvoice() called: ${socket.id}`)
+    checkInvoice(clientPaymentHash).then(result => {
+
+      let keyIDInvoice = ''
+   
+      const index = invoiceWGKeysMap.findIndex((client) => {
+        return client.paymentDetails.payment_hash === result
+       });
+  
+        if(index !== -1) {
+         keyIDInvoice = invoiceWGKeysMap[index]
+  
+        const {paymentDetails, publicKey,presharedKey,priceDollar,country, id } = keyIDInvoice
+  
+        io.to(id).emit('invoicePaid',paymentDetails.payment_hash)
+  
+        getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country))
+        .then(result => {io.to(id).emit('receiveConfigData',result)
+            logDim(`Successfully created wg entry for pubkey ${publicKey}`)
+            invoiceWGKeysMap.splice(index,1);
+
+        })
+        .catch(error => {
+          console.log(error.message)
+  
+        })
+    
+      } else {
+          logDim(`No Invoice and corresponding connection found in memory ${socket.id}`)
+          logDim(`no way to recover this state in a secure manner | server crashed potentially`)
+
+
+      }
+  
+    }).catch((error)=> logDim(`${error.message}`))
   })
 
   // Getting the Invoice from lnbits and forwarding it to the frontend
-  socket.on('getInvoice',(amount) =>{
+  socket.on('getInvoice',(amount,publicKey,presharedKey,priceDollar,country) =>{
     DEBUG && logDim(`getInvoice() called`)
-    getInvoice(amount).then(result => socket.emit("lnbitsInvoice",result))
-  })
+    
+
+
+    getInvoice(amount).then(result => {
+      
+      socket.emit("lnbitsInvoice",result)
+      invoiceWGKeysMap.push({paymentDetails: result, publicKey: publicKey, presharedKey: presharedKey, priceDollar: priceDollar, country: country , id : socket.id})
+      logDim(`getInvoice()`)
+      console.log(invoiceWGKeysMap)
+
+    })
+
+    })
+  
 
   socket.on('sendEmail',(emailAddress,configData,date) => {
     sendEmail(emailAddress,configData,date).then(result => console.log(result))
   })
 
-  socket.on('getWireguardConfig',(publicKey,presharedKey,priceDollar,country) => {
-    getWireguardConfig(publicKey,presharedKey,getTimeStamp(priceDollar),getServer(country))
-    .then(result => socket.emit('receiveConfigData',result))
-  })
+  
 
   socket.on('getPrice', () => {
-    getPrice().then(result => socket.emit('receivePrice', result))
+    logDim(`getPrice() id: ${socket.id}`)
+    getPrice().then(result => io.to(socket.id).emit('receivePrice', result))
   })
 
-});
+  socket.on('disconnect', () => {
+    console.log(`User disconnected with ID: ${socket.id} `)
+
+    let index = 0
+
+    while (index !== -1) {
+     index = invoiceWGKeysMap.findIndex((client) => {
+      return client.id === socket.id
+    });
+    if(index !== -1) {
+      invoiceWGKeysMap.splice(index,1);
+    }
+  }
+
+  })    
+
+})
 
 //Transforms country into server
 var getServer = (country) => {
@@ -100,7 +213,15 @@ var getServer = (country) => {
 var getTimeStamp = (selectedValue) =>{
   
   var date;
-  if(selectedValue == 0.01){
+
+
+  if(selectedValue == 1){
+    date = addMonths(date = new Date(),1)
+    return date;
+  }
+
+
+  if(selectedValue == 3){
     date = addMonths(date = new Date(),1)
     return date;
   }
@@ -193,11 +314,12 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
     }
    };
 
-   var response1 = await axios(request1).catch(error => { return error });
+   let response1 = await axios(request1).catch(error => { 
+      throw new Error(`Error - wgAPI createKey\n ${error.message}`);
+    });
 
-    if(!response1) {
-      response1 = await axios(request1).catch(error => { return error });
-    } else {
+
+    if (!isEmpty(response1.data)){
       const request2 = {
         method: 'post',
         url: server+'portFwd',
@@ -209,12 +331,11 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
         "keyID": response1.data.keyID
         }
       }
+      var response2 = await axios(request2).catch(error => { 
+        throw new Error('Error - wgAPI portFwd');
+       });
 
-      var response2 = await axios(request2).catch(error => { return error });
-      
-      if(!response2) {
-        response2 = await axios(request2).catch(error => { return error });
-      } else {
+      if(!isEmpty(response2.data)) {
         response1.data['portFwd'] = response2.data.portFwd;
         response1.data['dnsName'] = (server.replace(/^https?:\/\//, '')).replace(/\/manager\/$/, '');
         return response1.data;
@@ -273,6 +394,11 @@ async function checkInvoice(hash) {
        url: process.env.URL_INVOICE_API +"/"+hash,
        headers: { "X-Api-Key": process.env.INVOICE_KEY }
   }).then(function (response){
-       if(response.data.paid) return response.data.details.payment_hash;
-  }).catch(error => { return error })
+       if(response.data.paid)  return response.data.details.payment_hash;
+       throw new Error(`Error - Invoice not paid ${hash}`)
+  }).catch(error => { 
+    throw new Error(`Error - fetching Invoice from Lnbits failed\n ${error.message}`);
+
+   })
+
 };
