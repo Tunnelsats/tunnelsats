@@ -159,7 +159,6 @@ function App() {
     '[Interface]',
     'PrivateKey = '+keyPair.privateKey,
     'Address = '+serverResponse.ipv4Address,
-    'DNS = '+serverResponse.dns,
     '#VPNPort = '+serverResponse.portFwd,
     '#ValidUntil (UTC time)= '+getTimeStamp(priceDollar).toISOString(),
     ' ',
