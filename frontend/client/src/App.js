@@ -41,6 +41,7 @@ var isPaid=false;
 function App() {
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
 <<<<<<< HEAD
+<<<<<<< HEAD
   const [priceDollar, updatePrice] = useState(0.01);
   const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
 ||||||| parent of 70fb024... change prices
@@ -48,6 +49,11 @@ function App() {
   const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
 =======
   const [priceDollar, updatePrice] = useState(8.5);
+||||||| parent of fb06a4e... bugfix
+  const [priceDollar, updatePrice] = useState(8.5);
+=======
+  const [priceDollar, updatePrice] = useState(1);
+>>>>>>> fb06a4e... bugfix
   // const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
   const [btcPerDollar, setBtcPerDollar] = useState(1);
 >>>>>>> 70fb024... change prices
@@ -302,7 +308,7 @@ function App() {
           isConfigModal={isConfigModal}
           value={payment_request}
           download={() => {download("tunnelsatsv2.conf",payment_request)}}
-          showNewInvoice={() => {getInvoice(priceDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);setSpinner(true)}}
+          showNewInvoice={() => {getInvoice(priceDollar*btcPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);setSpinner(true)}}
           handleClose={closeInvoiceModal}
           emailAddress = {emailAddress}
           expiryDate = {getTimeStamp(priceDollar)}
@@ -316,7 +322,7 @@ function App() {
 
           <div className='main-buttons'>
               <Button onClick={() => { 
-                 getInvoice(priceDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
+                 getInvoice(priceDollar*btcPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
                  showInvoiceModal();
                  hideConfigModal();
                  updatePaymentrequest();
