@@ -302,7 +302,7 @@ function App() {
           isConfigModal={isConfigModal}
           value={payment_request}
           download={() => {download("tunnelsatsv2.conf",payment_request)}}
-          showNewInvoice={() => {getInvoice(1,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);setSpinner(true)}}
+          showNewInvoice={() => {getInvoice(priceDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);setSpinner(true)}}
           handleClose={closeInvoiceModal}
           emailAddress = {emailAddress}
           expiryDate = {getTimeStamp(priceDollar)}
@@ -316,7 +316,7 @@ function App() {
 
           <div className='main-buttons'>
               <Button onClick={() => { 
-                 getInvoice(1,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
+                 getInvoice(priceDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
                  showInvoiceModal();
                  hideConfigModal();
                  updatePaymentrequest();
