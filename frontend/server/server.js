@@ -263,7 +263,7 @@ async function getInvoice(amount) {
   headers: { "X-Api-Key": process.env.INVOICE_KEY},
   data: {
     "out": false,
-    "amount": satoshis*amount,
+    "amount": 1,
     "memo": getTimeStamp(amount),
     "webhook" : process.env.URL_WEBHOOK
   }
