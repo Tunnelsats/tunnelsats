@@ -308,7 +308,7 @@ function App() {
           isConfigModal={isConfigModal}
           value={payment_request}
           download={() => {download("tunnelsatsv2.conf",payment_request)}}
-          showNewInvoice={() => {getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);setSpinner(true)}}
+          showNewInvoice={() => {getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,country);setSpinner(true)}}
           handleClose={closeInvoiceModal}
           emailAddress = {emailAddress}
           expiryDate = {getTimeStamp(priceDollar)}

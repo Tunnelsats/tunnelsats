@@ -60,7 +60,6 @@ app.get('/', function (req, res) {
 // This API endpoint is called after an invoice is paid
 app.post(process.env.WEBHOOK, (req, res) => {
 
-    let keyIDInvoice = ''
    
     const index = invoiceWGKeysMap.findIndex((client) => {
       return client.paymentDetails.payment_hash === req.body.payment_hash
@@ -145,6 +144,7 @@ io.on('connection', (socket) => {
     
 
     if (invoiceWGKeysMap.length <= MAXINVOICES){
+
 
       getInvoice(amount).then(result => {
       
@@ -268,16 +268,16 @@ const parseDate = (date) => { return dayjs(date).format("YYYY-MMM-DD hh:mm:ss A"
 
 // Get Invoice Function
 async function getInvoice(amount) {
-  var satoshis = await getPrice()
-                        .then((result) => { return result })
-                        .catch((error) => { return error });
+  // var satoshis = await getPrice()
+  //                       .then((result) => { return result })
+  //                       .catch(error => { return error });
   return axios({
   method: "post",
   url: process.env.URL_INVOICE_API,
   headers: { "X-Api-Key": process.env.INVOICE_KEY},
   data: {
     "out": false,
-    "amount": 1,
+    "amount": Math.round(amount),
     "memo": getTimeStamp(amount),
     "webhook" : process.env.URL_WEBHOOK
   }
