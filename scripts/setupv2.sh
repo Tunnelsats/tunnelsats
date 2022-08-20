@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=21
+patch=22
 
 
 #Helper
@@ -41,9 +41,9 @@ fi
 # intro
 echo -e "
 ###############################
-         TunnelSats v2        
-         Setup Script         
-         Version:             
+         TunnelSats v2
+         Setup Script
+         Version:
          v$major.$minor.$patch
 ###############################";echo
 
@@ -525,7 +525,7 @@ WantedBy=timers.target
     fi
   fi  
 
-  # enable and start tunnelsats-docker-network.service
+  # enable and start tunnelsats-splitting-processes.service
   if [ -f /etc/systemd/system/tunnelsats-splitting-processes.service ]; then
     systemctl daemon-reload > /dev/null
     if systemctl enable tunnelsats-splitting-processes.service > /dev/null && \
@@ -535,7 +535,7 @@ WantedBy=timers.target
       echo "> ERR: tunnelsats-splitting-processes.service could not be enabled or started. Please check for errors.";echo
       exit 1
     fi
-      # Docker: enable timer
+      # enable timer
     if [ -f /etc/systemd/system/tunnelsats-splitting-processes.timer ]; then
       if systemctl enable tunnelsats-splitting-processes.timer > /dev/null && \
         systemctl start tunnelsats-splitting-processes.timer > /dev/null; then

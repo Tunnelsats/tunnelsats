@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0 
-patch=7
+patch=8
 
 # check if sudo
 if [ "$EUID" -ne 0 ]; then
@@ -46,20 +46,37 @@ do
 done
 
 
-# check if docker
+# Check if docker / non-docker
 isDocker=0
-if [ "$(hostname)" == "umbrel" ] || \
-   [ -d "$HOME"/umbrel ] || \
-   [ -d /embassy-data/package-data/volumes/lnd ]; then
-    isDocker=1
-fi
+while true
+do
+    read -p "What lightning node package are you running?: 
+    1) RaspiBlitz
+    2) Umbrel
+    3) myNode
+    4) RaspiBolt / Bare Metal
+    > " answer
 
+  case $answer in
+      1 )       echo "> RaspiBlitz";echo
+                isDocker=0
+                break;;
 
-# get VPN data
-#if [ -f /etc/wireguard/tunnelsatsv2.conf ]; then
-#    vpnExternalIP=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }' | cut -d ":" -f1)
-#    vpnExternalPort=$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{ print $3 }')
-#fi
+      2 )       echo "> Umbrel";echo
+                isDocker=1
+                break;;
+      
+      3 )       echo "> myNode";echo
+                isDocker=0
+                break;;
+      
+      4 )       echo "> RaspiBolt / Bare Metal";echo
+                isDocker=0
+                break;;
+
+             * ) echo "Please enter a number from 1 to 4.";;
+  esac
+done
 
 
 # Make sure to disable hybrid mode to prevent IP leakage
@@ -73,6 +90,7 @@ do
    lnd|LND* ) 
         #First stop lightning process|container
         echo "Ensure lnd lightning process is stopped ..."
+
         if [ $isDocker -eq 1 ]; then
             container=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}')
             if  [ -n "$container" ]; then
@@ -89,7 +107,7 @@ do
                 echo "> No lightning container active, proceeding ...";echo
             fi
         elif [ -f /etc/systemd/system/lnd.service ]; then
-            if systemctl is-active lnd.service &> /dev/null ;then
+            if systemctl is-active lnd.service &> /dev/null; then
                 if systemctl stop lnd.service &> /dev/null; then
                     echo "> Successfully stopped lnd.service";echo
                 else 
@@ -152,8 +170,7 @@ do
 
         #First stop lightning process|container
         echo "Ensure clightning process is stopped ..."
-   
-    
+
         if [ $isDocker -eq 1 ]; then
           container=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}')
             if  [ -n "$container" ]; then
@@ -295,7 +312,7 @@ if [ $isDocker -eq 0 ]; then
         echo "> tunnelsats-create-cgroup.service: removed";echo
     fi
 
-else
+else # Docker
  
     if [ -f /etc/systemd/system/tunnelsats-docker-network.timer ]; then
         echo "Removing tunnelsats docker network timer..."
@@ -458,7 +475,7 @@ if [ $isDocker -eq 1 ]; then
     echo "Restarting docker services..."
     systemctl daemon-reload > /dev/null
     #docker needs to be restarted here bc nftables stop and therefore deletes all docker iptable rules
-    #which ensure proper container networking
+    #which ensures proper container networking
     systemctl restart docker > /dev/null
     echo "> Restarted docker.service to ensure clean setup"
 fi
@@ -482,7 +499,7 @@ do
            fi
            break;;
 
-   [nN]* )  echo "> leaving system as is, proceeding...";echo
+   [nN]* )  echo "> Leaving system as is, proceeding...";echo
             break;;
    * )     echo "Just enter Y or N, please.";;
   esac
@@ -491,22 +508,20 @@ done
 
 echo "VPN setup uninstalled!";echo
 echo "______________________________________________________________________
-Next Steps: to follow:";echo
+Next steps to follow:";echo
 
+echo "
+Double check if proxy is correctly set in the lightning conf file
+CLN:   always-use-proxy=true
+LND:   tor.skip-proxy-for-clearnet-targets=false";echo
 
 if [ $isDocker -eq 1 ]; then
     echo "
-    Double check if proxy is correctly set in the config file
-    CLN:   always-use-proxy=true
-    LND:   tor.skip-proxy-for-clearnet-targets=false
     Restart lightning container with
-    sudo ${HOME}/umbrel/scripts/stop (Umbrel)
-    sudo ${HOME}/umbrel/scripts/start (Umbrel)";echo
+    sudo ${HOME}/umbrel/scripts/stop (Umbrel-OS)
+    sudo ${HOME}/umbrel/scripts/start (Umbrel-OS)";echo
 else
     echo "
-    Double check if proxy is correctly set in the lightning conf file
-    CLN:   always-use-proxy=true
-    LND:   tor.skip-proxy-for-clearnet-targets=false
     Restart lightning service with
     sudo systemctl restart lnd.service | lightningd.service";echo
 fi
