@@ -13,7 +13,7 @@ import WorldMap from "./components/WorldMap";
 // helper
 const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
 
-const DEBUG = true
+const DEBUG = false
 
 // WebSocket
 <<<<<<< HEAD
@@ -25,9 +25,8 @@ var socket =  io.connect('/', {
 });
 =======
 // var socket =  io.connect('https://lnvpn.com', {
-// var socket =  io.connect('http://localhost:5000', {
+var socket =  io.connect('http://localhost:5000', {
 
-var socket =  io.connect('/', {
 
 });
 >>>>>>> d3aaa87... change prices
@@ -53,10 +52,17 @@ function App() {
   const [priceDollar, updatePrice] = useState(8.5);
 =======
   const [priceDollar, updatePrice] = useState(1);
+<<<<<<< HEAD
 >>>>>>> fb06a4e... bugfix
   // const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
   const [btcPerDollar, setBtcPerDollar] = useState(1);
 >>>>>>> 70fb024... change prices
+||||||| parent of 4579f54... added comments and cleaned up
+  // const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
+  const [btcPerDollar, setBtcPerDollar] = useState(1);
+=======
+  const [satsPerDollar, setSatsPerDollar] = useState(Math.round(100000000/23000));
+>>>>>>> 4579f54... added comments and cleaned up
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
@@ -166,7 +172,7 @@ function App() {
   }
   socket.off('receivePrice').on('receivePrice', price => {
     DEBUG && console.log(`${getDate()} App.js: server.getPrice(): `+price);
-    // setBtcPerDollar(Math.trunc(Math.round(price)));
+    setSatsPerDollar(Math.trunc(Math.round(price)));
   });
 
   // check invoice
@@ -182,23 +188,17 @@ function App() {
       socket.emit('getInvoice', price,publicKey,presharedKey,priceDollar,country);
   };
 
-  //GetWireguardConfig
-  const getWireguardConfig = (publicKey,presharedKey,priceDollar,country) => {
-    DEBUG && console.log(`${getDate()} App.js: getWireguardConfig(): publicKey: `+publicKey+`, price: `+priceDollar+`$, country: `+country);
-    socket.emit('getWireguardConfig',publicKey,presharedKey,priceDollar,country);
-  };
 
   socket.off('invoicePaid').on('invoicePaid', paymentHash => {
     DEBUG && console.log(`${getDate()} App.js: got msg 'invoicePaid': `+paymentHash+` clientPaymentHash: `+paymentHash);
 
     DEBUG && console.log(`${getDate()} Invoice paid`)
-    // if((paymentHash === clientPaymentHash) && !isPaid)
-    // {
+    if((paymentHash === clientPaymentHash) && !isPaid)
+    {
       renderAlert(true);
       isPaid = true;
       setSpinner(true);
-      // getWireguardConfig(keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
-    // }
+    }
   });
 
 
@@ -308,7 +308,7 @@ function App() {
           isConfigModal={isConfigModal}
           value={payment_request}
           download={() => {download("tunnelsatsv2.conf",payment_request)}}
-          showNewInvoice={() => {getInvoice(priceDollar*btcPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);setSpinner(true)}}
+          showNewInvoice={() => {getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);setSpinner(true)}}
           handleClose={closeInvoiceModal}
           emailAddress = {emailAddress}
           expiryDate = {getTimeStamp(priceDollar)}
@@ -317,18 +317,26 @@ function App() {
           />
 
           <div className='price'>
-            <h3>{(Math.trunc(priceDollar*btcPerDollar)).toLocaleString()} <i class="fak fa-satoshisymbol-solidtilt"/></h3>
+            <h3>{(Math.trunc(priceDollar*satsPerDollar)).toLocaleString()} <i class="fak fa-satoshisymbol-solidtilt"/></h3>
           </div>
 
           <div className='main-buttons'>
               <Button onClick={() => { 
-                 getInvoice(priceDollar*btcPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
+                 getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
                  showInvoiceModal();
                  hideConfigModal();
                  updatePaymentrequest();
                  setSpinner(true);
                  isPaid=false;
                }} variant="outline-warning">Generate Invoice</Button>
+          </div>
+
+
+          <div className='main-buttons'>
+              <Button onClick={() => { 
+                displayNewPair(window.wireguard.generateKeypair);
+                DEBUG && console.log(`${getDate()} newKeyPair: ${keyPair}`);
+                 }} variant="outline-info">New Keys</Button>
           </div>
 
           <div className='footer-text'>
