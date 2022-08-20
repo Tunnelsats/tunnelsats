@@ -3,7 +3,7 @@ import {ToggleButtonGroup,ToggleButton} from 'react-bootstrap'
 const RuntimeSelector = (props) => {
   return (
     <div>
-    <ToggleButtonGroup type="radio" name="options" id="runtimeselector" defaultValue={0.01} >
+    <ToggleButtonGroup type="radio" name="options" id="runtimeselector" defaultValue={8.5} >
       <ToggleButton id="tbg-radio-1" variant="secondary" value={0.01} onClick={props.onClick}>
         1 <br></br> month
       </ToggleButton>

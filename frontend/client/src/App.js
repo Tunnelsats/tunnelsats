@@ -13,9 +13,24 @@ import WorldMap from "./components/WorldMap";
 // helper
 const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
 
+const DEBUG = true
 
 // WebSocket
+<<<<<<< HEAD
 const socket = io.connect();
+||||||| parent of d3aaa87... change prices
+var socket =  io.connect('/', {
+  transports: ['polling'],
+  withCredentials: true
+});
+=======
+// var socket =  io.connect('https://lnvpn.com', {
+// var socket =  io.connect('http://localhost:5000', {
+
+var socket =  io.connect('/', {
+
+});
+>>>>>>> d3aaa87... change prices
 
 // Consts
 var emailAddress;
@@ -56,7 +71,7 @@ function App() {
   */
 
   // fetch btc price per dollar
-  /*
+  
   useEffect(() => {
     // fetch btc price
     const request = setInterval(() => {
@@ -65,8 +80,9 @@ function App() {
     // clearing interval
     return () => clearInterval(request);
   }, []);
-  */
+  
 
+<<<<<<< HEAD
   // randomize wireguard keys
   /*
   useEffect(() => {
@@ -78,6 +94,27 @@ function App() {
     return () => clearInterval(timer);
   }, []);
   */
+||||||| parent of d3aaa87... change prices
+  // randomize wireguard keys
+  useEffect(() => {
+    const timer = setInterval(() => {
+      displayNewPair(window.wireguard.generateKeypair);
+      console.log(`${getDate()} newKeyPair`);
+    }, 30000); // 30s
+    // clearing interval
+    return () => clearInterval(timer);
+  }, []);
+=======
+  // // randomize wireguard keys
+  // useEffect(() => {
+  //   const timer = setInterval(() => {
+  //     displayNewPair(window.wireguard.generateKeypair);
+  //     DEBUG && console.log(`${getDate()} newKeyPair`);
+  //   }, 30000); // 30s
+  //   // clearing interval
+  //   return () => clearInterval(timer);
+  // }, []);
+>>>>>>> d3aaa87... change prices
 
   //Successful payment alert
   const renderAlert = (show) => {
@@ -88,16 +125,18 @@ function App() {
   //Updates the QR-Code
   const updatePaymentrequest = () => {
     socket.on('lnbitsInvoice', invoiceData => {
-      console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
+      DEBUG && console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
       setPaymentrequest(invoiceData.payment_request);
       clientPaymentHash = invoiceData.payment_hash;
       setSpinner(false);
     }
   )};
 
+
+
   //Connect to WebSocket Server
-  socket.off('connect').on('connect', () => {
-    console.log(`${getDate()} App.js: connect`)
+  socket.removeAllListeners("connect").on('connect', () => {
+    DEBUG && console.log(`${getDate()} App.js: connect with id: ${socket.id}`)
     //Checks for already paid invoice if browser switche tab on mobile
     if((clientPaymentHash !== undefined)){
       checkInvoice();
@@ -108,48 +147,55 @@ function App() {
   
   // get current btc per dollar
   const getPrice = () => {
-    socket.emit('getPrice');
+    socket.removeAllListeners('getPrice').emit('getPrice');
   }
-  socket.on('receivePrice', price => {
-    console.log(`${getDate()} App.js: server.getPrice(): `+price);
+  socket.off('receivePrice').on('receivePrice', price => {
+    DEBUG && console.log(`${getDate()} App.js: server.getPrice(): `+price);
     setBtcPerDollar(Math.trunc(Math.round(price)));
   });
 
   // check invoice
   const checkInvoice = () => {
-      console.log(`${getDate()} App.js: checkInvoice(): `+clientPaymentHash);
+      DEBUG && console.log(`${getDate()} App.js: checkInvoice(): ${clientPaymentHash}`);
       socket.emit('checkInvoice',clientPaymentHash);
+
   };
 
   //Get the invoice
-  const getInvoice = (price) => {
-      console.log(`${getDate()} App.js: getInvoice(price): `+price+`$`);
-      socket.emit('getInvoice', price);
+  const getInvoice = (price,publicKey,presharedKey,priceDollar,country) => {
+      DEBUG && console.log(`${getDate()} App.js: getInvoice(price): `+price+`$`);
+      socket.emit('getInvoice', price,publicKey,presharedKey,priceDollar,country);
   };
 
   //GetWireguardConfig
   const getWireguardConfig = (publicKey,presharedKey,priceDollar,country) => {
-    console.log(`${getDate()} App.js: getWireguardConfig(): publicKey: `+publicKey+`, price: `+priceDollar+`$, country: `+country);
+    DEBUG && console.log(`${getDate()} App.js: getWireguardConfig(): publicKey: `+publicKey+`, price: `+priceDollar+`$, country: `+country);
     socket.emit('getWireguardConfig',publicKey,presharedKey,priceDollar,country);
   };
 
   socket.off('invoicePaid').on('invoicePaid', paymentHash => {
-    console.log(`${getDate()} App.js: got msg 'invoicePaid': `+paymentHash+` clientPaymentHash: `+clientPaymentHash);
-    if((paymentHash === clientPaymentHash) && !isPaid)
-    {
+    DEBUG && console.log(`${getDate()} App.js: got msg 'invoicePaid': `+paymentHash+` clientPaymentHash: `+paymentHash);
+
+    DEBUG && console.log(`${getDate()} Invoice paid`)
+    // if((paymentHash === clientPaymentHash) && !isPaid)
+    // {
       renderAlert(true);
       isPaid = true;
       setSpinner(true);
-      getWireguardConfig(keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
-    }
+      // getWireguardConfig(keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
+    // }
   });
+
 
   //Get wireguard config from Server
   socket.off('receiveConfigData').on('receiveConfigData',wireguardConfig => {
-    console.log(`${getDate()} App.js: got msg receiveConfigData`);
+    DEBUG && console.log(`${getDate()} App.js: got msg receiveConfigData`);
     setSpinner(false);
     setPaymentrequest(buildConfigFile(wireguardConfig).join('\n'));
   });
+
+
+  
 
   //Construct the Config File
   const buildConfigFile = (serverResponse) => {
@@ -194,7 +240,7 @@ function App() {
   };
 
   const sendEmail = (email,config,date) => {
-    console.log(`${getDate()} App.js: sendEmail(): `+email+`, validdate: `+date);
+    DEBUG && console.log(`${getDate()} App.js: sendEmail(): `+email+`, validdate: `+date);
     socket.emit('sendEmail',email,config,date);
   };
 
@@ -247,7 +293,7 @@ function App() {
           isConfigModal={isConfigModal}
           value={payment_request}
           download={() => {download("tunnelsatsv2.conf",payment_request)}}
-          showNewInvoice={() => {getInvoice(priceDollar);setSpinner(true)}}
+          showNewInvoice={() => {getInvoice(1,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);setSpinner(true)}}
           handleClose={closeInvoiceModal}
           emailAddress = {emailAddress}
           expiryDate = {getTimeStamp(priceDollar)}
@@ -261,7 +307,7 @@ function App() {
 
           <div className='main-buttons'>
               <Button onClick={() => { 
-                 getInvoice(priceDollar);
+                 getInvoice(1,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
                  showInvoiceModal();
                  hideConfigModal();
                  updatePaymentrequest();
