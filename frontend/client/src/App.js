@@ -40,8 +40,17 @@ var isPaid=false;
 
 function App() {
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
+<<<<<<< HEAD
   const [priceDollar, updatePrice] = useState(0.01);
   const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
+||||||| parent of 70fb024... change prices
+  const [priceDollar, updatePrice] = useState(8.5);
+  const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
+=======
+  const [priceDollar, updatePrice] = useState(8.5);
+  // const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
+  const [btcPerDollar, setBtcPerDollar] = useState(1);
+>>>>>>> 70fb024... change prices
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
@@ -151,7 +160,7 @@ function App() {
   }
   socket.off('receivePrice').on('receivePrice', price => {
     DEBUG && console.log(`${getDate()} App.js: server.getPrice(): `+price);
-    setBtcPerDollar(Math.trunc(Math.round(price)));
+    // setBtcPerDollar(Math.trunc(Math.round(price)));
   });
 
   // check invoice
