@@ -2,8 +2,11 @@ const express = require('express');
 const path = require('path');
 const bodyParser = require("body-parser")
 const axios = require('axios');
-var nodemailer = require('nodemailer');
-var dayjs = require('dayjs');
+const nodemailer = require('nodemailer');
+const dayjs = require('dayjs');
+const { SocksProxyAgent } = require('socks-proxy-agent');
+const fetch = require('node-fetch-commonjs');
+
 const {logDim} = require('./logger')
 
 
@@ -35,8 +38,51 @@ function isEmpty(obj) {
 
 
 
+// Telegram Settings
+const TELEGRAM_CHATID = process.env.TELEGRAM_CHATID || ''
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || ''
+// Tor Proxy for Telegram Bot
+const TELEGRAM_PROXY_HOST = process.env.TELEGRAM_PROXY_HOST || ''
+const TELEGRAM_PROXY_PORT = process.env.TELEGRAM_PROXY_PORT || ''
+
+// Telegram Bot
+
+// token looks like adsfasfdsf:adsfsadfasdfasfasdfasfd-asdfsf
+// chat_id looks like 1231231231
+const sayWithTelegram = async ({  message, parse_mode = 'HTML' }) => {
+  // parse_mode can be undefined, or 'MarkdownV2' or 'HTML'
+  // https://core.telegram.org/bots/api#html-style
+  let proxy = ''
+  if(TELEGRAM_PROXY_HOST != '' && TELEGRAM_PROXY_PORT != '') { proxy = `socks://${TELEGRAM_PROXY_HOST}:${TELEGRAM_PROXY_PORT}` }
+
+  const parseModeString = parse_mode ? `&parse_mode=${parse_mode}` : ''
+  try {
+
+    let endpoint = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHATID}&text=${encodeURIComponent(message)}${parseModeString}`
+    let opts = new URL(endpoint)
+    if (proxy === "") {
+      logDim(`sayWithTelegram()`)
+    } else {
+      opts.agent = new SocksProxyAgent(proxy)
+    }
+
+    const res = await fetch(opts)
+    const fullResponse = await res.json()
+    // logDim(`${getDate()} sayWithTelegramBot() result:`, JSON.stringify(fullResponse, null, 2))
+    return fullResponse
+    
+
+  } catch (e) {
+    logDim(`sayWithTelegram() aborted:`, e)
+    return null
+  }
+}
+
+
+
 // Server Settings
 const createServer = require('http');
+// const { rootCertificates } = require('tls');
 const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
   cors: {
@@ -67,7 +113,7 @@ app.post(process.env.WEBHOOK, (req, res) => {
 
       if(index !== -1) {
     
-      const {paymentDetails, publicKey,presharedKey,priceDollar,country, id } = invoiceWGKeysMap[index]
+      const {paymentDetails, publicKey,presharedKey,priceDollar,country, id, amountSats } = invoiceWGKeysMap[index]
 
       // Needed for now to notify the client to stop the spinner
       io.to(id).emit('invoicePaid',paymentDetails.payment_hash)
@@ -77,10 +123,16 @@ app.post(process.env.WEBHOOK, (req, res) => {
       .then(result => {io.to(id).emit('receiveConfigData',result)
           logDim(`Successfully created wg entry for pubkey ${publicKey}`)
           invoiceWGKeysMap.splice(index,1);
+
+
+          const serverDNS = getServer(country).replace(/^https?:\/\//, '').replace(/\/manager\/$/, '');
+          sayWithTelegram({message: `[Tunnelsats-Server.js] 🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${amountSats}💰`})
+          .catch(error => logDim(error.message))
+
           res.status(200).end()
       })
       .catch(error => {
-        console.log(error.message)
+        sayWithTelegram({message: `[Tunnelsats-Server.js] 🔴 Creating New Subscription failed with ${error.message}`})
         res.status(500).end()
 
       })
@@ -116,7 +168,7 @@ io.on('connection', (socket) => {
   
         if(index !== -1) {
          
-          const {paymentDetails, publicKey,presharedKey,priceDollar,country, id } = invoiceWGKeysMap[index]
+          const {paymentDetails, publicKey,presharedKey,priceDollar,country } = invoiceWGKeysMap[index]
   
           io.to(socket.id).emit('invoicePaid',paymentDetails.payment_hash)
   
@@ -125,8 +177,13 @@ io.on('connection', (socket) => {
                 logDim(`Successfully created wg entry for pubkey ${publicKey}`)
                 invoiceWGKeysMap.splice(index,1);
 
+                const serverDNS = getServer(country).replace(/^https?:\/\//, '').replace(/\/manager\/$/, '');
+                sayWithTelegram({message: `[Tunnelsats-Server.js] 🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${amountSats}💰`})
+
+
           })
             .catch(error => {
+              sayWithTelegram({message: `[Tunnelsats-Server.js] 🔴 Creating New Subscription failed with ${error.message}`})
               DEBUG && logDim(error.message)
         })
       } else {
@@ -145,12 +202,12 @@ io.on('connection', (socket) => {
 
     if (invoiceWGKeysMap.length <= MAXINVOICES){
 
-
       getInvoice(amount).then(result => {
       
       socket.emit("lnbitsInvoice",result)
+
       // Safes the client request related to the socket id including the payment_hash to later send the config data only to the right client
-      invoiceWGKeysMap.push({paymentDetails: result, publicKey: publicKey, presharedKey: presharedKey, priceDollar: priceDollar, country: country , id : socket.id})
+      invoiceWGKeysMap.push({paymentDetails: result, publicKey: publicKey, presharedKey: presharedKey, priceDollar: priceDollar, country: country , id : socket.id, amountSats: amount })
       DEBUG && console.log(invoiceWGKeysMap)
 
       })
@@ -193,8 +250,8 @@ io.on('connection', (socket) => {
 })
 
 //Transforms country into server
-var getServer = (country) => {
-  var server;
+let getServer = (country) => {
+  let server;
   if (country == "eu"){
     server = process.env.IP_EU;
   }
@@ -218,15 +275,9 @@ var getServer = (country) => {
 
 
 // Transforms duration into timestamp
-var getTimeStamp = (selectedValue) =>{
+const getTimeStamp = (selectedValue) =>{
   
-  var date;
-
-
-  if(selectedValue == 1){
-    date = addMonths(date = new Date(),1)
-    return date;
-  }
+  let date;
 
 
   if(selectedValue == 3){
@@ -250,7 +301,7 @@ var getTimeStamp = (selectedValue) =>{
   }
 
   function addMonths(date = new Date(), months) {
-    var d = date.getDate();
+    let d = date.getDate();
     date.setMonth(date.getMonth() + +months);
     if (date.getDate() != d) {
       date.setDate(0);
@@ -268,7 +319,7 @@ const parseDate = (date) => { return dayjs(date).format("YYYY-MMM-DD hh:mm:ss A"
 
 // Get Invoice Function
 async function getInvoice(amount) {
-  // var satoshis = await getPrice()
+  // let satoshis = await getPrice()
   //                       .then((result) => { return result })
   //                       .catch(error => { return error });
   return axios({
@@ -298,11 +349,9 @@ async function getPrice() {
     method: "get",
     url: process.env.URL_PRICE_API
   }).then(function (response){
-    if(response) {
-      const priceBTC = (response.data.USD.buy);
-      var priceOneDollar = (100000000 / priceBTC);
-      return priceOneDollar;
-    }
+     const priceBTC = (response.data.USD.buy);
+     let priceOneDollar = (100000000 / priceBTC);
+     return priceOneDollar;
   }).catch(error => {
     return error;
   });
@@ -328,7 +377,7 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
     }
    };
 
-   let response1 = await axios(request1).catch(error => { 
+   const response1 = await axios(request1).catch(error => { 
       throw new Error(`Error - wgAPI createKey\n ${error.message}`);
     });
 
@@ -345,7 +394,7 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
         "keyID": response1.data.keyID
         }
       }
-      var response2 = await axios(request2).catch(error => { 
+      const response2 = await axios(request2).catch(error => { 
         throw new Error(`Error - wgAPI portFwd\n ${error.message}`);
        });
 
@@ -378,7 +427,7 @@ async function sendEmail(emailAddress,configData,date) {
       ],
     };
 
-   let transporter = nodemailer.createTransport({
+   const transporter = nodemailer.createTransport({
         host: process.env.EMAIL_HOST,
         port: process.env.EMAIL_PORT,
         secure: false, // true for 465, false for other ports

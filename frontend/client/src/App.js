@@ -10,12 +10,15 @@ import HeaderInfo from './components/HeaderInfo';
 import logo from './media/tunnelsats_headerlogo3.png';
 import WorldMap from "./components/WorldMap";
 
+
+
 // helper
 const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
 
-const DEBUG = false
+const DEBUG = true
 
 // WebSocket
+<<<<<<< HEAD
 <<<<<<< HEAD
 const socket = io.connect();
 ||||||| parent of d3aaa87... change prices
@@ -30,15 +33,29 @@ var socket =  io.connect('http://localhost:5000', {
 
 });
 >>>>>>> d3aaa87... change prices
+||||||| parent of cc9571d... clean code and add telegram bot
+// var socket =  io.connect('https://lnvpn.com', {
+var socket =  io.connect('http://localhost:5000', {
+
+
+});
+=======
+// let socket =  io.connect('http://localhost:5000');
+let socket =  io.connect('/');
+>>>>>>> cc9571d... clean code and add telegram bot
 
 // Consts
-var emailAddress;
-var clientPaymentHash;
-var isPaid=false;
+let emailAddress;
+let clientPaymentHash;
+let isPaid=false;
+
 
 
 function App() {
+
+
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
   const [priceDollar, updatePrice] = useState(0.01);
@@ -61,6 +78,11 @@ function App() {
   // const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
   const [btcPerDollar, setBtcPerDollar] = useState(1);
 =======
+||||||| parent of cc9571d... clean code and add telegram bot
+  const [priceDollar, updatePrice] = useState(1);
+=======
+  const [priceDollar, updatePrice] = useState(0.01);
+>>>>>>> cc9571d... clean code and add telegram bot
   const [satsPerDollar, setSatsPerDollar] = useState(Math.round(100000000/23000));
 >>>>>>> 4579f54... added comments and cleaned up
   const [showSpinner, setSpinner] = useState(true);
@@ -147,12 +169,12 @@ function App() {
   const updatePaymentrequest = () => {
     socket.on('lnbitsInvoice', invoiceData => {
       DEBUG && console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
+      console.log(`${getDate()} Paymenthash: ${invoiceData.payment_hash}, ${invoiceData.payment_request}`)
       setPaymentrequest(invoiceData.payment_request);
       clientPaymentHash = invoiceData.payment_hash;
       setSpinner(false);
     }
   )};
-
 
 
   //Connect to WebSocket Server
@@ -190,9 +212,8 @@ function App() {
 
 
   socket.off('invoicePaid').on('invoicePaid', paymentHash => {
-    DEBUG && console.log(`${getDate()} App.js: got msg 'invoicePaid': `+paymentHash+` clientPaymentHash: `+paymentHash);
+    DEBUG && console.log(`${getDate()} App.js: got msg 'invoicePaid': `+paymentHash+` clientPaymentHash: `+clientPaymentHash);
 
-    DEBUG && console.log(`${getDate()} Invoice paid`)
     if((paymentHash === clientPaymentHash) && !isPaid)
     {
       renderAlert(true);
