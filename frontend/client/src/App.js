@@ -18,31 +18,8 @@ const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : ne
 const DEBUG = true
 
 // WebSocket
-<<<<<<< HEAD
-<<<<<<< HEAD
-const socket = io.connect();
-||||||| parent of d3aaa87... change prices
-var socket =  io.connect('/', {
-  transports: ['polling'],
-  withCredentials: true
-});
-=======
-// var socket =  io.connect('https://lnvpn.com', {
-var socket =  io.connect('http://localhost:5000', {
-
-
-});
->>>>>>> d3aaa87... change prices
-||||||| parent of cc9571d... clean code and add telegram bot
-// var socket =  io.connect('https://lnvpn.com', {
-var socket =  io.connect('http://localhost:5000', {
-
-
-});
-=======
-// let socket =  io.connect('http://localhost:5000');
-let socket =  io.connect('/');
->>>>>>> cc9571d... clean code and add telegram bot
+let socket =  io.connect('http://localhost:5000');
+// let socket =  io.connect('/');
 
 // Consts
 let emailAddress;
@@ -55,36 +32,8 @@ function App() {
 
 
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
   const [priceDollar, updatePrice] = useState(0.01);
-  const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
-||||||| parent of 70fb024... change prices
-  const [priceDollar, updatePrice] = useState(8.5);
-  const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
-=======
-  const [priceDollar, updatePrice] = useState(8.5);
-||||||| parent of fb06a4e... bugfix
-  const [priceDollar, updatePrice] = useState(8.5);
-=======
-  const [priceDollar, updatePrice] = useState(1);
-<<<<<<< HEAD
->>>>>>> fb06a4e... bugfix
-  // const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
-  const [btcPerDollar, setBtcPerDollar] = useState(1);
->>>>>>> 70fb024... change prices
-||||||| parent of 4579f54... added comments and cleaned up
-  // const [btcPerDollar, setBtcPerDollar] = useState(Math.round(100000000/23000));
-  const [btcPerDollar, setBtcPerDollar] = useState(1);
-=======
-||||||| parent of cc9571d... clean code and add telegram bot
-  const [priceDollar, updatePrice] = useState(1);
-=======
-  const [priceDollar, updatePrice] = useState(0.01);
->>>>>>> cc9571d... clean code and add telegram bot
   const [satsPerDollar, setSatsPerDollar] = useState(Math.round(100000000/23000));
->>>>>>> 4579f54... added comments and cleaned up
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
@@ -125,29 +74,6 @@ function App() {
   }, []);
   
 
-<<<<<<< HEAD
-  // randomize wireguard keys
-  /*
-  useEffect(() => {
-    const timer = setInterval(() => {
-      displayNewPair(window.wireguard.generateKeypair);
-      console.log(`${getDate()} newKeyPair`);
-    }, 30000); // 30s
-    // clearing interval
-    return () => clearInterval(timer);
-  }, []);
-  */
-||||||| parent of d3aaa87... change prices
-  // randomize wireguard keys
-  useEffect(() => {
-    const timer = setInterval(() => {
-      displayNewPair(window.wireguard.generateKeypair);
-      console.log(`${getDate()} newKeyPair`);
-    }, 30000); // 30s
-    // clearing interval
-    return () => clearInterval(timer);
-  }, []);
-=======
   // // randomize wireguard keys
   // useEffect(() => {
   //   const timer = setInterval(() => {
@@ -157,7 +83,6 @@ function App() {
   //   // clearing interval
   //   return () => clearInterval(timer);
   // }, []);
->>>>>>> d3aaa87... change prices
 
   //Successful payment alert
   const renderAlert = (show) => {
@@ -241,6 +166,7 @@ function App() {
     '[Interface]',
     'PrivateKey = '+keyPair.privateKey,
     'Address = '+serverResponse.ipv4Address,
+    'DNS = '+serverResponse.dns,
     '#VPNPort = '+serverResponse.portFwd,
     '#ValidUntil (UTC time)= '+getTimeStamp(priceDollar).toISOString(),
     ' ',
@@ -364,7 +290,7 @@ function App() {
             <Row>
               <Col><a href="https://twitter.com/TunnelSats" target="_blank" rel="noreferrer"><span class="icon icon-twitter"></span></a></Col>
               <Col><a href="https://github.com/blckbx/tunnelsats" target="_blank" rel="noreferrer"><span class="icon icon-github"></span></a></Col>
-              <Col><a href="https://dev.lnbits.tunnelsats.com/tipjar/2" target="_blank" rel="noreferrer"><span class="icon icon-heart"></span></a></Col>
+              <Col><a href="https://lnbits.tunnelsats.com/tipjar/1" target="_blank" rel="noreferrer"><span class="icon icon-heart"></span></a></Col>
               <Col><a href="https://t.me/+NJylaUom-rxjYjU6" target="_blank" rel="noreferrer"><span class="icon icon-telegram"></span></a></Col>
             </Row>
           </div>
