@@ -94,7 +94,7 @@ function App() {
   const updatePaymentrequest = () => {
     socket.on('lnbitsInvoice', invoiceData => {
       DEBUG && console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
-      console.log(`${getDate()} Paymenthash: ${invoiceData.payment_hash}, ${invoiceData.payment_request}`)
+      DEBUG && console.log(`${getDate()} Paymenthash: ${invoiceData.payment_hash}, ${invoiceData.payment_request}`)
       setPaymentrequest(invoiceData.payment_request);
       clientPaymentHash = invoiceData.payment_hash;
       setSpinner(false);

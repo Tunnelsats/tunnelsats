@@ -17,7 +17,7 @@ DEBUG = true
 // This array saves all invoices and wg keys (received by the client connection)
 // As soon as the invoice is paid the server sends the config information to the related client
 // This prevents sending all information to all clients and only sends a valid wg config to the related client
-// The socket is still open for all clients to connect to, therefore a maximum
+// The socket is still open for all clients to connect to
 
 let invoiceWGKeysMap= []
 
@@ -127,6 +127,7 @@ app.post(process.env.WEBHOOK, (req, res) => {
 
           const serverDNS = getServer(country).replace(/^https?:\/\//, '').replace(/\/manager\/$/, '');
           sayWithTelegram({message: `[Tunnelsats-Server.js] 🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(amountSats)}💰`})
+          .then((result) => {DEBUG && logDim(`${result}`)})
           .catch(error => logDim(error.message))
 
           res.status(200).end()
@@ -179,6 +180,8 @@ io.on('connection', (socket) => {
 
                 const serverDNS = getServer(country).replace(/^https?:\/\//, '').replace(/\/manager\/$/, '');
                 sayWithTelegram({message: `[Tunnelsats-Server.js] 🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(amountSats)}💰`})
+                .then((result) => {DEBUG && logDim(`${result}`)})
+                .catch(error => logDim(error.message))
 
 
           })
@@ -280,7 +283,7 @@ const getTimeStamp = (selectedValue) =>{
   let date;
 
 
-  if(selectedValue == 3){
+  if(selectedValue == 0.01){
     date = addMonths(date = new Date(),1)
     return date;
   }
