@@ -18,8 +18,8 @@ const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : ne
 const DEBUG = true
 
 // WebSocket
-let socket =  io.connect('http://localhost:5000');
-// let socket =  io.connect('/');
+// let socket =  io.connect('http://localhost:5000');
+let socket =  io.connect('/');
 
 // Consts
 let emailAddress;
