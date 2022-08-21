@@ -126,7 +126,7 @@ app.post(process.env.WEBHOOK, (req, res) => {
 
 
           const serverDNS = getServer(country).replace(/^https?:\/\//, '').replace(/\/manager\/$/, '');
-          sayWithTelegram({message: `[Tunnelsats-Server.js] 🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${amountSats}💰`})
+          sayWithTelegram({message: `[Tunnelsats-Server.js] 🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(amountSats)}💰`})
           .catch(error => logDim(error.message))
 
           res.status(200).end()
@@ -178,7 +178,7 @@ io.on('connection', (socket) => {
                 invoiceWGKeysMap.splice(index,1);
 
                 const serverDNS = getServer(country).replace(/^https?:\/\//, '').replace(/\/manager\/$/, '');
-                sayWithTelegram({message: `[Tunnelsats-Server.js] 🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${amountSats}💰`})
+                sayWithTelegram({message: `[Tunnelsats-Server.js] 🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(amountSats)}💰`})
 
 
           })
