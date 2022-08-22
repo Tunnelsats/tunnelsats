@@ -17,7 +17,7 @@ import { IoIosRefresh } from 'react-icons/io';
 // helper
 const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
 
-const DEBUG = true
+const DEBUG = false
 
 // WebSocket
 let socket =  io.connect('/');
