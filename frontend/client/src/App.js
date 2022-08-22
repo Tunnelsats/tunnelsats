@@ -10,7 +10,7 @@ import HeaderInfo from './components/HeaderInfo';
 import logo from './media/tunnelsats_headerlogo3.png';
 import WorldMap from "./components/WorldMap";
 import {Form,InputGroup} from 'react-bootstrap';
-import { GrUpdate } from 'react-icons/gr';
+import { IoIosRefresh } from 'react-icons/io';
 
 
 
@@ -259,7 +259,7 @@ function App() {
                   onChange = { (event) => { keyPair.privateKey = (event.target.value)} }
                   />
                   <Button onClick={() => { displayNewPair(window.wireguard.generateKeypair);
-                  }} variant="secondary"><GrUpdate /></Button>
+                  }} variant="secondary"><IoIosRefresh color="white" title="renew keys" /></Button>
               </InputGroup>
               <InputGroup>
                   <InputGroup.Text>Public Key</InputGroup.Text>
