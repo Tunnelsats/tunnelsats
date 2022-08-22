@@ -10,7 +10,7 @@ import HeaderInfo from './components/HeaderInfo';
 import logo from './media/tunnelsats_headerlogo3.png';
 import WorldMap from "./components/WorldMap";
 import {Form,InputGroup} from 'react-bootstrap';
-import shuffle from './media/shuffle-16.png';
+import { GrUpdate } from 'react-icons/gr';
 
 
 
@@ -259,7 +259,7 @@ function App() {
                   onChange = { (event) => { keyPair.privateKey = (event.target.value)} }
                   />
                   <Button onClick={() => { displayNewPair(window.wireguard.generateKeypair);
-                  }} variant="secondary"><img src={shuffle} alt ="renew keys" /></Button>
+                  }} variant="secondary"><GrUpdate /></Button>
               </InputGroup>
               <InputGroup>
                   <InputGroup.Text>Public Key</InputGroup.Text>
