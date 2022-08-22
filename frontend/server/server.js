@@ -55,6 +55,9 @@ const sayWithTelegram = async ({  message, parse_mode = 'HTML' }) => {
   let proxy = ''
   if(TELEGRAM_PROXY_HOST != '' && TELEGRAM_PROXY_PORT != '') { proxy = `socks://${TELEGRAM_PROXY_HOST}:${TELEGRAM_PROXY_PORT}` }
 
+
+  message = "[Tunnelsats-DevServer.js] " + message
+
   const parseModeString = parse_mode ? `&parse_mode=${parse_mode}` : ''
   try {
 
@@ -126,14 +129,14 @@ app.post(process.env.WEBHOOK, (req, res) => {
 
 
           const serverDNS = getServer(country).replace(/^https?:\/\//, '').replace(/\/manager\/$/, '');
-          sayWithTelegram({message: `[Tunnelsats-Server.js] 🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(amountSats)}💰`})
+          sayWithTelegram({message: `🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(amountSats)}💰`})
           .then((result) => {DEBUG && logDim(`${result}`)})
           .catch(error => logDim(error.message))
 
           res.status(200).end()
       })
       .catch(error => {
-        sayWithTelegram({message: `[Tunnelsats-Server.js] 🔴 Creating New Subscription failed with ${error.message}`})
+        sayWithTelegram({message: `🔴 Creating New Subscription failed with ${error.message}`})
         res.status(500).end()
 
       })
@@ -179,7 +182,7 @@ io.on('connection', (socket) => {
                 invoiceWGKeysMap.splice(index,1);
 
                 const serverDNS = getServer(country).replace(/^https?:\/\//, '').replace(/\/manager\/$/, '');
-                sayWithTelegram({message: `[Tunnelsats-Server.js] 🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(amountSats)}💰`})
+                sayWithTelegram({message: `🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(amountSats)}💰`})
                 .then((result) => {DEBUG && logDim(`${result}`)})
                 .catch(error => logDim(error.message))
 
