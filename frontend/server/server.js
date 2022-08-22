@@ -417,7 +417,7 @@ async function sendEmail(emailAddress,configData,date) {
       attachments: [
         {
           content: configData,
-          filename: 'lndHybridMode.conf',
+          filename: 'tunnelsatsv2.conf',
           contentType : "text/plain",
           endings:'native',
           disposition: 'attachment'
