@@ -1,20 +1,20 @@
  var getTimeStamp = (selectedValue) =>{
     var date = new Date();
 
-    if(selectedValue == 0.01){
+    if(selectedValue == 0.001){
       date = addMonths(date = new Date(),1)
       return date
     }
-    if(selectedValue == 0.02){
+    if(selectedValue == 0.002){
       date = addMonths(date = new Date(),3)
       return date
     }
-    if(selectedValue == 0.03){
+    if(selectedValue == 0.003){
       date = addMonths(date = new Date(),6)
       return date
     }
 
-    if(selectedValue == 0.04){
+    if(selectedValue == 0.004){
       date = addMonths(date = new Date(),12)
       return date
     }
