@@ -1,7 +1,7 @@
 import {Row, Col, Container, Button, Nav, Navbar} from 'react-bootstrap';
 import {io} from "socket.io-client";
-import {useState,useEffect} from 'react';
-import KeyInput from './components/KeyInput';
+import {useState} from 'react';
+//import KeyInput from './components/KeyInput';
 import RuntimeSelector from './components/RuntimeSelector';
 import InvoiceModal from './components/InvoiceModal';
 import  './wireguard.js';
@@ -9,6 +9,8 @@ import {getTimeStamp} from './timefunction.js';
 import HeaderInfo from './components/HeaderInfo';
 import logo from './media/tunnelsats_headerlogo3.png';
 import WorldMap from "./components/WorldMap";
+import {Form,InputGroup} from 'react-bootstrap';
+import shuffle from './media/shuffle-16.png';
 
 
 
@@ -18,7 +20,6 @@ const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : ne
 const DEBUG = true
 
 // WebSocket
-// let socket =  io.connect('http://localhost:5000');
 let socket =  io.connect('/');
 
 // Consts
@@ -32,7 +33,7 @@ function App() {
 
 
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
-  const [priceDollar, updatePrice] = useState(0.01);
+  const [priceDollar, updatePrice] = useState(0.001);
   const [satsPerDollar, setSatsPerDollar] = useState(Math.round(100000000/23000));
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
@@ -63,7 +64,7 @@ function App() {
   */
 
   // fetch btc price per dollar
-  
+  /*
   useEffect(() => {
     // fetch btc price
     const request = setInterval(() => {
@@ -72,7 +73,7 @@ function App() {
     // clearing interval
     return () => clearInterval(request);
   }, []);
-  
+  */
 
   // // randomize wireguard keys
   // useEffect(() => {
@@ -238,7 +239,7 @@ function App() {
           
           <WorldMap selected={country} onSelect={updateCountry}/>
 
-          <KeyInput
+          {/*<KeyInput
           publicKey={keyPair.publicKey}
           privateKey={keyPair.privateKey}
           presharedKey={keyPair.presharedKey}
@@ -246,6 +247,41 @@ function App() {
           newPublicKey={(publicKey) => {keyPair.publicKey = publicKey}}
           newPresharedKey={(presharedKey) => {keyPair.presharedKey = presharedKey}}
           />
+          */}
+            <Form>
+              <Form.Group className="mb-2">
+              <InputGroup>
+                  <InputGroup.Text>Private Key</InputGroup.Text>
+                  <Form.Control
+                  disabled
+                  key={keyPair.privateKey}
+                  defaultValue={keyPair.privateKey}
+                  onChange = { (event) => { keyPair.privateKey = (event.target.value)} }
+                  />
+                  <Button onClick={() => { displayNewPair(window.wireguard.generateKeypair);
+                  }} variant="secondary"><img src={shuffle} alt ="renew keys" /></Button>
+              </InputGroup>
+              <InputGroup>
+                  <InputGroup.Text>Public Key</InputGroup.Text>
+                  <Form.Control
+                  disabled
+                  key={keyPair.publicKey}
+                  defaultValue={keyPair.publicKey}
+                  onChange = { (event) => { keyPair.publicKey = (event.target.value) } }
+              />
+              </InputGroup>
+              <InputGroup>
+                  <InputGroup.Text>Preshared Key</InputGroup.Text>
+                  <Form.Control
+                  disabled
+                  key={keyPair.presharedKey}
+                  defaultValue={keyPair.presharedKey}
+                  onChange = { (event) => { keyPair.presharedKey = (event.target.value) } }
+              />
+              </InputGroup>
+              </Form.Group>
+
+          </Form>
 
           <RuntimeSelector onClick={runtimeSelect} />
 
@@ -276,14 +312,6 @@ function App() {
                  setSpinner(true);
                  isPaid=false;
                }} variant="outline-warning">Generate Invoice</Button>
-          </div>
-
-
-          <div className='main-buttons'>
-              <Button onClick={() => { 
-                displayNewPair(window.wireguard.generateKeypair);
-                DEBUG && console.log(`${getDate()} newKeyPair: ${keyPair}`);
-                 }} variant="outline-info">New Keys</Button>
           </div>
 
           <div className='footer-text'>

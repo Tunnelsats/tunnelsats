@@ -165,7 +165,7 @@ io.on('connection', (socket) => {
    
       const index = invoiceWGKeysMap.findIndex((client) => {
         return client.paymentDetails.payment_hash === result
-       });
+      });
   
         if(index !== -1) {
          
@@ -207,11 +207,11 @@ io.on('connection', (socket) => {
 
       getInvoice(amount).then(result => {
       
-      socket.emit("lnbitsInvoice",result)
+        socket.emit("lnbitsInvoice",result)
 
-      // Safes the client request related to the socket id including the payment_hash to later send the config data only to the right client
-      invoiceWGKeysMap.push({paymentDetails: result, publicKey: publicKey, presharedKey: presharedKey, priceDollar: priceDollar, country: country , id : socket.id, amountSats: amount })
-      DEBUG && console.log(invoiceWGKeysMap)
+        // Safes the client request related to the socket id including the payment_hash to later send the config data only to the right client
+        invoiceWGKeysMap.push({paymentDetails: result, publicKey: publicKey, presharedKey: presharedKey, priceDollar: priceDollar, country: country , id : socket.id, amountSats: amount })
+        DEBUG && console.log(invoiceWGKeysMap)
 
       })
       .catch(error => logDim(error.message))
@@ -240,14 +240,13 @@ io.on('connection', (socket) => {
     // Delete all user related invoices and wg information to free memory as soon as a user disconnects
     // Needs to be a loop bc client can create more than one invoice (getNewInvoice)
     while (index !== -1) {
-     index = invoiceWGKeysMap.findIndex((client) => {
-      return client.id === socket.id
-    });
-    if(index !== -1) {
-      invoiceWGKeysMap.splice(index,1);
+      index = invoiceWGKeysMap.findIndex((client) => {
+        return client.id === socket.id
+      });
+      if(index !== -1) {
+        invoiceWGKeysMap.splice(index,1);
+      }
     }
-  }
-
   })    
 
 })
@@ -461,7 +460,6 @@ async function checkInvoice(hash) {
        throw new Error(`Error - Invoice not paid ${hash}`)
   }).catch(error => { 
     throw new Error(`Error - fetching Invoice from Lnbits failed\n ${error.message}`);
-
-   })
+  })
 
 };
