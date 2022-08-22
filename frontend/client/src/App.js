@@ -259,7 +259,7 @@ function App() {
                   onChange = { (event) => { keyPair.privateKey = (event.target.value)} }
                   />
                   <Button onClick={() => { displayNewPair(window.wireguard.generateKeypair);
-                  }} variant="secondary"><IoIosRefresh color="white" title="renew keys" /></Button>
+                  }} variant="secondary"><IoIosRefresh color="white" size={20} title="renew keys" /></Button>
               </InputGroup>
               <InputGroup>
                   <InputGroup.Text>Public Key</InputGroup.Text>
