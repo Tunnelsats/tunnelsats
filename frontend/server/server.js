@@ -202,7 +202,7 @@ io.on('connection', (socket) => {
 
     if (invoiceWGKeysMap.length <= MAXINVOICES){
 
-      getInvoice(amount).then(result => {
+      getInvoice(amount, priceDollar).then(result => {
       
         socket.emit("lnbitsInvoice",result)
 
@@ -316,7 +316,7 @@ const parseDate = (date) => { return dayjs(date).format("YYYY-MMM-DD hh:mm:ss A"
 
 
 // Get Invoice Function
-async function getInvoice(amount) {
+async function getInvoice(amount, priceDollar) {
   // let satoshis = await getPrice()
   //                       .then((result) => { return result })
   //                       .catch(error => { return error });
@@ -327,7 +327,7 @@ async function getInvoice(amount) {
   data: {
     "out": false,
     "amount": Math.round(amount),
-    "memo": getTimeStamp(amount),
+    "memo": getTimeStamp(priceDollar),
     "webhook" : process.env.URL_WEBHOOK
   }
     }).then(function (response){
