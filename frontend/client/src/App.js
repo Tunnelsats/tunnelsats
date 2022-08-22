@@ -20,7 +20,7 @@ const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : ne
 const DEBUG = false;
 
 // WebSocket
-let socket =  io.connect('/');
+let socket =  io.connect('http://localhost:5000');
 
 // Consts
 let emailAddress;
@@ -29,11 +29,17 @@ let isPaid=false;
 
 
 
+// Env Variables to have the same code base main and dev
+const REACT_APP_THREE_MONTHS= process.env.REACT_APP_THREE_MONTHS || 8.5
+
+
+
+
 function App() {
 
 
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
-  const [priceDollar, updatePrice] = useState(8.5);
+  const [priceDollar, updatePrice] = useState(REACT_APP_THREE_MONTHS);
   const [satsPerDollar, setSatsPerDollar] = useState(Math.round(100000000/22000));
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
@@ -291,7 +297,7 @@ function App() {
           isConfigModal={isConfigModal}
           value={payment_request}
           download={() => {download("tunnelsatsv2.conf",payment_request)}}
-          showNewInvoice={() => {getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,country);setSpinner(true)}}
+          showNewInvoice={() => {getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);setSpinner(true)}}
           handleClose={closeInvoiceModal}
           emailAddress = {emailAddress}
           expiryDate = {getTimeStamp(priceDollar)}

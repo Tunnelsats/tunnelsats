@@ -35,9 +35,19 @@ function isEmpty(obj) {
 // Telegram Settings
 const TELEGRAM_CHATID = process.env.TELEGRAM_CHATID || ''
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || ''
+const TELEGRAM_PREFIX = process.env.TELEGRAM_PREFIX || ''
+
 // Tor Proxy for Telegram Bot
 const TELEGRAM_PROXY_HOST = process.env.TELEGRAM_PROXY_HOST || ''
 const TELEGRAM_PROXY_PORT = process.env.TELEGRAM_PROXY_PORT || ''
+
+
+
+// Env Variables to have the same code base main and dev
+const REACT_APP_ONE_MONTH = process.env.REACT_APP_ONE_MONTH || 3
+const REACT_APP_THREE_MONTHS= process.env.REACT_APP_THREE_MONTHS || 8.5
+const REACT_APP_SIX_MONTHS = process.env.REACT_APP_SIX_MONTHS || 16
+const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 28.5
 
 // Telegram Bot
 
@@ -50,7 +60,7 @@ const sayWithTelegram = async ({  message, parse_mode = 'HTML' }) => {
   if(TELEGRAM_PROXY_HOST != '' && TELEGRAM_PROXY_PORT != '') { proxy = `socks://${TELEGRAM_PROXY_HOST}:${TELEGRAM_PROXY_PORT}` }
 
 
-  message = "[Tunnelsats-ProdServer.js] " + message
+  message = `[Tunnelsats-${TELEGRAM_PREFIX}.js] ` + message
 
   const parseModeString = parse_mode ? `&parse_mode=${parse_mode}` : ''
   try {
@@ -58,7 +68,7 @@ const sayWithTelegram = async ({  message, parse_mode = 'HTML' }) => {
     let endpoint = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHATID}&text=${encodeURIComponent(message)}${parseModeString}`
     let opts = new URL(endpoint)
     if (proxy === "") {
-      logDim(`sayWithTelegram()`)
+      logDim(`sayWithTelegram(${message})`)
     } else {
       opts.agent = new SocksProxyAgent(proxy)
     }
@@ -124,18 +134,21 @@ app.post(process.env.WEBHOOK, (req, res) => {
 
           const serverDNS = getServer(country).replace(/^https?:\/\//, '').replace(/\/manager\/$/, '');
           sayWithTelegram({message: `🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(amountSats)}💰`})
-          .then((result) => {DEBUG && logDim(`${result}`)})
+          .then((result) => {DEBUG && logDim(`getConfig(): ${result}`)})
           .catch(error => logDim(error.message))
 
           res.status(200).end()
       })
       .catch(error => {
+        DEBUG && logDim(`getConfig(): ${error.message}`)
         sayWithTelegram({message: `🔴 Creating New Subscription failed with ${error.message}`})
         res.status(500).end()
 
       })
     } else {
         logDim(`No Invoice and corresponding connection found in memory`)
+        logDim(`Probably Server crashed and lost invoice memory`)
+
         res.status(500).end()
     }
 
@@ -276,24 +289,24 @@ let getServer = (country) => {
 // Transforms duration into timestamp
 const getTimeStamp = (selectedValue) =>{
   
-  let date;
+  let date = new Date();
 
-  if(selectedValue == 3){
+  if(selectedValue == REACT_APP_ONE_MONTH){
     date = addMonths(date = new Date(),1)
     return date;
   }
 
-  if(selectedValue == 8.5){
+  if(selectedValue == REACT_APP_THREE_MONTHS){
     date = addMonths(date = new Date(),3)
     return date;
   }
 
-  if(selectedValue == 16){
+  if(selectedValue == REACT_APP_SIX_MONTHS){
     date = addMonths(date = new Date(),6)
     return date;
   }
 
-  if(selectedValue == 28.5){
+  if(selectedValue == REACT_APP_ONE_YEAR){
     date = addMonths(date = new Date(),12)
     return date;
   }

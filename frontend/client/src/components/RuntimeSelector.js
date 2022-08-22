@@ -1,19 +1,30 @@
 import React from 'react'
 import {ToggleButtonGroup,ToggleButton} from 'react-bootstrap'
+
+
+
+
+// Env Variables to have the same code base main and dev
+const REACT_APP_ONE_MONTH = process.env.REACT_APP_ONE_MONTH || 3
+const REACT_APP_THREE_MONTHS= process.env.REACT_APP_THREE_MONTHS || 8.5
+const REACT_APP_SIX_MONTHS = process.env.REACT_APP_SIX_MONTHS || 16
+const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 28.5
+
+
 const RuntimeSelector = (props) => {
   return (
     <div>
-    <ToggleButtonGroup type="radio" name="options" id="runtimeselector" defaultValue={8.5} >
-      <ToggleButton id="tbg-radio-1" variant="secondary" value={3} onClick={props.onClick}>
+    <ToggleButtonGroup type="radio" name="options" id="runtimeselector" defaultValue={REACT_APP_THREE_MONTHS} >
+      <ToggleButton id="tbg-radio-1" variant="secondary" value={REACT_APP_ONE_MONTH} onClick={props.onClick}>
         1 <br></br> month
       </ToggleButton>
-      <ToggleButton id="tbg-radio-2" variant="secondary" value={8.5} onClick={props.onClick}>
+      <ToggleButton id="tbg-radio-2" variant="secondary" value={REACT_APP_THREE_MONTHS} onClick={props.onClick}>
         3 <br></br> months
       </ToggleButton>
-      <ToggleButton id="tbg-radio-3" variant="secondary" value={16} onClick={props.onClick}>
+      <ToggleButton id="tbg-radio-3" variant="secondary" value={REACT_APP_SIX_MONTHS} onClick={props.onClick}>
         6 <br></br> months
       </ToggleButton>
-      <ToggleButton id="tbg-radio-4" variant="secondary" value={28.5} onClick={props.onClick}>
+      <ToggleButton id="tbg-radio-4" variant="secondary" value={REACT_APP_ONE_YEAR} onClick={props.onClick}>
         12 <br></br> months
       </ToggleButton>
     </ToggleButtonGroup>
