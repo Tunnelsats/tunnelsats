@@ -6,32 +6,26 @@ const nodemailer = require('nodemailer');
 const dayjs = require('dayjs');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const fetch = require('node-fetch-commonjs');
+const {logDim} = require('./logger');
 
-const {logDim} = require('./logger')
-
-
-
-DEBUG = true
-
+DEBUG = true;
 
 // This array saves all invoices and wg keys (received by the client connection)
 // As soon as the invoice is paid the server sends the config information to the related client
 // This prevents sending all information to all clients and only sends a valid wg config to the related client
 // The socket is still open for all clients to connect to
 
-let invoiceWGKeysMap= []
+let invoiceWGKeysMap= [];
 
 // Restrict entries to prevent an attack to fill the ram memory
-const MAXINVOICES = 100
-
-
+const MAXINVOICES = 100;
 
 const app = express();
 let payment_hash,payment_request;
-require('dotenv').config()
+require('dotenv').config();
 
 // helper
-const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString()
+const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
 function isEmpty(obj) {
   return Object.keys(obj).length === 0;
 }
@@ -284,23 +278,22 @@ const getTimeStamp = (selectedValue) =>{
   
   let date;
 
-
-  if(selectedValue == 0.01){
+  if(selectedValue == 3){
     date = addMonths(date = new Date(),1)
     return date;
   }
 
-  if(selectedValue == 0.02){
+  if(selectedValue == 8.5){
     date = addMonths(date = new Date(),3)
     return date;
   }
 
-  if(selectedValue == 0.03){
+  if(selectedValue == 16){
     date = addMonths(date = new Date(),6)
     return date;
   }
 
-  if(selectedValue == 0.04){
+  if(selectedValue == 28.5){
     date = addMonths(date = new Date(),12)
     return date;
   }

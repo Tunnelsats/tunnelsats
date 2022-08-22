@@ -17,7 +17,7 @@ import { IoIosRefresh } from 'react-icons/io';
 // helper
 const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
 
-const DEBUG = false
+const DEBUG = false;
 
 // WebSocket
 let socket =  io.connect('/');
@@ -34,7 +34,7 @@ function App() {
 
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
   const [priceDollar, updatePrice] = useState(8.5);
-  const [satsPerDollar, setSatsPerDollar] = useState(Math.round(100000000/23000));
+  const [satsPerDollar, setSatsPerDollar] = useState(Math.round(100000000/22000));
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
