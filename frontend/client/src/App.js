@@ -20,7 +20,7 @@ const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : ne
 const DEBUG = true
 
 // WebSocket
-let socket =  io.connect('/');
+let socket =  io.connect('http://localhost:5000');
 
 // Consts
 let emailAddress;
@@ -33,7 +33,7 @@ function App() {
 
 
   const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
-  const [priceDollar, updatePrice] = useState(0.001);
+  const [priceDollar, updatePrice] = useState(8.5);
   const [satsPerDollar, setSatsPerDollar] = useState(Math.round(100000000/23000));
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);

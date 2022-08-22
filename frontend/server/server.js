@@ -56,7 +56,7 @@ const sayWithTelegram = async ({  message, parse_mode = 'HTML' }) => {
   if(TELEGRAM_PROXY_HOST != '' && TELEGRAM_PROXY_PORT != '') { proxy = `socks://${TELEGRAM_PROXY_HOST}:${TELEGRAM_PROXY_PORT}` }
 
 
-  message = "[Tunnelsats-DevServer.js] " + message
+  message = "[Tunnelsats-ProdServer.js] " + message
 
   const parseModeString = parse_mode ? `&parse_mode=${parse_mode}` : ''
   try {
