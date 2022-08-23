@@ -928,8 +928,9 @@ if [ "$lnImplementation" == "lnd" ]; then
 
   echo "LND:
 
-Please edit and add / modify the following lines in lnd.conf file.
-Settings could already be part of your configuration file.
+Before editing, please create a backup of your current lnd config file.
+Then edit and add / modify the following lines. Please note that
+settings could already be part of your configuration file.
 
 #########################################
 [Application Options]
@@ -946,8 +947,9 @@ if [ "$lnImplementation" == "cln" ]; then
 
   echo "CLN:
 
-Please edit and add/modify the following lines to the CLN config file.
-Settings could already be part of your configuration file.
+Before editing, please create a backup of your current CLN config file.
+Then edit and add/modify the following lines. Please note that
+settings could already be part of your configuration file.
 
 ###############################################################################
 Umbrel 0.5+:
