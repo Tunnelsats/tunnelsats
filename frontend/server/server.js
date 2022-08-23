@@ -33,21 +33,21 @@ function isEmpty(obj) {
 
 
 // Telegram Settings
-const TELEGRAM_CHATID = process.env.TELEGRAM_CHATID || ''
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || ''
-const TELEGRAM_PREFIX = process.env.TELEGRAM_PREFIX || ''
+const TELEGRAM_CHATID = process.env.TELEGRAM_CHATID || '';
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || '';
+const TELEGRAM_PREFIX = process.env.TELEGRAM_PREFIX || '';
 
 // Tor Proxy for Telegram Bot
-const TELEGRAM_PROXY_HOST = process.env.TELEGRAM_PROXY_HOST || ''
-const TELEGRAM_PROXY_PORT = process.env.TELEGRAM_PROXY_PORT || ''
+const TELEGRAM_PROXY_HOST = process.env.TELEGRAM_PROXY_HOST || '';
+const TELEGRAM_PROXY_PORT = process.env.TELEGRAM_PROXY_PORT || '';
 
 
 
 // Env Variables to have the same code base main and dev
-const REACT_APP_ONE_MONTH = process.env.REACT_APP_ONE_MONTH || 0.001
-const REACT_APP_THREE_MONTHS= process.env.REACT_APP_THREE_MONTHS || 0.002
-const REACT_APP_SIX_MONTHS = process.env.REACT_APP_SIX_MONTHS || 0.003
-const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 0.004
+const REACT_APP_ONE_MONTH = process.env.REACT_APP_ONE_MONTH || 0.001;
+const REACT_APP_THREE_MONTHS= process.env.REACT_APP_THREE_MONTHS || 0.002;
+const REACT_APP_SIX_MONTHS = process.env.REACT_APP_SIX_MONTHS || 0.003;
+const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 0.004;
 
 // Telegram Bot
 

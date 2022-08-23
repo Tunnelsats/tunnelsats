@@ -12,25 +12,22 @@ import WorldMap from "./components/WorldMap";
 import {Form,InputGroup} from 'react-bootstrap';
 import { IoIosRefresh } from 'react-icons/io';
 
-
-
 // helper
 const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
+// Env Variables to have the same code base main and dev
+const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 0.002;
+const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || '';
+const REACT_APP_SOCKETIO = process.env.REACT_APP_SOCKETIO || '/';
 
 const DEBUG = false;
 
 // WebSocket
-var socket =  io.connect('/');
+var socket =  io.connect(REACT_APP_SOCKETIO);
 
 // Consts
 var emailAddress;
 var clientPaymentHash;
 var isPaid=false;
-
-
-// Env Variables to have the same code base main and dev
-const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 0.002
-const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || ''
 
 
 function App() {

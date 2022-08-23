@@ -1,9 +1,9 @@
 
 // Env Variables to have the same code base main and dev
-const REACT_APP_ONE_MONTH = process.env.REACT_APP_ONE_MONTH || 0.001
-const REACT_APP_THREE_MONTHS= process.env.REACT_APP_THREE_MONTHS || 0.002
-const REACT_APP_SIX_MONTHS = process.env.REACT_APP_SIX_MONTHS || 0.003
-const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 0.004
+const REACT_APP_ONE_MONTH = process.env.REACT_APP_ONE_MONTH || 0.001;
+const REACT_APP_THREE_MONTHS= process.env.REACT_APP_THREE_MONTHS || 0.002;
+const REACT_APP_SIX_MONTHS = process.env.REACT_APP_SIX_MONTHS || 0.003;
+const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 0.004;
 
  
  
