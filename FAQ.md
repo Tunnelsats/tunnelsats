@@ -74,19 +74,7 @@ Currently, 100GB per month are being offered. This should be enough traffic even
 ### Which setups are supported?
 At present we successfully tested the following setups:
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 - RaspiBlitz (LND / CLN) v1.7.2/v1.8.0
-||||||| parent of aa7dab2... guide/faq: ip2dns
-- RaspiBlitz (LND / CLN) v1.7.2
-=======
-- RaspiBlitz (LND / CLN) v1.8.0
->>>>>>> aa7dab2... guide/faq: ip2dns
-||||||| parent of 1ce39c2... guide/faq: ip2dns
-- RaspiBlitz (LND / CLN) v1.8.0
-=======
-- RaspiBlitz (LND / CLN) v1.7.2/v1.8.0
->>>>>>> 1ce39c2... guide/faq: ip2dns
 - Umbrel-OS (LND)
 - Umbrel-OS (CLN not yet recommended or be tech-savvy)
 - myNode (LND) v0.2.x
@@ -112,22 +100,8 @@ This is still beta status, so please bear with us. If you experience issues, ple
 Let's say you bought the 1 month for testing the services and all is going great. Now your subscription is coming to an end and you like to extend it to add another 3 months. Since we don't offer a login-service (yet), you need to remember your subscription end date (look it up in your WireGuard config file: #ValidUntil (mind this is UTC time format)) and before expiry
 - buy a new subscription
 - download or transfer via email the new configuration file from the website 
-<<<<<<< HEAD
-<<<<<<< HEAD
 - redo installation procedure: place config file in same directory with `setupv2.sh` and run it again
 - adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalhosts (LND) or announce-addr (CLN))
-||||||| parent of aa7dab2... guide/faq: ip2dns
-- redo installation procedure: place config file in same directory `with setupv2.sh` and run it again
-- adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalip (LND) or announce-addr (CLN))
-=======
-- redo installation procedure: place config file in same directory `with setupv2.sh` and run it again
-||||||| parent of 1ce39c2... guide/faq: ip2dns
-- redo installation procedure: place config file in same directory `with setupv2.sh` and run it again
-=======
-- redo installation procedure: place config file in same directory with `setupv2.sh` and run it again
->>>>>>> 1ce39c2... guide/faq: ip2dns
-- adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalhosts (LND) or announce-addr (CLN))
->>>>>>> aa7dab2... guide/faq: ip2dns
 - restart wireguard and lightning: `sudo systemctl restart wg-quick@tunnelsatsv2` and your lightning implementation
 
 <br/>
@@ -224,7 +198,6 @@ NumEntryGuards 8
 In v2 we changed the network architecture compared to v1 where all traffic was directed via the VPN except Tor and ssh. This approach resulted in a lot of exceptions for different users. For example, if you were running ThunderHub on your node with v1, you were not able to access it via the external clearnet. In v2 we are now isolating only lightning traffic via the VPN meaning that all traffic not routed via your local proxy or not destined for your local network will be directed through the tunnel. This means apps like ThunderHub which run locally on your node are not tunneled and are accessible from the external clearnet. Nothing changes for your setup except for the lightning process. You will have no problems accessing your node from the external clearnet via ssh. So keep in mind that in case you want to access the gRPC or REST interface form the external clearnet, it will not be possible. In this case services like ZeroTier are recommended which let's you access your node as if it would be in your local network. Normally accessing your nodes gRPC or REST API from the external clearnet shouldn't be a general use case, it's recommended to access the API via the local network or on the same computer resulting in better efficiency.
 
 <br/>
-
 
 ### Running tunnelsatsv2 and mullvad in parallel?
 Yes, this is possible, but you have to make some adjustments. First, you have to make sure the startup order is mullvad first then TunnelSats leading to the following ip rules:
