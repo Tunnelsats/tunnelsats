@@ -5,6 +5,7 @@
   "dependencies": {
     "@emotion/react": "^11.8.2",
     "@emotion/styled": "^11.8.1",
+    "dotenv-webpack": "^8.0.1",
     "framer-motion": "^3.10.6",
     "install": "^0.13.0",
     "jquery": "^3.6.0",

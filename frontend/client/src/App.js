@@ -20,19 +20,17 @@ const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : ne
 const DEBUG = false;
 
 // WebSocket
-let socket =  io.connect('http://localhost:5000');
+var socket =  io.connect('http://localhost:5000');
 
 // Consts
-let emailAddress;
-let clientPaymentHash;
-let isPaid=false;
-
+var emailAddress;
+var clientPaymentHash;
+var isPaid=false;
 
 
 // Env Variables to have the same code base main and dev
-const REACT_APP_THREE_MONTHS= process.env.REACT_APP_THREE_MONTHS || 8.5
-
-
+const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 0.002
+const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || ''
 
 
 function App() {
@@ -287,48 +285,47 @@ function App() {
               </InputGroup>
               </Form.Group>
 
-          </Form>
+            </Form>
 
-          <RuntimeSelector onClick={runtimeSelect} />
+            <RuntimeSelector onClick={runtimeSelect} />
 
-          <InvoiceModal
-          show={visibleInvoiceModal}
-          showSpinner={showSpinner}
-          isConfigModal={isConfigModal}
-          value={payment_request}
-          download={() => {download("tunnelsatsv2.conf",payment_request)}}
-          showNewInvoice={() => {getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);setSpinner(true)}}
-          handleClose={closeInvoiceModal}
-          emailAddress = {emailAddress}
-          expiryDate = {getTimeStamp(priceDollar)}
-          sendEmail = {(data) => sendEmail(data,payment_request,getTimeStamp(priceDollar))}
-          showPaymentAlert = {showPaymentSuccessfull}
-          />
+            <InvoiceModal
+            show={visibleInvoiceModal}
+            showSpinner={showSpinner}
+            isConfigModal={isConfigModal}
+            value={payment_request}
+            download={() => {download("tunnelsatsv2.conf",payment_request)}}
+            showNewInvoice={() => {getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);setSpinner(true)}}
+            handleClose={closeInvoiceModal}
+            emailAddress = {emailAddress}
+            expiryDate = {getTimeStamp(priceDollar)}
+            sendEmail = {(data) => sendEmail(data,payment_request,getTimeStamp(priceDollar))}
+            showPaymentAlert = {showPaymentSuccessfull}
+            />
 
-          <div className='price'>
-            <h3>{(Math.trunc(priceDollar*satsPerDollar)).toLocaleString()} <i class="fak fa-satoshisymbol-solidtilt"/></h3>
-          </div>
+            <div className='price'>
+              <h3>{(Math.trunc(priceDollar*satsPerDollar)).toLocaleString()} <i class="fak fa-satoshisymbol-solidtilt"/></h3>
+            </div>
 
-          <div className='main-buttons'>
-              <Button onClick={() => { 
-                 getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
-                 showInvoiceModal();
-                 hideConfigModal();
-                 updatePaymentrequest();
-                 setSpinner(true);
-                 isPaid=false;
-               }} variant="outline-warning">Generate Invoice</Button>
-          </div>
+            <div className='main-buttons'>
+                <Button onClick={() => { 
+                  getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
+                  showInvoiceModal();
+                  hideConfigModal();
+                  updatePaymentrequest();
+                  setSpinner(true);
+                  isPaid=false;
+                }} variant="outline-warning">Generate Invoice</Button>
+            </div>
 
-          <div className='footer-text'>
-            <Row>
-              <Col><a href="https://twitter.com/TunnelSats" target="_blank" rel="noreferrer"><span class="icon icon-twitter"></span></a></Col>
-              <Col><a href="https://github.com/blckbx/tunnelsats" target="_blank" rel="noreferrer"><span class="icon icon-github"></span></a></Col>
-              <Col><a href="https://lnbits.tunnelsats.com/tipjar/1" target="_blank" rel="noreferrer"><span class="icon icon-heart"></span></a></Col>
-              <Col><a href="https://t.me/+NJylaUom-rxjYjU6" target="_blank" rel="noreferrer"><span class="icon icon-telegram"></span></a></Col>
-            </Row>
-          </div>
-
+            <div className='footer-text'>
+              <Row>
+                <Col><a href="https://twitter.com/TunnelSats" target="_blank" rel="noreferrer"><span class="icon icon-twitter"></span></a></Col>
+                <Col><a href="https://github.com/blckbx/tunnelsats" target="_blank" rel="noreferrer"><span class="icon icon-github"></span></a></Col>
+                <Col><a href={REACT_APP_LNBITS_URL} target="_blank" rel="noreferrer"><span class="icon icon-heart"></span></a></Col>
+                <Col><a href="https://t.me/+NJylaUom-rxjYjU6" target="_blank" rel="noreferrer"><span class="icon icon-telegram"></span></a></Col>
+              </Row>
+            </div>
           </Col>
         </Row>
       </Container>

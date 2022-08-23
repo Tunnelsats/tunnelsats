@@ -44,10 +44,10 @@ const TELEGRAM_PROXY_PORT = process.env.TELEGRAM_PROXY_PORT || ''
 
 
 // Env Variables to have the same code base main and dev
-const REACT_APP_ONE_MONTH = process.env.REACT_APP_ONE_MONTH || 3
-const REACT_APP_THREE_MONTHS= process.env.REACT_APP_THREE_MONTHS || 8.5
-const REACT_APP_SIX_MONTHS = process.env.REACT_APP_SIX_MONTHS || 16
-const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 28.5
+const REACT_APP_ONE_MONTH = process.env.REACT_APP_ONE_MONTH || 0.001
+const REACT_APP_THREE_MONTHS= process.env.REACT_APP_THREE_MONTHS || 0.002
+const REACT_APP_SIX_MONTHS = process.env.REACT_APP_SIX_MONTHS || 0.003
+const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 0.004
 
 // Telegram Bot
 
@@ -289,7 +289,7 @@ let getServer = (country) => {
 // Transforms duration into timestamp
 const getTimeStamp = (selectedValue) =>{
   
-  let date = new Date();
+  var date = new Date();
 
   if(selectedValue == REACT_APP_ONE_MONTH){
     date = addMonths(date = new Date(),1)
