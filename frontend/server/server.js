@@ -262,7 +262,7 @@ io.on('connection', (socket) => {
 })
 
 //Transforms country into server
-let getServer = (country) => {
+const getServer = (country) => {
 
   let server;
   
@@ -314,7 +314,7 @@ const getTimeStamp = (selectedValue) =>{
   }
 
   function addMonths(date = new Date(), months) {
-    let d = date.getDate();
+    const d = date.getDate();
     date.setMonth(date.getMonth() + +months);
     if (date.getDate() != d) {
       date.setDate(0);
@@ -338,7 +338,7 @@ async function getInvoice(amount, priceDollar) {
   return axios({
   method: "post",
   url: process.env.URL_INVOICE_API,
-  headers: { "X-Api-Key": process.env.INVOICE_KEY},
+  headers: { "X-Api-Key": process.env.INVOICE_KEY },
   data: {
     "out": false,
     "amount": Math.round(amount),
@@ -347,9 +347,9 @@ async function getInvoice(amount, priceDollar) {
   }
     }).then(function (response){
       if(response) {
-        payment_request = response.data.payment_request;
-        payment_hash = response.data.payment_hash;
-        return {payment_hash,payment_request}
+        const payment_request = response.data.payment_request;
+        const payment_hash = response.data.payment_hash;
+        return { payment_hash, payment_request };
       }
     }).catch(error => {
       throw new Error(`Error - not able to get Invoice from lnbits \n ${error.message}`);
@@ -362,9 +362,9 @@ async function getPrice() {
     method: "get",
     url: process.env.URL_PRICE_API
   }).then(function (response){
-     const priceBTC = (response.data.USD.buy);
-     let priceOneDollar = (100000000 / priceBTC);
-     return priceOneDollar;
+    if(!isEmpty(response.data)) {
+      return 100_000_000 / response.data.USD.buy;
+    }
   }).catch(error => {
     return error;
   });
@@ -372,9 +372,9 @@ async function getPrice() {
 
 
 // Get Wireguard Config
-async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
+async function getWireguardConfig(publicKey, presharedKey, timestamp, server) {
 
-   const request1 = {
+  const request1 = {
     method: 'post',
     url: server+'key',
     headers: {
@@ -388,47 +388,47 @@ async function getWireguardConfig(publicKey,presharedKey,timestamp,server) {
      "subExpiry": parseDate(timestamp),
      "ipIndex": 0
     }
-   };
+  };
 
-   const response1 = await axios(request1).catch(error => { 
-      throw new Error(`Error - wgAPI createKey\n ${error.message}`);
-    });
+  const response1 = await axios(request1).catch(error => { 
+    throw new Error(`Error - wgAPI createKey\n ${error.message}`);
+  });
 
-
-    if (!isEmpty(response1.data)){
-      const request2 = {
-        method: 'post',
-        url: server+'portFwd',
-        headers: {
-        'Content-Type': 'application/json',
-        'Authorization': process.env.AUTH
-        },
-        data: {
-        "keyID": response1.data.keyID
-        }
-      }
-      const response2 = await axios(request2).catch(error => { 
-        throw new Error(`Error - wgAPI portFwd\n ${error.message}`);
-       });
-
-      if(!isEmpty(response2.data)) {
-        response1.data['portFwd'] = response2.data.portFwd;
-        response1.data['dnsName'] = (server.replace(/^https?:\/\//, '')).replace(/\/manager\/$/, '');
-        return response1.data;
+  if (!isEmpty(response1.data)){
+    const request2 = {
+      method: 'post',
+      url: server+'portFwd',
+      headers: {
+      'Content-Type': 'application/json',
+      'Authorization': process.env.AUTH
+      },
+      data: {
+      "keyID": response1.data.keyID
       }
     }
+    
+    const response2 = await axios(request2).catch(error => { 
+      throw new Error(`Error - wgAPI portFwd\n ${error.message}`);
+     });
+
+    if(!isEmpty(response2.data)) {
+      response1.data['portFwd'] = response2.data.portFwd;
+      response1.data['dnsName'] = (server.replace(/^https?:\/\//, '')).replace(/\/manager\/$/, '');
+      return response1.data;
+    }
+  }
 };
 
 
 
 // Send Wireguard config file via email
-async function sendEmail(emailAddress,configData,date) {
+async function sendEmail(emailAddress, configData, date) {
 
     const msg = {
       to: emailAddress,
       from: 'payment@tunnelsats.com',
-      subject: 'Your Tunnel Sats VPN config file for Wireguard. Valid until: '+date.toString(),
-      text: "Thank you for using Tunnel Sats!\n\nFind your personal config file attached. Don't loose it!\n\nYour subscription is valid until: "+date.toString(),
+      subject: `Your Tunnel Sats VPN config file for Wireguard. Valid until: ${date.toString()}`,
+      text: `Thank you for using Tunnel Sats!\n\nFind your personal config file attached. Don't lose it!\n\nYour subscription is valid until: ${date.toString()}`,
       attachments: [
         {
           content: configData,
@@ -464,10 +464,12 @@ async function sendEmail(emailAddress,configData,date) {
 async function checkInvoice(hash) {
   return axios({
        method: "get",
-       url: process.env.URL_INVOICE_API +"/"+hash,
+       url: `process.env.URL_INVOICE_API${hash}`,
        headers: { "X-Api-Key": process.env.INVOICE_KEY }
   }).then(function (response){
-       if(response.data.paid)  return response.data.details.payment_hash;
+       if(!isEmpty(response.data.paid)) {
+        return response.data.details.payment_hash;
+       }
        throw new Error(`Error - Invoice not paid ${hash}`)
   }).catch(error => { 
     throw new Error(`Error - fetching Invoice from Lnbits failed\n ${error.message}`);
