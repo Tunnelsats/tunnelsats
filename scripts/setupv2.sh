@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=22
+patch=23
 
 
 #Helper
@@ -927,6 +927,12 @@ These are your personal VPN credentials for your lightning configuration.";echo
 if [ "$lnImplementation" == "lnd" ]; then 
 
   echo "LND:
+
+Before editing, please create a backup of your current LND config file.
+Then edit and add or modify the following lines. Please note that
+settings could already be part of your configuration file 
+and duplicated lines could lead to errors.
+
 #########################################
 [Application Options]
 listen=0.0.0.0:9735
@@ -941,6 +947,12 @@ fi
 if [ "$lnImplementation" == "cln" ]; then 
 
   echo "CLN:
+
+Before editing, please create a backup of your current CLN config file.
+Then edit and add or modify the following lines. Please note that
+settings could already be part of your configuration file
+and duplicated lines could lead to errors.
+
 ###############################################################################
 Umbrel 0.5+:
 create CLN config file 'config':
@@ -955,7 +967,7 @@ edit 'export.sh':
 change assigned port of APP_CORE_LIGHTNING_DAEMON_PORT from 9736 to 9735:
   export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"
 
--------------------------------------------------
+###############################################################################
 
 Native CLN installation (config file):
   bind-addr=0.0.0.0:9735
@@ -965,7 +977,7 @@ Native CLN installation (config file):
 
 fi
 
-echo "Please save them in a file or write them down for later use.
+echo "Please save these infos in a file or write them down for later use.
 
 A more detailed guide is available at: https://blckbx.github.io/tunnelsats/
 Afterwards please restart LND / CLN for changes to take effect.
