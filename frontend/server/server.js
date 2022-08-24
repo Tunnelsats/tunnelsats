@@ -263,7 +263,9 @@ io.on('connection', (socket) => {
 
 //Transforms country into server
 let getServer = (country) => {
+
   let server;
+  
   if (country == "eu"){
     server = process.env.IP_EU;
   }
@@ -289,7 +291,7 @@ let getServer = (country) => {
 // Transforms duration into timestamp
 const getTimeStamp = (selectedValue) =>{
   
-  var date = new Date();
+  let date = new Date();
 
   if(selectedValue == REACT_APP_ONE_MONTH){
     date = addMonths(date = new Date(),1)
