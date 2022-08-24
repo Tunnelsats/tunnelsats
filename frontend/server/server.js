@@ -94,7 +94,7 @@ const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
   cors: {
     // restrict to SOP (Same Origin Policy)
-    orgin: false
+    origin: false
   }
 });
 
