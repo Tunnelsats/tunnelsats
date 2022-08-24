@@ -120,26 +120,26 @@ function App() {
     socket.removeAllListeners('getPrice').emit('getPrice');
   }
   socket.off('receivePrice').on('receivePrice', price => {
-    DEBUG && console.log(`${getDate()} App.js: server.getPrice(): `+price);
+    DEBUG && console.log(`${getDate()} App.js: server.getPrice(): ${price}`);
     setSatsPerDollar(Math.trunc(Math.round(price)));
   });
 
   // check invoice
   const checkInvoice = () => {
       DEBUG && console.log(`${getDate()} App.js: checkInvoice(): ${clientPaymentHash}`);
-      socket.emit('checkInvoice',clientPaymentHash);
+      socket.emit('checkInvoice', clientPaymentHash);
 
   };
 
   //Get the invoice
-  const getInvoice = (price,publicKey,presharedKey,priceDollar,country) => {
-      DEBUG && console.log(`${getDate()} App.js: getInvoice(price): `+price+`$`);
-      socket.emit('getInvoice', price,publicKey,presharedKey,priceDollar,country);
+  const getInvoice = (price, publicKey, presharedKey, priceDollar, country) => {
+      DEBUG && console.log(`${getDate()} App.js: getInvoice(price): ${price}$`);
+      socket.emit('getInvoice', price, publicKey, presharedKey, priceDollar, country);
   };
 
 
   socket.off('invoicePaid').on('invoicePaid', paymentHash => {
-    DEBUG && console.log(`${getDate()} App.js: got msg 'invoicePaid': `+paymentHash+` clientPaymentHash: `+clientPaymentHash);
+    DEBUG && console.log(`${getDate()} App.js: got msg 'invoicePaid': ${paymentHash}, clientPaymentHash: ${clientPaymentHash}`);
 
     if((paymentHash === clientPaymentHash) && !isPaid)
     {
@@ -151,7 +151,7 @@ function App() {
 
 
   //Get wireguard config from Server
-  socket.off('receiveConfigData').on('receiveConfigData',wireguardConfig => {
+  socket.off('receiveConfigData').on('receiveConfigData', wireguardConfig => {
     DEBUG && console.log(`${getDate()} App.js: got msg receiveConfigData`);
     setSpinner(false);
     setPaymentrequest(buildConfigFile(wireguardConfig).join('\n'));
@@ -170,7 +170,7 @@ function App() {
     'Address = '+serverResponse.ipv4Address,
     // 'DNS = '+serverResponse.dns,
     '#VPNPort = '+serverResponse.portFwd,
-    '#ValidUntil (UTC time)= '+getTimeStamp(priceDollar).toISOString(),
+    '#ValidUntil (UTC time)= ' + getTimeStamp(priceDollar).toISOString(),
     ' ',
     '[Peer]',
     'PublicKey = '+serverResponse.publicKey,
@@ -204,8 +204,8 @@ function App() {
   };
 
   const sendEmail = (email,config,date) => {
-    DEBUG && console.log(`${getDate()} App.js: sendEmail(): `+email+`, validdate: `+date);
-    socket.emit('sendEmail',email,config,date);
+    DEBUG && console.log(`${getDate()} App.js: sendEmail(): ${email}, validdate: ${date}`);
+    socket.emit('sendEmail', email, config, date);
   };
 
 
@@ -291,12 +291,12 @@ function App() {
             showSpinner={showSpinner}
             isConfigModal={isConfigModal}
             value={payment_request}
-            download={() => {download("tunnelsatsv2.conf",payment_request)}}
-            showNewInvoice={() => {getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);setSpinner(true)}}
+            download={() => { download("tunnelsatsv2.conf",payment_request) }}
+            showNewInvoice={() => { getInvoice(priceDollar * satsPerDollar, keyPair.publicKey, keyPair.presharedKey, priceDollar, country);setSpinner(true) }}
             handleClose={closeInvoiceModal}
             emailAddress = {emailAddress}
-            expiryDate = {getTimeStamp(priceDollar)}
-            sendEmail = {(data) => sendEmail(data,payment_request,getTimeStamp(priceDollar))}
+            expiryDate = { getTimeStamp(priceDollar) }
+            sendEmail = {(data) => sendEmail(data, payment_request, getTimeStamp(priceDollar))}
             showPaymentAlert = {showPaymentSuccessfull}
             />
 
@@ -306,7 +306,7 @@ function App() {
 
             <div className='main-buttons'>
                 <Button onClick={() => { 
-                  getInvoice(priceDollar*satsPerDollar,keyPair.publicKey,keyPair.presharedKey,priceDollar,country);
+                  getInvoice(priceDollar * satsPerDollar, keyPair.publicKey, keyPair.presharedKey, priceDollar, country);
                   showInvoiceModal();
                   hideConfigModal();
                   updatePaymentrequest();
