@@ -447,12 +447,18 @@ fi
 
 sleep 2
 
-# remove dependencies of blitzapi
+# remove dependencies of blitzapi | must be removed after wg interface stopped
 if [ -f /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf ]; then
     echo "Removing wg dependency of blitzapi..."
     if rm /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf; then
         echo "> /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf  removed"
         echo
+        systemctl daemon-reload >/dev/null
+        if systemctl restart blitzapi.service. >/dev/null; then
+            echo "> Restarting blitzapi after successfully removing wg dependency"
+        else
+            echo "> No able to restart blitzapi. Please check manually"
+        fi
     else
         echo "> ERR: could not remove /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf. Please check manually."
         echo
