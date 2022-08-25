@@ -454,7 +454,7 @@ if [ -f /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf ]; then
         echo "> /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf  removed"
         echo
         systemctl daemon-reload >/dev/null
-        if systemctl restart blitzapi.service. >/dev/null; then
+        if systemctl restart blitzapi.service >/dev/null; then
             echo "> Restarting blitzapi after successfully removing wg dependency"
         else
             echo "> No able to restart blitzapi. Please check manually"
