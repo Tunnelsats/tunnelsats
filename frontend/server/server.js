@@ -87,6 +87,7 @@ const sayWithTelegram = async ({ message, parse_mode = "HTML" }) => {
 
 // Server Settings
 const createServer = require("http");
+const { response } = require("express");
 // const { rootCertificates } = require('tls');
 const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
@@ -170,6 +171,52 @@ app.post(process.env.WEBHOOK, (req, res) => {
   }
 });
 
+// Webhook for updating the Subcription
+
+// Invoice Webhook
+app.post("/updatesubscription", (req, res) => {
+  const index = invoiceWGKeysMap.findIndex((client) => {
+    return client.paymentDetails.payment_hash === req.body.payment_hash;
+  });
+
+  if (index !== -1) {
+    const {
+      paymentDetails,
+      keyID,
+      priceDollar,
+      serverURL,
+      id,
+      publicKey,
+      amountSats,
+    } = invoiceWGKeysMap[index];
+
+    // Needed for now to notify the client to stop the spinner
+    io.to(id).emit("invoicePaid", paymentDetails.payment_hash);
+
+    const subscriptionInfo = getSubsciption({
+      keyID,
+      serverURL,
+    }).then((result) => {
+      return result;
+    });
+
+    newSubscriptionEnd({
+      keyID,
+      subExpiry: getTimeStamp(priceDollar,subscriptionInfo.subscriptionEnd),
+      serverURL,
+      publicKey
+    }).then(result => {
+        io.to(id).emit("receiveUpdateSubscription", result);
+        logDim(`Successfully updated new SubscriptionEnd to  ${publicKey}`);
+        invoiceWGKeysMap.splice(index, 1);      
+    }).catch(error =>{
+      logDim(error.message)
+    })
+
+    //
+  }
+});
+
 httpServer.listen(process.env.PORT, "0.0.0.0");
 console.log(`${getDate()} httpServer listening on port ${process.env.PORT}`);
 
@@ -248,6 +295,70 @@ io.on("connection", (socket) => {
     }
   );
 
+  // New Listening events for UpdateSubscription Request
+
+  socket.on("checkKeyDB", ({ publicKey, country }) => {
+    console.log(publicKey, server);
+
+    const serverURL = getServer(country)
+      .replace(/^https?:\/\//, "")
+      .replace(/\/manager\/$/, "");
+
+    getKey({ publicKey, serverURL })
+      .then((result) => {
+        const subscriptionInfo = getSubsciption({
+          keyID: result.KeyId,
+          serverURL,
+        }).then((result) => {
+          return result;
+        });
+        let unixTimestamp = Date.parse(subscriptionInfo.subscriptionEnd);
+        let date = new Date(unixTimestamp);
+        console.log(date.toISOString());
+        socket.emit("receiveKeyLookup", {
+          keyID: result.KeyId,
+          subscriptionEnd: date,
+        });
+      })
+      .catch((error) => logDim(error.message));
+  });
+
+  socket.on(
+    "getInvoiceUpdateSub",
+    ({ amount, publicKey, keyID, country, priceDollar }) => {
+      DEBUG && logDim(`getInvoiceUpdateSub() called id: ${socket.id}`);
+
+      if (invoiceWGKeysMap.length <= MAXINVOICES) {
+        getInvoice(amount, priceDollar)
+          .then((result) => {
+            socket.emit("lnbitsInvoiceSubscription", result);
+
+            const serverURL = getServer(country)
+              .replace(/^https?:\/\//, "")
+              .replace(/\/manager\/$/, "");
+
+            // Safes the client request related to the socket id including the payment_hash to later send the config data only to the right client
+            invoiceWGKeysMap.push({
+              paymentDetails: result,
+              publicKey: publicKey,
+              keyID: keyID,
+              priceDollar: priceDollar,
+              serverURL: serverURL,
+              id: socket.id,
+              amountSats: amount,
+              tag: "Update Subscription",
+            });
+            DEBUG && console.log(invoiceWGKeysMap);
+          })
+          .catch((error) => logDim(error.message));
+      } else {
+        logDim(
+          `restrict overall invoices to ${MAXINVOICES} to prevent mem overflow`
+        );
+      }
+    }
+  );
+
   socket.on("sendEmail", (emailAddress, configData, date) => {
     sendEmail(emailAddress, configData, date).then((result) =>
       console.log(result)
@@ -306,26 +417,30 @@ const getServer = (country) => {
 };
 
 // Transforms duration into timestamp
-const getTimeStamp = (selectedValue) => {
+const getTimeStamp = (selectedValue, offset) => {
   let date = new Date();
+  if (offset && Date.now() > offset) {
+    let unixtime = Date.parse(dateTime);
+    date = new Date(unixtime);
+  }
 
   if (selectedValue == REACT_APP_ONE_MONTH) {
-    date = addMonths((date = new Date()), 1);
+    date = addMonths((date, 1);
     return date;
   }
 
   if (selectedValue == REACT_APP_THREE_MONTHS) {
-    date = addMonths((date = new Date()), 3);
+    date = addMonths(date, 3);
     return date;
   }
 
   if (selectedValue == REACT_APP_SIX_MONTHS) {
-    date = addMonths((date = new Date()), 6);
+    date = addMonths((date, 6);
     return date;
   }
 
   if (selectedValue == REACT_APP_ONE_YEAR) {
-    date = addMonths((date = new Date()), 12);
+    date = addMonths(date, 12);
     return date;
   }
 
@@ -500,3 +615,93 @@ async function checkInvoice(hash) {
       return null;
     });
 }
+
+async function getKey({ serverURL, publicKey }) {
+  return axios({
+    method: "get",
+    url: `https://${serverURL}/manager/key`,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: process.env.AUTH,
+    },
+  }).then(function (response) {
+    result = response.data.Keys;
+    if (result) {
+      const keyDBInfo = result.filter((keyEntry) => {
+        return publicKey === keyEntry.PublicKey;
+      });
+      if (keyDBInfo.length != 1) {
+        logDim("Error - Key not in Database");
+        return null;
+      }
+      return keyDBInfo[0];
+    } else {
+      logDim("Server Error - Status 500");
+      return null;
+    }
+  }).catch(error => {
+    logDim(error.message)
+    return null
+  })
+}
+
+async function newSubscriptionEnd({keyID,subExpiry, serverURL, publicKey })  {
+  const request1 = {
+    method: "post",
+    url: `https://${serverURL}/subscription/edit`,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: process.env.AUTH,
+    },
+    data: {
+      keyID,
+      bwLimit: -1,  //don't change it
+      subExpiry: parseDate(subExpiry),
+      bwReset: false    
+    }
+  }
+
+  const response1 = await axios(request1).catch((error) => {
+    logDim("newSubscriptionEnd()- update subscription expiry",error.message);
+    return null
+  })
+
+  if (response1.data){
+    // Enable Key if disabled
+
+    const isEnabled = await getKey(serverURL,publicKey).catch(error => {
+        logDim("newSubscriptionEnd()-lookupKey",error.message);
+        return null
+    })
+
+    if(!isEnabled){
+      const request2 = {
+    method: "post",
+    url: `https://${serverURL}/manager/enable`,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: process.env.AUTH,
+    },
+    data: {
+      keyID, 
+    }
+  }
+
+   const response2 = await axios(request2).catch((error) => {
+    logDim(`newSubscriptionEnd()- enabling key with ID: ${keyID}`,error.message);
+    return null
+  })
+
+  if (!response2.data) return null
+    
+    }
+
+  return response1.data
+  }
+
+  return null
+
+  
+}
+
+
