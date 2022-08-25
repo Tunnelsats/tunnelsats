@@ -1,23 +1,24 @@
-import { Row, Col, Container, Button, Nav, Navbar } from 'react-bootstrap';
+import { Row, Col, Container, Button, Nav, Navbar } from "react-bootstrap";
 import { io } from "socket.io-client";
-import { useState } from 'react';
+import { useState } from "react";
 //import KeyInput from './components/KeyInput';
-import RuntimeSelector from './components/RuntimeSelector';
-import InvoiceModal from './components/InvoiceModal';
-import './wireguard.js';
-import { getTimeStamp } from './timefunction.js';
-import HeaderInfo from './components/HeaderInfo';
-import logo from './media/tunnelsats_headerlogo3.png';
+import RuntimeSelector from "./components/RuntimeSelector";
+import InvoiceModal from "./components/InvoiceModal";
+import "./wireguard.js";
+import { getTimeStamp } from "./timefunction.js";
+import HeaderInfo from "./components/HeaderInfo";
+import logo from "./media/tunnelsats_headerlogo3.png";
 import WorldMap from "./components/WorldMap";
-import { Form, InputGroup } from 'react-bootstrap';
-import { IoIosRefresh } from 'react-icons/io';
+import { Form, InputGroup } from "react-bootstrap";
+import { IoIosRefresh } from "react-icons/io";
 
 // helper
-const getDate = timestamp => (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
+const getDate = (timestamp) =>
+  (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
 // Env Variables to have the same code base main and dev
 const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 0.002;
-const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || '';
-const REACT_APP_SOCKETIO = process.env.REACT_APP_SOCKETIO || '/';
+const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || "";
+const REACT_APP_SOCKETIO = process.env.REACT_APP_SOCKETIO || "/";
 
 const DEBUG = false;
 
@@ -29,13 +30,14 @@ var emailAddress;
 var clientPaymentHash;
 var isPaid = false;
 
-
 function App() {
-
-
-  const [keyPair, displayNewPair] = useState(window.wireguard.generateKeypair());
+  const [keyPair, displayNewPair] = useState(
+    window.wireguard.generateKeypair()
+  );
   const [priceDollar, updatePrice] = useState(REACT_APP_THREE_MONTHS);
-  const [satsPerDollar, setSatsPerDollar] = useState(Math.round(100000000 / 22000));
+  const [satsPerDollar, setSatsPerDollar] = useState(
+    Math.round(100000000 / 22000)
+  );
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
@@ -53,7 +55,7 @@ function App() {
   //const hideLoginModal = () => showLoginModal(false);
 
   // World Map
-  const [country, updateCountry] = useState('eu');
+  const [country, updateCountry] = useState("eu");
 
   /* WorldMap Continent Codes
     AF = Africa
@@ -94,22 +96,25 @@ function App() {
 
   //Updates the QR-Code
   const updatePaymentrequest = () => {
-    socket.on('lnbitsInvoice', invoiceData => {
+    socket.on("lnbitsInvoice", (invoiceData) => {
       DEBUG && console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
-      DEBUG && console.log(`${getDate()} Paymenthash: ${invoiceData.payment_hash}, ${invoiceData.payment_request}`)
+      DEBUG &&
+        console.log(
+          `${getDate()} Paymenthash: ${invoiceData.payment_hash}, ${
+            invoiceData.payment_request
+          }`
+        );
       setPaymentrequest(invoiceData.payment_request);
       clientPaymentHash = invoiceData.payment_hash;
       setSpinner(false);
-    }
-    )
+    });
   };
 
-
   //Connect to WebSocket Server
-  socket.removeAllListeners("connect").on('connect', () => {
-    DEBUG && console.log(`${getDate()} App.js: connect with id: ${socket.id}`)
+  socket.removeAllListeners("connect").on("connect", () => {
+    DEBUG && console.log(`${getDate()} App.js: connect with id: ${socket.id}`);
     //Checks for already paid invoice if browser switche tab on mobile
-    if ((clientPaymentHash !== undefined)) {
+    if (clientPaymentHash !== undefined) {
       checkInvoice();
     }
     // refresh pricePerDollar on start
@@ -118,65 +123,71 @@ function App() {
 
   // get current btc per dollar
   const getPrice = () => {
-    socket.removeAllListeners('getPrice').emit('getPrice');
-  }
-  socket.off('receivePrice').on('receivePrice', price => {
+    socket.removeAllListeners("getPrice").emit("getPrice");
+  };
+  socket.off("receivePrice").on("receivePrice", (price) => {
     DEBUG && console.log(`${getDate()} App.js: server.getPrice(): ${price}`);
     setSatsPerDollar(Math.trunc(Math.round(price)));
   });
 
   // check invoice
   const checkInvoice = () => {
-    DEBUG && console.log(`${getDate()} App.js: checkInvoice(): ${clientPaymentHash}`);
-    socket.emit('checkInvoice', clientPaymentHash);
-
+    DEBUG &&
+      console.log(`${getDate()} App.js: checkInvoice(): ${clientPaymentHash}`);
+    socket.emit("checkInvoice", clientPaymentHash);
   };
 
   //Get the invoice
   const getInvoice = (price, publicKey, presharedKey, priceDollar, country) => {
     DEBUG && console.log(`${getDate()} App.js: getInvoice(price): ${price}$`);
-    socket.emit('getInvoice', price, publicKey, presharedKey, priceDollar, country);
+    socket.emit(
+      "getInvoice",
+      price,
+      publicKey,
+      presharedKey,
+      priceDollar,
+      country
+    );
   };
 
+  socket.off("invoicePaid").on("invoicePaid", (paymentHash) => {
+    DEBUG &&
+      console.log(
+        `${getDate()} App.js: got msg 'invoicePaid': ${paymentHash}, clientPaymentHash: ${clientPaymentHash}`
+      );
 
-  socket.off('invoicePaid').on('invoicePaid', paymentHash => {
-    DEBUG && console.log(`${getDate()} App.js: got msg 'invoicePaid': ${paymentHash}, clientPaymentHash: ${clientPaymentHash}`);
-
-    if ((paymentHash === clientPaymentHash) && !isPaid) {
+    if (paymentHash === clientPaymentHash && !isPaid) {
       renderAlert(true);
       isPaid = true;
       setSpinner(true);
     }
   });
 
-
   //Get wireguard config from Server
-  socket.off('receiveConfigData').on('receiveConfigData', wireguardConfig => {
+  socket.off("receiveConfigData").on("receiveConfigData", (wireguardConfig) => {
     DEBUG && console.log(`${getDate()} App.js: got msg receiveConfigData`);
     setSpinner(false);
-    setPaymentrequest(buildConfigFile(wireguardConfig).join('\n'));
+    setPaymentrequest(buildConfigFile(wireguardConfig).join("\n"));
   });
-
-
-
 
   //Construct the Config File
   const buildConfigFile = (serverResponse) => {
     showInvoiceModal();
     renderConfigModal();
     const configArray = [
-      '[Interface]',
-      'PrivateKey = ' + keyPair.privateKey,
-      'Address = ' + serverResponse.ipv4Address,
+      "[Interface]",
+      "PrivateKey = " + keyPair.privateKey,
+      "Address = " + serverResponse.ipv4Address,
       // 'DNS = '+serverResponse.dns,
-      '#VPNPort = ' + serverResponse.portFwd,
-      '#ValidUntil (UTC time)= ' + getTimeStamp(priceDollar).toISOString(),
-      ' ',
-      '[Peer]',
-      'PublicKey = ' + serverResponse.publicKey,
-      'PresharedKey = ' + keyPair.presharedKey,
-      'Endpoint = ' + serverResponse.dnsName + ':' + serverResponse.listenPort,
-      'AllowedIPs = ' + serverResponse.allowedIPs];
+      "#VPNPort = " + serverResponse.portFwd,
+      "#ValidUntil (UTC time)= " + getTimeStamp(priceDollar).toISOString(),
+      " ",
+      "[Peer]",
+      "PublicKey = " + serverResponse.publicKey,
+      "PresharedKey = " + keyPair.presharedKey,
+      "Endpoint = " + serverResponse.dnsName + ":" + serverResponse.listenPort,
+      "AllowedIPs = " + serverResponse.allowedIPs,
+    ];
     return configArray;
   };
 
@@ -195,7 +206,7 @@ function App() {
     const textArray = [text];
     const element = document.createElement("a");
     const file = new Blob(textArray, {
-      endings: 'native'
+      endings: "native",
     });
     element.href = URL.createObjectURL(file);
     element.download = filename;
@@ -204,21 +215,34 @@ function App() {
   };
 
   const sendEmail = (email, config, date) => {
-    DEBUG && console.log(`${getDate()} App.js: sendEmail(): ${email}, validdate: ${date}`);
-    socket.emit('sendEmail', email, config, date);
+    DEBUG &&
+      console.log(
+        `${getDate()} App.js: sendEmail(): ${email}, validdate: ${date}`
+      );
+    socket.emit("sendEmail", email, config, date);
   };
 
-
   return (
-
     <div>
       <Container>
         <Navbar variant="dark" expanded="true">
           <Container>
             <Navbar.Brand href="#">Tunnel⚡️Sats</Navbar.Brand>
             <Nav className="me-auto">
-              <Nav.Link href="https://blckbx.github.io/tunnelsats" target="_blank" rel="noreferrer">Guide</Nav.Link>
-              <Nav.Link href="https://blckbx.github.io/tunnelsats/FAQ.html" target="_blank" rel="noreferrer">FAQ</Nav.Link>
+              <Nav.Link
+                href="https://blckbx.github.io/tunnelsats"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Guide
+              </Nav.Link>
+              <Nav.Link
+                href="https://blckbx.github.io/tunnelsats/FAQ.html"
+                target="_blank"
+                rel="noreferrer"
+              >
+                FAQ
+              </Nav.Link>
             </Nav>
             {/*}
             <Nav>
@@ -229,7 +253,6 @@ function App() {
           </Container>
         </Navbar>
       </Container>
-
 
       <Container className="main-middle">
         <Row>
@@ -257,11 +280,18 @@ function App() {
                     disabled
                     key={keyPair.privateKey}
                     defaultValue={keyPair.privateKey}
-                    onChange={(event) => { keyPair.privateKey = (event.target.value) }}
+                    onChange={(event) => {
+                      keyPair.privateKey = event.target.value;
+                    }}
                   />
-                  <Button onClick={() => {
-                    displayNewPair(window.wireguard.generateKeypair);
-                  }} variant="secondary"><IoIosRefresh color="white" size={20} title="renew keys" /></Button>
+                  <Button
+                    onClick={() => {
+                      displayNewPair(window.wireguard.generateKeypair);
+                    }}
+                    variant="secondary"
+                  >
+                    <IoIosRefresh color="white" size={20} title="renew keys" />
+                  </Button>
                 </InputGroup>
                 <InputGroup>
                   <InputGroup.Text>Public Key</InputGroup.Text>
@@ -269,7 +299,9 @@ function App() {
                     disabled
                     key={keyPair.publicKey}
                     defaultValue={keyPair.publicKey}
-                    onChange={(event) => { keyPair.publicKey = (event.target.value) }}
+                    onChange={(event) => {
+                      keyPair.publicKey = event.target.value;
+                    }}
                   />
                 </InputGroup>
                 <InputGroup>
@@ -278,11 +310,12 @@ function App() {
                     disabled
                     key={keyPair.presharedKey}
                     defaultValue={keyPair.presharedKey}
-                    onChange={(event) => { keyPair.presharedKey = (event.target.value) }}
+                    onChange={(event) => {
+                      keyPair.presharedKey = event.target.value;
+                    }}
                   />
                 </InputGroup>
               </Form.Group>
-
             </Form>
 
             <RuntimeSelector onClick={runtimeSelect} />
@@ -292,36 +325,95 @@ function App() {
               showSpinner={showSpinner}
               isConfigModal={isConfigModal}
               value={payment_request}
-              download={() => { download("tunnelsatsv2.conf", payment_request) }}
-              showNewInvoice={() => { getInvoice(priceDollar * satsPerDollar, keyPair.publicKey, keyPair.presharedKey, priceDollar, country); setSpinner(true) }}
+              download={() => {
+                download("tunnelsatsv2.conf", payment_request);
+              }}
+              showNewInvoice={() => {
+                getInvoice(
+                  priceDollar * satsPerDollar,
+                  keyPair.publicKey,
+                  keyPair.presharedKey,
+                  priceDollar,
+                  country
+                );
+                setSpinner(true);
+              }}
               handleClose={closeInvoiceModal}
               emailAddress={emailAddress}
               expiryDate={getTimeStamp(priceDollar)}
-              sendEmail={(data) => sendEmail(data, payment_request, getTimeStamp(priceDollar))}
+              sendEmail={(data) =>
+                sendEmail(data, payment_request, getTimeStamp(priceDollar))
+              }
               showPaymentAlert={showPaymentSuccessfull}
             />
 
-            <div className='price'>
-              <h3>{(Math.trunc(priceDollar * satsPerDollar)).toLocaleString()} <i class="fak fa-satoshisymbol-solidtilt" /></h3>
+            <div className="price">
+              <h3>
+                {Math.trunc(priceDollar * satsPerDollar).toLocaleString()}{" "}
+                <i class="fak fa-satoshisymbol-solidtilt" />
+              </h3>
             </div>
 
-            <div className='main-buttons'>
-              <Button onClick={() => {
-                getInvoice(priceDollar * satsPerDollar, keyPair.publicKey, keyPair.presharedKey, priceDollar, country);
-                showInvoiceModal();
-                hideConfigModal();
-                updatePaymentrequest();
-                setSpinner(true);
-                isPaid = false;
-              }} variant="outline-warning">Generate Invoice</Button>
+            <div className="main-buttons">
+              <Button
+                onClick={() => {
+                  getInvoice(
+                    priceDollar * satsPerDollar,
+                    keyPair.publicKey,
+                    keyPair.presharedKey,
+                    priceDollar,
+                    country
+                  );
+                  showInvoiceModal();
+                  hideConfigModal();
+                  updatePaymentrequest();
+                  setSpinner(true);
+                  isPaid = false;
+                }}
+                variant="outline-warning"
+              >
+                Generate Invoice
+              </Button>
             </div>
 
-            <div className='footer-text'>
+            <div className="footer-text">
               <Row>
-                <Col><a href="https://twitter.com/TunnelSats" target="_blank" rel="noreferrer"><span class="icon icon-twitter"></span></a></Col>
-                <Col><a href="https://github.com/blckbx/tunnelsats" target="_blank" rel="noreferrer"><span class="icon icon-github"></span></a></Col>
-                <Col><a href={REACT_APP_LNBITS_URL} target="_blank" rel="noreferrer"><span class="icon icon-heart"></span></a></Col>
-                <Col><a href="https://t.me/+NJylaUom-rxjYjU6" target="_blank" rel="noreferrer"><span class="icon icon-telegram"></span></a></Col>
+                <Col>
+                  <a
+                    href="https://twitter.com/TunnelSats"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span class="icon icon-twitter"></span>
+                  </a>
+                </Col>
+                <Col>
+                  <a
+                    href="https://github.com/blckbx/tunnelsats"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span class="icon icon-github"></span>
+                  </a>
+                </Col>
+                <Col>
+                  <a
+                    href={REACT_APP_LNBITS_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span class="icon icon-heart"></span>
+                  </a>
+                </Col>
+                <Col>
+                  <a
+                    href="https://t.me/+NJylaUom-rxjYjU6"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span class="icon icon-telegram"></span>
+                  </a>
+                </Col>
               </Row>
             </div>
           </Col>
@@ -329,6 +421,6 @@ function App() {
       </Container>
     </div>
   );
-};
+}
 
 export default App;
