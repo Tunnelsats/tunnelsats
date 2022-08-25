@@ -187,6 +187,7 @@ function App() {
       "PresharedKey = " + keyPair.presharedKey,
       "Endpoint = " + serverResponse.dnsName + ":" + serverResponse.listenPort,
       "AllowedIPs = " + serverResponse.allowedIPs,
+      "PersistentKeepalive = 25",
     ];
     return configArray;
   };
