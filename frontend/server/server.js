@@ -202,16 +202,18 @@ app.post("/updatesubscription", (req, res) => {
 
     newSubscriptionEnd({
       keyID,
-      subExpiry: getTimeStamp(priceDollar,subscriptionInfo.subscriptionEnd),
+      subExpiry: getTimeStamp(priceDollar, subscriptionInfo.subscriptionEnd),
       serverURL,
-      publicKey
-    }).then(result => {
+      publicKey,
+    })
+      .then((result) => {
         io.to(id).emit("receiveUpdateSubscription", result);
         logDim(`Successfully updated new SubscriptionEnd to  ${publicKey}`);
-        invoiceWGKeysMap.splice(index, 1);      
-    }).catch(error =>{
-      logDim(error.message)
-    })
+        invoiceWGKeysMap.splice(index, 1);
+      })
+      .catch((error) => {
+        logDim(error.message);
+      });
 
     //
   }
@@ -425,7 +427,7 @@ const getTimeStamp = (selectedValue, offset) => {
   }
 
   if (selectedValue == REACT_APP_ONE_MONTH) {
-    date = addMonths((date, 1);
+    date = addMonths(date, 1);
     return date;
   }
 
@@ -435,7 +437,7 @@ const getTimeStamp = (selectedValue, offset) => {
   }
 
   if (selectedValue == REACT_APP_SIX_MONTHS) {
-    date = addMonths((date, 6);
+    date = addMonths(date, 6);
     return date;
   }
 
@@ -624,28 +626,30 @@ async function getKey({ serverURL, publicKey }) {
       "Content-Type": "application/json",
       Authorization: process.env.AUTH,
     },
-  }).then(function (response) {
-    result = response.data.Keys;
-    if (result) {
-      const keyDBInfo = result.filter((keyEntry) => {
-        return publicKey === keyEntry.PublicKey;
-      });
-      if (keyDBInfo.length != 1) {
-        logDim("Error - Key not in Database");
+  })
+    .then(function (response) {
+      result = response.data.Keys;
+      if (result) {
+        const keyDBInfo = result.filter((keyEntry) => {
+          return publicKey === keyEntry.PublicKey;
+        });
+        if (keyDBInfo.length != 1) {
+          logDim("Error - Key not in Database");
+          return null;
+        }
+        return keyDBInfo[0];
+      } else {
+        logDim("Server Error - Status 500");
         return null;
       }
-      return keyDBInfo[0];
-    } else {
-      logDim("Server Error - Status 500");
+    })
+    .catch((error) => {
+      logDim(error.message);
       return null;
-    }
-  }).catch(error => {
-    logDim(error.message)
-    return null
-  })
+    });
 }
 
-async function newSubscriptionEnd({keyID,subExpiry, serverURL, publicKey })  {
+async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
   const request1 = {
     method: "post",
     url: `https://${serverURL}/subscription/edit`,
@@ -655,53 +659,50 @@ async function newSubscriptionEnd({keyID,subExpiry, serverURL, publicKey })  {
     },
     data: {
       keyID,
-      bwLimit: -1,  //don't change it
+      bwLimit: -1, //don't change it
       subExpiry: parseDate(subExpiry),
-      bwReset: false    
-    }
-  }
+      bwReset: false,
+    },
+  };
 
   const response1 = await axios(request1).catch((error) => {
-    logDim("newSubscriptionEnd()- update subscription expiry",error.message);
-    return null
-  })
+    logDim("newSubscriptionEnd()- update subscription expiry", error.message);
+    return null;
+  });
 
-  if (response1.data){
+  if (response1.data) {
     // Enable Key if disabled
+    const isEnabled = await getKey(serverURL, publicKey).catch((error) => {
+      logDim("newSubscriptionEnd()-lookupKey", error.message);
+      return null;
+    });
 
-    const isEnabled = await getKey(serverURL,publicKey).catch(error => {
-        logDim("newSubscriptionEnd()-lookupKey",error.message);
-        return null
-    })
-
-    if(!isEnabled){
+    if (!isEnabled) {
       const request2 = {
-    method: "post",
-    url: `https://${serverURL}/manager/enable`,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: process.env.AUTH,
-    },
-    data: {
-      keyID, 
+        method: "post",
+        url: `https://${serverURL}/manager/enable`,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: process.env.AUTH,
+        },
+        data: {
+          keyID,
+        },
+      };
+
+      const response2 = await axios(request2).catch((error) => {
+        logDim(
+          `newSubscriptionEnd()- enabling key with ID: ${keyID}`,
+          error.message
+        );
+        return null;
+      });
+
+      if (!response2.data) return null;
     }
+
+    return response1.data;
   }
 
-   const response2 = await axios(request2).catch((error) => {
-    logDim(`newSubscriptionEnd()- enabling key with ID: ${keyID}`,error.message);
-    return null
-  })
-
-  if (!response2.data) return null
-    
-    }
-
-  return response1.data
-  }
-
-  return null
-
-  
+  return null;
 }
-
-
