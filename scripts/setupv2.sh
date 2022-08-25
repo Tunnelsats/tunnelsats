@@ -922,7 +922,7 @@ After=umbrel-startup.service
     echo
     if [ -f /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf ]; then
       echo "> Restarting blitzapi after successful start of tunnelsats interface"
-      systemctl restart blitzapi.service. >/dev/null
+      systemctl restart blitzapi.service >/dev/null
     fi
   else
     echo "> ERR: wireguard service could not be started. Please check for errors."
