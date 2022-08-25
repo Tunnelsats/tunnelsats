@@ -436,7 +436,7 @@ sleep 2
 if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf ]; then
     echo "Removing tunnelsats_killswitch.conf..."
     if rm /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf; then
-        rm -r /etc/systemd/system/umbrel-startup.service.d >/dev/null
+        # rm -r /etc/systemd/system/umbrel-startup.service.d >/dev/null
         echo "> /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  removed"
         echo
     else
@@ -447,6 +447,19 @@ fi
 
 sleep 2
 
+# remove dependencies of blitzapi
+if [ -f /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf ]; then
+    echo "Removing wg dependency of blitzapi..."
+    if rm /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf; then
+        echo "> /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf  removed"
+        echo
+    else
+        echo "> ERR: could not remove /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf. Please check manually."
+        echo
+    fi
+fi
+
+sleep 2
 #reset lnd
 if [ $isDocker -eq 0 ] && [ -f /etc/systemd/system/lnd.service.bak ] && [ "$lnImplementation" == "lnd" ]; then
     if mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service; then
