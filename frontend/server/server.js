@@ -20,6 +20,9 @@ let invoiceWGKeysMap = [];
 // Restrict entries to prevent an attack to fill the ram memory
 const MAXINVOICES = 100;
 
+// 15 minutes after the invoice is in memory it is purged after any user disconnects
+const TIMERINVOICEDATA = 15;
+
 const app = express();
 let payment_hash, payment_request;
 require("dotenv").config();
@@ -133,7 +136,9 @@ app.post(process.env.WEBHOOK, (req, res) => {
       .then((result) => {
         io.to(id).emit("receiveConfigData", result);
         logDim(`Successfully created wg entry for pubkey ${publicKey}`);
-        invoiceWGKeysMap.splice(index, 1);
+
+        invoiceWGKeysMap[index].isPaid = true;
+        invoiceWGKeysMap[index].resultAddingKey = result;
 
         const serverDNS = getServer(country)
           .replace(/^https?:\/\//, "")
@@ -175,7 +180,8 @@ io.on("connection", (socket) => {
   // Checks for a paid Invoice after reconnection of the client
   // To allow for recovery in calse the client looses connection but pays the invoice
   socket.on("checkInvoice", (clientPaymentHash) => {
-    DEBUG && logDim(`checkInvoice() called: ${socket.id}`);
+    DEBUG &&
+      logDim(`checkInvoice() called: ${socket.id}, hash: ${clientPaymentHash}`);
     checkInvoice(clientPaymentHash)
       .then((result) => {
         const index = invoiceWGKeysMap.findIndex((client) => {
@@ -183,56 +189,29 @@ io.on("connection", (socket) => {
         });
 
         if (index !== -1) {
-          const {
-            paymentDetails,
-            publicKey,
-            presharedKey,
-            priceDollar,
-            country,
-          } = invoiceWGKeysMap[index];
+          const { paymentDetails, publicKey, isPaid, resultAddingKey } =
+            invoiceWGKeysMap[index];
 
-          io.to(socket.id).emit("invoicePaid", paymentDetails.payment_hash);
+          if (isPaid) {
+            io.to(socket.id).emit("invoicePaid", paymentDetails.payment_hash);
 
-          getWireguardConfig(
-            publicKey,
-            presharedKey,
-            getTimeStamp(priceDollar),
-            getServer(country)
-          )
-            .then((result) => {
-              io.to(socket.id).emit("receiveConfigData", result);
-              logDim(`Successfully created wg entry for pubkey ${publicKey}`);
-              invoiceWGKeysMap.splice(index, 1);
-
-              const serverDNS = getServer(country)
-                .replace(/^https?:\/\//, "")
-                .replace(/\/manager\/$/, "");
-              sayWithTelegram({
-                message: `🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(
-                  amountSats
-                )}💰`,
-              })
-                .then((result) => {
-                  DEBUG && logDim(`${result}`);
-                })
-                .catch((error) => logDim(error.message));
-            })
-            .catch((error) => {
-              sayWithTelegram({
-                message: `[Tunnelsats-Server.js] 🔴 Creating New Subscription failed with ${error.message}`,
-              });
-              DEBUG && logDim(error.message);
-            });
+            io.to(socket.id).emit("receiveConfigData", resultAddingKey);
+            logDim(
+              `Resend wg credentials to already paid invoice entry for pubkey ${publicKey}`
+            );
+          }
         } else {
           logDim(
             `No Invoice and corresponding connection found in memory ${socket.id}`
           );
-          logDim(
-            `no way to recover this state in a secure manner | server crashed potentially`
-          );
         }
       })
-      .catch((error) => logDim(`${error.message}`));
+      .catch((error) => {
+        logDim(`${error.message}`);
+        logDim(
+          `no way to recover this state in a secure manner | server crashed potentially`
+        );
+      });
   });
 
   // Getting the Invoice from lnbits and forwarding it to the frontend
@@ -283,11 +262,14 @@ io.on("connection", (socket) => {
 
     let index = 0;
 
-    // Delete all user related invoices and wg information to free memory as soon as a user disconnects
-    // Needs to be a loop bc client can create more than one invoice (getNewInvoice)
+    const currentTime = Date.now();
+
+    // Delete all user related information
     while (index !== -1) {
       index = invoiceWGKeysMap.findIndex((client) => {
-        return client.id === socket.id;
+        // console.log(currentTime - client.timestamp);
+        // After 15 Minutes Invoice Related Date is purged from the memory
+        return currentTime - client.timestamp > 1000 * 60 * TIMERINVOICEDATA;
       });
       if (index !== -1) {
         invoiceWGKeysMap.splice(index, 1);
@@ -501,18 +483,18 @@ async function sendEmail(emailAddress, configData, date) {
 async function checkInvoice(hash) {
   return axios({
     method: "get",
-    url: `process.env.URL_INVOICE_API${hash}`,
+    url: `${process.env.URL_INVOICE_API}/${hash}`,
     headers: { "X-Api-Key": process.env.INVOICE_KEY },
   })
     .then(function (response) {
-      if (!isEmpty(response.data.paid)) {
+      if (response.data.paid) {
         return response.data.details.payment_hash;
       }
-      throw new Error(`Error - Invoice not paid ${hash}`);
+      logDim(`Error - Invoice not paid ${hash}`);
+      return null;
     })
     .catch((error) => {
-      throw new Error(
-        `Error - fetching Invoice from Lnbits failed\n ${error.message}`
-      );
+      logDim(`Error - fetching Invoice from Lnbits failed\n ${error.message}`);
+      return null;
     });
 }
