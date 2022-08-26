@@ -2,18 +2,18 @@ import { Row, Col, Container, Button, Nav, Navbar } from "react-bootstrap";
 import { io } from "socket.io-client";
 import { useState } from "react";
 //import KeyInput from './components/KeyInput';
-import RuntimeSelector from "./components/RuntimeSelector";
-import InvoiceModal from "./components/InvoiceModal";
-import "./wireguard.js";
-import { getTimeStamp } from "./timefunction.js";
-import HeaderInfo from "./components/HeaderInfo";
-import logo from "./media/tunnelsats_headerlogo3.png";
-import WorldMap from "./components/WorldMap";
+import RuntimeSelector from "./RuntimeSelector";
+import InvoiceModal from "./InvoiceModal";
+import "../wireguard.js";
+import { getTimeStamp } from "../timefunction.js";
+import HeaderInfo from "./HeaderInfo";
+import logo from "../media/tunnelsats_headerlogo3.png";
+import WorldMap from "./WorldMap";
 import { Form, InputGroup } from "react-bootstrap";
 import { IoIosRefresh } from "react-icons/io";
 
-import UpdateSubscription from "./components/UpdateSubscription";
-import MainComponent from "./components/MainPage";
+// import UpdateSubscription from "./components/UpdateSubscription";
+// import MainComponent from "./components/MainPage";
 
 // Necessary for Routing Endpoints
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
@@ -36,7 +36,9 @@ var emailAddress;
 var clientPaymentHash;
 var isPaid = false;
 
-function App() {
+export default function Main(props) {
+  //   const socket = props.socket;
+
   const [keyPair, displayNewPair] = useState(
     window.wireguard.generateKeypair()
   );
@@ -229,52 +231,172 @@ function App() {
   };
 
   return (
-    <div>
-      <BrowserRouter>
-        <Container>
-          <Navbar variant="dark" expanded="true">
-            <Container>
-              <Navbar.Brand as={Link} to="/">
-                Tunnel⚡️Sats
-              </Navbar.Brand>
-              <Nav className="me-auto">
-                <Nav.Link as={Link} to="/updatesub">
-                  Update Subscription
-                </Nav.Link>
-                <Nav.Link
-                  href="https://blckbx.github.io/tunnelsats"
-                  target="_blank"
-                  rel="noreferrer"
+    <Container className="main-middle">
+      <Row>
+        <Col>
+          <img src={logo} alt="" />
+
+          <HeaderInfo />
+
+          <WorldMap selected={country} onSelect={updateCountry} />
+
+          {/* <KeyInput
+            publicKey={keyPair.publicKey}
+            privateKey={keyPair.privateKey}
+            presharedKey={keyPair.presharedKey}
+            newPrivateKey={(privateKey) => {
+              keyPair.privateKey = privateKey;
+            }}
+            newPublicKey={(publicKey) => {
+              keyPair.publicKey = publicKey;
+            }}
+            newPresharedKey={(presharedKey) => {
+              keyPair.presharedKey = presharedKey;
+            }}
+          /> */}
+
+          <Form>
+            <Form.Group className="mb-2">
+              <InputGroup>
+                <InputGroup.Text>Private Key</InputGroup.Text>
+                <Form.Control
+                  disabled
+                  key={keyPair.privateKey}
+                  defaultValue={keyPair.privateKey}
+                  onChange={(event) => {
+                    keyPair.privateKey = event.target.value;
+                  }}
+                />
+                <Button
+                  onClick={() => {
+                    displayNewPair(window.wireguard.generateKeypair);
+                  }}
+                  variant="secondary"
                 >
-                  Guide
-                </Nav.Link>
-                <Nav.Link
-                  href="https://blckbx.github.io/tunnelsats/FAQ.html"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  FAQ
-                </Nav.Link>
-              </Nav>
-              {/*}
-            <Nav>
-              <Button onClick={() => renderLoginModal()} variant="outline-info">Login</Button>
-              <LoginModal show={isLoginModal} handleClose={hideLoginModal} />
-            </Nav>
-            */}
-            </Container>
-          </Navbar>
-        </Container>
-        <Routes>
-          <Route
-            path="/updatesub"
-            element={<UpdateSubscription socket={socket} />}
+                  <IoIosRefresh color="white" size={20} title="renew keys" />
+                </Button>
+              </InputGroup>
+              <InputGroup>
+                <InputGroup.Text>Public Key</InputGroup.Text>
+                <Form.Control
+                  disabled
+                  key={keyPair.publicKey}
+                  defaultValue={keyPair.publicKey}
+                  onChange={(event) => {
+                    keyPair.publicKey = event.target.value;
+                  }}
+                />
+              </InputGroup>
+              <InputGroup>
+                <InputGroup.Text>Preshared Key</InputGroup.Text>
+                <Form.Control
+                  disabled
+                  key={keyPair.presharedKey}
+                  defaultValue={keyPair.presharedKey}
+                  onChange={(event) => {
+                    keyPair.presharedKey = event.target.value;
+                  }}
+                />
+              </InputGroup>
+            </Form.Group>
+          </Form>
+
+          <RuntimeSelector onClick={runtimeSelect} />
+
+          <InvoiceModal
+            show={visibleInvoiceModal}
+            showSpinner={showSpinner}
+            isConfigModal={isConfigModal}
+            value={payment_request}
+            download={() => {
+              download("tunnelsatsv2.conf", payment_request);
+            }}
+            showNewInvoice={() => {
+              getInvoice(
+                priceDollar * satsPerDollar,
+                keyPair.publicKey,
+                keyPair.presharedKey,
+                priceDollar,
+                country
+              );
+              setSpinner(true);
+            }}
+            handleClose={closeInvoiceModal}
+            emailAddress={emailAddress}
+            expiryDate={getTimeStamp(priceDollar)}
+            sendEmail={(data) =>
+              sendEmail(data, payment_request, getTimeStamp(priceDollar))
+            }
+            showPaymentAlert={showPaymentSuccessfull}
           />
-          <Route path="/" element={<MainComponent socket={socket} />} />
-        </Routes>
-      </BrowserRouter>
-    </div>
+
+          <div className="price">
+            <h3>
+              {Math.trunc(priceDollar * satsPerDollar).toLocaleString()}{" "}
+              <i class="fak fa-satoshisymbol-solidtilt" />
+            </h3>
+          </div>
+
+          <div className="main-buttons">
+            <Button
+              onClick={() => {
+                getInvoice(
+                  priceDollar * satsPerDollar,
+                  keyPair.publicKey,
+                  keyPair.presharedKey,
+                  priceDollar,
+                  country
+                );
+                showInvoiceModal();
+                hideConfigModal();
+                updatePaymentrequest();
+                setSpinner(true);
+                isPaid = false;
+              }}
+              variant="outline-warning"
+            >
+              Generate Invoice
+            </Button>
+          </div>
+
+          <div className="footer-text">
+            <Row>
+              <Col>
+                <a
+                  href="https://twitter.com/TunnelSats"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span class="icon icon-twitter"></span>
+                </a>
+              </Col>
+              <Col>
+                <a
+                  href="https://github.com/blckbx/tunnelsats"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span class="icon icon-github"></span>
+                </a>
+              </Col>
+              <Col>
+                <a href={REACT_APP_LNBITS_URL} target="_blank" rel="noreferrer">
+                  <span class="icon icon-heart"></span>
+                </a>
+              </Col>
+              <Col>
+                <a
+                  href="https://t.me/+NJylaUom-rxjYjU6"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span class="icon icon-telegram"></span>
+                </a>
+              </Col>
+            </Row>
+          </div>
+        </Col>
+      </Row>
+    </Container>
   );
 }
-
-export default App;

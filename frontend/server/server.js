@@ -174,7 +174,7 @@ app.post(process.env.WEBHOOK, (req, res) => {
 // Webhook for updating the Subcription
 
 // Invoice Webhook
-app.post("/updatesubscription", (req, res) => {
+app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
   const index = invoiceWGKeysMap.findIndex((client) => {
     return client.paymentDetails.payment_hash === req.body.payment_hash;
   });
@@ -191,28 +191,35 @@ app.post("/updatesubscription", (req, res) => {
     } = invoiceWGKeysMap[index];
 
     // Needed for now to notify the client to stop the spinner
-    io.to(id).emit("invoicePaid", paymentDetails.payment_hash);
+    io.to(id).emit(
+      "invoicePaidUpdateSubscription",
+      paymentDetails.payment_hash
+    );
 
-    const subscriptionInfo = getSubsciption({
+    getSubsciption({
       keyID,
       serverURL,
-    }).then((result) => {
-      return result;
-    });
-
-    newSubscriptionEnd({
-      keyID,
-      subExpiry: getTimeStamp(priceDollar, subscriptionInfo.subscriptionEnd),
-      serverURL,
-      publicKey,
     })
       .then((result) => {
-        io.to(id).emit("receiveUpdateSubscription", result);
-        logDim(`Successfully updated new SubscriptionEnd to  ${publicKey}`);
-        invoiceWGKeysMap.splice(index, 1);
+        newSubscriptionEnd({
+          keyID,
+          subExpiry: getTimeStamp(priceDollar, result.subscriptionEnd),
+          serverURL,
+          publicKey,
+        })
+          .then((result) => {
+            io.to(id).emit("receiveUpdateSubscription", result);
+            logDim(
+              `Successfully updated new SubscriptionEnd for  ${publicKey}`
+            );
+            invoiceWGKeysMap.splice(index, 1);
+          })
+          .catch((error) => {
+            logDim("newSubscriptionEnd() ", error.message);
+          });
       })
       .catch((error) => {
-        logDim(error.message);
+        logDim("getSubscription() ", error.message);
       });
 
     //
@@ -270,7 +277,7 @@ io.on("connection", (socket) => {
       DEBUG && logDim(`getInvoice() called id: ${socket.id}`);
 
       if (invoiceWGKeysMap.length <= MAXINVOICES) {
-        getInvoice(amount, priceDollar)
+        getInvoice(amount, priceDollar, process.env.URL_WEBHOOK)
           .then((result) => {
             socket.emit("lnbitsInvoice", result);
 
@@ -299,28 +306,41 @@ io.on("connection", (socket) => {
 
   // New Listening events for UpdateSubscription Request
 
-  socket.on("checkKeyDB", ({ publicKey, country }) => {
-    console.log(publicKey, server);
+  socket.on("checkKeyDB", ({ publicKey, serverURL }) => {
+    console.log(publicKey, serverURL);
 
-    const serverURL = getServer(country)
-      .replace(/^https?:\/\//, "")
-      .replace(/\/manager\/$/, "");
+    let keyID;
 
     getKey({ publicKey, serverURL })
       .then((result) => {
-        const subscriptionInfo = getSubsciption({
-          keyID: result.KeyId,
-          serverURL,
-        }).then((result) => {
-          return result;
-        });
-        let unixTimestamp = Date.parse(subscriptionInfo.subscriptionEnd);
-        let date = new Date(unixTimestamp);
-        console.log(date.toISOString());
-        socket.emit("receiveKeyLookup", {
-          keyID: result.KeyId,
-          subscriptionEnd: date,
-        });
+        if (result) {
+          keyID = result.KeyID;
+          getSubsciption({
+            keyID: result.KeyID,
+            serverURL,
+          })
+            .then((result) => {
+              if (result) {
+                console.log(result);
+                let unixTimestamp = Date.parse(result.subscriptionEnd);
+                let date = new Date(unixTimestamp);
+                logDim("SubscriptionEnd: ", date.toISOString());
+                socket.emit("receiveKeyLookup", {
+                  keyID: keyID,
+                  subscriptionEnd: date,
+                });
+              } else {
+                socket.emit(
+                  "receiveKeyLookup",
+                  "Error - No Subscription Found"
+                );
+              }
+            })
+            .catch((error) => {
+              logDim(error.message);
+              socket.emit("receiveKeyLookup", "Error - No Subscription Found");
+            });
+        }
       })
       .catch((error) => logDim(error.message));
   });
@@ -331,7 +351,7 @@ io.on("connection", (socket) => {
       DEBUG && logDim(`getInvoiceUpdateSub() called id: ${socket.id}`);
 
       if (invoiceWGKeysMap.length <= MAXINVOICES) {
-        getInvoice(amount, priceDollar)
+        getInvoice(amount, priceDollar, process.env.URL_WEBHOOK_UPDATE_SUB)
           .then((result) => {
             socket.emit("lnbitsInvoiceSubscription", result);
 
@@ -360,6 +380,15 @@ io.on("connection", (socket) => {
       }
     }
   );
+
+  socket.on("getServer", (country) => {
+    logDim(`getServer() called id: ${socket.id}`);
+    server = getServer(country);
+    socket.emit(
+      "receiveServer",
+      server.replace(/^https?:\/\//, "").replace(/\/manager\/$/, "")
+    );
+  });
 
   socket.on("sendEmail", (emailAddress, configData, date) => {
     sendEmail(emailAddress, configData, date).then((result) =>
@@ -421,8 +450,8 @@ const getServer = (country) => {
 // Transforms duration into timestamp
 const getTimeStamp = (selectedValue, offset) => {
   let date = new Date();
-  if (offset && Date.now() > offset) {
-    let unixtime = Date.parse(dateTime);
+  if (offset && Date.now() < Date.parse(offset)) {
+    let unixtime = Date.parse(offset);
     date = new Date(unixtime);
   }
 
@@ -464,7 +493,7 @@ const parseDate = (date) => {
 // API Calls using Axios
 
 // Get Invoice Function
-async function getInvoice(amount, priceDollar) {
+async function getInvoice(amount, priceDollar, webhook) {
   // let satoshis = await getPrice()
   //                       .then((result) => { return result })
   //                       .catch(error => { return error });
@@ -476,7 +505,7 @@ async function getInvoice(amount, priceDollar) {
       out: false,
       amount: Math.round(amount),
       memo: getTimeStamp(priceDollar),
-      webhook: process.env.URL_WEBHOOK,
+      webhook,
     },
   })
     .then(function (response) {
@@ -619,6 +648,7 @@ async function checkInvoice(hash) {
 }
 
 async function getKey({ serverURL, publicKey }) {
+  console.log(serverURL, publicKey);
   return axios({
     method: "get",
     url: `https://${serverURL}/manager/key`,
@@ -644,26 +674,35 @@ async function getKey({ serverURL, publicKey }) {
       }
     })
     .catch((error) => {
-      logDim(error.message);
+      logDim("getKey()", error.message);
       return null;
     });
 }
 
 async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
+  console.log(
+    `new data: ${parseDate(subExpiry)}`,
+    keyID,
+    subExpiry,
+    serverURL,
+    publicKey
+  );
   const request1 = {
     method: "post",
-    url: `https://${serverURL}/subscription/edit`,
+    url: `https://${serverURL}/manager/subscription/edit`,
     headers: {
       "Content-Type": "application/json",
       Authorization: process.env.AUTH,
     },
     data: {
-      keyID,
+      keyID: `${keyID}`,
       bwLimit: -1, //don't change it
       subExpiry: parseDate(subExpiry),
       bwReset: false,
     },
   };
+
+  console.log(request1);
 
   const response1 = await axios(request1).catch((error) => {
     logDim("newSubscriptionEnd()- update subscription expiry", error.message);
@@ -672,10 +711,12 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
 
   if (response1.data) {
     // Enable Key if disabled
-    const isEnabled = await getKey(serverURL, publicKey).catch((error) => {
+    const isEnabled = await getKey({ serverURL, publicKey }).catch((error) => {
       logDim("newSubscriptionEnd()-lookupKey", error.message);
       return null;
     });
+
+    console.log(`enabled: ${isEnabled}`);
 
     if (!isEnabled) {
       const request2 = {
@@ -686,7 +727,7 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
           Authorization: process.env.AUTH,
         },
         data: {
-          keyID,
+          keyID: `${keyID}`,
         },
       };
 
@@ -701,8 +742,30 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
       if (!response2.data) return null;
     }
 
-    return response1.data;
+    return { subExpiry };
   }
 
   return null;
+}
+
+async function getSubsciption({ keyID, serverURL }) {
+  return axios({
+    method: "post",
+    url: `https://${serverURL}/manager/subscription`,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: process.env.AUTH,
+    },
+    data: {
+      keyID: `${keyID}`,
+    },
+  })
+    .then(function (response) {
+      return response.data;
+    })
+    .catch((error) => {
+      console.log(keyID, serverURL);
+      logDim("getSubscription()", error.message);
+      return null;
+    });
 }
