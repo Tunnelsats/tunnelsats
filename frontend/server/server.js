@@ -21,7 +21,7 @@ let invoiceWGKeysMap = [];
 const MAXINVOICES = 100;
 
 // 15 minutes after the invoice is in memory it is purged after any user disconnects
-const TIMERINVOICEDATA = 1;
+const TIMERINVOICEDATA = 15;
 
 const app = express();
 let payment_hash, payment_request;
