@@ -21,7 +21,7 @@ let invoiceWGKeysMap = [];
 const MAXINVOICES = 100;
 
 // 15 minutes after the invoice is in memory it is purged after any user disconnects
-const TIMERINVOICEDATA = 15;
+const TIMERINVOICEDATA = 1;
 
 const app = express();
 let payment_hash, payment_request;
@@ -234,6 +234,8 @@ io.on("connection", (socket) => {
               country: country,
               id: socket.id,
               amountSats: amount,
+              timestamp: Date.now(),
+              isPaid: false,
             });
             DEBUG && console.log(invoiceWGKeysMap);
           })
