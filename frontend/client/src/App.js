@@ -72,7 +72,7 @@ function App() {
   const showRenew = () => setRenewSub(true);
   const hideRenew = () => setRenewSub(false);
 
-  const [server, setServer] = useState("");
+  const [server, setServer] = useState(country);
   const [pubkey, setPubkey] = useState("");
   const [valid, setValid] = useState(false);
   const [timeValid, setTimeValid] = useState(false);

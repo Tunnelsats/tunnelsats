@@ -7,6 +7,7 @@ const dayjs = require("dayjs");
 const { SocksProxyAgent } = require("socks-proxy-agent");
 const fetch = require("node-fetch-commonjs");
 const { logDim } = require("./logger");
+require("dotenv").config();
 
 DEBUG = true;
 
@@ -24,8 +25,6 @@ const MAXINVOICES = 100;
 const TIMERINVOICEDATA = 15;
 
 const app = express();
-let payment_hash, payment_request;
-require("dotenv").config();
 
 // helper
 const getDate = (timestamp) =>
@@ -87,7 +86,6 @@ const sayWithTelegram = async ({ message, parse_mode = "HTML" }) => {
 
 // Server Settings
 const createServer = require("http");
-const { response } = require("express");
 // const { rootCertificates } = require('tls');
 const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
