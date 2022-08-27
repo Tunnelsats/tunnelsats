@@ -1,18 +1,13 @@
 import React from "react";
-
 import { useState, useEffect } from "react";
-
 import WorldMap from "./WorldMap";
-
 import InvoiceModal from "./InvoiceModal";
-
 import RuntimeSelector from "./RuntimeSelector";
-
-import { Form, InputGroup, Container, Button, Collapse } from "react-bootstrap";
-
+import { Row, Col, Form, InputGroup, Container, Button, Collapse } from "react-bootstrap";
 import { getTimeStamp } from "../timefunction.js";
-
 import { PhoneUpdate24Regular as UpdateSubscriptionIcon } from "@fluentui/react-icons";
+import HeaderInfo from "./HeaderInfo";
+import logo from "../media/tunnelsats_headerlogo3.png";
 
 const getDate = (timestamp) =>
   (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
@@ -25,26 +20,21 @@ var keyID;
 var isPaid = false;
 const DEBUG = false;
 
+// Env Variables to have the same code base main and dev
+const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || "";
+
 export default function UpdateSubscription(props) {
   const socket = props.socket;
 
   // World Map
   const [country, updateCountry] = useState("eu");
-
   const [server, setServer] = useState("");
-
   const [pubkey, setPubkey] = useState("");
-
   const [valid, setValid] = useState(false);
-
   const [timeValid, setTimeValid] = useState(false);
-
   const [timeSubscription, setTime] = useState("");
-
   const [newTimeSubscription, setNewTime] = useState("");
-
   const [showSpinner, setSpinner] = useState(true);
-
   const [isConfigModal, showConfigModal] = useState(false);
 
   const renderConfigModal = () => showConfigModal(true);
@@ -55,13 +45,10 @@ export default function UpdateSubscription(props) {
   const showInvoiceModal = () => setShowInvoiceModal(true);
 
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
-
   const [payment_request, setPaymentrequest] = useState(0);
-
   const [priceDollar, updatePrice] = useState(0.02);
-
   const [satsPerDollar, setSatsPerDollar] = useState(
-    Math.round(100000000 / 22000)
+    Math.round(100000000 / 20000)
   );
 
   //Successful payment alert
@@ -238,142 +225,185 @@ export default function UpdateSubscription(props) {
   return (
     <React.Fragment>
       <Container className="main-middle">
-        <div className="updateSubTitle">
-          <h4 className="titleSub">Update Tunnel⚡️Sats Subscription</h4>
-          <UpdateSubscriptionIcon className="iconSub" />
-        </div>
-        <WorldMap selected={country} onSelect={updateCountry} />
+        <Row>
+          <Col>
+            <img src={logo} alt="" />
 
-        <div>
-          <Form onSubmit={(e) => handleSubmit(e)}>
-            <Form.Group className="updateSubFrom">
-              <InputGroup>
-                <InputGroup.Text>Selected Server</InputGroup.Text>
-                <Form.Control
-                  disabled
-                  value={server}
-                  placeholder="Tunnelsats Server"
-                  onChange={handleChangeServer}
-                  type="text"
-                />
-              </InputGroup>
-              <InputGroup>
-                <InputGroup.Text>WG Pubkey</InputGroup.Text>
-                <Form.Control
-                  enabled
-                  value={pubkey}
-                  placeholder="Wireguard Pubkey (base64 encoded)"
-                  isValid={valid}
-                  onChange={handleChangePubkey}
-                />
-              </InputGroup>
-              <Collapse in={valid}>
-                <div id="example-collapse-text">
-                  {
-                    <div>
-                      <InputGroup>
-                        <InputGroup.Text>Valid Until:</InputGroup.Text>
-                        <Form.Control
-                          disabled
-                          value={timeSubscription}
-                          isValid={timeValid}
-                          // onChange = { handleChangePubkey}
-                        />
-                      </InputGroup>
-                    </div>
-                  }
-                </div>
-              </Collapse>
+            <HeaderInfo />
 
-              <Collapse in={valid}>
-                <div id="example-collapse-text">
-                  {
-                    <div>
-                      <InputGroup>
-                        <InputGroup.Text>NEW Valid Until:</InputGroup.Text>
-                        <Form.Control
-                          disabled
-                          value={newTimeSubscription}
-                          isValid={timeValid}
-                          // onChange = { handleChangePubkey}
-                        />
-                      </InputGroup>
-                    </div>
-                  }
-                </div>
-              </Collapse>
-            </Form.Group>
-            <div className="main-buttons">
-              <Button
-                variant="secondary"
-                onClick={handleKeyLookUp}
-                type="submit"
-                disabled={!valid}
-              >
-                Query Key Info
-              </Button>
-            </div>
-            <Collapse in={true}>
-              <div id="example-collapse-text">
-                {
-                  <div>
-                    <RuntimeSelector onClick={runtimeSelect} />
-                    <div className="price">
-                      <h3>
-                        {Math.trunc(
-                          Math.round(priceDollar * satsPerDollar)
-                        ).toLocaleString()}{" "}
-                        <i class="fak fa-satoshisymbol-solidtilt" />
-                      </h3>
-                    </div>
+            <WorldMap selected={country} onSelect={updateCountry} />
+
+            <Form onSubmit={(e) => handleSubmit(e)}>
+              <Form.Group className="updateSubFrom">
+                <InputGroup>
+                  <InputGroup.Text>Selected Server</InputGroup.Text>
+                  <Form.Control
+                    disabled
+                    value={server}
+                    placeholder="Tunnelsats Server"
+                    onChange={handleChangeServer}
+                    type="text"
+                  />
+                </InputGroup>
+                <InputGroup>
+                  <InputGroup.Text>WG Pubkey</InputGroup.Text>
+                  <Form.Control
+                    enabled
+                    value={pubkey}
+                    placeholder="Wireguard Pubkey (base64 encoded)"
+                    isValid={valid}
+                    onChange={handleChangePubkey}
+                  />
+                </InputGroup>
+                <Collapse in={valid}>
+                  <div id="example-collapse-text">
+                    {
+                      <div>
+                        <InputGroup>
+                          <InputGroup.Text>Valid Until:</InputGroup.Text>
+                          <Form.Control
+                            disabled
+                            value={timeSubscription}
+                            isValid={timeValid}
+                            // onChange = { handleChangePubkey}
+                          />
+                        </InputGroup>
+                      </div>
+                    }
                   </div>
-                }
-              </div>
-            </Collapse>
-            <div className="main-buttons">
-              <Button
-                variant="outline-warning"
-                onClick={() => {
-                  getInvoice(
-                    priceDollar * satsPerDollar,
-                    pubkey,
-                    keyID,
-                    country,
-                    priceDollar
-                  );
-                  showInvoiceModal();
-                  updatePaymentrequest();
-                  setSpinner(true);
-                  isPaid = false;
-                }}
-                type="submit"
-                disabled={!timeValid}
-              >
-                Update Subscription
-              </Button>
-            </div>
-          </Form>
+                </Collapse>
 
-          <InvoiceModal
-            show={visibleInvoiceModal}
-            showSpinner={showSpinner}
-            isConfigModal={isConfigModal}
-            value={payment_request}
-            showNewInvoice={() => {
-              getInvoice(
-                priceDollar * satsPerDollar,
-                pubkey,
-                keyID,
-                country,
-                priceDollar
-              );
-              setSpinner(true);
-            }}
-            handleClose={closeInvoiceModal}
-            expiryDate={getTimeStamp(priceDollar)}
-            showPaymentAlert={showPaymentSuccessfull}
-          />
-        </div>
+                <Collapse in={valid}>
+                  <div id="example-collapse-text">
+                    {
+                      <div>
+                        <InputGroup>
+                          <InputGroup.Text>NEW Valid Until:</InputGroup.Text>
+                          <Form.Control
+                            disabled
+                            value={newTimeSubscription}
+                            isValid={timeValid}
+                            // onChange = { handleChangePubkey}
+                          />
+                        </InputGroup>
+                      </div>
+                    }
+                  </div>
+                </Collapse>
+              </Form.Group>
+              <div className="main-buttons">
+                <Button
+                  variant="secondary"
+                  onClick={handleKeyLookUp}
+                  type="submit"
+                  disabled={!valid}
+                >
+                  Query Key Info
+                </Button>
+              </div>
+              <Collapse in={true}>
+                <div id="example-collapse-text">
+                  {
+                    <div>
+                      <RuntimeSelector onClick={runtimeSelect} />
+                      <div className="price">
+                        <h3>
+                          {Math.trunc(
+                            Math.round(priceDollar * satsPerDollar)
+                          ).toLocaleString()}{" "}
+                          <i class="fak fa-satoshisymbol-solidtilt" />
+                        </h3>
+                      </div>
+                    </div>
+                  }
+                </div>
+              </Collapse>
+              <div className="main-buttons">
+                <Button
+                  variant="outline-warning"
+                  onClick={() => {
+                    getInvoice(
+                      priceDollar * satsPerDollar,
+                      pubkey,
+                      keyID,
+                      country,
+                      priceDollar
+                    );
+                    showInvoiceModal();
+                    updatePaymentrequest();
+                    setSpinner(true);
+                    isPaid = false;
+                  }}
+                  type="submit"
+                  disabled={!timeValid}
+                >
+                  Update Subscription
+                </Button>
+              </div>
+            </Form>
+
+            <InvoiceModal
+              show={visibleInvoiceModal}
+              showSpinner={showSpinner}
+              isConfigModal={isConfigModal}
+              value={payment_request}
+              showNewInvoice={() => {
+                getInvoice(
+                  priceDollar * satsPerDollar,
+                  pubkey,
+                  keyID,
+                  country,
+                  priceDollar
+                );
+                setSpinner(true);
+              }}
+              handleClose={closeInvoiceModal}
+              expiryDate={getTimeStamp(priceDollar)}
+              showPaymentAlert={showPaymentSuccessfull}
+            />
+
+            <div className="footer-text">
+              <Row>
+                <Col>
+                  <a
+                    href="https://twitter.com/TunnelSats"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span class="icon icon-twitter"></span>
+                  </a>
+                </Col>
+                <Col>
+                  <a
+                    href="https://github.com/blckbx/tunnelsats"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span class="icon icon-github"></span>
+                  </a>
+                </Col>
+                <Col>
+                  <a
+                    href={REACT_APP_LNBITS_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span class="icon icon-heart"></span>
+                  </a>
+                </Col>
+                <Col>
+                  <a
+                    href="https://t.me/+NJylaUom-rxjYjU6"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span class="icon icon-telegram"></span>
+                  </a>
+                </Col>
+              </Row>
+            </div>
+          </Col>
+        </Row>
       </Container>
     </React.Fragment>
   );

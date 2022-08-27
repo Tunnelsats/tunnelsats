@@ -1,26 +1,32 @@
-import { Row, Col, Container, Button, Nav, Navbar } from "react-bootstrap";
-import { io } from "socket.io-client";
-import { useState } from "react";
+import {
+  Row,
+  Col,
+  Container,
+  Button,
+  Nav,
+  Navbar,
+  Collapse,
+  Form,
+  InputGroup,
+} from "react-bootstrap";
+import io from "socket.io-client";
+import { useState, useEffect } from "react";
 //import KeyInput from './components/KeyInput';
 import RuntimeSelector from "./components/RuntimeSelector";
 import InvoiceModal from "./components/InvoiceModal";
-import "./wireguard.js";
 import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
 import logo from "./media/tunnelsats_headerlogo3.png";
 import WorldMap from "./components/WorldMap";
-import { Form, InputGroup } from "react-bootstrap";
 import { IoIosRefresh } from "react-icons/io";
-
-import UpdateSubscription from "./components/UpdateSubscription";
-import MainComponent from "./components/MainPage";
-
-// Necessary for Routing Endpoints
-import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
+import "./wireguard.js";
 
 // helper
 const getDate = (timestamp) =>
   (timestamp !== undefined ? new Date(timestamp) : new Date()).toISOString();
+const base64regex =
+  /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+
 // Env Variables to have the same code base main and dev
 const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 0.002;
 const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || "";
@@ -35,14 +41,15 @@ var socket = io.connect(REACT_APP_SOCKETIO);
 var emailAddress;
 var clientPaymentHash;
 var isPaid = false;
+var keyID;
 
 function App() {
   const [keyPair, displayNewPair] = useState(
-    window.wireguard.generateKeypair()
+   window.wireguard.generateKeypair()
   );
   const [priceDollar, updatePrice] = useState(REACT_APP_THREE_MONTHS);
   const [satsPerDollar, setSatsPerDollar] = useState(
-    Math.round(100000000 / 22000)
+    Math.round(100000000 / 20000)
   );
   const [showSpinner, setSpinner] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
@@ -60,6 +67,18 @@ function App() {
   //const renderLoginModal = () => showLoginModal(true);
   //const hideLoginModal = () => showLoginModal(false);
 
+  // switch first <-> renew subscription
+  const [isRenewSub, setRenewSub] = useState(false);
+  const showRenew = () => setRenewSub(true);
+  const hideRenew = () => setRenewSub(false);
+
+  const [server, setServer] = useState("");
+  const [pubkey, setPubkey] = useState("");
+  const [valid, setValid] = useState(false);
+  const [timeValid, setTimeValid] = useState(false);
+  const [timeSubscription, setTime] = useState("");
+  const [newTimeSubscription, setNewTime] = useState("");
+
   // World Map
   const [country, updateCountry] = useState("eu");
 
@@ -71,28 +90,6 @@ function App() {
     AS = Asia
     OC = Oceania (AUS+NZ)
   */
-
-  // fetch btc price per dollar
-  /*
-  useEffect(() => {
-    // fetch btc price
-    const request = setInterval(() => {
-      getPrice();
-    }, 600000); // 10min
-    // clearing interval
-    return () => clearInterval(request);
-  }, []);
-  */
-
-  // // randomize wireguard keys
-  // useEffect(() => {
-  //   const timer = setInterval(() => {
-  //     displayNewPair(window.wireguard.generateKeypair);
-  //     DEBUG && console.log(`${getDate()} newKeyPair`);
-  //   }, 30000); // 30s
-  //   // clearing interval
-  //   return () => clearInterval(timer);
-  // }, []);
 
   //Successful payment alert
   const renderAlert = (show) => {
@@ -126,6 +123,13 @@ function App() {
     // refresh pricePerDollar on start
     getPrice();
   });
+
+  useEffect(() => {
+    setNewTime("");
+    setTime("");
+    setTimeValid(false);
+    socket.emit("getServer", country);
+  }, [country]);
 
   // get current btc per dollar
   const getPrice = () => {
@@ -204,10 +208,6 @@ function App() {
     }
   };
 
-  //  const countrySelect = (e) => {
-  //    updateCountry(e.target.value);
-  //  };
-
   const download = (filename, text) => {
     const textArray = [text];
     const element = document.createElement("a");
@@ -228,51 +228,379 @@ function App() {
     socket.emit("sendEmail", email, config, date);
   };
 
+  const handleKeyLookUp = (event) => {
+    event.preventDefault();
+    // alert('You have submitted the form.')
+    console.log("checkKeyDB emitted", server, pubkey);
+    socket.emit("checkKeyDB", { serverURL: server, publicKey: pubkey });
+  };
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    // alert('You have submitted the form.')
+    // console.log("Submit Worked", server, pubkey);
+  };
+
+  const handleChangeServer = (event) => {
+    setServer({ server: event.target.value });
+    setNewTime("");
+    setTime("");
+    setTimeValid(false);
+  };
+
+  const handleChangePubkey = (event) => {
+    if (
+      base64regex.test(event.target.value) &&
+      event.target.value.length === 44
+    ) {
+      setPubkey(event.target.value);
+      setValid(true);
+      setNewTime("");
+      setTime("");
+    } else {
+      setPubkey(event.target.value);
+      setValid(false);
+    }
+  };
+
   return (
     <div>
-      <BrowserRouter>
-        <Container>
-          <Navbar variant="dark" expanded="true">
-            <Container>
-              <Navbar.Brand as={Link} to="/">
-                Tunnel⚡️Sats
-              </Navbar.Brand>
-              <Nav className="me-auto">
-                <Nav.Link as={Link} to="/updatesub">
-                  Update Subscription
-                </Nav.Link>
+      <Container>
+        {/* Navigation Bar */}
+        <Navbar variant="dark" expanded="true">
+          <Container>
+            <Navbar.Brand
+              href="#"
+              onClick={() => {
+                hideRenew();
+              }}
+            >
+              Tunnel⚡️Sats
+            </Navbar.Brand>
+            <Nav className="me-auto">
+              { !isRenewSub ? (
+              <Nav.Link
+                href="#"
+                onClick={() => {
+                  showRenew();
+                }}
+              >
+                Renew Subscription
+              </Nav.Link>
+              ) : (
                 <Nav.Link
-                  href="https://blckbx.github.io/tunnelsats"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Guide
-                </Nav.Link>
-                <Nav.Link
-                  href="https://blckbx.github.io/tunnelsats/FAQ.html"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  FAQ
-                </Nav.Link>
-              </Nav>
-              {/*}
+                href="#"
+                onClick={() => {
+                  hideRenew();
+                }}
+              >
+                Get Subscription
+              </Nav.Link>               
+              )}
+              <Nav.Link
+                href="https://blckbx.github.io/tunnelsats"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Guide
+              </Nav.Link>
+              <Nav.Link
+                href="https://blckbx.github.io/tunnelsats/FAQ.html"
+                target="_blank"
+                rel="noreferrer"
+              >
+                FAQ
+              </Nav.Link>
+            </Nav>
+            {/*}
             <Nav>
               <Button onClick={() => renderLoginModal()} variant="outline-info">Login</Button>
               <LoginModal show={isLoginModal} handleClose={hideLoginModal} />
             </Nav>
             */}
-            </Container>
-          </Navbar>
-        </Container>
-        <Routes>
-          <Route
-            path="/updatesub"
-            element={<UpdateSubscription socket={socket} />}
-          />
-          <Route path="/" element={<MainComponent socket={socket} />} />
-        </Routes>
-      </BrowserRouter>
+          </Container>
+        </Navbar>
+      </Container>
+
+      <Container className="main-middle">
+        <Row>
+          <Col>
+            {/* Logo */}
+            <img src={logo} alt="" />
+
+            {/* Intro Text */}
+            <HeaderInfo />
+
+            {/* WorldMap */}
+            <WorldMap selected={country} onSelect={updateCountry} />
+
+            { isRenewSub ? (
+              <Form onSubmit={(e) => handleSubmit(e)}>
+                {" "}
+                {/* Renew Subscription */}
+                <Form.Group className="updateSubFrom">
+                  <InputGroup>
+                    <InputGroup.Text>Selected Server</InputGroup.Text>
+                    <Form.Control
+                      disabled
+                      value={server}
+                      placeholder="Tunnelsats Server"
+                      onChange={handleChangeServer}
+                      type="text"
+                    />
+                  </InputGroup>
+                  <InputGroup>
+                    <InputGroup.Text>WG Pubkey</InputGroup.Text>
+                    <Form.Control
+                      enabled
+                      value={pubkey}
+                      placeholder="Wireguard Pubkey (base64 encoded)"
+                      isValid={valid}
+                      onChange={handleChangePubkey}
+                    />
+                  </InputGroup>
+                  <Collapse in={valid}>
+                    <div id="example-collapse-text">
+                      {
+                        <div>
+                          <InputGroup>
+                            <InputGroup.Text>Valid Until:</InputGroup.Text>
+                            <Form.Control
+                              disabled
+                              value={timeSubscription}
+                              isValid={timeValid}
+                              // onChange = { handleChangePubkey}
+                            />
+                          </InputGroup>
+                        </div>
+                      }
+                    </div>
+                  </Collapse>
+
+                  <Collapse in={valid}>
+                    <div id="example-collapse-text">
+                      {
+                        <div>
+                          <InputGroup>
+                            <InputGroup.Text>NEW Valid Until:</InputGroup.Text>
+                            <Form.Control
+                              disabled
+                              value={newTimeSubscription}
+                              isValid={timeValid}
+                              // onChange = { handleChangePubkey}
+                            />
+                          </InputGroup>
+                        </div>
+                      }
+                    </div>
+                  </Collapse>
+                </Form.Group>
+                <div className="main-buttons">
+                  <Button
+                    variant="secondary"
+                    onClick={handleKeyLookUp}
+                    type="submit"
+                    disabled={!valid}
+                  >
+                    Query Key Info
+                  </Button>
+                </div>
+                <Collapse in={true}>
+                  <div id="example-collapse-text">
+                    {
+                      <div>
+                        <RuntimeSelector onClick={runtimeSelect} />
+                        <div className="price">
+                          <h3>
+                            {Math.trunc(
+                              Math.round(priceDollar * satsPerDollar)
+                            ).toLocaleString()}{" "}
+                            <i class="fak fa-satoshisymbol-solidtilt" />
+                          </h3>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                </Collapse>
+                <div className="main-buttons">
+                  <Button
+                    variant="outline-warning"
+                    onClick={() => {
+                      getInvoice(
+                        priceDollar * satsPerDollar,
+                        pubkey,
+                        keyID,
+                        country,
+                        priceDollar
+                      );
+                      showInvoiceModal();
+                      updatePaymentrequest();
+                      setSpinner(true);
+                      isPaid = false;
+                    }}
+                    type="submit"
+                    disabled={!timeValid}
+                  >
+                    Update Subscription
+                  </Button>
+                </div>
+              </Form>
+            ) : (
+              <><Form>{/* else default: WG keys for new subscription */}
+                  <Form.Group className="mb-2">
+                    <InputGroup>
+                      <InputGroup.Text>Private Key</InputGroup.Text>
+                      <Form.Control
+                        disabled
+                        key={keyPair.privateKey}
+                        defaultValue={keyPair.privateKey}
+                        onChange={(event) => {
+                          keyPair.privateKey = event.target.value;
+                        } } />
+                      <Button
+                        onClick={() => {
+                          displayNewPair(window.wireguard.generateKeypair);
+                        } }
+                        variant="secondary"
+                      >
+                        <IoIosRefresh
+                          color="white"
+                          size={20}
+                          title="renew keys" />
+                      </Button>
+                    </InputGroup>
+                    <InputGroup>
+                      <InputGroup.Text>Public Key</InputGroup.Text>
+                      <Form.Control
+                        disabled
+                        key={keyPair.publicKey}
+                        defaultValue={keyPair.publicKey}
+                        onChange={(event) => {
+                          keyPair.publicKey = event.target.value;
+                        } } />
+                    </InputGroup>
+                    <InputGroup>
+                      <InputGroup.Text>Preshared Key</InputGroup.Text>
+                      <Form.Control
+                        disabled
+                        key={keyPair.presharedKey}
+                        defaultValue={keyPair.presharedKey}
+                        onChange={(event) => {
+                          keyPair.presharedKey = event.target.value;
+                        } } />
+                    </InputGroup>
+                  </Form.Group>
+                </Form>
+                {<div>
+                  <RuntimeSelector onClick={runtimeSelect} />
+                    <div className="price">
+                      <h3>
+                        {Math.trunc(
+                          Math.round(priceDollar * satsPerDollar)
+                          ).toLocaleString()}{" "}
+                          <i class="fak fa-satoshisymbol-solidtilt" />
+                      </h3>
+                    </div>
+                </div>}
+
+              {/* Button Generate Invoice */}
+              <div className="main-buttons">
+                <Button
+                  onClick={() => {
+                    getInvoice(
+                      priceDollar * satsPerDollar,
+                      keyPair.publicKey,
+                      keyPair.presharedKey,
+                      priceDollar,
+                      country
+                    );
+                    showInvoiceModal();
+                    hideConfigModal();
+                    updatePaymentrequest();
+                    setSpinner(true);
+                    isPaid = false;
+                  }}
+                  variant="outline-warning"
+                >
+                  Generate Invoice
+                </Button>
+              </div>
+              </>
+            )}
+
+            {/* Open InvoiceModal */}
+            <InvoiceModal
+              show={visibleInvoiceModal}
+              showSpinner={showSpinner}
+              isConfigModal={isConfigModal}
+              value={payment_request}
+              download={() => {
+                download("tunnelsatsv2.conf", payment_request);
+              }}
+              showNewInvoice={() => {
+                getInvoice(
+                  priceDollar * satsPerDollar,
+                  keyPair.publicKey,
+                  keyPair.presharedKey,
+                  priceDollar,
+                  country
+                );
+                setSpinner(true);
+              }}
+              handleClose={closeInvoiceModal}
+              emailAddress={emailAddress}
+              expiryDate={getTimeStamp(priceDollar)}
+              sendEmail={(data) =>
+                sendEmail(data, payment_request, getTimeStamp(priceDollar))
+              }
+              showPaymentAlert={showPaymentSuccessfull}
+            />
+
+
+            {/* Footer */}
+            <div className="footer-text">
+              <Row>
+                <Col>
+                  <a
+                    href="https://twitter.com/TunnelSats"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span class="icon icon-twitter"></span>
+                  </a>
+                </Col>
+                <Col>
+                  <a
+                    href="https://github.com/blckbx/tunnelsats"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span class="icon icon-github"></span>
+                  </a>
+                </Col>
+                <Col>
+                  <a
+                    href={REACT_APP_LNBITS_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span class="icon icon-heart"></span>
+                  </a>
+                </Col>
+                <Col>
+                  <a
+                    href="https://t.me/+NJylaUom-rxjYjU6"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span class="icon icon-telegram"></span>
+                  </a>
+                </Col>
+              </Row>
+            </div>
+          </Col>
+        </Row>
+      </Container>
     </div>
   );
 }
