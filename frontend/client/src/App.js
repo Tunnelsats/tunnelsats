@@ -532,7 +532,7 @@ function App() {
                 <InvoiceModal
                   show={visibleInvoiceModal}
                   showSpinner={showSpinner}
-                  isConfigModal={isConfigModal}
+                  isConfigModal={false}
                   value={payment_request}
                   showNewInvoice={() => {
                     getInvoiceRenew(
