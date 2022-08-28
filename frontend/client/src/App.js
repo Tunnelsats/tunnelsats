@@ -197,7 +197,7 @@ function App() {
   const runtimeSelect = (e) => {
     if (!isNaN(e.target.value)) {
       updatePrice(e.target.value);
-      if (isRenewSub && timeSubscription) {
+      if (timeSubscription) {
         setNewTime(
           getTimeStamp(e.target.value, timeSubscription).toISOString()
         );
