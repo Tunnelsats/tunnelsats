@@ -288,6 +288,28 @@ function App() {
       }
     });
 
+    socket
+    .removeAllListeners("receiveKeyLookup")
+    .on("receiveKeyLookup", (result) => {
+      console.log(`${getDate()} receiveKeyLookup(): `);
+      console.log("%o", result);
+      if (typeof result === "object") {
+        keyID = result.keyID;
+
+        setTime(result.subscriptionEnd);
+        setNewTime(
+          getTimeStamp(priceDollar, result.subscriptionEnd).toISOString()
+        );
+        if (Date.now() < Date.parse(result.subscriptionEnd)) {
+          setTimeValid(true);
+        } else {
+          setTimeValid(false);
+        }
+      } else {
+        console.log(result);
+      }
+    });    
+
   const handleKeyLookUp = (event) => {
     event.preventDefault();
     // alert('You have submitted the form.')
