@@ -356,7 +356,7 @@ function App() {
               href="#"
               onClick={() => {
                 hideRenew();
-                getPrice();
+                runtimeSelect
               }}
             >
               Tunnel⚡️Sats
@@ -367,7 +367,7 @@ function App() {
                   href="#"
                   onClick={() => {
                     showRenew();
-                    getPrice();
+                    runtimeSelect
                   }}
                 >
                   Renew Subscription
@@ -377,6 +377,7 @@ function App() {
                   href="#"
                   onClick={() => {
                     hideRenew();
+                    runtimeSelect
                   }}
                 >
                   Get Subscription
@@ -556,7 +557,7 @@ function App() {
             ) : (
               <>
                 <Form>
-                  {/* else default: WG keys for new subscription */}
+                  {/* else default: WG keys for first subscription */}
                   <Form.Group className="mb-2">
                     <InputGroup>
                       <InputGroup.Text>Private Key</InputGroup.Text>
