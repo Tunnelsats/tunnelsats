@@ -356,6 +356,7 @@ function App() {
               href="#"
               onClick={() => {
                 hideRenew();
+                getPrice();
               }}
             >
               Tunnel⚡️Sats
@@ -366,6 +367,7 @@ function App() {
                   href="#"
                   onClick={() => {
                     showRenew();
+                    getPrice();
                   }}
                 >
                   Renew Subscription
