@@ -518,6 +518,8 @@ function App() {
                           priceDollar
                         );
                         showInvoiceModal();
+                        showRenew();
+                        hideConfigModal();
                         updatePaymentrequest();
                         setSpinner(true);
                         isPaid = false;
@@ -532,7 +534,7 @@ function App() {
                 <InvoiceModal
                   show={visibleInvoiceModal}
                   showSpinner={showSpinner}
-                  isConfigModal={false}
+                  isConfigModal={isConfigModal}
                   value={payment_request}
                   showNewInvoice={() => {
                     getInvoiceRenew(
