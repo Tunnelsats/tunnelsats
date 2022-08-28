@@ -62,7 +62,9 @@ function InvoiceModal(props) {
         <Modal.Header closeButton>
           {props.isConfigModal ?
             <Modal.Title>Send or download wireguard config</Modal.Title> :
-            <Modal.Title>Scan or copy invoice</Modal.Title>
+              props.isRenewSub ?
+                <Modal.Title>New Supscription Date</Modal.Title> :
+                <Modal.Title>Scan or copy invoice</Modal.Title>
           }
         </Modal.Header>
 
@@ -85,24 +87,22 @@ function InvoiceModal(props) {
           }
 
 
-          {props.isConfigModal ?
+          { props.isConfigModal ?
             <div>
-
               <p>
                 WireGuard VPN config, download the config file
                 or send via Email to transfer to your lightning node.
               </p>
-
               <p id='expirydate'>
                 Valid until: {props.expiryDate.toISOString()}<br></br>
                 Make sure to save your config before closing. Otherwise it is lost.
               </p>
-
             </div>
             :
-            <p>
-              This is a lightning invoice. Pay with a wallet like <a href="https://blixtwallet.github.io" target="_blank" rel="noreferrer">Blixt Wallet</a>, <a href="https://phoenix.acinq.co/" target="_blank" rel="noreferrer">Phoenix</a>, <a href="https://muun.com/" target="_blank" rel="noreferrer">Muun</a>, <a href="https://breez.technology/" target="_blank" rel="noreferrer">Breez</a> or <a href="https://bluewallet.io/" target="_blank" rel="noreferrer">BlueWallet</a>.
-            </p>
+              props.isRenewSub ? 
+                <p>Your new valid subscription date is shown above. Thank you for your support and appreciation! 🧡</p>
+                :
+                <p>This is a lightning invoice. Pay with a wallet like <a href="https://blixtwallet.github.io" target="_blank" rel="noreferrer">Blixt Wallet</a>, <a href="https://phoenix.acinq.co/" target="_blank" rel="noreferrer">Phoenix</a>, <a href="https://muun.com/" target="_blank" rel="noreferrer">Muun</a>, <a href="https://breez.technology/" target="_blank" rel="noreferrer">Breez</a> or <a href="https://bluewallet.io/" target="_blank" rel="noreferrer">BlueWallet</a>.</p>
           }
           <Collapse in={openCollapse}>
             <div id="example-collapse-text">
@@ -115,34 +115,42 @@ function InvoiceModal(props) {
         </Modal.Body>
         <Modal.Footer>
 
-          {props.isConfigModal
+          {props.isConfigModal 
             ? <Button variant="outline-warning" onClick={() => { showEmailModal(true) }}>Send via Email</Button>
-            : <Button variant="outline-secondary" onClick={props.showNewInvoice}>Get new Invoice</Button>
+            : props.isRenewSub
+              ? null
+              : <Button variant="outline-secondary" onClick={props.showNewInvoice}>Get new Invoice</Button>
           }
 
           {/*Render Show Config or Show PR button  */}
-          {props.isConfigModal ?
-            <Button
-              variant="outline-secondary"
-              onClick={() => setOpen(!openCollapse)}
-              aria-controls="example-collapse-text"
-              aria-expanded={!openCollapse}
-            >{!openCollapse ? 'Show Config' : 'Hide Config'}
-            </Button> :
-            <Button variant="outline-warning"
-              onClick={() => setOpen(!openCollapse)}
-              aria-controls="example-collapse-text"
-              aria-expanded={!openCollapse}
-            >{!openCollapse ? 'Show Invoice' : 'Hide Invoice'}
-            </Button>}
+          {props.isRenewSub
+            ? <Button className="closeButton" onClick={props.handleClose}>Close</Button>
+            : props.isConfigModal 
+              ? <Button
+                variant="outline-secondary"
+                onClick={() => setOpen(!openCollapse)}
+                aria-controls="example-collapse-text"
+                aria-expanded={!openCollapse}
+              >{!openCollapse ? 'Show Config' : 'Hide Config'}
+              </Button> 
+              : <Button variant="outline-warning"
+                onClick={() => setOpen(!openCollapse)}
+                aria-controls="example-collapse-text"
+                aria-expanded={!openCollapse}
+              >{!openCollapse ? 'Show Invoice' : 'Hide Invoice'}
+              </Button>}
 
           {/*Render Copy Invoice or Download button  */}
-          {props.isConfigModal
+          { props.isRenewSub 
+          ? null
+          : props.isConfigModal
             ? <Button variant="outline-warning" onClick={props.download}>Download as File</Button>
             : <Button variant="outline-warning" ref={target} onClick={() => { navigator.clipboard.writeText(props.value); renderTooltip(!showTooltip) }}>
               Copy Invoice</Button>
           }
-          {props.isConfigModal
+          { props.isRenewSub 
+          ? null
+          : props.isConfigModal
             ? ""
             : <a href={"lightning:" + props.value} ><Button className="walletbutton" variant="outline-warning">Open in Wallet</Button></a>
           }

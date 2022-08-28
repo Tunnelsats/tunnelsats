@@ -210,6 +210,11 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
             logDim(
               `Successfully updated new SubscriptionEnd for  ${publicKey}`
             );
+            sayWithTelegram({
+              message: `🟢 Renewd Subscription: 🍾\n Price: ${priceDollar}\$\n PubKey: ${publicKey}\n Sats: ${Math.round(
+                amountSats
+              )}💰`,
+            })            
             invoiceWGKeysMap.splice(index, 1);
           })
           .catch((error) => {
