@@ -123,6 +123,11 @@ function App() {
     getPrice();
   });
 
+  socket.removeAllListeners("receiveServer").on("receiveServer", (server) => {
+    console.log(`${getDate()} App.js: received server: `, server);
+    setServer(server);
+  });
+
   useEffect(() => {
     setNewTime("");
     setTime("");
