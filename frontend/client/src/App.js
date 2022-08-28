@@ -45,7 +45,7 @@ var keyID;
 
 function App() {
   const [keyPair, displayNewPair] = useState(
-   window.wireguard.generateKeypair()
+    window.wireguard.generateKeypair()
   );
   const [priceDollar, updatePrice] = useState(REACT_APP_THREE_MONTHS);
   const [satsPerDollar, setSatsPerDollar] = useState(
@@ -100,14 +100,9 @@ function App() {
   const updatePaymentrequest = () => {
     socket.on("lnbitsInvoice", (invoiceData) => {
       DEBUG && console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
-      DEBUG &&
-        console.log(
-          `${getDate()} Paymenthash: ${invoiceData.payment_hash}, ${
-            invoiceData.payment_request
-          }`
-        );
       setPaymentrequest(invoiceData.payment_request);
       clientPaymentHash = invoiceData.payment_hash;
+      DEBUG && console.log(clientPaymentHash);
       setSpinner(false);
     });
   };
@@ -127,13 +122,6 @@ function App() {
     console.log(`${getDate()} App.js: received server: `, server);
     setServer(server);
   });
-
-  useEffect(() => {
-    setNewTime("");
-    setTime("");
-    setTimeValid(false);
-    socket.emit("getServer", country);
-  }, [country]);
 
   // get current btc per dollar
   const getPrice = () => {
@@ -209,6 +197,11 @@ function App() {
   const runtimeSelect = (e) => {
     if (!isNaN(e.target.value)) {
       updatePrice(e.target.value);
+      if (isRenewSub && timeSubscription) {
+        setNewTime(
+          getTimeStamp(e.target.value, timeSubscription).toISOString()
+        );
+      }
     }
   };
 
@@ -232,18 +225,13 @@ function App() {
     socket.emit("sendEmail", email, config, date);
   };
 
-  const handleKeyLookUp = (event) => {
-    event.preventDefault();
-    // alert('You have submitted the form.')
-    console.log("checkKeyDB emitted", server, pubkey);
-    socket.emit("checkKeyDB", { serverURL: server, publicKey: pubkey });
-  };
-
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    // alert('You have submitted the form.')
-    // console.log("Submit Worked", server, pubkey);
-  };
+  // renew subscription methods
+  useEffect(() => {
+    setNewTime("");
+    setTime("");
+    setTimeValid(false);
+    socket.emit("getServer", country);
+  }, [country]);
 
   const handleChangeServer = (event) => {
     setServer({ server: event.target.value });
@@ -267,6 +255,75 @@ function App() {
     }
   };
 
+  //Get wireguard config from Server
+  socket
+    .off("receiveUpdateSubscription")
+    .on("receiveUpdateSubscription", (response) => {
+      DEBUG &&
+        console.log(`${getDate()} App.js: got msg receiveUpdateSubscription`);
+      setSpinner(false);
+      setPaymentrequest(buildUpdateSubscription(response).join("\n"));
+    });
+
+  //Construct the Config File
+  const buildUpdateSubscription = (serverResponse) => {
+    showInvoiceModal();
+    renderConfigModal();
+    const configArray = ["New SubscriptionEnd: " + serverResponse.subExpiry];
+    return configArray;
+  };
+
+  socket
+    .off("invoicePaidUpdateSubscription")
+    .on("invoicePaidUpdateSubscription", (paymentHash) => {
+      DEBUG &&
+        console.log(
+          `${getDate()} App.js: got msg 'invoicePaidUpdateSubscription': ${paymentHash}, clientPaymentHash: ${clientPaymentHash}`
+        );
+
+      if (paymentHash === clientPaymentHash && !isPaid) {
+        renderAlert(true);
+        isPaid = true;
+        setSpinner(true);
+      }
+    });
+
+  const handleKeyLookUp = (event) => {
+    event.preventDefault();
+    // alert('You have submitted the form.')
+    console.log("checkKeyDB emitted", server, pubkey);
+    socket.emit("checkKeyDB", { serverURL: server, publicKey: pubkey });
+  };
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    // alert('You have submitted the form.')
+    // console.log("Submit Worked", server, pubkey);
+  };
+
+  //Get the renewal invoice
+  //   { amount, publicKey, keyID, country, priceDollar }
+  const getInvoiceRenew = (amount, publicKey, keyID, country, priceDollar) => {
+    console.log(`${getDate()} App.js: getInvoice(price): ` + priceDollar + `$`);
+    socket.emit("getInvoiceUpdateSub", {
+      amount: Math.round(amount),
+      publicKey,
+      keyID,
+      country,
+      priceDollar,
+    });
+  };
+
+  socket
+    .removeAllListeners("lnbitsInvoiceSubscription")
+    .on("lnbitsInvoiceSubscription", (invoiceData) => {
+      console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
+      setPaymentrequest(invoiceData.payment_request);
+      clientPaymentHash = invoiceData.payment_hash;
+      console.log(clientPaymentHash);
+      setSpinner(false);
+    });
+
   return (
     <div>
       <Container>
@@ -282,24 +339,24 @@ function App() {
               Tunnel⚡️Sats
             </Navbar.Brand>
             <Nav className="me-auto">
-              { !isRenewSub ? (
-              <Nav.Link
-                href="#"
-                onClick={() => {
-                  showRenew();
-                }}
-              >
-                Renew Subscription
-              </Nav.Link>
+              {!isRenewSub ? (
+                <Nav.Link
+                  href="#"
+                  onClick={() => {
+                    showRenew();
+                  }}
+                >
+                  Renew Subscription
+                </Nav.Link>
               ) : (
                 <Nav.Link
-                href="#"
-                onClick={() => {
-                  hideRenew();
-                }}
-              >
-                Get Subscription
-              </Nav.Link>               
+                  href="#"
+                  onClick={() => {
+                    hideRenew();
+                  }}
+                >
+                  Get Subscription
+                </Nav.Link>
               )}
               <Nav.Link
                 href="https://blckbx.github.io/tunnelsats"
@@ -338,119 +395,142 @@ function App() {
             {/* WorldMap */}
             <WorldMap selected={country} onSelect={updateCountry} />
 
-            { isRenewSub ? (
-              <Form onSubmit={(e) => handleSubmit(e)}>
-                {" "}
-                {/* Renew Subscription */}
-                <Form.Group className="updateSubFrom">
-                  <InputGroup>
-                    <InputGroup.Text>Selected Server</InputGroup.Text>
-                    <Form.Control
-                      disabled
-                      value={server}
-                      placeholder="Tunnelsats Server"
-                      onChange={handleChangeServer}
-                      type="text"
-                    />
-                  </InputGroup>
-                  <InputGroup>
-                    <InputGroup.Text>WG Pubkey</InputGroup.Text>
-                    <Form.Control
-                      enabled
-                      value={pubkey}
-                      placeholder="Wireguard Pubkey (base64 encoded)"
-                      isValid={valid}
-                      onChange={handleChangePubkey}
-                    />
-                  </InputGroup>
-                  <Collapse in={valid}>
-                    <div id="example-collapse-text">
-                      {
-                        <div>
-                          <InputGroup>
-                            <InputGroup.Text>Valid Until:</InputGroup.Text>
-                            <Form.Control
-                              disabled
-                              value={timeSubscription}
-                              isValid={timeValid}
-                              // onChange = { handleChangePubkey}
-                            />
-                          </InputGroup>
-                        </div>
-                      }
-                    </div>
-                  </Collapse>
-
-                  <Collapse in={valid}>
-                    <div id="example-collapse-text">
-                      {
-                        <div>
-                          <InputGroup>
-                            <InputGroup.Text>NEW Valid Until:</InputGroup.Text>
-                            <Form.Control
-                              disabled
-                              value={newTimeSubscription}
-                              isValid={timeValid}
-                              // onChange = { handleChangePubkey}
-                            />
-                          </InputGroup>
-                        </div>
-                      }
-                    </div>
-                  </Collapse>
-                </Form.Group>
-                <div className="main-buttons">
-                  <Button
-                    variant="secondary"
-                    onClick={handleKeyLookUp}
-                    type="submit"
-                    disabled={!valid}
-                  >
-                    Query Key Info
-                  </Button>
-                </div>
-                <Collapse in={true}>
-                  <div id="example-collapse-text">
-                    {
-                      <div>
-                        <RuntimeSelector onClick={runtimeSelect} />
-                        <div className="price">
-                          <h3>
-                            {Math.trunc(
-                              Math.round(priceDollar * satsPerDollar)
-                            ).toLocaleString()}{" "}
-                            <i class="fak fa-satoshisymbol-solidtilt" />
-                          </h3>
-                        </div>
+            {isRenewSub ? (
+              <>
+                <Form onSubmit={(e) => handleSubmit(e)}>
+                  {" "}
+                  {/* Renew Subscription */}
+                  <Form.Group className="updateSubFrom">
+                    <InputGroup>
+                      <InputGroup.Text>Selected Server</InputGroup.Text>
+                      <Form.Control
+                        disabled
+                        value={server}
+                        placeholder="Tunnelsats Server"
+                        onChange={handleChangeServer}
+                        type="text"
+                      />
+                    </InputGroup>
+                    <InputGroup>
+                      <InputGroup.Text>WG Pubkey</InputGroup.Text>
+                      <Form.Control
+                        enabled
+                        value={pubkey}
+                        placeholder="Wireguard Pubkey (base64 encoded)"
+                        isValid={valid}
+                        onChange={handleChangePubkey}
+                      />
+                    </InputGroup>
+                    <Collapse in={valid}>
+                      <div id="example-collapse-text">
+                        {
+                          <div>
+                            <InputGroup>
+                              <InputGroup.Text>Valid Until:</InputGroup.Text>
+                              <Form.Control
+                                disabled
+                                value={timeSubscription}
+                                isValid={timeValid}
+                              />
+                            </InputGroup>
+                          </div>
+                        }
                       </div>
-                    }
+                    </Collapse>
+
+                    <Collapse in={valid}>
+                      <div id="example-collapse-text">
+                        {
+                          <div>
+                            <InputGroup>
+                              <InputGroup.Text>
+                                NEW Valid Until:
+                              </InputGroup.Text>
+                              <Form.Control
+                                disabled
+                                value={newTimeSubscription}
+                                isValid={timeValid}
+                              />
+                            </InputGroup>
+                          </div>
+                        }
+                      </div>
+                    </Collapse>
+                  </Form.Group>
+                  <div className="main-buttons">
+                    <Button
+                      variant="secondary"
+                      onClick={handleKeyLookUp}
+                      type="submit"
+                      disabled={!valid}
+                    >
+                      Query Key Info
+                    </Button>
                   </div>
-                </Collapse>
-                <div className="main-buttons">
-                  <Button
-                    variant="outline-warning"
-                    onClick={() => {
-                      getInvoice(
-                        priceDollar * satsPerDollar,
-                        pubkey,
-                        keyID,
-                        country,
-                        priceDollar
-                      );
-                      showInvoiceModal();
-                      updatePaymentrequest();
-                      setSpinner(true);
-                      isPaid = false;
-                    }}
-                    type="submit"
-                    disabled={!timeValid}
-                  >
-                    Update Subscription
-                  </Button>
-                </div>
-              </Form>
+                  <Collapse in={true}>
+                    <div id="example-collapse-text">
+                      {
+                        <div>
+                          <RuntimeSelector onClick={runtimeSelect} />
+                          <div className="price">
+                            <h3>
+                              {Math.trunc(
+                                Math.round(priceDollar * satsPerDollar)
+                              ).toLocaleString()}{" "}
+                              <i class="fak fa-satoshisymbol-solidtilt" />
+                            </h3>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  </Collapse>
+                  <div className="main-buttons">
+                    <Button
+                      variant="outline-warning"
+                      onClick={() => {
+                        getInvoiceRenew(
+                          priceDollar * satsPerDollar,
+                          pubkey,
+                          keyID,
+                          country,
+                          priceDollar
+                        );
+                        showInvoiceModal();
+                        updatePaymentrequest();
+                        setSpinner(true);
+                        isPaid = false;
+                      }}
+                      type="submit"
+                      disabled={!timeValid}
+                    >
+                      Update Subscription
+                    </Button>
+                  </div>
+                </Form>
+                <InvoiceModal
+                  show={visibleInvoiceModal}
+                  showSpinner={showSpinner}
+                  isConfigModal={isConfigModal}
+                  value={payment_request}
+                  showNewInvoice={() => {
+                    getInvoiceRenew(
+                      priceDollar * satsPerDollar,
+                      pubkey,
+                      keyID,
+                      country,
+                      priceDollar
+                    );
+                    setSpinner(true);
+                  }}
+                  handleClose={closeInvoiceModal}
+                  expiryDate={getTimeStamp(priceDollar)}
+                  showPaymentAlert={showPaymentSuccessfull}
+                />
+              </>
             ) : (
-              <><Form>{/* else default: WG keys for new subscription */}
+              <>
+                <Form>
+                  {/* else default: WG keys for new subscription */}
                   <Form.Group className="mb-2">
                     <InputGroup>
                       <InputGroup.Text>Private Key</InputGroup.Text>
@@ -460,17 +540,19 @@ function App() {
                         defaultValue={keyPair.privateKey}
                         onChange={(event) => {
                           keyPair.privateKey = event.target.value;
-                        } } />
+                        }}
+                      />
                       <Button
                         onClick={() => {
                           displayNewPair(window.wireguard.generateKeypair);
-                        } }
+                        }}
                         variant="secondary"
                       >
                         <IoIosRefresh
                           color="white"
                           size={20}
-                          title="renew keys" />
+                          title="renew keys"
+                        />
                       </Button>
                     </InputGroup>
                     <InputGroup>
@@ -481,7 +563,8 @@ function App() {
                         defaultValue={keyPair.publicKey}
                         onChange={(event) => {
                           keyPair.publicKey = event.target.value;
-                        } } />
+                        }}
+                      />
                     </InputGroup>
                     <InputGroup>
                       <InputGroup.Text>Preshared Key</InputGroup.Text>
@@ -491,26 +574,58 @@ function App() {
                         defaultValue={keyPair.presharedKey}
                         onChange={(event) => {
                           keyPair.presharedKey = event.target.value;
-                        } } />
+                        }}
+                      />
                     </InputGroup>
                   </Form.Group>
                 </Form>
-                {<div>
-                  <RuntimeSelector onClick={runtimeSelect} />
+                {
+                  <div>
+                    <RuntimeSelector onClick={runtimeSelect} />
                     <div className="price">
                       <h3>
                         {Math.trunc(
                           Math.round(priceDollar * satsPerDollar)
-                          ).toLocaleString()}{" "}
-                          <i class="fak fa-satoshisymbol-solidtilt" />
+                        ).toLocaleString()}{" "}
+                        <i class="fak fa-satoshisymbol-solidtilt" />
                       </h3>
                     </div>
-                </div>}
+                  </div>
+                }
 
-              {/* Button Generate Invoice */}
-              <div className="main-buttons">
-                <Button
-                  onClick={() => {
+                {/* Button Generate Invoice */}
+                <div className="main-buttons">
+                  <Button
+                    onClick={() => {
+                      getInvoice(
+                        priceDollar * satsPerDollar,
+                        keyPair.publicKey,
+                        keyPair.presharedKey,
+                        priceDollar,
+                        country
+                      );
+                      showInvoiceModal();
+                      hideConfigModal();
+                      updatePaymentrequest();
+                      setSpinner(true);
+                      isPaid = false;
+                    }}
+                    variant="outline-warning"
+                  >
+                    Generate Invoice
+                  </Button>
+                </div>
+
+                {/* Open InvoiceModal */}
+                <InvoiceModal
+                  show={visibleInvoiceModal}
+                  showSpinner={showSpinner}
+                  isConfigModal={isConfigModal}
+                  value={payment_request}
+                  download={() => {
+                    download("tunnelsatsv2.conf", payment_request);
+                  }}
+                  showNewInvoice={() => {
                     getInvoice(
                       priceDollar * satsPerDollar,
                       keyPair.publicKey,
@@ -518,48 +633,18 @@ function App() {
                       priceDollar,
                       country
                     );
-                    showInvoiceModal();
-                    hideConfigModal();
-                    updatePaymentrequest();
                     setSpinner(true);
-                    isPaid = false;
                   }}
-                  variant="outline-warning"
-                >
-                  Generate Invoice
-                </Button>
-              </div>
+                  handleClose={closeInvoiceModal}
+                  emailAddress={emailAddress}
+                  expiryDate={getTimeStamp(priceDollar)}
+                  sendEmail={(data) =>
+                    sendEmail(data, payment_request, getTimeStamp(priceDollar))
+                  }
+                  showPaymentAlert={showPaymentSuccessfull}
+                />
               </>
             )}
-
-            {/* Open InvoiceModal */}
-            <InvoiceModal
-              show={visibleInvoiceModal}
-              showSpinner={showSpinner}
-              isConfigModal={isConfigModal}
-              value={payment_request}
-              download={() => {
-                download("tunnelsatsv2.conf", payment_request);
-              }}
-              showNewInvoice={() => {
-                getInvoice(
-                  priceDollar * satsPerDollar,
-                  keyPair.publicKey,
-                  keyPair.presharedKey,
-                  priceDollar,
-                  country
-                );
-                setSpinner(true);
-              }}
-              handleClose={closeInvoiceModal}
-              emailAddress={emailAddress}
-              expiryDate={getTimeStamp(priceDollar)}
-              sendEmail={(data) =>
-                sendEmail(data, payment_request, getTimeStamp(priceDollar))
-              }
-              showPaymentAlert={showPaymentSuccessfull}
-            />
-
 
             {/* Footer */}
             <div className="footer-text">
