@@ -243,7 +243,7 @@ function App() {
   const handleChangePubkey = (event) => {
     if (
       base64regex.test(event.target.value) &&
-      event.target.value.length === 44
+      event.target.value.length == 44
     ) {
       setPubkey(event.target.value);
       setValid(true);
