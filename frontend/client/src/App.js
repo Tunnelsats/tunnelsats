@@ -67,18 +67,6 @@ function App() {
   //const renderLoginModal = () => showLoginModal(true);
   //const hideLoginModal = () => showLoginModal(false);
 
-  // switch first <-> renew subscription
-  const [isRenewSub, setRenewSub] = useState(false);
-  const showRenew = () => setRenewSub(true);
-  const hideRenew = () => setRenewSub(false);
-
-  const [server, setServer] = useState(country);
-  const [pubkey, setPubkey] = useState("");
-  const [valid, setValid] = useState(false);
-  const [timeValid, setTimeValid] = useState(false);
-  const [timeSubscription, setTime] = useState("");
-  const [newTimeSubscription, setNewTime] = useState("");
-
   // World Map
   const [country, updateCountry] = useState("eu");
 
@@ -90,6 +78,17 @@ function App() {
     AS = Asia
     OC = Oceania (AUS+NZ)
   */
+  // switch first <-> renew subscription
+  const [isRenewSub, setRenewSub] = useState(false);
+  const showRenew = () => setRenewSub(true);
+  const hideRenew = () => setRenewSub(false);
+
+  const [server, setServer] = useState(country);
+  const [pubkey, setPubkey] = useState("");
+  const [valid, setValid] = useState(false);
+  const [timeValid, setTimeValid] = useState(false);
+  const [timeSubscription, setTime] = useState("");
+  const [newTimeSubscription, setNewTime] = useState("");
 
   //Successful payment alert
   const renderAlert = (show) => {
