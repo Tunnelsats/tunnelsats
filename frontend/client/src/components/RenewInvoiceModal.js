@@ -2,21 +2,18 @@ import React from 'react';
 import { useState, useRef } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { Modal, Button, Spinner, Overlay, Tooltip, Collapse, Alert } from 'react-bootstrap';
-import EmailModal from './EmailModal';
+//import EmailModal from './EmailModal';
 import success from '../media/ok-128.png';
 
-function InvoiceModal(props) {
-  const [visibleEmailModal, setShowEmailModal] = useState(false);
-  const closeEmailModal = () => setShowEmailModal(false);
-  const showEmailModal = () => setShowEmailModal(true);
+function RenewInvoiceModal(props) {
+  //const [visibleEmailModal, setShowEmailModal] = useState(false);
+  //const closeEmailModal = () => setShowEmailModal(false);
+  //const showEmailModal = () => setShowEmailModal(true);
 
 
   const [showTooltip, setShowTooltip] = useState(false);
   const [openCollapse, setOpen] = useState(true);
   const target = useRef(null);
-
-  //const [paymentHash, setPaymentHash] = useState(props.value);
-
 
 
   const renderTooltip = (show) => {
@@ -51,17 +48,17 @@ function InvoiceModal(props) {
   }
 
   return (
-    <div>
-      <Modal show={props.show}
-        onHide={props.handleClose}
-        backdrop="static"
-        keyboard={false}
-        id="main_modal"
-        centered
-      >
+      <div>
+        <Modal show={props.show}
+          onHide={props.handleClose}
+          backdrop="static"
+          keyboard={false}
+          id="main_modal"
+          centered
+        >
         <Modal.Header closeButton>
           {props.isConfigModal ?
-            <Modal.Title>Send or download wireguard config</Modal.Title> :
+            <Modal.Title>New Valid Subscription Date</Modal.Title> :
             <Modal.Title>Scan or copy invoice</Modal.Title>
           }
         </Modal.Header>
@@ -74,8 +71,6 @@ function InvoiceModal(props) {
             <Spinner animation="border" /> :
             <div>
               {props.isConfigModal ?
-                //<QRCodeCanvas value={props.value} size={256} /> :
-                //<QRCodeCanvas value={props.value} size={0}/> 
                 <img src={success} alt="" />
                 : <a href={"lightning:" + props.value}>
                   <QRCodeCanvas value={props.value} size={256} />
@@ -87,17 +82,14 @@ function InvoiceModal(props) {
 
           {props.isConfigModal ?
             <div>
-
               <p>
-                WireGuard VPN config, download the config file
-                or send via Email to transfer to your lightning node.
+                Your new valid subscription date is shown below.
+                Thank you for your support and appreciation! 🧡
               </p>
-
               <p id='expirydate'>
                 Valid until: {props.expiryDate.toISOString()}<br></br>
                 Make sure to save your config before closing. Otherwise it is lost.
               </p>
-
             </div>
             :
             <p>
@@ -116,19 +108,14 @@ function InvoiceModal(props) {
         <Modal.Footer>
 
           {props.isConfigModal
-            ? <Button variant="outline-warning" onClick={() => { showEmailModal(true) }}>Send via Email</Button>
+            ? null
             : <Button variant="outline-secondary" onClick={props.showNewInvoice}>Get new Invoice</Button>
           }
 
           {/*Render Show Config or Show PR button  */}
-          {props.isConfigModal ?
-            <Button
-              variant="outline-secondary"
-              onClick={() => setOpen(!openCollapse)}
-              aria-controls="example-collapse-text"
-              aria-expanded={!openCollapse}
-            >{!openCollapse ? 'Show Config' : 'Hide Config'}
-            </Button> :
+          {props.isConfigModal 
+            ? null
+            : 
             <Button variant="outline-warning"
               onClick={() => setOpen(!openCollapse)}
               aria-controls="example-collapse-text"
@@ -138,7 +125,7 @@ function InvoiceModal(props) {
 
           {/*Render Copy Invoice or Download button  */}
           {props.isConfigModal
-            ? <Button variant="outline-warning" onClick={props.download}>Download as File</Button>
+            ? null
             : <Button variant="outline-warning" ref={target} onClick={() => { navigator.clipboard.writeText(props.value); renderTooltip(!showTooltip) }}>
               Copy Invoice</Button>
           }
@@ -147,20 +134,14 @@ function InvoiceModal(props) {
             : <a href={"lightning:" + props.value} ><Button className="walletbutton" variant="outline-warning">Open in Wallet</Button></a>
           }
 
-
           <Overlay target={target.current} transition={true} show={showTooltip} placement="top">
             {(propsTooltip) => (<Tooltip id="copied-tooltip" {...propsTooltip}>Copied!</Tooltip>)}
           </Overlay>
         </Modal.Footer>
-      </Modal>
-      <EmailModal
-        show={visibleEmailModal}
-        handleClose={closeEmailModal}
-        sendEmail={(data) => props.sendEmail(data)}
-      />
-    </div>
-  )
+        </Modal>
+      </div>
+      )
 }
 
 
-export default InvoiceModal
+export default RenewInvoiceModal

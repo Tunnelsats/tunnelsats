@@ -14,6 +14,7 @@ import { useState, useEffect } from "react";
 //import KeyInput from './components/KeyInput';
 import RuntimeSelector from "./components/RuntimeSelector";
 import InvoiceModal from "./components/InvoiceModal";
+import RenewInvoiceModal from "./components/RenewInvoiceModal";
 import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
 import logo from "./media/tunnelsats_headerlogo3.png";
@@ -522,7 +523,6 @@ function App() {
                         );
                         showInvoiceModal();
                         hideConfigModal();
-                        showRenew();
                         updatePaymentrequest();
                         setSpinner(true);
                         isPaid = false;
@@ -534,7 +534,7 @@ function App() {
                     </Button>
                   </div>
                 </Form>
-                <InvoiceModal
+                <RenewInvoiceModal
                   show={visibleInvoiceModal}
                   showSpinner={showSpinner}
                   isConfigModal={isConfigModal}
