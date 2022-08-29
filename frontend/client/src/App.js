@@ -521,7 +521,6 @@ function App() {
                           priceDollar
                         );
                         showInvoiceModal();
-                        showRenew();
                         hideConfigModal();
                         updatePaymentrequest();
                         setSpinner(true);
