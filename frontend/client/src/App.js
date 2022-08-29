@@ -522,6 +522,7 @@ function App() {
                         );
                         showInvoiceModal();
                         hideConfigModal();
+                        showRenew();
                         updatePaymentrequest();
                         setSpinner(true);
                         isPaid = false;

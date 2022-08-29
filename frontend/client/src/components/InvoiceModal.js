@@ -15,7 +15,7 @@ function InvoiceModal(props) {
   const [openCollapse, setOpen] = useState(true);
   const target = useRef(null);
 
-  const [paymentHash, setPaymentHash] = useState(props.value);
+  //const [paymentHash, setPaymentHash] = useState(props.value);
 
 
 
