@@ -132,7 +132,7 @@ Keep an eye on your latency, uptime, routing amount week-over-week, and some sub
 <br/>
 
 ### Why shouldn't I just do it myself?
-We offer a full-managed-service, which takes a lot of the server, library, security and operational headache away from you. If you feel you prefer the personal learning experience, we can only encourage you to do so. It is a great adventure to learn more, so please check the footnotes in case you look for ways to dive in.
+We offer a full-managed-service which takes a lot of the server, library, security and operational headache away from you. If you feel you prefer the personal learning experience, we can only encourage you to do so. It is a great adventure to learn more, so please check the footnotes in case you look for ways to dive in.
 
 <br/>
 
@@ -170,6 +170,7 @@ $ scp tunnelsatsv2.conf umbrel@umbrel.local:/home/umbrel/
 
 [ scp <local file> <user>@<ip/hostname>:<destination path> ]
 ```
+Alternatively create a new file on your node and copy/paste the content of `tunnelsatsv2.conf`, save and exit. 
 
 <br/>
 

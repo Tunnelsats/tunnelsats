@@ -198,7 +198,24 @@ title {
   border: 1px;
   padding: 5px;
   border-style: solid;
-  border-radius: 12px;
+  border-radius: 15px;
+  width: 100%;
+  height: 100%;
+  white-space: pre-wrap; /* CSS3 */
+  white-space: -moz-pre-wrap; /* Firefox */
+  white-space: -pre-wrap; /* Opera <7 */
+  white-space: -o-pre-wrap; /* Opera 7 */
+  word-wrap: break-word; /* IE */
+}
+
+#invoicestring-renew {
+  text-align: center;
+  margin-top: 10px;
+  display: inline-block;
+  border: 1px;
+  padding: 5px;
+  border-style: solid;
+  border-radius: 15px;
   width: 100%;
   height: 100%;
   white-space: pre-wrap; /* CSS3 */
@@ -256,6 +273,7 @@ button.close {
 .footer-text a {
   color: black;
 }
+
 .icon {
   display: inline-block;
   background-size: cover;
@@ -300,7 +318,7 @@ button.close {
 }
 
 #expirydate {
-  color: red;
+  color: #ffc700;
 }
 #dataplanlist {
   list-style: none;

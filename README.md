@@ -116,7 +116,7 @@ Before applying any changes to your config files, please __always__ create a bac
 
 ### LND
 
-Running LND only requires a few parameters to be checked and set to activate hybrid mode. Locate `lnd.conf` depending on your node setup. See the [FAQ](https://blckbx.github.io/tunnelsats/FAQ.html#where-do-i-find-my-lndconf-file) for some default path examples. Just append the lines shown at the end of the setupv2.sh process to your lnd config file:
+Running LND only requires a few parameters to be checked and set to activate hybrid mode. Locate `lnd.conf` depending on your node setup. See the [FAQ](https://blckbx.github.io/tunnelsats/FAQ.html#where-do-i-find-my-lndconf-file) for some default path examples. Please edit the file and put the settings shown below into their corresponding sections. If any of these settings are already present, comment them out and add the new ones below. We need to add or modify the following settings:
 
   ```ini
   [Application Options]
@@ -181,7 +181,7 @@ and enter the following settings:
 ## Renew Subscription
 
 Renewing a subscription is simple. Important part is to remember your valid date and get a new `tunnelsatsv2.conf` file before date expires. For renewal:
-- make sure to stop LND/CLN or the node completely 
+- make sure to stop LND/CLN or the node completely
 - redo the setup procedure again by placing `setupv2.sh` and new `tunnelsatsv2.conf` file into the same directory and 
 - executing the shell script once again (because initial setup still applies, most installation steps will get skipped). 
 - Restart LND/CLN process or node setup afterwards. 

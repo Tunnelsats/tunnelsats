@@ -7,11 +7,11 @@ const HeaderInfo = () => {
       <Alert variant="secondary">
         {/* <Alert.Heading>How it works:</Alert.Heading> */}
         <p>
-          Tunnel⚡️Sats provides setup scripts for lightning nodes enabling
-          hybrid mode through clearnet & Tor connectivity and offers paid VPN
-          servers in various continents to rent for fixed periods of time. Our
-          secured and lightning-only configured VPNs support port-forwarding to
-          connect with other lightning nodes.
+          Tunnel⚡️Sats provides scripts for lightning nodes enabling hybrid
+          mode (clearnet & Tor connectivity) and offers paid VPN servers on
+          various continents for rent for fixed terms. Our secured and
+          lightning-only configured VPNs support port-forwarding to connect with
+          other lightning nodes.
           <br></br>
           <br></br>
           <b>How Tunnel⚡️Sats works</b>
