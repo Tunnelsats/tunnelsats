@@ -17,11 +17,9 @@ const HeaderInfo = () => {
           <b>How Tunnel⚡️Sats works</b>
           <br></br>Select a preferred continent and period of time and pay the
           invoice via lightning to receive a WireGuard configuration file.
-          Download setup script to install required components and configure
-          your node setup for hybrid mode.
-          <br></br>
-          <br></br>For detailed installation instructions please read the
-          TunnelSats{" "}
+          Please follow the detailed installation instructions described on the
+          TunnelSats
+          {" "}
           <a
             href="https://blckbx.github.io/tunnelsats/"
             target="_blank"
@@ -35,9 +33,9 @@ const HeaderInfo = () => {
             target="_blank"
             rel="noreferrer"
           >
-            FAQ
+            faq
           </a>{" "}
-          page.
+          pages.
         </p>
         <hr />
         <p className="mb-0">
