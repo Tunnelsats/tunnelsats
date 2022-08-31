@@ -92,7 +92,6 @@ function RenewInvoiceModal(props) {
             </div>
           )}
 
-          <br />
           <hr />
           <br />
 
@@ -156,6 +155,7 @@ function RenewInvoiceModal(props) {
             </div>
           </Collapse>
         </Modal.Body>
+        <hr />
         <Modal.Footer>
           {props.isConfigModal ? null : (
             <Button variant="outline-secondary" onClick={props.showNewInvoice}>

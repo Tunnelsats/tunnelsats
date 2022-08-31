@@ -92,7 +92,6 @@ function InvoiceModal(props) {
             </div>
           )}
 
-          <br />
           <hr />
           <br />
 
@@ -160,6 +159,7 @@ function InvoiceModal(props) {
             </div>
           </Collapse>
         </Modal.Body>
+        <hr />
         <Modal.Footer>
           {props.isConfigModal ? (
             <Button
