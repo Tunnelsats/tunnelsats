@@ -289,7 +289,7 @@ function App() {
       }
     });
 
-    socket
+  socket
     .removeAllListeners("receiveKeyLookup")
     .on("receiveKeyLookup", (result) => {
       console.log(`${getDate()} receiveKeyLookup(): `);
@@ -308,11 +308,11 @@ function App() {
         }
       } else {
         setTimeValid(false);
-        setTime("invalid key");
+        setTime(result.data.toISOString());
         setNewTime("");
         console.log(result);
       }
-    });    
+    });
 
   const handleKeyLookUp = (event) => {
     event.preventDefault();
