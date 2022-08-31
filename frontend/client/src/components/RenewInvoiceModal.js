@@ -9,6 +9,7 @@ import {
   Tooltip,
   Collapse,
   Alert,
+  Col,
 } from "react-bootstrap";
 import success from "../media/ok-128.png";
 
@@ -91,6 +92,10 @@ function RenewInvoiceModal(props) {
             </div>
           )}
 
+          <br />
+          <hr />
+          <br />
+
           {props.isConfigModal ? (
             <div>
               <p>
@@ -103,7 +108,10 @@ function RenewInvoiceModal(props) {
             </div>
           ) : (
             <p>
-              This is a lightning invoice. Pay with a wallet like{" "}
+              Please copy the LNURL or
+              <br />
+              scan QR code using a lightning wallet such as
+              <br />
               <a
                 href="https://blixtwallet.github.io"
                 target="_blank"
@@ -151,11 +159,12 @@ function RenewInvoiceModal(props) {
         <Modal.Footer>
           {props.isConfigModal ? null : (
             <Button variant="outline-secondary" onClick={props.showNewInvoice}>
-              Get new Invoice
+              Get New Invoice
             </Button>
           )}
 
           {/*Render Show Config or Show PR button  */}
+          {/*
           {props.isConfigModal ? null : (
             <Button
               variant="outline-warning"
@@ -166,44 +175,47 @@ function RenewInvoiceModal(props) {
               {!openCollapse ? "Show Invoice" : "Hide Invoice"}
             </Button>
           )}
+          */}
 
           {/*Render Copy Invoice or Download button  */}
-          {props.isConfigModal ? null : (
-            <Button
-              variant="outline-warning"
-              ref={target}
-              onClick={() => {
-                navigator.clipboard.writeText(props.value);
-                renderTooltip(!showTooltip);
-              }}
-            >
-              Copy Invoice
-            </Button>
-          )}
-          {props.isConfigModal ? (
-            <Button variant="outline-warning" onClick={props.handleClose}>
-              Close
-            </Button>
-          ) : (
-            <a href={"lightning:" + props.value}>
-              <Button className="walletbutton" variant="outline-warning">
-                Open in Wallet
+          <Col>
+            {props.isConfigModal ? null : (
+              <Button
+                variant="outline-warning"
+                ref={target}
+                onClick={() => {
+                  navigator.clipboard.writeText(props.value);
+                  renderTooltip(!showTooltip);
+                }}
+              >
+                Copy Invoice
               </Button>
-            </a>
-          )}
-
-          <Overlay
-            target={target.current}
-            transition={true}
-            show={showTooltip}
-            placement="top"
-          >
-            {(propsTooltip) => (
-              <Tooltip id="copied-tooltip" {...propsTooltip}>
-                Copied!
-              </Tooltip>
             )}
-          </Overlay>
+            {props.isConfigModal ? (
+              <Button variant="outline-warning" onClick={props.handleClose}>
+                Close
+              </Button>
+            ) : (
+              <a href={"lightning:" + props.value}>
+                <Button className="walletbutton" variant="outline-warning">
+                  Open in Wallet
+                </Button>
+              </a>
+            )}
+
+            <Overlay
+              target={target.current}
+              transition={true}
+              show={showTooltip}
+              placement="top"
+            >
+              {(propsTooltip) => (
+                <Tooltip id="copied-tooltip" {...propsTooltip}>
+                  Copied!
+                </Tooltip>
+              )}
+            </Overlay>
+          </Col>
         </Modal.Footer>
       </Modal>
     </div>

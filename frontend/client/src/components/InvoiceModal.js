@@ -9,6 +9,7 @@ import {
   Tooltip,
   Collapse,
   Alert,
+  Col,
 } from "react-bootstrap";
 import EmailModal from "./EmailModal";
 import success from "../media/ok-128.png";
@@ -91,6 +92,10 @@ function InvoiceModal(props) {
             </div>
           )}
 
+          <br />
+          <hr />
+          <br />
+
           {props.isConfigModal ? (
             <div>
               <p>
@@ -107,7 +112,10 @@ function InvoiceModal(props) {
             </div>
           ) : (
             <p>
-              This is a lightning invoice. Pay with a wallet like{" "}
+              Please copy the LNURL or
+              <br />
+              scan QR code using a lightning wallet such as
+              <br />
               <a
                 href="https://blixtwallet.github.io"
                 target="_blank"
@@ -164,11 +172,12 @@ function InvoiceModal(props) {
             </Button>
           ) : (
             <Button variant="outline-secondary" onClick={props.showNewInvoice}>
-              Get new Invoice
+              Get New Invoice
             </Button>
           )}
 
           {/*Render Show Config or Show PR button  */}
+          {/*
           {props.isConfigModal ? (
             <Button
               variant="outline-secondary"
@@ -188,6 +197,7 @@ function InvoiceModal(props) {
               {!openCollapse ? "Show Invoice" : "Hide Invoice"}
             </Button>
           )}
+          */}
 
           {/*Render Copy Invoice or Download button  */}
           {props.isConfigModal ? (
