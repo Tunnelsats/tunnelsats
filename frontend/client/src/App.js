@@ -307,6 +307,9 @@ function App() {
           setTimeValid(false);
         }
       } else {
+        setTimeValid(false);
+        setTime("invalid key");
+        setNewTime("");
         console.log(result);
       }
     });    
