@@ -47,13 +47,13 @@ function RenewInvoiceModal(props) {
   }
 
   // reset values on closing modal
-  function resetForm() {
+  /*function resetForm() {
     props.setNewTime("");
     props.setTime("");
     props.setTimeValid(false);
     props.setPubkey("");
     props.closeInvoiceModal();
-  }
+  }*/
 
   return (
     <div>
@@ -181,7 +181,7 @@ function RenewInvoiceModal(props) {
             </Button>
           )}
           {props.isConfigModal ? (
-            <Button variant="outline-warning" onClick={resetForm}>
+            <Button variant="outline-warning" onClick={props.handleClose}>
               Close
             </Button>
           ) : (
