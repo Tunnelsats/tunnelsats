@@ -183,8 +183,9 @@ and enter the following settings:
 Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how it works:
 - go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
 - enter the WireGuard public key (you can find it in your `tunnelsatsv2.conf` in section "peer")
+- select the continent you are currently subscribed to
 - click "Query Key Info" to fetch your current valid date
-- select the desired extended term to add to the current fixed term (it is added after current expiry)
+- select the desired term extension of your choice (it is appended to the current expiry)
 - click "Update Subscription" and pay the lightning invoice
 
 ⚠️ No new WireGuard file will be handed over to the user. The current lightning settings persist! So there is no further lightning configuration needed. Changing server locations on renewals is not supported for now.

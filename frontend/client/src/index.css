@@ -208,7 +208,7 @@ title {
   word-wrap: break-word; /* IE */
 }
 
-#invoicestring-renew {
+#invoicestringrenew {
   text-align: center;
   margin-top: 10px;
   display: inline-block;
