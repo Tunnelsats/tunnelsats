@@ -70,15 +70,19 @@ h1 {
 
 a:link {
   color: #ffc700;
+  text-decoration: none;
 }
 a:visited {
   color: #ffc700;
+  text-decoration: none;
 }
 a:hover {
   color: #ffc700;
+  text-decoration: none;
 }
 a:active {
   color: #ffc700;
+  text-decoration: none;
 }
 
 .btn_ {
