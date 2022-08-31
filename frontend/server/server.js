@@ -216,16 +216,17 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
               )}💰`,
             });
             invoiceWGKeysMap.splice(index, 1);
+            res.status(200).end();
           })
           .catch((error) => {
             logDim("newSubscriptionEnd() ", error.message);
+            res.status(500).end();
           });
       })
       .catch((error) => {
         logDim("getSubscription() ", error.message);
+        res.status(500).end();
       });
-
-    //
   }
 });
 
