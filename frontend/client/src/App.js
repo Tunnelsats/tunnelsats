@@ -33,7 +33,7 @@ const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 0.002;
 const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || "";
 const REACT_APP_SOCKETIO = process.env.REACT_APP_SOCKETIO || "/";
 
-const DEBUG = true;
+const DEBUG = false;
 
 // WebSocket
 var socket = io.connect(REACT_APP_SOCKETIO);
@@ -307,9 +307,9 @@ function App() {
           setTimeValid(false);
         }
       } else {
-        setTimeValid(false);
-        setTime(result.data.toISOString());
-        setNewTime("");
+        //setTimeValid(false);
+        //setTime(result.data);
+        //setNewTime("");
         console.log(result);
       }
     });

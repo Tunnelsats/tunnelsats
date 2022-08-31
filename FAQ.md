@@ -97,12 +97,14 @@ If you experience issues, please contact us and let us know what issues you're e
 <br/>
 
 ### How can I extend my subscription?
-Let's say you bought the 1 month for testing the services and all is going great. Now your subscription is coming to an end and you like to extend it to add another 3 months. Since we don't offer a login-service (yet), you need to remember your subscription end date (look it up in your WireGuard config file: #ValidUntil (mind this is UTC time format)) and before expiry
-- buy a new subscription
-- download or transfer via email the new configuration file from the website 
-- redo installation procedure: place config file in same directory with `setupv2.sh` and run it again
-- adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalhosts (LND) or announce-addr (CLN))
-- restart wireguard and lightning: `sudo systemctl restart wg-quick@tunnelsatsv2` and your lightning implementation
+Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how it works:
+- go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
+- enter the WireGuard public key (you can find it in your `tunnelsatsv2.conf` in section "peer")
+- click "Query Key Info" to fetch your current valid date
+- select the desired extended term to add to the current fixed term (it is added after current expiry)
+- click "Update Subscription" and pay the lightning invoice
+
+⚠️ No new WireGuard file will be handed over to the user. The current lightning settings persist! So there is no further lightning configuration needed. Changing server locations on renewals is not supported for now.
 
 <br/>
 

@@ -180,11 +180,14 @@ and enter the following settings:
 
 ## Renew Subscription
 
-Renewing a subscription is simple. Important part is to remember your valid date and get a new `tunnelsatsv2.conf` file before date expires. For renewal:
-- make sure to stop LND/CLN or the node completely
-- redo the setup procedure again by placing `setupv2.sh` and new `tunnelsatsv2.conf` file into the same directory and 
-- executing the shell script once again (because initial setup still applies, most installation steps will get skipped). 
-- Restart LND/CLN process or node setup afterwards. 
+Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how it works:
+- go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
+- enter the WireGuard public key (you can find it in your `tunnelsatsv2.conf` in section "peer")
+- click "Query Key Info" to fetch your current valid date
+- select the desired extended term to add to the current fixed term (it is added after current expiry)
+- click "Update Subscription" and pay the lightning invoice
+
+⚠️ No new WireGuard file will be handed over to the user. The current lightning settings persist! So there is no further lightning configuration needed. Changing server locations on renewals is not supported for now.
 
 <br />
 
