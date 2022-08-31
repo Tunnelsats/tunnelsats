@@ -9,7 +9,6 @@ import {
   Tooltip,
   Collapse,
   Alert,
-  Col,
 } from "react-bootstrap";
 import EmailModal from "./EmailModal";
 import success from "../media/ok-128.png";

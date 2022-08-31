@@ -9,7 +9,6 @@ import {
   Tooltip,
   Collapse,
   Alert,
-  Col,
 } from "react-bootstrap";
 import success from "../media/ok-128.png";
 
@@ -178,7 +177,6 @@ function RenewInvoiceModal(props) {
           */}
 
           {/*Render Copy Invoice or Download button  */}
-          <Col>
             {props.isConfigModal ? null : (
               <Button
                 variant="outline-warning"
@@ -215,7 +213,6 @@ function RenewInvoiceModal(props) {
                 </Tooltip>
               )}
             </Overlay>
-          </Col>
         </Modal.Footer>
       </Modal>
     </div>
