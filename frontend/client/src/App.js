@@ -421,6 +421,8 @@ function App() {
         </Navbar>
       </Container>
 
+      <Popup />
+
       <Container className="main-middle">
         <Row>
           <Col>
@@ -566,7 +568,7 @@ function App() {
                   showPaymentAlert={showPaymentSuccessfull}
                 />
 
-                {isPopupModal ? <Popup /> : null}
+                {isPopupModal ? <Popup onClick={hidePopupModal} /> : null}
               </>
             ) : (
               <>
