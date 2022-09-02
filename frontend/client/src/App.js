@@ -694,7 +694,7 @@ function App() {
             {isPopupModal ? (
               <Popup
                 show={isPopupModal}
-                title={"Error"}
+                title={"⚠️ Error"}
                 errorMessage={"WireGuard pubkey was not found on selected server!"}
                 handleClose={hidePopupModal}
               />
