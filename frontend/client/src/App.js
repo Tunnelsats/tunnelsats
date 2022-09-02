@@ -692,7 +692,11 @@ function App() {
 
             {/* Popup Error Message */}
             {isPopupModal ? (
-              <Popup errorMessage={errorMessage} onClick={hidePopupModal} />
+              <Popup
+                show={isPopupModal}
+                errorMessage={errorMessage}
+                handleClose={hidePopupModal}
+              />
             ) : null}
 
             {/* Footer */}
