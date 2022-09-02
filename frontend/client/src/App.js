@@ -570,10 +570,6 @@ function App() {
                   expiryDate={getTimeStamp(priceDollar)}
                   showPaymentAlert={showPaymentSuccessfull}
                 />
-
-                {isPopupModal ? (
-                  <Popup errorMessage={errorMessage} onClick={hidePopupModal} />
-                ) : null}
               </>
             ) : (
               <>
@@ -693,6 +689,11 @@ function App() {
                 />
               </>
             )}
+
+            {/* Popup Error Message */}
+            {isPopupModal ? (
+              <Popup errorMessage={errorMessage} onClick={hidePopupModal} />
+            ) : null}
 
             {/* Footer */}
             <div className="footer-text">
