@@ -15,6 +15,7 @@ import { useState, useEffect } from "react";
 import RuntimeSelector from "./components/RuntimeSelector";
 import InvoiceModal from "./components/InvoiceModal";
 import RenewInvoiceModal from "./components/RenewInvoiceModal";
+import Popup from "./components/Popup";
 import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
 import logo from "./media/tunnelsats_headerlogo3.png";
@@ -90,6 +91,11 @@ function App() {
   const [timeValid, setTimeValid] = useState(false);
   const [timeSubscription, setTime] = useState("");
   const [newTimeSubscription, setNewTime] = useState("");
+  // Popup - Key Query
+  const [isPopupModal, showPopupModal] = useState(false);
+  const renderPopupModal = () => showPopupModal(true);
+  const hidePopupModal = () => showPopupModal(false);
+  var errorMessage;
 
   //Successful payment alert
   const renderAlert = (show) => {
@@ -294,6 +300,12 @@ function App() {
     .on("receiveKeyLookup", (result) => {
       console.log(`${getDate()} receiveKeyLookup(): `);
       console.log("%o", result);
+
+      if (typeof result === "string") {
+        renderPopupModal();
+        errorMessage = result.data;
+      }
+
       if (typeof result === "object") {
         keyID = result.keyID;
 
@@ -556,6 +568,7 @@ function App() {
                   expiryDate={getTimeStamp(priceDollar)}
                   showPaymentAlert={showPaymentSuccessfull}
                 />
+                <Popup content={errorMessage} />
               </>
             ) : (
               <>
