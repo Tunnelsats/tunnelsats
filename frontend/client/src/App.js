@@ -301,11 +301,6 @@ function App() {
       console.log(`${getDate()} receiveKeyLookup(): `);
       console.log("%o", result);
 
-      if (typeof result.data === "string") {
-        errorMessage = result.data;
-        renderPopupModal();
-      }
-
       if (typeof result === "object") {
         keyID = result.keyID;
 
@@ -322,6 +317,8 @@ function App() {
         //setTimeValid(false);
         //setTime(result.data);
         //setNewTime("");
+        errorMessage = result.data;
+        renderPopupModal();
         console.log(result);
       }
     });
