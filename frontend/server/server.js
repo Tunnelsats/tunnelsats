@@ -652,8 +652,8 @@ async function checkInvoice(hash) {
     });
 }
 
-async function getKey({ serverURL, publicKey }) {
-  console.log(serverURL, publicKey);
+async function getKey({ publicKey, serverURL }) {
+  console.log(publicKey, serverURL);
   return axios({
     method: "get",
     url: `https://${serverURL}/manager/key`,
@@ -716,7 +716,7 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
 
   if (response1.data) {
     // Enable Key if disabled
-    const isEnabled = await getKey({ serverURL, publicKey }).catch((error) => {
+    const isEnabled = await getKey({ publicKey, serverURL }).catch((error) => {
       logDim("newSubscriptionEnd()-lookupKey", error.message);
       return null;
     });
