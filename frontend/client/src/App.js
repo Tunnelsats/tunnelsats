@@ -11,7 +11,6 @@ import {
 } from "react-bootstrap";
 import io from "socket.io-client";
 import { useState, useEffect } from "react";
-//import KeyInput from './components/KeyInput';
 import RuntimeSelector from "./components/RuntimeSelector";
 import InvoiceModal from "./components/InvoiceModal";
 import RenewInvoiceModal from "./components/RenewInvoiceModal";
@@ -34,7 +33,7 @@ const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 0.002;
 const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || "";
 const REACT_APP_SOCKETIO = process.env.REACT_APP_SOCKETIO || "/";
 
-const DEBUG = false;
+const DEBUG = true;
 
 // WebSocket
 var socket = io.connect(REACT_APP_SOCKETIO);
@@ -44,7 +43,6 @@ var emailAddress;
 var clientPaymentHash;
 var isPaid = false;
 var keyID;
-var errorMessage;
 
 function App() {
   const [keyPair, displayNewPair] = useState(
@@ -314,10 +312,6 @@ function App() {
           setTimeValid(false);
         }
       } else {
-        //setTimeValid(false);
-        //setTime(result.data);
-        //setNewTime("");
-        errorMessage = result;
         renderPopupModal();
         DEBUG && console.log(result);
       }
