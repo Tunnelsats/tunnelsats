@@ -79,6 +79,8 @@ function App() {
     AS = Asia
     OC = Oceania (AUS+NZ)
   */
+
+
   // switch first <-> renew subscription
   const [isRenewSub, setRenewSub] = useState(false);
   const showRenew = () => setRenewSub(true);
@@ -320,8 +322,8 @@ function App() {
   const handleKeyLookUp = (event) => {
     event.preventDefault();
     // alert('You have submitted the form.')
-    DEBUG && console.log("checkKeyDB emitted", server, pubkey);
-    socket.emit("checkKeyDB", { serverURL: server, publicKey: pubkey });
+    DEBUG && console.log("checkKeyDB emitted", pubkey, server);
+    socket.emit("checkKeyDB", { publicKey: pubkey, serverURL: server });
   };
 
   const handleSubmit = (event) => {
