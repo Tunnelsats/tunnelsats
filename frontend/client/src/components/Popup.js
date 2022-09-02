@@ -15,7 +15,7 @@ const Popup = (props) => {
         centered
       >
         <Modal.Header closeButton>
-          <Modal.Title>Something went wrong</Modal.Title>
+          <Modal.Title>{props.title}</Modal.Title>
         </Modal.Header>
 
         <Modal.Body>
