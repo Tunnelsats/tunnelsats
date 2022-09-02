@@ -44,6 +44,7 @@ var emailAddress;
 var clientPaymentHash;
 var isPaid = false;
 var keyID;
+var errorMessage;
 
 function App() {
   const [keyPair, displayNewPair] = useState(
@@ -95,7 +96,6 @@ function App() {
   const [isPopupModal, showPopupModal] = useState(false);
   const renderPopupModal = () => showPopupModal(true);
   const hidePopupModal = () => showPopupModal(false);
-  var errorMessage;
 
   //Successful payment alert
   const renderAlert = (show) => {
@@ -317,7 +317,7 @@ function App() {
         //setTimeValid(false);
         //setTime(result.data);
         //setNewTime("");
-        errorMessage = result.data;
+        errorMessage = result;
         renderPopupModal();
         console.log(result);
       }
