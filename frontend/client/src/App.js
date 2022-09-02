@@ -301,7 +301,7 @@ function App() {
       console.log(`${getDate()} receiveKeyLookup(): `);
       console.log("%o", result);
 
-      if (typeof result === "string") {
+      if (typeof result.data === "string") {
         errorMessage = result.data;
         renderPopupModal();
       }
