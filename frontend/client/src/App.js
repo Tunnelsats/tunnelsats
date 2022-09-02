@@ -302,8 +302,8 @@ function App() {
       console.log("%o", result);
 
       if (typeof result === "string") {
-        renderPopupModal();
         errorMessage = result.data;
+        renderPopupModal();
       }
 
       if (typeof result === "object") {
@@ -568,7 +568,6 @@ function App() {
                   expiryDate={getTimeStamp(priceDollar)}
                   showPaymentAlert={showPaymentSuccessfull}
                 />
-                <Popup content={errorMessage} />
               </>
             ) : (
               <>
