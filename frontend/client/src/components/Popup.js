@@ -1,4 +1,7 @@
 import React from "react";
+import {
+  Modal,
+} from "react-bootstrap";
 
 const Popup = (props) => {
   return (

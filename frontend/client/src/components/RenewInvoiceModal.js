@@ -46,15 +46,6 @@ function RenewInvoiceModal(props) {
     );
   }
 
-  // reset values on closing modal
-  /*function resetForm() {
-    props.setNewTime("");
-    props.setTime("");
-    props.setTimeValid(false);
-    props.setPubkey("");
-    props.closeInvoiceModal();
-  }*/
-
   return (
     <div>
       <Modal
