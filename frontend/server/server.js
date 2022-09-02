@@ -347,6 +347,7 @@ io.on("connection", (socket) => {
         }
       })
       .catch((error) => logDim(error.message));
+      socket.emit("receiveKeyLookup", "key not found");
   });
 
   socket.on(
