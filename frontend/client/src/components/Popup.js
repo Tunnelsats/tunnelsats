@@ -18,7 +18,11 @@ const Popup = (props) => {
           <Modal.Title>Something went wrong</Modal.Title>
         </Modal.Header>
 
-        <Modal.Body>{props.errorMessage}</Modal.Body>
+        <Modal.Body>
+          <div>
+            <p>{props.errorMessage}</p>
+          </div>
+        </Modal.Body>
         <Modal.Footer>
           <Button variant="outline-warning" onClick={props.handleClose}>
             Close
