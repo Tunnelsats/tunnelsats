@@ -565,6 +565,8 @@ function App() {
                   expiryDate={getTimeStamp(priceDollar)}
                   showPaymentAlert={showPaymentSuccessfull}
                 />
+
+                {isPopupModal ? <Popup /> : null}
               </>
             ) : (
               <>
