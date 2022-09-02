@@ -126,7 +126,7 @@ function App() {
   });
 
   socket.removeAllListeners("receiveServer").on("receiveServer", (server) => {
-    console.log(`${getDate()} App.js: received server: `, server);
+    DEBUG && console.log(`${getDate()} App.js: received server: `, server);
     setServer(server);
   });
 
@@ -298,8 +298,8 @@ function App() {
   socket
     .removeAllListeners("receiveKeyLookup")
     .on("receiveKeyLookup", (result) => {
-      console.log(`${getDate()} receiveKeyLookup(): `);
-      console.log("%o", result);
+      DEBUG && console.log(`${getDate()} receiveKeyLookup(): `);
+      DEBUG && console.log("%o", result);
 
       if (typeof result === "object") {
         keyID = result.keyID;
@@ -319,14 +319,14 @@ function App() {
         //setNewTime("");
         errorMessage = result;
         renderPopupModal();
-        console.log(result);
+        DEBUG && console.log(result);
       }
     });
 
   const handleKeyLookUp = (event) => {
     event.preventDefault();
     // alert('You have submitted the form.')
-    console.log("checkKeyDB emitted", server, pubkey);
+    DEBUG && console.log("checkKeyDB emitted", server, pubkey);
     socket.emit("checkKeyDB", { serverURL: server, publicKey: pubkey });
   };
 
@@ -339,7 +339,10 @@ function App() {
   //Get the renewal invoice
   //   { amount, publicKey, keyID, country, priceDollar }
   const getInvoiceRenew = (amount, publicKey, keyID, country, priceDollar) => {
-    console.log(`${getDate()} App.js: getInvoice(price): ` + priceDollar + `$`);
+    DEBUG &&
+      console.log(
+        `${getDate()} App.js: getInvoice(price): ` + priceDollar + `$`
+      );
     socket.emit("getInvoiceUpdateSub", {
       amount: Math.round(amount),
       publicKey,
@@ -352,10 +355,10 @@ function App() {
   socket
     .removeAllListeners("lnbitsInvoiceSubscription")
     .on("lnbitsInvoiceSubscription", (invoiceData) => {
-      console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
+      DEBUG && console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
       setPaymentrequest(invoiceData.payment_request);
       clientPaymentHash = invoiceData.payment_hash;
-      console.log(clientPaymentHash);
+      DEBUG && console.log(clientPaymentHash);
       setSpinner(false);
     });
 
@@ -568,7 +571,9 @@ function App() {
                   showPaymentAlert={showPaymentSuccessfull}
                 />
 
-                {isPopupModal ? <Popup onClick={hidePopupModal} /> : null}
+                {isPopupModal ? (
+                  <Popup errorMessage={errorMessage} onClick={hidePopupModal} />
+                ) : null}
               </>
             ) : (
               <>
