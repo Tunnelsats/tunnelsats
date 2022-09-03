@@ -663,7 +663,7 @@ async function getKey({ publicKey, serverURL }) {
     },
   })
     .then(function (response) {
-      result = response.data.Keys;
+      let result = response.data.Keys;
       if (result) {
         const keyDBInfo = result.filter((keyEntry) => {
           return publicKey === keyEntry.PublicKey;

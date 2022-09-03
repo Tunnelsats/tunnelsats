@@ -80,7 +80,6 @@ function App() {
     OC = Oceania (AUS+NZ)
   */
 
-
   // switch first <-> renew subscription
   const [isRenewSub, setRenewSub] = useState(false);
   const showRenew = () => setRenewSub(true);
@@ -196,6 +195,7 @@ function App() {
       "PresharedKey = " + keyPair.presharedKey,
       "Endpoint = " + serverResponse.dnsName + ":" + serverResponse.listenPort,
       "AllowedIPs = " + serverResponse.allowedIPs,
+      "PersistentKeepalive = 25",
     ];
     return configArray;
   };
@@ -691,7 +691,9 @@ function App() {
               <Popup
                 show={isPopupModal}
                 title={"⚠️ Error"}
-                errorMessage={"WireGuard pubkey was not found on selected server!"}
+                errorMessage={
+                  "WireGuard pubkey was not found on selected server!"
+                }
                 handleClose={hidePopupModal}
               />
             ) : null}
