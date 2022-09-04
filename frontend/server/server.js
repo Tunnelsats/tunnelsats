@@ -317,14 +317,14 @@ io.on("connection", (socket) => {
 
     getKey({ publicKey, serverURL })
       .then((result) => {
-        if (result) {
+        if (!isEmpty(result.data)) {
           keyID = result.KeyID;
           getSubsciption({
             keyID: result.KeyID,
             serverURL,
           })
             .then((result) => {
-              if (result) {
+              if (!isEmpty(result.data)) {
                 console.log(result);
                 let unixTimestamp = Date.parse(result.subscriptionEnd);
                 let date = new Date(unixTimestamp);
@@ -347,7 +347,7 @@ io.on("connection", (socket) => {
         }
       })
       .catch((error) => logDim(error.message));
-      socket.emit("receiveKeyLookup", "key not found");
+    socket.emit("receiveKeyLookup", "key not found");
   });
 
   socket.on(
