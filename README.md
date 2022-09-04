@@ -182,7 +182,7 @@ and enter the following settings:
 
 Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how it works:
 - go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
-- enter the WireGuard public key (you can find it in your `tunnelsatsv2.conf` in section "peer")
+- enter the WireGuard public key (you can find it in the wireguard connection details `peer`, displayed with `sudo wg show`)
 - select the continent you are currently subscribed to
 - click "Query Key Info" to fetch your current valid date
 - select the desired term extension of your choice (it is appended to the current expiry)
