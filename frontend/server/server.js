@@ -318,36 +318,38 @@ io.on("connection", (socket) => {
     getKey({ publicKey, serverURL })
       .then((result) => {
         //if (result) {
-          keyID = result.KeyID;
-          getSubsciption({
-            keyID: result.KeyID,
-            serverURL,
-          })
-            .then((result) => {
-              //if (result) {
-                console.log(result);
-                let unixTimestamp = Date.parse(result.subscriptionEnd);
-                let date = new Date(unixTimestamp);
-                logDim("SubscriptionEnd: ", date.toISOString());
-                socket.emit("receiveKeyLookup", {
-                  keyID: keyID,
-                  subscriptionEnd: date,
-                });
-              //} else {
-              //  socket.emit(
-              //    "receiveKeyLookup",
-              //    "Error - No Subscription Found"
-              //  );
-             // }
-            })
-            .catch((error) => {
-              logDim(error.message);
-              socket.emit("receiveKeyLookup", "Error - No Subscription Found");
+        keyID = result.KeyID;
+        getSubsciption({
+          keyID: result.KeyID,
+          serverURL,
+        })
+          .then((result) => {
+            //if (result) {
+            console.log(result);
+            let unixTimestamp = Date.parse(result.subscriptionEnd);
+            let date = new Date(unixTimestamp);
+            logDim("SubscriptionEnd: ", date.toISOString());
+            socket.emit("receiveKeyLookup", {
+              keyID: keyID,
+              subscriptionEnd: date,
             });
+            //} else {
+            //  socket.emit(
+            //    "receiveKeyLookup",
+            //    "Error - No Subscription Found"
+            //  );
+            //}
+          })
+          .catch((error) => {
+            logDim(error.message);
+            socket.emit("receiveKeyLookup", "Error - No Subscription Found");
+          });
         //}
       })
-      .catch((error) => logDim(error.message));
-    socket.emit("receiveKeyLookup", "key not found");
+      .catch((error) => {
+        logDim(error.message);
+        socket.emit("receiveKeyLookup", "key not found");
+      });
   });
 
   socket.on(
