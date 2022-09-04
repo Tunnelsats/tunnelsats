@@ -314,6 +314,9 @@ function App() {
           setTimeValid(false);
         }
       } else {
+        setTime("");
+        setNewTime("");
+        setTimeValid(false);
         renderPopupModal();
         DEBUG && console.log(result);
       }
