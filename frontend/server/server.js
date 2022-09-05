@@ -356,7 +356,7 @@ io.on("connection", (socket) => {
         });
     });
     // key was not found on any server
-    if (result == null) socket.emit("receiveLookup", null);
+    if (result == null) socket.emit("receiveKeyLookup", null);
   });
 
   socket.on(
