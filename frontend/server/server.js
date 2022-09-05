@@ -350,7 +350,6 @@ io.on("connection", (socket) => {
               //socket.emit("receiveKeyLookup", "Error - No Subscription Found");
               errorMessage = "Error - No Subscription Found";
               subscriptionEnd = null;
-              return false;
             });
         })
         .catch((error) => {
@@ -358,7 +357,6 @@ io.on("connection", (socket) => {
           //socket.emit("receiveKeyLookup", "key not found");
           errorMessage = "key not found";
           subscriptionEnd = null;
-          return false;
         });
     });
   });
