@@ -323,7 +323,7 @@ io.on("connection", (socket) => {
       "ca1.tunnelsats.com", //testserver
     ];
 
-    servers.every((server) => {
+    servers.every(server => {
       getKey({ publicKey, server })
         .then((result) => {
           keyID = result.KeyID;
@@ -349,6 +349,7 @@ io.on("connection", (socket) => {
               //socket.emit("receiveKeyLookup", "Error - No Subscription Found");
               errorMessage = "Error - No Subscription Found";
               subscriptionEnd = null;
+              return false;
             });
         })
         .catch((error) => {
@@ -356,6 +357,7 @@ io.on("connection", (socket) => {
           //socket.emit("receiveKeyLookup", "key not found");
           errorMessage = "key not found";
           subscriptionEnd = null;
+          return false;
         });
     });
   });
