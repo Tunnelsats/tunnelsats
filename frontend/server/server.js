@@ -315,7 +315,7 @@ io.on("connection", (socket) => {
 
     let keyID;
     let subscriptionEnd;
-    let result;
+    let result = undefined;
     const servers = [
       "de1.tunnelsats.com",
       "us1.tunnelsats.com",
@@ -324,43 +324,44 @@ io.on("connection", (socket) => {
     ];
 
     servers.forEach((server) => {
-      console.log(`server: ${server}`);
-      getKey({ publicKey, serverURL: server })
-        .then((result) => {
-          keyID = result.KeyID;
-          getSubsciption({
-            keyID: result.KeyID,
-            serverURL: server,
-          })
-            .then((result) => {
-              console.log(result);
-              let unixTimestamp = Date.parse(result.subscriptionEnd);
-              let date = new Date(unixTimestamp);
-              logDim("SubscriptionEnd: ", date.toISOString());
-              subscriptionEnd = date;
-              result = 1;
-              return;
+      if (!result) {
+        console.log(`server: ${server}`);
+        getKey({ publicKey, serverURL: server })
+          .then((result) => {
+            keyID = result.KeyID;
+            getSubsciption({
+              keyID: result.KeyID,
+              serverURL: server,
             })
-            .catch((error) => {
-              logDim(`getSubscription: ${error.message}`);
-              result = null;
-              //socket.emit("receiveKeyLookup", "Error - No Subscription Found");
-            });
-        })
-        .catch((error) => {
-          logDim(`getKey: ${error.message}`);
-          result = null;
-          //socket.emit("receiveKeyLookup", "key not found");
-        });
+              .then((result) => {
+                console.log(result);
+                let unixTimestamp = Date.parse(result.subscriptionEnd);
+                let date = new Date(unixTimestamp);
+                logDim("SubscriptionEnd: ", date.toISOString());
+                subscriptionEnd = date;
+                result = true;
+              })
+              .catch((error) => {
+                logDim(`getSubscription: ${error.message}`);
+                result = false;
+                //socket.emit("receiveKeyLookup", "Error - No Subscription Found");
+              });
+          })
+          .catch((error) => {
+            logDim(`getKey: ${error.message}`);
+            result = false;
+            //socket.emit("receiveKeyLookup", "key not found");
+          });
+      }
     });
-    if (result == 1) {
+
+    if (result) {
       socket.emit("receiveKeyLookup", {
         keyID: keyID,
         subscriptionEnd: subscriptionEnd,
       });
-    }
-    // key was not found on any server
-    if (result == null) {
+    } else {
+      // key was not found on any server
       socket.emit("receiveKeyLookup", null);
     }
   });
@@ -667,7 +668,7 @@ async function checkInvoice(hash) {
     });
 }
 
-async function getKey({ publicKey, serverURL }) {
+function getKey({ publicKey, serverURL }) {
   console.log(publicKey, serverURL);
   return axios({
     method: "get",
