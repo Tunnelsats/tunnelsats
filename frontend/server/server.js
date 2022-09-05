@@ -405,6 +405,7 @@ io.on("connection", (socket) => {
     }
   );
 
+  /*
   socket.on("getServer", (country) => {
     logDim(`getServer() called id: ${socket.id}`);
     server = getServer(country);
@@ -413,6 +414,7 @@ io.on("connection", (socket) => {
       server.replace(/^https?:\/\//, "").replace(/\/manager\/$/, "")
     );
   });
+  */
 
   socket.on("sendEmail", (emailAddress, configData, date) => {
     sendEmail(emailAddress, configData, date).then((result) =>
