@@ -86,7 +86,7 @@ function App() {
   const showRenew = () => setRenewSub(true);
   const hideRenew = () => setRenewSub(false);
 
-  const [server, setServer] = useState(country);
+  const [server, setServer] = useState("");
   const [pubkey, setPubkey] = useState("");
   const [valid, setValid] = useState(false);
   const [timeValid, setTimeValid] = useState(false);
@@ -449,7 +449,7 @@ function App() {
             {isRenewSub ? (
               <>
                 {/* WorldMap */}
-                <WorldMapRenew onChange={handleChangeServer} />
+                <WorldMapRenew selected={country} />
 
                 <Form onSubmit={(e) => handleSubmit(e)}>
                   {" "}
