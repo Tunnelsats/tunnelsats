@@ -125,12 +125,12 @@ function App() {
     getPrice();
   });
 
+  /*
   socket.removeAllListeners("receiveServer").on("receiveServer", (server) => {
     DEBUG && console.log(`${getDate()} App.js: received server: `, server);
     setServer(server);
-    // translate to WorldMap
-    if (server == "de1") updateCountry("eu");
   });
+  */
 
   // get current btc per dollar
   const getPrice = () => {
@@ -246,14 +246,13 @@ function App() {
     socket.emit("getServer", country);
   }, [country]);
   */
-  /*
+
   const handleChangeServer = (event) => {
     setServer({ server: event.target.value });
     setNewTime("");
     setTime("");
     setTimeValid(false);
   };
-  */
 
   const handleChangePubkey = (event) => {
     if (
