@@ -330,7 +330,7 @@ io.on("connection", (socket) => {
           keyID = result.KeyID;
           getSubsciption({
             keyID: result.KeyID,
-            server,
+            serverURL: server,
           })
             .then((result) => {
               console.log(result);
