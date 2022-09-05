@@ -309,9 +309,7 @@ function App() {
         setTimeValid(false);
         renderPopupModal();
         DEBUG && console.log(result);
-      }
-
-      if (typeof result === "object") {
+      } else if (typeof result === "object") {
         keyID = result.keyID;
 
         setTime(result.subscriptionEnd);
