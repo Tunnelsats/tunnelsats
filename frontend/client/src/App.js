@@ -456,8 +456,8 @@ function App() {
                   {" "}
                   {/* Renew Subscription */}
                   <Form.Group className="updateSubFrom">
-                    {/*<InputGroup>
-                      <InputGroup.Text>Selected Server</InputGroup.Text>
+                    <InputGroup>
+                      <InputGroup.Text>Server</InputGroup.Text>
                       <Form.Control
                         disabled
                         value={server}
@@ -465,7 +465,7 @@ function App() {
                         onChange={handleChangeServer}
                         type="text"
                       />
-                    </InputGroup>*/}
+                    </InputGroup>
                     <InputGroup>
                       <InputGroup.Text>WG Pubkey</InputGroup.Text>
                       <Form.Control
