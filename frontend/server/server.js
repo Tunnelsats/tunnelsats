@@ -317,22 +317,24 @@ io.on("connection", (socket) => {
     let subscriptionEnd;
     let success = false;
     const servers = [
-      "de1.tunnelsats.com",
-      "us1.tunnelsats.com",
-      "sg1.tunnelsats.com",
-      "ca1.tunnelsats.com", //testserver
+      { domain: "de1.tunnelsats.com", country: "eu" },
+      { domain: "us1.tunnelsats.com", country: "na" },
+      { domain: "sg1.tunnelsats.com", country: "as" },
+      { domain: "ca1.tunnelsats.com", country: "na" },
     ];
 
     for (const serverURL of servers) {
       if (!success) {
-        console.log(`server: ${serverURL}`);
-        await getKey({ publicKey, serverURL })
+        console.log(`server: ${serverURL.domain}`);
+        let country = serverURL.country;
+        let domain = serverURL.domain;
+        await getKey({ publicKey, serverURL: domain })
           .then(async (result) => {
             keyID = result.KeyID;
 
             success = await getSubscription({
               keyID: result.KeyID,
-              serverURL,
+              serverURL: domain,
             })
               .then((result) => {
                 console.log(result);
@@ -344,6 +346,8 @@ io.on("connection", (socket) => {
                 socket.emit("receiveKeyLookup", {
                   keyID,
                   subscriptionEnd,
+                  domain,
+                  country,
                 });
 
                 return true;
