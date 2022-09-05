@@ -356,12 +356,14 @@ io.on("connection", (socket) => {
     });
 
     if (result) {
+      console.log(`emitting 'receiveKeyLookup': key found`);
       socket.emit("receiveKeyLookup", {
         keyID: keyID,
         subscriptionEnd: subscriptionEnd,
       });
     } else {
       // key was not found on any server
+      console.log(`emitting 'receiveKeyLookup': no key found`);
       socket.emit("receiveKeyLookup", null);
     }
   });
