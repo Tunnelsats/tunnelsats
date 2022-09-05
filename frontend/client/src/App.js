@@ -86,7 +86,7 @@ function App() {
   const showRenew = () => setRenewSub(true);
   const hideRenew = () => setRenewSub(false);
 
-  const [server, setServer] = useState(country);
+  //const [server, setServer] = useState(country);
   const [pubkey, setPubkey] = useState("");
   const [valid, setValid] = useState(false);
   const [timeValid, setTimeValid] = useState(false);
@@ -125,10 +125,12 @@ function App() {
     getPrice();
   });
 
+  /*
   socket.removeAllListeners("receiveServer").on("receiveServer", (server) => {
     DEBUG && console.log(`${getDate()} App.js: received server: `, server);
     setServer(server);
   });
+  */
 
   // get current btc per dollar
   const getPrice = () => {
@@ -235,19 +237,23 @@ function App() {
   };
 
   // renew subscription methods
+  /*
   useEffect(() => {
     setNewTime("");
     setTime("");
     setTimeValid(false);
     socket.emit("getServer", country);
   }, [country]);
+  */
 
+  /*
   const handleChangeServer = (event) => {
     setServer({ server: event.target.value });
     setNewTime("");
     setTime("");
     setTimeValid(false);
   };
+  */
 
   const handleChangePubkey = (event) => {
     if (
