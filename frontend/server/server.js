@@ -323,7 +323,7 @@ io.on("connection", (socket) => {
       "ca1.tunnelsats.com", //testserver
     ];
 
-    servers.forEach((server) => {
+    servers.every((server) => {
       getKey({ publicKey, server })
         .then((result) => {
           keyID = result.KeyID;
@@ -337,6 +337,12 @@ io.on("connection", (socket) => {
               let date = new Date(unixTimestamp);
               logDim("SubscriptionEnd: ", date.toISOString());
               subscriptionEnd = date;
+
+              socket.emit("receiveKeyLookup", {
+                keyID: keyID,
+                subscriptionEnd: subscriptionEnd,
+              });
+              return true; //break every
             })
             .catch((error) => {
               logDim(error.message);
@@ -352,15 +358,6 @@ io.on("connection", (socket) => {
           subscriptionEnd = null;
         });
     });
-
-    if (subscriptionEnd != null) {
-      socket.emit("receiveKeyLookup", {
-        keyID: keyID,
-        subscriptionEnd: subscriptionEnd,
-      });
-    } else {
-      socket.emit("receiveKeyLookup", errorMessage);
-    }
   });
 
   socket.on(
