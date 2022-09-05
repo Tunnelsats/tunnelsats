@@ -325,7 +325,7 @@ io.on("connection", (socket) => {
 
     servers.every((server) => {
       console.log(`server: ${server}`);
-      getKey({ publicKey, serverUrl: server })
+      getKey({ publicKey, serverURL: server })
         .then((result) => {
           keyID = result.KeyID;
           getSubsciption({
