@@ -314,6 +314,7 @@ io.on("connection", (socket) => {
     console.log(publicKey /*, serverURL*/);
 
     let keyID;
+    let subscriptionEnd;
     let result;
     const servers = [
       "de1.tunnelsats.com",
@@ -336,12 +337,9 @@ io.on("connection", (socket) => {
               let unixTimestamp = Date.parse(result.subscriptionEnd);
               let date = new Date(unixTimestamp);
               logDim("SubscriptionEnd: ", date.toISOString());
-
+              subscriptionEnd = date;
               result = 1;
-              socket.emit("receiveKeyLookup", {
-                keyID: keyID,
-                subscriptionEnd: date,
-              });
+              return;
             })
             .catch((error) => {
               logDim(`getSubscription: ${error.message}`);
@@ -355,8 +353,16 @@ io.on("connection", (socket) => {
           //socket.emit("receiveKeyLookup", "key not found");
         });
     });
+    if (result == 1) {
+      socket.emit("receiveKeyLookup", {
+        keyID: keyID,
+        subscriptionEnd: subscriptionEnd,
+      });
+    }
     // key was not found on any server
-    if (result == null) socket.emit("receiveKeyLookup", null);
+    if (result == null) {
+      socket.emit("receiveKeyLookup", null);
+    }
   });
 
   socket.on(
