@@ -346,14 +346,14 @@ io.on("connection", (socket) => {
               return true; //break every
             })
             .catch((error) => {
-              logDim(error.message);
+              logDim(`getSubscription: ${error.message}`);
               //socket.emit("receiveKeyLookup", "Error - No Subscription Found");
               errorMessage = "Error - No Subscription Found";
               subscriptionEnd = null;
             });
         })
         .catch((error) => {
-          logDim(error.message);
+          logDim(`getKey: ${error.message}`);
           //socket.emit("receiveKeyLookup", "key not found");
           errorMessage = "key not found";
           subscriptionEnd = null;
