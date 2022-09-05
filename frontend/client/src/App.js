@@ -329,8 +329,10 @@ function App() {
   const handleKeyLookUp = (event) => {
     event.preventDefault();
     // alert('You have submitted the form.')
-    DEBUG && console.log("checkKeyDB emitted", pubkey, server);
-    socket.emit("checkKeyDB", { publicKey: pubkey, serverURL: server });
+    //DEBUG && console.log("checkKeyDB emitted", pubkey, server);
+    //socket.emit("checkKeyDB", { publicKey: pubkey, serverURL: server });
+    DEBUG && console.log("checkKeyDB emitted", pubkey);
+    socket.emit("checkKeyDB", { publicKey: pubkey });
   };
 
   const handleSubmit = (event) => {

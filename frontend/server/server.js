@@ -323,7 +323,8 @@ io.on("connection", (socket) => {
       "ca1.tunnelsats.com", //testserver
     ];
 
-    servers.every(server => {
+    servers.every((server) => {
+      console.log(`server: ${server}`);
       getKey({ publicKey, server })
         .then((result) => {
           keyID = result.KeyID;
