@@ -310,7 +310,7 @@ io.on("connection", (socket) => {
 
   // New Listening events for UpdateSubscription Request
 
-  socket.on("checkKeyDB", ({ publicKey /*, serverURL */ }) => {
+  socket.on("checkKeyDB", async ({ publicKey /*, serverURL */ }) => {
     console.log(publicKey /*, serverURL*/);
 
     let keyID;
@@ -323,15 +323,15 @@ io.on("connection", (socket) => {
       "ca1.tunnelsats.com", //testserver
     ];
 
-    servers.forEach((server) => {
+    for (const serverURL of servers){
       if (!result) {
-        console.log(`server: ${server}`);
-        getKey({ publicKey, serverURL: server })
-          .then((result) => {
+        console.log(`server: ${serverURL}`);
+        await getKey({ publicKey, serverURL })
+          .then(async (result) => {
             keyID = result.KeyID;
-            getSubsciption({
+            await getSubsciption({
               keyID: result.KeyID,
-              serverURL: server,
+              serverURL,
             })
               .then((result) => {
                 console.log(result);
@@ -339,7 +339,7 @@ io.on("connection", (socket) => {
                 let date = new Date(unixTimestamp);
                 logDim("SubscriptionEnd: ", date.toISOString());
                 subscriptionEnd = date;
-                return true;
+                result = true;
               })
               .catch((error) => {
                 logDim(`getSubscription: ${error.message}`);
@@ -351,7 +351,7 @@ io.on("connection", (socket) => {
             //socket.emit("receiveKeyLookup", "key not found");
           });
       }
-    });
+    };
 
     if (result) {
       console.log(`emitting 'receiveKeyLookup': key found`);
@@ -668,7 +668,7 @@ async function checkInvoice(hash) {
     });
 }
 
-function getKey({ publicKey, serverURL }) {
+async function getKey({ publicKey, serverURL }) {
   console.log(publicKey, serverURL);
   return axios({
     method: "get",
@@ -769,7 +769,7 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
   return null;
 }
 
-function getSubsciption({ keyID, serverURL }) {
+async function getSubsciption({ keyID, serverURL }) {
   return axios({
     method: "post",
     url: `https://${serverURL}/manager/subscription`,
