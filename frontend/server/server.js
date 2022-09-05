@@ -354,6 +354,7 @@ io.on("connection", (socket) => {
           result = false;
           //socket.emit("receiveKeyLookup", "key not found");
         });
+      if (result) break;
     }
 
     if (!result) {
