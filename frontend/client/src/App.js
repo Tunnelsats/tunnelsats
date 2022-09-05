@@ -303,6 +303,14 @@ function App() {
       DEBUG && console.log(`${getDate()} receiveKeyLookup(): `);
       DEBUG && console.log("%o", result);
 
+      if (result == null) {
+        setTime("");
+        setNewTime("");
+        setTimeValid(false);
+        renderPopupModal();
+        DEBUG && console.log(result);
+      }
+
       if (typeof result === "object") {
         keyID = result.keyID;
 
@@ -315,12 +323,6 @@ function App() {
         } else {
           setTimeValid(false);
         }
-      } else {
-        setTime("");
-        setNewTime("");
-        setTimeValid(false);
-        renderPopupModal();
-        DEBUG && console.log(result);
       }
     });
 
