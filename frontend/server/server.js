@@ -769,7 +769,7 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
   return null;
 }
 
-async function getSubsciption({ keyID, serverURL }) {
+function getSubsciption({ keyID, serverURL }) {
   return axios({
     method: "post",
     url: `https://${serverURL}/manager/subscription`,
