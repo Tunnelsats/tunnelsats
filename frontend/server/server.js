@@ -310,46 +310,57 @@ io.on("connection", (socket) => {
 
   // New Listening events for UpdateSubscription Request
 
-  socket.on("checkKeyDB", ({ publicKey, serverURL }) => {
-    console.log(publicKey, serverURL);
+  socket.on("checkKeyDB", ({ publicKey /*, serverURL */ }) => {
+    console.log(publicKey /*, serverURL*/);
 
     let keyID;
+    let subscriptionEnd;
+    let errorMessage;
+    const servers = [
+      "eu1.tunnelsats.com",
+      "us1.tunnelsats.com",
+      "sg1.tunnelsats.com",
+      "ca1.tunnelsats.com", //testserver
+    ];
 
-    getKey({ publicKey, serverURL })
-      .then((result) => {
-        //if (result) {
-        keyID = result.KeyID;
-        getSubsciption({
-          keyID: result.KeyID,
-          serverURL,
-        })
-          .then((result) => {
-            //if (result) {
-            console.log(result);
-            let unixTimestamp = Date.parse(result.subscriptionEnd);
-            let date = new Date(unixTimestamp);
-            logDim("SubscriptionEnd: ", date.toISOString());
-            socket.emit("receiveKeyLookup", {
-              keyID: keyID,
-              subscriptionEnd: date,
-            });
-            //} else {
-            //  socket.emit(
-            //    "receiveKeyLookup",
-            //    "Error - No Subscription Found"
-            //  );
-            //}
+    servers.forEach((server) => {
+      getKey({ publicKey, server })
+        .then((result) => {
+          keyID = result.KeyID;
+          getSubsciption({
+            keyID: result.KeyID,
+            server,
           })
-          .catch((error) => {
-            logDim(error.message);
-            socket.emit("receiveKeyLookup", "Error - No Subscription Found");
-          });
-        //}
-      })
-      .catch((error) => {
-        logDim(error.message);
-        socket.emit("receiveKeyLookup", "key not found");
+            .then((result) => {
+              console.log(result);
+              let unixTimestamp = Date.parse(result.subscriptionEnd);
+              let date = new Date(unixTimestamp);
+              logDim("SubscriptionEnd: ", date.toISOString());
+              subscriptionEnd = date;
+            })
+            .catch((error) => {
+              logDim(error.message);
+              //socket.emit("receiveKeyLookup", "Error - No Subscription Found");
+              errorMessage = "Error - No Subscription Found";
+              subscriptionEnd = null;
+            });
+        })
+        .catch((error) => {
+          logDim(error.message);
+          //socket.emit("receiveKeyLookup", "key not found");
+          errorMessage = "key not found";
+          subscriptionEnd = null;
+        });
+    });
+
+    if (subscriptionEnd != null) {
+      socket.emit("receiveKeyLookup", {
+        keyID: keyID,
+        subscriptionEnd: date,
       });
+    } else {
+      socket.emit("receiveKeyLookup", errorMessage);
+    }
   });
 
   socket.on(

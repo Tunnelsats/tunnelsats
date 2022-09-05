@@ -19,6 +19,7 @@ import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
 import logo from "./media/tunnelsats_headerlogo3.png";
 import WorldMap from "./components/WorldMap";
+import WorldMapRenew from "./components/WorldMapRenew";
 import { IoIosRefresh } from "react-icons/io";
 import "./wireguard.js";
 
@@ -435,16 +436,16 @@ function App() {
             {/* Intro Text */}
             <HeaderInfo />
 
-            {/* WorldMap */}
-            <WorldMap selected={country} onSelect={updateCountry} />
-
             {isRenewSub ? (
               <>
+                {/* WorldMap */}
+                <WorldMapRenew />
+
                 <Form onSubmit={(e) => handleSubmit(e)}>
                   {" "}
                   {/* Renew Subscription */}
                   <Form.Group className="updateSubFrom">
-                    <InputGroup>
+                    {/*<InputGroup>
                       <InputGroup.Text>Selected Server</InputGroup.Text>
                       <Form.Control
                         disabled
@@ -453,7 +454,7 @@ function App() {
                         onChange={handleChangeServer}
                         type="text"
                       />
-                    </InputGroup>
+                    </InputGroup>*/}
                     <InputGroup>
                       <InputGroup.Text>WG Pubkey</InputGroup.Text>
                       <Form.Control
@@ -573,6 +574,9 @@ function App() {
               </>
             ) : (
               <>
+                {/* WorldMap */}
+                <WorldMap selected={country} onSelect={updateCountry} />
+
                 <Form>
                   {/* else default: WG keys for first subscription */}
                   <Form.Group className="mb-2">
