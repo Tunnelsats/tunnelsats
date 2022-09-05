@@ -449,7 +449,7 @@ function App() {
             {isRenewSub ? (
               <>
                 {/* WorldMap */}
-                <WorldMapRenew />
+                <WorldMapRenew onChange={handleChangeServer} />
 
                 <Form onSubmit={(e) => handleSubmit(e)}>
                   {" "}
