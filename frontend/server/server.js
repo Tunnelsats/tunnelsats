@@ -356,7 +356,7 @@ io.on("connection", (socket) => {
     if (subscriptionEnd != null) {
       socket.emit("receiveKeyLookup", {
         keyID: keyID,
-        subscriptionEnd: date,
+        subscriptionEnd: subscriptionEnd,
       });
     } else {
       socket.emit("receiveKeyLookup", errorMessage);
