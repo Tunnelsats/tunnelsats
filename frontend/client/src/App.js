@@ -303,6 +303,8 @@ function App() {
       DEBUG && console.log(`${getDate()} receiveKeyLookup(): `);
       DEBUG && console.log("%o", result);
 
+      setSpinner(false);
+
       if (result == null) {
         setTime("");
         setNewTime("");
@@ -331,6 +333,7 @@ function App() {
     //socket.emit("checkKeyDB", { publicKey: pubkey, serverURL: server });
     DEBUG && console.log("checkKeyDB emitted", pubkey);
     socket.emit("checkKeyDB", { publicKey: pubkey });
+    setSpinner(true);
   };
 
   const handleSubmit = (event) => {
