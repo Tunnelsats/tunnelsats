@@ -339,17 +339,15 @@ io.on("connection", (socket) => {
                 let date = new Date(unixTimestamp);
                 logDim("SubscriptionEnd: ", date.toISOString());
                 subscriptionEnd = date;
-                result = true;
+                return true;
               })
               .catch((error) => {
                 logDim(`getSubscription: ${error.message}`);
-                result = false;
                 //socket.emit("receiveKeyLookup", "Error - No Subscription Found");
               });
           })
           .catch((error) => {
             logDim(`getKey: ${error.message}`);
-            result = false;
             //socket.emit("receiveKeyLookup", "key not found");
           });
       }
@@ -361,7 +359,7 @@ io.on("connection", (socket) => {
         keyID: keyID,
         subscriptionEnd: subscriptionEnd,
       });
-    } else {
+    } else if (!result) {
       // key was not found on any server
       console.log(`emitting 'receiveKeyLookup': no key found`);
       socket.emit("receiveKeyLookup", null);
