@@ -324,38 +324,36 @@ io.on("connection", (socket) => {
     ];
 
     for (const serverURL of servers) {
-      if (!result) {
-        console.log(`server: ${serverURL}`);
-        await getKey({ publicKey, serverURL })
-          .then(async (result) => {
-            keyID = result.KeyID;
-            await getSubsciption({
-              keyID: result.KeyID,
-              serverURL,
-            })
-              .then((result) => {
-                console.log(result);
-                let unixTimestamp = Date.parse(result.subscriptionEnd);
-                let date = new Date(unixTimestamp);
-                logDim("SubscriptionEnd: ", date.toISOString());
-                subscriptionEnd = date;
-                result = true;
-                socket.emit("receiveKeyLookup", {
-                  keyID,
-                  subscriptionEnd,
-                });
-              })
-              .catch((error) => {
-                logDim(`getSubscription: ${error.message}`);
-                //socket.emit("receiveKeyLookup", "Error - No Subscription Found");
-              });
+      console.log(`server: ${serverURL}`);
+      await getKey({ publicKey, serverURL })
+        .then(async (result) => {
+          keyID = result.KeyID;
+          await getSubsciption({
+            keyID: result.KeyID,
+            serverURL,
           })
-          .catch((error) => {
-            logDim(`getKey: ${error.message}`);
-            result = false;
-            //socket.emit("receiveKeyLookup", "key not found");
-          });
-      }
+            .then((result) => {
+              console.log(result);
+              let unixTimestamp = Date.parse(result.subscriptionEnd);
+              let date = new Date(unixTimestamp);
+              logDim("SubscriptionEnd: ", date.toISOString());
+              subscriptionEnd = date;
+              result = true;
+              socket.emit("receiveKeyLookup", {
+                keyID,
+                subscriptionEnd,
+              });
+            })
+            .catch((error) => {
+              logDim(`getSubscription: ${error.message}`);
+              //socket.emit("receiveKeyLookup", "Error - No Subscription Found");
+            });
+        })
+        .catch((error) => {
+          logDim(`getKey: ${error.message}`);
+          result = false;
+          //socket.emit("receiveKeyLookup", "key not found");
+        });
     }
 
     if (!result) {
