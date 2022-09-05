@@ -321,7 +321,7 @@ io.on("connection", (socket) => {
       "ca1.tunnelsats.com", //testserver
     ];
 
-    servers.every((server) => {
+    servers.forEach((server) => {
       console.log(`server: ${server}`);
       getKey({ publicKey, serverURL: server })
         .then((result) => {
@@ -340,7 +340,6 @@ io.on("connection", (socket) => {
                 keyID: keyID,
                 subscriptionEnd: date,
               });
-              return true; //break every
             })
             .catch((error) => {
               logDim(`getSubscription: ${error.message}`);
