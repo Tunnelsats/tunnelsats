@@ -317,7 +317,7 @@ io.on("connection", (socket) => {
     let subscriptionEnd;
     let errorMessage;
     const servers = [
-      "eu1.tunnelsats.com",
+      "de1.tunnelsats.com",
       "us1.tunnelsats.com",
       "sg1.tunnelsats.com",
       "ca1.tunnelsats.com", //testserver
