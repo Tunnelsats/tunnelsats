@@ -315,7 +315,7 @@ io.on("connection", (socket) => {
 
     let keyID;
     let subscriptionEnd;
-    let result = undefined;
+    let result = false;
     const servers = [
       "de1.tunnelsats.com",
       "us1.tunnelsats.com",
