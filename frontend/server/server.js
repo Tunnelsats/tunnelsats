@@ -194,7 +194,7 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
       paymentDetails.payment_hash
     );
 
-    getSubsciption({
+    getSubscription({
       keyID,
       serverURL,
     })
@@ -315,7 +315,7 @@ io.on("connection", (socket) => {
 
     let keyID;
     let subscriptionEnd;
-    let result;
+    let success;
     const servers = [
       "de1.tunnelsats.com",
       "us1.tunnelsats.com",
@@ -328,7 +328,8 @@ io.on("connection", (socket) => {
       await getKey({ publicKey, serverURL })
         .then(async (result) => {
           keyID = result.KeyID;
-          await getSubsciption({
+
+          const success = await getSubscription({
             keyID: result.KeyID,
             serverURL,
           })
@@ -338,11 +339,13 @@ io.on("connection", (socket) => {
               let date = new Date(unixTimestamp);
               logDim("SubscriptionEnd: ", date.toISOString());
               subscriptionEnd = date;
-              result = true;
+
               socket.emit("receiveKeyLookup", {
                 keyID,
                 subscriptionEnd,
               });
+
+              return true;
             })
             .catch((error) => {
               logDim(`getSubscription: ${error.message}`);
@@ -351,13 +354,13 @@ io.on("connection", (socket) => {
         })
         .catch((error) => {
           logDim(`getKey: ${error.message}`);
-          result = false;
           //socket.emit("receiveKeyLookup", "key not found");
         });
-      if (result) break;
+
+        if(success) break;
     }
 
-    if (!result) {
+    if (!success) {
       // key was not found on any server
       console.log(`emitting 'receiveKeyLookup': no key found`);
       socket.emit("receiveKeyLookup", null);
@@ -767,7 +770,7 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
   return null;
 }
 
-async function getSubsciption({ keyID, serverURL }) {
+async function getSubscription({ keyID, serverURL }) {
   return axios({
     method: "post",
     url: `https://${serverURL}/manager/subscription`,
