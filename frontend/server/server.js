@@ -342,15 +342,15 @@ io.on("connection", (socket) => {
               });
               return true; //break every
             })
-            //.catch((error) => {
-            //  logDim(`getSubscription: ${error.message}`);
+            .catch((error) => {
+              logDim(`getSubscription: ${error.message}`);
               //socket.emit("receiveKeyLookup", "Error - No Subscription Found");
-            //});
+            });
         })
-        //.catch((error) => {
-        //  logDim(`getKey: ${error.message}`);
+        .catch((error) => {
+          logDim(`getKey: ${error.message}`);
           //socket.emit("receiveKeyLookup", "key not found");
-        //});
+        });
     });
   });
 
