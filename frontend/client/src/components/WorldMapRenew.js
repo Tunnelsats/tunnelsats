@@ -156,8 +156,7 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
       _assertThisInitialized(_this),
       "getClassname",
       function (area) {
-        return "map-selected";
-        /*
+
         if (area === "af" || area === "sa" || area === "oc") {
           return "map-unavailable";
         }
@@ -176,7 +175,7 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
         } else {
           return "map-unselected";
         }
-        */
+        
       }
     );
 
