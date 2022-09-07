@@ -388,10 +388,6 @@ function App() {
           <Container>
             <Navbar.Brand
               href="#"
-              onClick={() => {
-                hideRenew();
-                updatePrice(REACT_APP_THREE_MONTHS);
-              }}
             >
               Tunnel⚡️Sats
             </Navbar.Brand>
