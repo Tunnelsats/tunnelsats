@@ -389,7 +389,12 @@ function App() {
         {/* Navigation Bar */}
         <Navbar variant="dark" expanded="true">
           <Container>
-            <Navbar.Brand href="#" onClick={setDiscount(1.0)}>
+            <Navbar.Brand
+              href="#"
+              onClick={() => {
+                setDiscount(1.0);
+              }}
+            >
               Tunnel⚡️Sats
             </Navbar.Brand>
             <Nav className="me-auto">
