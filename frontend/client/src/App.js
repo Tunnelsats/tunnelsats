@@ -390,6 +390,7 @@ function App() {
               href="#"
               onClick={() => {
                 hideRenew();
+                updatePrice(REACT_APP_THREE_MONTHS);
               }}
             >
               Tunnel⚡️Sats
@@ -400,6 +401,7 @@ function App() {
                   href="#"
                   onClick={() => {
                     showRenew();
+                    updatePrice(REACT_APP_THREE_MONTHS);
                   }}
                 >
                   Renew Subscription
@@ -409,6 +411,7 @@ function App() {
                   href="#"
                   onClick={() => {
                     hideRenew();
+                    updatePrice(REACT_APP_THREE_MONTHS);                    
                   }}
                 >
                   Get Subscription
@@ -537,12 +540,7 @@ function App() {
                     <div id="example-collapse-text">
                       {
                         <div>
-                          <RuntimeSelector
-                            onClick={runtimeSelect}
-                            onChange={(event) => {
-                              runtimeSelect(event.target.value);
-                            }}
-                          />
+                          <RuntimeSelector onClick={runtimeSelect} />
                           <div className="price">
                             <h3>
                               {Math.trunc(
@@ -656,12 +654,7 @@ function App() {
                 </Form>
                 {
                   <div>
-                    <RuntimeSelector
-                      onClick={runtimeSelect}
-                      onChange={(event) => {
-                        runtimeSelect(event.target.value);
-                      }}
-                    />
+                    <RuntimeSelector onClick={runtimeSelect} />
                     <div className="price">
                       <h3>
                         {Math.trunc(
