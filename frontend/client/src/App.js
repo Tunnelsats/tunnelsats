@@ -276,10 +276,6 @@ function App() {
     }
   };
 
-  const handlePriceUpdate = () => {
-    getPrice();
-  }
-
   //Get wireguard config from Server
   socket
     .off("receiveUpdateSubscription")
@@ -394,7 +390,6 @@ function App() {
               href="#"
               onClick={() => {
                 hideRenew();
-                getPrice();
               }}
             >
               Tunnel⚡️Sats
@@ -405,7 +400,6 @@ function App() {
                   href="#"
                   onClick={() => {
                     showRenew();
-                    getPrice();
                   }}
                 >
                   Renew Subscription
@@ -415,7 +409,6 @@ function App() {
                   href="#"
                   onClick={() => {
                     hideRenew();
-                    getPrice();
                   }}
                 >
                   Get Subscription
@@ -544,7 +537,12 @@ function App() {
                     <div id="example-collapse-text">
                       {
                         <div>
-                          <RuntimeSelector onClick={runtimeSelect} onChange={handlePriceUpdate} />
+                          <RuntimeSelector
+                            onClick={runtimeSelect}
+                            onChange={(event) => {
+                              runtimeSelect(event);
+                            }}
+                          />
                           <div className="price">
                             <h3>
                               {Math.trunc(
@@ -658,7 +656,12 @@ function App() {
                 </Form>
                 {
                   <div>
-                    <RuntimeSelector onClick={runtimeSelect} onChange={handlePriceUpdate} />
+                    <RuntimeSelector
+                      onClick={runtimeSelect}
+                      onChange={(event) => {
+                        runtimeSelect(event);
+                      }}
+                    />
                     <div className="price">
                       <h3>
                         {Math.trunc(
