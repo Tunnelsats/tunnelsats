@@ -390,7 +390,6 @@ function App() {
               href="#"
               onClick={() => {
                 hideRenew();
-                updatePrice(REACT_APP_THREE_MONTHS);
                 setDiscount(1.0);
               }}
             >
@@ -402,8 +401,7 @@ function App() {
                   href="#"
                   onClick={() => {
                     showRenew();
-                    updatePrice(REACT_APP_THREE_MONTHS);
-                    setDiscount(1.0);                    
+                    setDiscount(1.0);
                   }}
                 >
                   Renew Subscription
@@ -413,7 +411,6 @@ function App() {
                   href="#"
                   onClick={() => {
                     hideRenew();
-                    updatePrice(REACT_APP_THREE_MONTHS);
                   }}
                 >
                   Get Subscription
@@ -438,7 +435,6 @@ function App() {
                 onClick={() => {
                   hideRenew();
                   setDiscount(0.1);
-                  updatePrice(REACT_APP_THREE_MONTHS);
                   getPrice();
                 }}
               >
