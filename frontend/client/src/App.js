@@ -55,7 +55,7 @@ function App() {
     Math.round(100000000 / 20000)
   );
   const [showSpinner, setSpinner] = useState(true);
-  const [showSpinnerMap, setSpinnerMap] = useState(true);
+  const [showSpinnerMap, setSpinnerMap] = useState(false);
   const [payment_request, setPaymentrequest] = useState(0);
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
   //Modal Invoice
