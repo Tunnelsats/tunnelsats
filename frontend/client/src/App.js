@@ -55,7 +55,7 @@ function App() {
     Math.round(100000000 / 20000)
   );
   const [showSpinner, setSpinner] = useState(true);
-  const [showSpinnerMap, setSpinnerMap] = useState(false);
+  const [showSpinnerQuery, setSpinnerQuery] = useState(false);
   const [payment_request, setPaymentrequest] = useState(0);
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
   //Modal Invoice
@@ -325,7 +325,7 @@ function App() {
         setTimeValid(false);
         renderPopupModal();
         DEBUG && console.log(result);
-        setSpinnerMap(false);
+        setSpinnerQuery(false);
       } else if (typeof result === "object") {
         keyID = result.keyID;
 
@@ -341,7 +341,7 @@ function App() {
         // set fetched server domain
         setServer(result.domain);
         updateCountry(result.country);
-        setSpinnerMap(false);
+        setSpinnerQuery(false);
       }
     });
 
@@ -352,7 +352,7 @@ function App() {
     //socket.emit("checkKeyDB", { publicKey: pubkey, serverURL: server });
     DEBUG && console.log("checkKeyDB emitted", pubkey);
     socket.emit("checkKeyDB", { publicKey: pubkey });
-    setSpinnerMap(true);
+    setSpinnerQuery(true);
   };
 
   const handleSubmit = (event) => {
@@ -463,11 +463,7 @@ function App() {
             {isRenewSub ? (
               <>
                 {/* WorldMap */}
-                {showSpinnerMap ? (
-                  <Spinner animation="border" variant="warning" />
-                ) : (
-                  <WorldMapRenew selected={country} />
-                )}
+                <WorldMapRenew selected={country} />
 
                 <Form onSubmit={(e) => handleSubmit(e)}>
                   {" "}
@@ -529,16 +525,20 @@ function App() {
                       </div>
                     </Collapse>
                   </Form.Group>
-                  <div className="main-buttons">
-                    <Button
-                      variant="secondary"
-                      onClick={handleKeyLookUp}
-                      type="submit"
-                      disabled={!valid}
-                    >
-                      Query Key Info
-                    </Button>
-                  </div>
+                  {showSpinnerQuery ? (
+                    <Spinner animation="border" variant="warning" />
+                  ) : (
+                    <div className="main-buttons">
+                      <Button
+                        variant="secondary"
+                        onClick={handleKeyLookUp}
+                        type="submit"
+                        disabled={!valid}
+                      >
+                        Query Key Info
+                      </Button>
+                    </div>
+                  )}
                   <Collapse in={true}>
                     <div id="example-collapse-text">
                       {
