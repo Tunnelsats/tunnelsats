@@ -324,6 +324,7 @@ function App() {
         setTimeValid(false);
         renderPopupModal();
         DEBUG && console.log(result);
+        setSpinner(false);
       } else if (typeof result === "object") {
         keyID = result.keyID;
 
@@ -339,6 +340,7 @@ function App() {
         // set fetched server domain
         setServer(result.domain);
         updateCountry(result.country);
+        setSpinner(false);
       }
     });
 
@@ -349,6 +351,7 @@ function App() {
     //socket.emit("checkKeyDB", { publicKey: pubkey, serverURL: server });
     DEBUG && console.log("checkKeyDB emitted", pubkey);
     socket.emit("checkKeyDB", { publicKey: pubkey });
+    setSpinner(true);
   };
 
   const handleSubmit = (event) => {
@@ -459,7 +462,11 @@ function App() {
             {isRenewSub ? (
               <>
                 {/* WorldMap */}
-                <WorldMapRenew selected={country} />
+                {showSpinner ? (
+                  <Spinner animation="border" variant="warning" />
+                ) : (
+                  <WorldMapRenew selected={country} />
+                )}
 
                 <Form onSubmit={(e) => handleSubmit(e)}>
                   {" "}
