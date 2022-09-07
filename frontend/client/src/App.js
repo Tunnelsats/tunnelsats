@@ -389,7 +389,9 @@ function App() {
         {/* Navigation Bar */}
         <Navbar variant="dark" expanded="true">
           <Container>
-            <Navbar.Brand href="#">Tunnel⚡️Sats</Navbar.Brand>
+            <Navbar.Brand href="#" onClick={setDiscount(1.0)}>
+              Tunnel⚡️Sats
+            </Navbar.Brand>
             <Nav className="me-auto">
               {!isRenewSub ? (
                 <Nav.Link
@@ -397,7 +399,6 @@ function App() {
                   onClick={() => {
                     showRenew();
                     updatePrice(REACT_APP_THREE_MONTHS);
-                    setDiscount(1.0);
                   }}
                 >
                   Renew Subscription
