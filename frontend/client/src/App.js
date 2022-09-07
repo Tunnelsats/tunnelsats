@@ -540,7 +540,7 @@ function App() {
                           <RuntimeSelector
                             onClick={runtimeSelect}
                             onChange={(event) => {
-                              runtimeSelect(event);
+                              runtimeSelect(event.target.value);
                             }}
                           />
                           <div className="price">
@@ -659,7 +659,7 @@ function App() {
                     <RuntimeSelector
                       onClick={runtimeSelect}
                       onChange={(event) => {
-                        runtimeSelect(event);
+                        runtimeSelect(event.target.value);
                       }}
                     />
                     <div className="price">
