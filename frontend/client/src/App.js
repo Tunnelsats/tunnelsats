@@ -390,7 +390,6 @@ function App() {
               href="#"
               onClick={() => {
                 hideRenew();
-                updatePrice(REACT_APP_THREE_MONTHS);                
               }}
             >
               Tunnel⚡️Sats
@@ -401,7 +400,6 @@ function App() {
                   href="#"
                   onClick={() => {
                     showRenew();
-                    updatePrice(REACT_APP_THREE_MONTHS);
                   }}
                 >
                   Renew Subscription
@@ -411,7 +409,6 @@ function App() {
                   href="#"
                   onClick={() => {
                     hideRenew();
-                    updatePrice(REACT_APP_THREE_MONTHS);
                   }}
                 >
                   Get Subscription
