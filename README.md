@@ -1,4 +1,4 @@
-![TunnelSatsLogo](/docs/assets/tunnelsats11.png)
+![TunnelSatsLogo](/docs/assets/tunnelsats_banner_640_320.png)
 
 <br/>
 
