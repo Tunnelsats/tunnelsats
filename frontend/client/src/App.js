@@ -97,6 +97,9 @@ function App() {
   const renderPopupModal = () => showPopupModal(true);
   const hidePopupModal = () => showPopupModal(false);
 
+  // special discounts
+  const [discount, setDiscount] = useState(1.0);
+
   //Successful payment alert
   const renderAlert = (show) => {
     setPaymentAlert(show);
@@ -138,7 +141,7 @@ function App() {
   };
   socket.off("receivePrice").on("receivePrice", (price) => {
     DEBUG && console.log(`${getDate()} App.js: server.getPrice(): ${price}`);
-    setSatsPerDollar(Math.trunc(Math.round(price)));
+    setSatsPerDollar(Math.trunc(Math.round(price*discount)));
   });
 
   // check invoice
@@ -424,6 +427,16 @@ function App() {
               >
                 FAQ
               </Nav.Link>
+              <Nav.Link
+                href="#"
+                onClick={() => {
+                  hideRenew();
+                  setDiscount(0.1);
+                  getPrice();
+                }}
+              >
+                * Amboss Special *
+              </Nav.Link>              
             </Nav>
             {/*}
             <Nav>
@@ -656,7 +669,7 @@ function App() {
                   <Button
                     onClick={() => {
                       getInvoice(
-                        priceDollar * satsPerDollar,
+                        priceDollar * satsPerDollar * discount,
                         keyPair.publicKey,
                         keyPair.presharedKey,
                         priceDollar,
@@ -685,7 +698,7 @@ function App() {
                   }}
                   showNewInvoice={() => {
                     getInvoice(
-                      priceDollar * satsPerDollar,
+                      priceDollar * satsPerDollar * discount,
                       keyPair.publicKey,
                       keyPair.presharedKey,
                       priceDollar,
