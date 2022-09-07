@@ -5,6 +5,7 @@ import {
   Button,
   Nav,
   Navbar,
+  Spinner,
   Collapse,
   Form,
   InputGroup,
@@ -138,6 +139,7 @@ function App() {
   // get current btc per dollar
   const getPrice = () => {
     socket.removeAllListeners("getPrice").emit("getPrice");
+    setSpinner(true);
   };
   socket.off("receivePrice").on("receivePrice", (price) => {
     DEBUG && console.log(`${getDate()} App.js: server.getPrice(): ${price}`);
@@ -146,6 +148,7 @@ function App() {
     } else {
       setSatsPerDollar(Math.trunc(Math.round(price)));
     }
+    setSpinner(false);
   });
 
   // check invoice
@@ -386,11 +389,7 @@ function App() {
         {/* Navigation Bar */}
         <Navbar variant="dark" expanded="true">
           <Container>
-            <Navbar.Brand
-              href="#"
-            >
-              Tunnel⚡️Sats
-            </Navbar.Brand>
+            <Navbar.Brand href="#">Tunnel⚡️Sats</Navbar.Brand>
             <Nav className="me-auto">
               {!isRenewSub ? (
                 <Nav.Link
@@ -407,7 +406,7 @@ function App() {
                   href="#"
                   onClick={() => {
                     hideRenew();
-                    updatePrice(REACT_APP_THREE_MONTHS);                    
+                    updatePrice(REACT_APP_THREE_MONTHS);
                   }}
                 >
                   Get Subscription
@@ -537,14 +536,18 @@ function App() {
                       {
                         <div>
                           <RuntimeSelector onClick={runtimeSelect} />
-                          <div className="price">
-                            <h3>
-                              {Math.trunc(
-                                Math.round(priceDollar * satsPerDollar)
-                              ).toLocaleString()}{" "}
-                              <i class="fak fa-satoshisymbol-solidtilt" />
-                            </h3>
-                          </div>
+                          {showSpinner ? (
+                            <Spinner animation="border" variant="warning" />
+                          ) : (
+                            <div className="price">
+                              <h3>
+                                {Math.trunc(
+                                  Math.round(priceDollar * satsPerDollar)
+                                ).toLocaleString()}{" "}
+                                <i class="fak fa-satoshisymbol-solidtilt" />
+                              </h3>
+                            </div>
+                          )}
                         </div>
                       }
                     </div>
@@ -651,14 +654,18 @@ function App() {
                 {
                   <div>
                     <RuntimeSelector onClick={runtimeSelect} />
-                    <div className="price">
-                      <h3>
-                        {Math.trunc(
-                          Math.round(priceDollar * satsPerDollar)
-                        ).toLocaleString()}{" "}
-                        <i class="fak fa-satoshisymbol-solidtilt" />
-                      </h3>
-                    </div>
+                    {showSpinner ? (
+                      <Spinner animation="border" variant="warning" />
+                    ) : (
+                      <div className="price">
+                        <h3>
+                          {Math.trunc(
+                            Math.round(priceDollar * satsPerDollar)
+                          ).toLocaleString()}{" "}
+                          <i class="fak fa-satoshisymbol-solidtilt" />
+                        </h3>
+                      </div>
+                    )}
                   </div>
                 }
 
