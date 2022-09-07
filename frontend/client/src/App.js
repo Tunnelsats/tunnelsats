@@ -276,6 +276,10 @@ function App() {
     }
   };
 
+  const handlePriceUpdate = () => {
+    getPrice();
+  }
+
   //Get wireguard config from Server
   socket
     .off("receiveUpdateSubscription")
@@ -432,8 +436,6 @@ function App() {
                 href="#"
                 onClick={() => {
                   hideRenew();
-                  setDiscount(0.1);
-                  getPrice();
                 }}
               >
                 * Amboss Special *
@@ -539,7 +541,7 @@ function App() {
                     <div id="example-collapse-text">
                       {
                         <div>
-                          <RuntimeSelector onClick={runtimeSelect} />
+                          <RuntimeSelector onClick={runtimeSelect} onChange={handlePriceUpdate} />
                           <div className="price">
                             <h3>
                               {Math.trunc(
@@ -653,7 +655,7 @@ function App() {
                 </Form>
                 {
                   <div>
-                    <RuntimeSelector onClick={runtimeSelect} />
+                    <RuntimeSelector onClick={runtimeSelect} onChange={handlePriceUpdate} />
                     <div className="price">
                       <h3>
                         {Math.trunc(
@@ -671,9 +673,9 @@ function App() {
                     onClick={() => {
                       getInvoice(
                         discount != 1.0
-                        ? priceDollar * satsPerDollar -
-                            priceDollar * satsPerDollar * discount
-                        : priceDollar * satsPerDollar,
+                          ? priceDollar * satsPerDollar -
+                              priceDollar * satsPerDollar * discount
+                          : priceDollar * satsPerDollar,
                         keyPair.publicKey,
                         keyPair.presharedKey,
                         priceDollar,
