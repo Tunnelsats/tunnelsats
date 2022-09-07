@@ -397,6 +397,7 @@ function App() {
                   onClick={() => {
                     showRenew();
                     updatePrice(REACT_APP_THREE_MONTHS);
+                    setDiscount(1.0);
                   }}
                 >
                   Renew Subscription
@@ -433,7 +434,7 @@ function App() {
                   setDiscount(0.1);
                 }}
               >
-                * Amboss Special *
+                * Amboss Special 10% Discount*
               </Nav.Link>
             </Nav>
             {/*}
