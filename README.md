@@ -1,4 +1,6 @@
-![TunnelSatsLogo](/docs/assets/tunnelsats_banner_640_320.png)
+<p>
+<img src="/docs/assets/tunnelsats_banner_640_320.png" width="320" title="TunnelSats Banner" />
+</p>
 
 <br/>
 
