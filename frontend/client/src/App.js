@@ -141,7 +141,11 @@ function App() {
   };
   socket.off("receivePrice").on("receivePrice", (price) => {
     DEBUG && console.log(`${getDate()} App.js: server.getPrice(): ${price}`);
-    setSatsPerDollar(Math.trunc(Math.round(price*discount)));
+    if (discount != 1.0) {
+      setSatsPerDollar(Math.trunc(Math.round(price - price * discount)));
+    } else {
+      setSatsPerDollar(Math.trunc(Math.round(price)));
+    }
   });
 
   // check invoice
@@ -436,7 +440,7 @@ function App() {
                 }}
               >
                 * Amboss Special *
-              </Nav.Link>              
+              </Nav.Link>
             </Nav>
             {/*}
             <Nav>
@@ -669,7 +673,10 @@ function App() {
                   <Button
                     onClick={() => {
                       getInvoice(
-                        priceDollar * satsPerDollar * discount,
+                        discount != 1.0
+                        ? priceDollar * satsPerDollar -
+                            priceDollar * satsPerDollar * discount
+                        : priceDollar * satsPerDollar,
                         keyPair.publicKey,
                         keyPair.presharedKey,
                         priceDollar,
@@ -698,7 +705,10 @@ function App() {
                   }}
                   showNewInvoice={() => {
                     getInvoice(
-                      priceDollar * satsPerDollar * discount,
+                      discount != 1.0
+                        ? priceDollar * satsPerDollar -
+                            priceDollar * satsPerDollar * discount
+                        : priceDollar * satsPerDollar,
                       keyPair.publicKey,
                       keyPair.presharedKey,
                       priceDollar,
