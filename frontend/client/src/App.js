@@ -55,6 +55,7 @@ function App() {
     Math.round(100000000 / 20000)
   );
   const [showSpinner, setSpinner] = useState(true);
+  const [showSpinnerMap, setSpinnerMap] = useState(true);
   const [payment_request, setPaymentrequest] = useState(0);
   const [showPaymentSuccessfull, setPaymentAlert] = useState(false);
   //Modal Invoice
@@ -324,7 +325,7 @@ function App() {
         setTimeValid(false);
         renderPopupModal();
         DEBUG && console.log(result);
-        setSpinner(false);
+        setSpinnerMap(false);
       } else if (typeof result === "object") {
         keyID = result.keyID;
 
@@ -340,7 +341,7 @@ function App() {
         // set fetched server domain
         setServer(result.domain);
         updateCountry(result.country);
-        setSpinner(false);
+        setSpinnerMap(false);
       }
     });
 
@@ -351,7 +352,7 @@ function App() {
     //socket.emit("checkKeyDB", { publicKey: pubkey, serverURL: server });
     DEBUG && console.log("checkKeyDB emitted", pubkey);
     socket.emit("checkKeyDB", { publicKey: pubkey });
-    setSpinner(true);
+    setSpinnerMap(true);
   };
 
   const handleSubmit = (event) => {
@@ -462,7 +463,7 @@ function App() {
             {isRenewSub ? (
               <>
                 {/* WorldMap */}
-                {showSpinner ? (
+                {showSpinnerMap ? (
                   <Spinner animation="border" variant="warning" />
                 ) : (
                   <WorldMapRenew selected={country} />
