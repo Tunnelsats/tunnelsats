@@ -144,11 +144,7 @@ function App() {
   };
   socket.off("receivePrice").on("receivePrice", (price) => {
     DEBUG && console.log(`${getDate()} App.js: server.getPrice(): ${price}`);
-    if (discount != 1.0) {
-      setSatsPerDollar(Math.trunc(Math.round(price - price * discount)));
-    } else {
-      setSatsPerDollar(Math.trunc(Math.round(price)));
-    }
+    setSatsPerDollar(Math.trunc(Math.round(price)));
     setSpinner(false);
   });
 
@@ -434,6 +430,7 @@ function App() {
                 href="#"
                 onClick={() => {
                   hideRenew();
+                  setDiscount(0.1);
                 }}
               >
                 * Amboss Special *
@@ -549,9 +546,16 @@ function App() {
                           ) : (
                             <div className="price">
                               <h3>
-                                {Math.trunc(
-                                  Math.round(priceDollar * satsPerDollar)
-                                ).toLocaleString()}{" "}
+                                {discount != 1.0
+                                  ? Math.trunc(
+                                      Math.round(
+                                        priceDollar * satsPerDollar -
+                                          priceDollar * satsPerDollar * discount
+                                      )
+                                    )
+                                  : Math.trunc(
+                                      Math.round(priceDollar * satsPerDollar)
+                                    ).toLocaleString()}{" "}
                                 <i class="fak fa-satoshisymbol-solidtilt" />
                               </h3>
                             </div>
@@ -565,7 +569,10 @@ function App() {
                       variant="outline-warning"
                       onClick={() => {
                         getInvoiceRenew(
-                          priceDollar * satsPerDollar,
+                          discount != 1.0
+                            ? priceDollar * satsPerDollar -
+                                priceDollar * satsPerDollar * discount
+                            : priceDollar * satsPerDollar,
                           pubkey,
                           keyID,
                           country,
@@ -591,7 +598,10 @@ function App() {
                   value={payment_request}
                   showNewInvoice={() => {
                     getInvoiceRenew(
-                      priceDollar * satsPerDollar,
+                      discount != 1.0
+                        ? priceDollar * satsPerDollar -
+                            priceDollar * satsPerDollar * discount
+                        : priceDollar * satsPerDollar,
                       pubkey,
                       keyID,
                       country,
@@ -667,9 +677,16 @@ function App() {
                     ) : (
                       <div className="price">
                         <h3>
-                          {Math.trunc(
-                            Math.round(priceDollar * satsPerDollar)
-                          ).toLocaleString()}{" "}
+                          {discount != 1.0
+                            ? Math.trunc(
+                                Math.round(
+                                  priceDollar * satsPerDollar -
+                                    priceDollar * satsPerDollar * discount
+                                )
+                              )
+                            : Math.trunc(
+                                Math.round(priceDollar * satsPerDollar)
+                              ).toLocaleString()}{" "}
                           <i class="fak fa-satoshisymbol-solidtilt" />
                         </h3>
                       </div>
