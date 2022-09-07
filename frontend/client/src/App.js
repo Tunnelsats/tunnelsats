@@ -430,7 +430,6 @@ function App() {
               <Nav.Link
                 href="#"
                 onClick={() => {
-                  hideRenew();
                   setDiscount(0.1);
                 }}
               >
