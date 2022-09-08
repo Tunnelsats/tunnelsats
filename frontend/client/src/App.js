@@ -23,6 +23,7 @@ import WorldMap from "./components/WorldMap";
 import WorldMapRenew from "./components/WorldMapRenew";
 import { IoIosRefresh } from "react-icons/io";
 import "./wireguard.js";
+import { useLocation } from "react-router-dom";
 
 // helper
 const getDate = (timestamp) =>
@@ -128,7 +129,17 @@ function App() {
     }
     // refresh pricePerDollar on start
     getPrice();
+
+    // check for discounts
+    getDiscount();
   });
+
+  const getDiscount = () => {
+    // parse URL for search params
+    const queryParams = new URLSearchParams(window.location.search);
+    const param = queryParams.get("ref");
+    if (param == "amboss") setDiscount(0.1);
+  };
 
   /*
   socket.removeAllListeners("receiveServer").on("receiveServer", (server) => {
@@ -142,6 +153,7 @@ function App() {
     socket.removeAllListeners("getPrice").emit("getPrice");
     setSpinner(true);
   };
+
   socket.off("receivePrice").on("receivePrice", (price) => {
     DEBUG && console.log(`${getDate()} App.js: server.getPrice(): ${price}`);
     setSatsPerDollar(Math.trunc(Math.round(price)));
