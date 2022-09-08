@@ -35,6 +35,9 @@ const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 0.002;
 const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || "";
 const REACT_APP_SOCKETIO = process.env.REACT_APP_SOCKETIO || "/";
 
+const REACT_APP_REF = process.env.REACT_APP_REF;
+const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT);
+
 const DEBUG = true;
 
 // WebSocket
@@ -137,7 +140,8 @@ function App() {
     // parse URL for search params
     const queryParams = new URLSearchParams(window.location.search);
     const param = queryParams.get("ref");
-    if (param == "amboss") setDiscount(0.1);
+    // set discount per ref
+    if (param == REACT_APP_REF) setDiscount(REACT_APP_DISCOUNT);
   };
 
   /*
