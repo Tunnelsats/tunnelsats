@@ -1061,11 +1061,7 @@ echo "Please save these infos in a file or write them down for later use.
 
 A more detailed guide is available at: https://blckbx.github.io/tunnelsats/
 Afterwards please restart LND / CLN for changes to take effect.
-VPN setup completed!
-
-Welcome to Tunnel⚡Sats.
-
-Feel free to join the [Amboss Community here](https://amboss.space/community/29db5f25-24bb-407e-b752-be69f9431071)."
+VPN setup completed!"
 echo
 
 if [ $isDocker -eq 0 ]; then
