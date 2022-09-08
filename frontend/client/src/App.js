@@ -11,7 +11,7 @@ import {
   InputGroup,
 } from "react-bootstrap";
 import io from "socket.io-client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import RuntimeSelector from "./components/RuntimeSelector";
 import InvoiceModal from "./components/InvoiceModal";
 import RenewInvoiceModal from "./components/RenewInvoiceModal";
@@ -23,7 +23,6 @@ import WorldMap from "./components/WorldMap";
 import WorldMapRenew from "./components/WorldMapRenew";
 import { IoIosRefresh } from "react-icons/io";
 import "./wireguard.js";
-import { useLocation } from "react-router-dom";
 
 // helper
 const getDate = (timestamp) =>
@@ -403,9 +402,6 @@ function App() {
           <Container>
             <Navbar.Brand
               href="#"
-              onClick={() => {
-                setDiscount(1.0);
-              }}
             >
               Tunnel⚡️Sats
             </Navbar.Brand>
@@ -444,14 +440,6 @@ function App() {
                 rel="noreferrer"
               >
                 FAQ
-              </Nav.Link>
-              <Nav.Link
-                href="#"
-                onClick={() => {
-                  setDiscount(0.1);
-                }}
-              >
-                * Amboss Special 10% Discount*
               </Nav.Link>
             </Nav>
             {/*}
