@@ -18,7 +18,7 @@ import RenewInvoiceModal from "./components/RenewInvoiceModal";
 import Popup from "./components/Popup";
 import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
-import logo from "./media/tunnelsats_headerlogo3.png";
+import logo from "./media/tunnelsats_headerlogo5.png";
 import WorldMap from "./components/WorldMap";
 import WorldMapRenew from "./components/WorldMapRenew";
 import { IoIosRefresh } from "react-icons/io";
@@ -403,13 +403,8 @@ function App() {
       <Container>
         {/* Navigation Bar */}
         <Navbar variant="dark" expanded="true">
-          <Container>
-            <Navbar.Brand
-              href="#"
-            >
-              Tunnel⚡️Sats
-            </Navbar.Brand>
-            <Nav className="me-auto">
+            <Navbar.Brand>Tunnel⚡️Sats</Navbar.Brand>
+            <Nav className="mr-auto">
               {!isRenewSub ? (
                 <Nav.Link
                   href="#"
@@ -445,14 +440,14 @@ function App() {
               >
                 FAQ
               </Nav.Link>
-            </Nav>
-            {/*}
+
+              {/*}
             <Nav>
               <Button onClick={() => renderLoginModal()} variant="outline-info">Login</Button>
               <LoginModal show={isLoginModal} handleClose={hideLoginModal} />
             </Nav>
             */}
-          </Container>
+            </Nav>
         </Navbar>
       </Container>
 
@@ -462,7 +457,7 @@ function App() {
         <Row>
           <Col>
             {/* Logo */}
-            <img src={logo} alt="" />
+            <img src={logo} alt="" className="logo" />
 
             {/* Intro Text */}
             <HeaderInfo />

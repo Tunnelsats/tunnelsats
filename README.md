@@ -33,6 +33,8 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 ## Preconditions ##
 
 - OS: Debian-/Ubuntu-based (apt-get required)
+- Linux kernel version: 5.10+ (`uname -srm`)
+- nftables version: 0.9.7+ (`nft -v` or `apt search nftables | grep "^nftables"`)
 - LND latest (minimal requirement `0.14.2-beta`)
 - CLN latest
 - only **one** lightning implementation per system is supported (configured to port 9735)
@@ -185,7 +187,6 @@ and enter the following settings:
 Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how it works:
 - go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
 - enter the WireGuard public key (find it commented out in your `tunnelsatsv2.conf`, look for `#myPubKey` line)
-- select the continent you are currently subscribed to
 - click "Query Key Info" to fetch your current valid date
 - select the desired term extension of your choice (it is appended to the current expiry)
 - click "Update Subscription" and pay the lightning invoice

@@ -334,6 +334,12 @@ img {
   height: auto;
 }
 
+.logo {
+  padding: 5px;  
+  width: 100%;
+  height: auto;
+}
+
 /* Popup style */
 .popup-box {
   position: fixed;
