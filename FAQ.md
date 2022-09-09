@@ -99,7 +99,9 @@ If you experience issues, please contact us and let us know what issues you're e
 ### How can I extend my subscription?
 Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how it works:
 - go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
-- enter the WireGuard public key (find it commented out in your `tunnelsatsv2.conf`, look for `#myPubKey` line (new subscriptions) or in your wireguard connection details via `sudo wg show | grep peer`)
+- enter the WireGuard public key - find the key either
+  - commented out in your `tunnelsatsv2.conf`, look for `#myPubKey` line (new subscriptions only) or 
+  - in your wireguard connection details displayed via `sudo wg show | grep peer`
 - click "Query Key Info" to fetch your key's infos
 - select the desired term extension of your choice (it is appended to the current expiry date)
 - click "Update Subscription" and pay the lightning invoice
