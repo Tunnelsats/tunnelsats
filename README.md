@@ -188,7 +188,7 @@ Renewal of existing subscriptions has been reworked. Now it is possible to prolo
 - go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
 - enter the WireGuard public key - find the key either
   - commented out in your `tunnelsatsv2.conf`, look for `#myPubKey` line (new subscriptions only) or 
-  - in your wireguard connection details displayed via `sudo wg show | grep peer`
+  - in your wireguard connection details displayed via `echo $(sudo cat /etc/wireguard/tunnelsatsv2.conf | grep PrivateKey | awk '{ print $3}' ) | wg pubkey`
 - click "Query Key Info" to fetch your current valid date
 - select the desired term extension of your choice (it is appended to the current expiry)
 - click "Update Subscription" and pay the lightning invoice
