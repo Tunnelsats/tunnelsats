@@ -399,13 +399,14 @@ fi
   if [ -f /etc/wireguard/tunnelsats-create-cgroup.sh ]; then
     echo "> tunnelsats-create-cgroup.sh created, executing..."
     # run
-    bash /etc/wireguard/tunnelsats-create-cgroup.sh
-    echo "> Created tunnelsats cgroup successfully"
-    echo
-  else
-    echo "> ERR: tunnelsats-create-cgroup.sh execution failed"
-    echo
-    exit 1
+    if bash /etc/wireguard/tunnelsats-create-cgroup.sh; then
+      echo "> Created tunnelsats cgroup successfully"
+      echo
+    else
+      echo "> ERR: tunnelsats-create-cgroup.sh execution failed. Please check for errors."
+      echo
+      exit 1
+    fi
   fi
 
   # enable systemd service
