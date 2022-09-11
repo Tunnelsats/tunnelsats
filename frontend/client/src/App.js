@@ -764,7 +764,7 @@ function App() {
                 show={isPopupModal}
                 title={"⚠️ Error"}
                 errorMessage={
-                  "WireGuard pubkey was not found on selected server!"
+                  "The provided WireGuard pubkey was not found on any server!"
                 }
                 handleClose={hidePopupModal}
               />
