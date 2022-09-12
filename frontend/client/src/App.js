@@ -21,7 +21,7 @@ import HeaderInfo from "./components/HeaderInfo";
 import logo from "./media/tunnelsats_headerlogo5.png";
 import WorldMap from "./components/WorldMap";
 import WorldMapRenew from "./components/WorldMapRenew";
-import { IoIosRefresh } from "react-icons/io";
+import { IoIosRefresh, IoIosInformationCircleOutline } from "react-icons/io";
 import "./wireguard.js";
 
 // helper
@@ -31,7 +31,7 @@ const base64regex =
   /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
 
 // Env Variables to have the same code base main and dev
-const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 0.002;
+const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 8.5;
 const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || "";
 const REACT_APP_SOCKETIO = process.env.REACT_APP_SOCKETIO || "/";
 
@@ -403,51 +403,51 @@ function App() {
       <Container>
         {/* Navigation Bar */}
         <Navbar variant="dark" expanded="true">
-            <Navbar.Brand>Tunnel⚡️Sats</Navbar.Brand>
-            <Nav className="mr-auto">
-              {!isRenewSub ? (
-                <Nav.Link
-                  href="#"
-                  onClick={() => {
-                    showRenew();
-                    updatePrice(REACT_APP_THREE_MONTHS);
-                  }}
-                >
-                  Renew Subscription
-                </Nav.Link>
-              ) : (
-                <Nav.Link
-                  href="#"
-                  onClick={() => {
-                    hideRenew();
-                    updatePrice(REACT_APP_THREE_MONTHS);
-                  }}
-                >
-                  Get Subscription
-                </Nav.Link>
-              )}
+          <Navbar.Brand>Tunnel⚡️Sats</Navbar.Brand>
+          <Nav className="mr-auto">
+            {!isRenewSub ? (
               <Nav.Link
-                href="https://blckbx.github.io/tunnelsats"
-                target="_blank"
-                rel="noreferrer"
+                href="#"
+                onClick={() => {
+                  showRenew();
+                  updatePrice(REACT_APP_THREE_MONTHS);
+                }}
               >
-                Guide
+                Renew Subscription
               </Nav.Link>
+            ) : (
               <Nav.Link
-                href="https://blckbx.github.io/tunnelsats/FAQ.html"
-                target="_blank"
-                rel="noreferrer"
+                href="#"
+                onClick={() => {
+                  hideRenew();
+                  updatePrice(REACT_APP_THREE_MONTHS);
+                }}
               >
-                FAQ
+                Get Subscription
               </Nav.Link>
+            )}
+            <Nav.Link
+              href="https://blckbx.github.io/tunnelsats"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Guide
+            </Nav.Link>
+            <Nav.Link
+              href="https://blckbx.github.io/tunnelsats/FAQ.html"
+              target="_blank"
+              rel="noreferrer"
+            >
+              FAQ
+            </Nav.Link>
 
-              {/*}
+            {/*}
             <Nav>
               <Button onClick={() => renderLoginModal()} variant="outline-info">Login</Button>
               <LoginModal show={isLoginModal} handleClose={hideLoginModal} />
             </Nav>
             */}
-            </Nav>
+          </Nav>
         </Navbar>
       </Container>
 
@@ -490,6 +490,17 @@ function App() {
                         isValid={valid}
                         onChange={handleChangePubkey}
                       />
+                      <Button
+                        variant="secondary"
+                        href="https://blckbx.github.io/tunnelsats/FAQ.html#how-can-i-extend-my-subscription"
+                        target="_blank"
+                      >
+                        <IoIosInformationCircleOutline
+                          color="white"
+                          size={20}
+                          title="how to find out your wg pubkey"
+                        />
+                      </Button>
                     </InputGroup>
                     <Collapse in={valid}>
                       <div id="example-collapse-text">
