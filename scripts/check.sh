@@ -50,7 +50,6 @@ fi
 
 # check nftable version (min 0.9.6+ required)
 echo "Checking nftables version..."
-echo
 nftablesVersion=""
 if nft -v &>/dev/null; then
     #nftables installed
