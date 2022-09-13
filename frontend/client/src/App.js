@@ -287,6 +287,9 @@ function App() {
       setTime("");
     } else {
       setPubkey(event.target.value);
+      setNewTime("");
+      setTime("");
+      setTimeValid(false);
       setValid(false);
     }
   };
