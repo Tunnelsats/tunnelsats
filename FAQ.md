@@ -78,7 +78,7 @@ At present we successfully tested the following setups:
 - Umbrel-OS (LND)
 - Umbrel-OS (CLN not yet recommended or be tech-savvy)
 - myNode (LND) v0.2.x
-- (Raspi)Bolt (LND / CLN)
+- (Raspi)Bolt (LND / CLN) (please see [preconditions](README.md/#preconditions))
 
 For other setups please get back to us on Telegram to discuss if it's viable to go with TunnelSats.
 

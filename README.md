@@ -34,7 +34,7 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 
 - OS: Debian-/Ubuntu-based (apt-get required)
 - Linux kernel version: 5.10+ (`uname -srm`)
-- nftables version: 0.9.7+ (`nft -v` or `apt search nftables | grep "^nftables"`)
+- nftables version: 0.9.6+ (`nft -v` or `apt search nftables | grep "^nftables"`)
 - LND latest (minimal requirement `0.14.2-beta`)
 - CLN latest
 - only **one** lightning implementation per system is supported (configured to port 9735)
