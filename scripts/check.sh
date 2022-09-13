@@ -32,13 +32,15 @@ kernelMinor=$(uname -r | cut -d '.' -f2)
 kernelPatch=$(uname -r | cut -d '.' -f3 | cut -d '-' -f1)
 
 echo "Checking kernel version..."
-echo -e "Current kernel:\nmajor: ${kernelMajor}\nminor: ${kernelMinor}\npatch: ${kernelPatch}"
-echo
+#echo -e "Current kernel:\nmajor: ${kernelMajor}\nminor: ${kernelMinor}\npatch: ${kernelPatch}"
+#echo
+
 #if [[ $(uname -r) =~ ^5.10.102.* ]]; then
 #    echo "> kernel version ✅"
+
 if [[ $kernelMajor -ge 5 ]] &&
     ( ([[ $kernelMinor -ge 10 ]] && [[ $kernelPatch -ge 102 ]]) ||
-        [[ $kernelMinor -ge 11 ]]); then
+        [[ $kernelMinor -ge 11 ]] ); then
     echo "> ✅ kernel version ok"
     echo
 else
@@ -50,7 +52,7 @@ fi
 echo "Checking nftables version..."
 echo
 nftablesVersion=""
-if nft -v &> /dev/null; then
+if nft -v &>/dev/null; then
     #nftables installed
     nftablesVersion=$(nft -v | awk '{print $2}' | cut -d 'v' -f2)
 else
@@ -63,16 +65,19 @@ nftMajor=$(echo "${nftablesVersion}" | cut -d '.' -f1)
 nftMinor=$(echo "${nftablesVersion}" | cut -d '.' -f2)
 nftPatch=$(echo "${nftablesVersion}" | cut -d '.' -f3)
 
+#echo -e "Current nftables:\nmajor: ${nftMajor}\nminor: ${nftMinor}\npatch: ${nftPatch}"
+#echo
+
 # 1.x.x OK
 if [[ $nftMajor -ge 1 ]]; then
     echo "> ✅ nftables version ok"
     echo
-# 0.9.6    
-elif ( [[ $nftMinor -ge 9 ]] && [[ $nftPatch -ge 6 ]] || 
-        [[ $nftMinor -ge 10 ]]; then
+# 0.9.6
+elif ([[ $nftMinor -ge 9 ]] && [[ $nftPatch -ge 6 ]] ||
+    [[ $nftMinor -ge 10 ]]); then
     echo "> ✅ nftables version ok"
     echo
 else
     echo "> ❌ nftables version 0.9.6+ required"
-    echo    
+    echo
 fi
