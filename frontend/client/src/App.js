@@ -271,9 +271,9 @@ function App() {
 
   const handleChangeServer = (event) => {
     setServer({ server: event.target.value });
-    setNewTime("");
-    setTime("");
-    setTimeValid(false);
+    //setNewTime("");
+    //setTime("");
+    //setTimeValid(false);
   };
 
   const handleChangePubkey = (event) => {
