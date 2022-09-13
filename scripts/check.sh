@@ -1,8 +1,7 @@
 #!/bin/bash
 # This script checks the system environment for compatibility with TunnelSats esp. on unknown hosts
-#
 # Usage: sudo bash check.sh
-
+#
 #VERSION NUMBER of check.sh
 #Update if your make a significant change
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
@@ -69,7 +68,8 @@ if [[ $nftMajor -ge 1 ]]; then
     echo "> ✅ nftables version ok"
     echo
 # 0.9.6    
-elif [[ $nftMinor -ge 9 ]] && [[ $nftPatch -ge 6 ]]; then
+elif ( [[ $nftMinor -ge 9 ]] && [[ $nftPatch -ge 6 ]] || 
+        [[ $nftMinor -ge 10 ]]; then
     echo "> ✅ nftables version ok"
     echo
 else
