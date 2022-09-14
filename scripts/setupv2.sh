@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=23
+patch=24
 
 #Helper
 function valid_ipv4() {
@@ -123,6 +123,25 @@ if [ ! -f "$directory"/tunnelsatsv2.conf ]; then
 else
   echo "> tunnelsatsv2.conf found, proceeding."
   echo
+fi
+
+# security check - exit if nonDocker and no systemd service found
+if [ $isDocker -eq 0 ]; then
+  echo "Looking for systemd service..."
+
+  if [ "$lnImplementation" == "lnd" ] && [ ! -f /etc/systemd/system/lnd.service ]; then
+    echo "> /etc/systemd/system/lnd.service not found. Setup aborted."
+    echo
+    exit 1
+  fi
+
+  if [ "$lnImplementation" == "cln" ] &&
+    ([ ! -f /etc/systemd/system/lightningd.service] &&
+      [ ! -f /etc/systemd/system/cln.service ]); then
+    echo "> /etc/systemd/system/lightningd.service / /etc/systemd/system/cln.service not found. Setup aborted."
+    echo
+    exit 1
+  fi
 fi
 
 # RaspiBlitz: deactivate config checks
