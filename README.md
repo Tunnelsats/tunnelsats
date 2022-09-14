@@ -37,13 +37,12 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - Umbrel-OS (CLN not yet recommended or be tech-savvy)
 - myNode (LND) v0.2.x 
 - RaspiBolt (LND / CLN)
-
-For bare metal systems please check the following requirements:
-- OS: Debian-/Ubuntu-based (apt-get required)
-- Linux kernel version: 5.10.102+ (`uname -r`)
-- nftables version: 0.9.6+ (`nft -v` or `apt search nftables | grep "^nftables"`)
-- LND running as systemd service: `/etc/systemd/system/lnd.service` or
-- CLN running as systemd service: `/etc/systemd/system/lightningd.service`
+- For bare metal systems please check the following requirements:
+  - OS: Debian-/Ubuntu-based (apt-get required)
+  - Linux kernel version: 5.10.102+ (`uname -r`)
+  - nftables version: 0.9.6+ (`nft -v` or `apt search nftables | grep "^nftables"`)
+  - LND running as systemd service: `/etc/systemd/system/lnd.service` or
+  - CLN running as systemd service: `/etc/systemd/system/lightningd.service`
 
 - LND latest (minimal requirement `0.14.2-beta`)
 - CLN latest
