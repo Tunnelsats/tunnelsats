@@ -125,7 +125,8 @@ app.post(process.env.WEBHOOK, (req, res) => {
     // Needed for now to notify the client to stop the spinner
     io.to(id).emit("invoicePaid", paymentDetails.payment_hash);
 
-    // Looks through the invoice map saved into ram and sends the config ONLY to the relevant client
+    // Looks through the invoice map saved into ram and
+    // sends the config ONLY to the relevant client
     getWireguardConfig(
       publicKey,
       presharedKey,
@@ -170,7 +171,6 @@ app.post(process.env.WEBHOOK, (req, res) => {
 });
 
 // Webhook for updating the Subcription
-
 // Invoice Webhook
 app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
   const index = invoiceWGKeysMap.findIndex((client) => {
@@ -285,7 +285,8 @@ io.on("connection", (socket) => {
           .then((result) => {
             socket.emit("lnbitsInvoice", result);
 
-            // Safes the client request related to the socket id including the payment_hash to later send the config data only to the right client
+            // Safes the client request related to the socket id including
+            // the payment_hash to later send the config data only to the right client
             invoiceWGKeysMap.push({
               paymentDetails: result,
               publicKey: publicKey,
@@ -320,7 +321,7 @@ io.on("connection", (socket) => {
       { domain: "de1.tunnelsats.com", country: "eu" },
       { domain: "us1.tunnelsats.com", country: "na" },
       { domain: "sg1.tunnelsats.com", country: "as" },
-      { domain: "ca1.tunnelsats.com", country: "na" },
+      //{ domain: "ca1.tunnelsats.com", country: "na" },
     ];
 
     for (const serverURL of servers) {

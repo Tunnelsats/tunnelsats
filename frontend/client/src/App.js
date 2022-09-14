@@ -38,7 +38,7 @@ const REACT_APP_SOCKETIO = process.env.REACT_APP_SOCKETIO || "/";
 const REACT_APP_REF = process.env.REACT_APP_REF || "";
 const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT);
 
-const DEBUG = true;
+const DEBUG = false;
 
 // WebSocket
 var socket = io.connect(REACT_APP_SOCKETIO);
@@ -211,7 +211,7 @@ function App() {
       "[Interface]",
       "PrivateKey = " + keyPair.privateKey,
       "Address = " + serverResponse.ipv4Address,
-      // 'DNS = '+serverResponse.dns,
+      " ",
       "#VPNPort = " + serverResponse.portFwd,
       "#ValidUntil (UTC time) = " + getTimeStamp(priceDollar).toISOString(),
       "#myPubKey = " + keyPair.publicKey,
