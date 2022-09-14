@@ -33,7 +33,7 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 ## Preconditions ##
 
 - OS: Debian-/Ubuntu-based (apt-get required)
-- Linux kernel version: 5.10+ (`uname -srm`)
+- Linux kernel version: 5.10.102+ (`uname -r`)
 - nftables version: 0.9.6+ (`nft -v` or `apt search nftables | grep "^nftables"`)
 - LND latest (minimal requirement `0.14.2-beta`)
 - CLN latest
@@ -188,7 +188,7 @@ Renewal of existing subscriptions has been reworked. Now it is possible to prolo
 - go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
 - enter the WireGuard public key - find the key either
   - commented out in your `tunnelsatsv2.conf`, look for `#myPubKey` line (new subscriptions only) or 
-  - in your wireguard connection details displayed via `sudo wg show | grep "public key"`
+  - in your wireguard connection details extracted by running `sudo wg show | grep "public key"`
 - click "Query Key Info" to fetch your current valid date
 - select the desired term extension of your choice (it is appended to the current expiry)
 - click "Update Subscription" and pay the lightning invoice

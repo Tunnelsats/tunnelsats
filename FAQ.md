@@ -74,7 +74,7 @@ Currently, 100GB per month are being offered. This should be enough traffic even
 ### Which setups are supported?
 At present we successfully tested the following setups:
 
-- RaspiBlitz (LND / CLN) v1.7.2/v1.8.0
+- RaspiBlitz (LND / CLN) v1.8.0
 - Umbrel-OS (LND)
 - Umbrel-OS (CLN not yet recommended or be tech-savvy)
 - myNode (LND) v0.2.x
@@ -97,11 +97,11 @@ If you experience issues, please contact us and let us know what issues you're e
 <br/>
 
 ### How can I extend my subscription?
-Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how it works:
+Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how:
 - go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
 - enter the WireGuard public key - find the key either
   - commented out in your `tunnelsatsv2.conf`, look for `#myPubKey` line (new subscriptions only) or 
-  - in your wireguard connection details displayed via `sudo wg show | grep "public key"`
+  - in your wireguard connection details extracted by running `sudo wg show | grep "public key"`
 - click "Query Key Info" to fetch your key's infos
 - select the desired term extension of your choice (it is appended to the current expiry date)
 - click "Update Subscription" and pay the lightning invoice
