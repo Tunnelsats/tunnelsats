@@ -135,9 +135,7 @@ if [ $isDocker -eq 0 ]; then
     exit 1
   fi
 
-  if [ "$lnImplementation" == "cln" ] &&
-    ([ ! -f /etc/systemd/system/lightningd.service] &&
-      [ ! -f /etc/systemd/system/cln.service ]); then
+  if [ "$lnImplementation" == "cln" ] && [ ! -f /etc/systemd/system/lightningd.service ]; then
     echo "> /etc/systemd/system/lightningd.service / /etc/systemd/system/cln.service not found. Setup aborted."
     echo
     exit 1
@@ -1091,7 +1089,6 @@ if [ $isDocker -eq 0 ]; then
   clnServiceName="${lnImplementation}"
   if [ "${lnImplementation,,}" == "cln" ]; then
     clnServiceName="lightningd"
-    if [ -d /data/cln ]; then clnServiceName="cln"; fi
   fi
   echo "Restart ${lnImplementation} afterwards via the command:
     sudo systemctl restart ${clnServiceName}.service"
