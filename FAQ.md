@@ -92,7 +92,7 @@ We don't store packets or logfiles from or to your node once the tunnel is estab
 <br/>
 
 ### What options do I have if I'm not happy?
-This is still beta status, so please bear with us. If you experience issues, please contact us and let us know. We are approachable and can discuss whatever is bugging you and see how we can find a solution.
+If you experience issues, please contact us and let us know what issues you're encountering. We are approachable and can discuss whatever is bugging you and see how we can find a solution.
 
 <br/>
 
