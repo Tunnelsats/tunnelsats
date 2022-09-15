@@ -214,7 +214,7 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
               `Successfully updated new SubscriptionEnd for  ${publicKey}`
             );
             sayWithTelegram({
-              message: `🟢 Renewed Subscription: 🍾\n Price: ${priceDollar}\$\n PubKey: ${publicKey}\n Sats: ${Math.round(
+              message: `🟢 Renewed Subscription: 🍾\n Price: ${priceDollar}\$\n PubKey: ${publicKey} \n ServerLocation: ${serverURL}\n Sats: ${Math.round(
                 amountSats
               )}💰`,
             })
