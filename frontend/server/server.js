@@ -139,7 +139,7 @@ app.post(process.env.WEBHOOK, (req, res) => {
         io.to(id).emit("receiveConfigData", result);
         logDim(`Successfully created wg entry for pubkey ${publicKey}`);
 
-        invoiceWGKeysMap[index].resultAddingKey = result;
+        invoiceWGKeysMap[index].resultBackend = result;
 
         const serverDNS = getServer(country)
           .replace(/^https?:\/\//, "")
@@ -213,6 +213,9 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
             logDim(
               `Successfully updated new SubscriptionEnd for  ${publicKey}`
             );
+
+            invoiceWGKeysMap[index].resultBackend = result;
+
             sayWithTelegram({
               message: `🟢 Renewed Subscription: 🍾\n Price: ${priceDollar}\$\n PubKey: ${publicKey} \n ServerLocation: ${serverURL}\n Sats: ${Math.round(
                 amountSats
@@ -255,16 +258,23 @@ io.on("connection", (socket) => {
         });
 
         if (index !== -1) {
-          const { paymentDetails, publicKey, isPaid, resultAddingKey } =
+          const { paymentDetails, publicKey, isPaid, resultBackend, tag } =
             invoiceWGKeysMap[index];
 
           if (isPaid) {
             io.to(socket.id).emit("invoicePaid", paymentDetails.payment_hash);
 
-            io.to(socket.id).emit("receiveConfigData", resultAddingKey);
-            logDim(
-              `Resend wg credentials to already paid invoice entry for pubkey ${publicKey}`
-            );
+            if (tag === "New Subscription") {
+              io.to(socket.id).emit("receiveConfigData", resultBackend);
+              logDim(
+                `Resend wg credentials to already paid invoice entry for pubkey ${publicKey}`
+              );
+            }
+
+            if (tag === "Update Subscription") {
+              io.to(socket.id).emit("receiveUpdateSubscription", resultBackend);
+              logDim(`Resend new subscription expiry date`);
+            }
           }
         } else {
           logDim(
