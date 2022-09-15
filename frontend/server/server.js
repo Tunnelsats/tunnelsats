@@ -150,14 +150,14 @@ app.post(process.env.WEBHOOK, (req, res) => {
           )}💰`,
         })
           .then((result) => {
-            DEBUG && logDim(`getConfig(): ${result}`);
+            DEBUG && logDim(`getWireguardConfig(): ${result}`);
           })
           .catch((error) => logDim(error.message));
 
         res.status(200).end();
       })
       .catch((error) => {
-        DEBUG && logDim(`getConfig(): ${error.message}`);
+        DEBUG && logDim(`getWireguardConfig(): ${error.message}`);
         sayWithTelegram({
           message: `🔴 Creating New Subscription failed with ${error.message}`,
         });
@@ -222,7 +222,7 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
               )}💰`,
             })
               .then((result) => {
-                DEBUG && logDim(`getConfig(): ${result}`);
+                DEBUG && logDim(`getSubscription(): ${result}`);
               })
               .catch((error) => logDim(error.message));
             res.status(200).end();
