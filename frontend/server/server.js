@@ -122,6 +122,8 @@ app.post(process.env.WEBHOOK, (req, res) => {
       amountSats,
     } = invoiceWGKeysMap[index];
 
+    invoiceWGKeysMap[index].isPaid = true;
+
     // Needed for now to notify the client to stop the spinner
     io.to(id).emit("invoicePaid", paymentDetails.payment_hash);
 
@@ -137,7 +139,6 @@ app.post(process.env.WEBHOOK, (req, res) => {
         io.to(id).emit("receiveConfigData", result);
         logDim(`Successfully created wg entry for pubkey ${publicKey}`);
 
-        invoiceWGKeysMap[index].isPaid = true;
         invoiceWGKeysMap[index].resultAddingKey = result;
 
         const serverDNS = getServer(country)
@@ -188,6 +189,8 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
       amountSats,
     } = invoiceWGKeysMap[index];
 
+    invoiceWGKeysMap[index].isPaid = true;
+
     // Needed for now to notify the client to stop the spinner
     io.to(id).emit(
       "invoicePaidUpdateSubscription",
@@ -215,7 +218,6 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
                 amountSats
               )}💰`,
             });
-            invoiceWGKeysMap.splice(index, 1);
             res.status(200).end();
           })
           .catch((error) => {
@@ -297,6 +299,7 @@ io.on("connection", (socket) => {
               amountSats: amount,
               timestamp: Date.now(),
               isPaid: false,
+              tag: "New Subscription",
             });
             DEBUG && console.log(invoiceWGKeysMap);
           })
@@ -397,6 +400,8 @@ io.on("connection", (socket) => {
               serverURL: serverURL,
               id: socket.id,
               amountSats: amount,
+              timestamp: Date.now(),
+              isPaid: false,
               tag: "Update Subscription",
             });
             DEBUG && console.log(invoiceWGKeysMap);
