@@ -217,7 +217,11 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
               message: `🟢 Renewed Subscription: 🍾\n Price: ${priceDollar}\$\n PubKey: ${publicKey}\n Sats: ${Math.round(
                 amountSats
               )}💰`,
-            });
+            })
+              .then((result) => {
+                DEBUG && logDim(`getConfig(): ${result}`);
+              })
+              .catch((error) => logDim(error.message));
             res.status(200).end();
           })
           .catch((error) => {
@@ -324,7 +328,7 @@ io.on("connection", (socket) => {
       { domain: "de1.tunnelsats.com", country: "eu" },
       { domain: "us1.tunnelsats.com", country: "na" },
       { domain: "sg1.tunnelsats.com", country: "as" },
-      //{ domain: "ca1.tunnelsats.com", country: "na" },
+      { domain: "ca1.tunnelsats.com", country: "na" },
     ];
 
     for (const serverURL of servers) {
@@ -570,7 +574,8 @@ async function getPrice() {
       }
     })
     .catch((error) => {
-      return error;
+      logDim(`Error - getPrice() ${error}`);
+      return null;
     });
 }
 

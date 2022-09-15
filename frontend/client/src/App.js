@@ -280,7 +280,7 @@ function App() {
     if (
       base64regex.test(event.target.value) &&
       event.target.value.length == 44 &&
-      (event.target.value).endsWith("=")
+      event.target.value.endsWith("=")
     ) {
       setPubkey(event.target.value);
       setValid(true);
@@ -302,6 +302,9 @@ function App() {
       DEBUG &&
         console.log(`${getDate()} App.js: got msg receiveUpdateSubscription`);
       setSpinner(false);
+      //In case the user renewed the subscription and wants to renew it in the same window again
+      setTimeValid(false);
+
       setPaymentrequest(buildUpdateSubscription(response).join("\n"));
     });
 
