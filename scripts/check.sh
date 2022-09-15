@@ -7,7 +7,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=1
+patch=2
 
 # check if sudo
 if [ "$EUID" -ne 0 ]; then
@@ -40,7 +40,7 @@ echo "Checking kernel version..."
 
 if [[ $kernelMajor -ge 5 ]] &&
     ( ([[ $kernelMinor -ge 10 ]] && [[ $kernelPatch -ge 102 ]]) ||
-        [[ $kernelMinor -ge 11 ]] ); then
+        [[ $kernelMinor -ge 11 ]]); then
     echo "> ✅ kernel version ok"
     echo
 else
@@ -79,4 +79,29 @@ elif ([[ $nftMinor -ge 9 ]] && [[ $nftPatch -ge 6 ]] ||
 else
     echo "> ❌ nftables version 0.9.6+ required"
     echo
+fi
+
+# check if related systemd.services or docker processes are available
+echo "Looking for systemd services..."
+if [ -f /etc/systemd/system/lnd.service ]; then
+    echo "> ✅ lnd.service found"
+    echo
+elif [ ! -f /etc/systemd/system/lightningd.service ]; then
+    echo "> ✅ lightningd.service found"
+    echo
+else
+    echo "> ❌ no systemd.services found, let's check for docker..."
+    echo
+    echo "Looking for docker processes..."
+    dockerProcess=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep -E "0.0.0.0:9735|0.0.0.0:9736" | awk '{print $2}')
+    if [[ ${dockerProcess} == *lnd* ]]; then
+        echo "> ✅ found a possible lnd container"
+        echo
+    elif [[ ${dockerProcess} == *clightning* ]]; then
+        echo "> ✅ found a possible cln container"
+        echo
+    else
+        echo "> ❌ no suitable containers found"
+        echo
+    fi
 fi
