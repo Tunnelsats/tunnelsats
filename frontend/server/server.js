@@ -338,7 +338,7 @@ io.on("connection", (socket) => {
       { domain: "de1.tunnelsats.com", country: "eu" },
       { domain: "us1.tunnelsats.com", country: "na" },
       { domain: "sg1.tunnelsats.com", country: "as" },
-      { domain: "ca1.tunnelsats.com", country: "na" },
+      { domain: "ca1.tunnelsats.com", country: "ca" },
     ];
 
     for (const serverURL of servers) {
@@ -493,6 +493,9 @@ const getServer = (country) => {
   }
   if (country == "oc") {
     server = process.env.IP_OCEANIA;
+  }
+  if (country == "ca") {
+    server = process.env.IP_CANADA;
   }
   return server;
 };
