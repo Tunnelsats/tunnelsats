@@ -1,6 +1,4 @@
-<p>
-<img src="/docs/assets/tunnelsats_banner_1280_640.png" width="640" title="TunnelSats Banner" />
-</p>
+![TunnelSats Banner](/docs/assets/tunnelsats_banner_1280_640.png)
 
 <br/>
 

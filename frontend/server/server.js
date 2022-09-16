@@ -617,7 +617,7 @@ async function getWireguardConfig(publicKey, presharedKey, timestamp, server) {
       publicKey: publicKey,
       presharedKey: presharedKey,
       bwLimit: 100000, // 100GB
-      subExpiry: parseBackendDate(timestamp),
+      subExpiry: parseDate(timestamp),
       ipIndex: 0,
     },
   };
