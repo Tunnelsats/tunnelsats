@@ -95,6 +95,7 @@ function App() {
   const [pubkey, setPubkey] = useState("");
   const [valid, setValid] = useState(false);
   const [timeValid, setTimeValid] = useState(false);
+  const [timeValidOld, setTimeValidOld] = useState(false);
   const [timeSubscription, setTime] = useState("");
   const [newTimeSubscription, setNewTime] = useState("");
   // Popup - Key Query
@@ -291,6 +292,7 @@ function App() {
       setNewTime("");
       setTime("");
       setTimeValid(false);
+      setTimeValidOld(false);
       setValid(false);
     }
   };
@@ -304,6 +306,7 @@ function App() {
       setSpinner(false);
       //In case the user renewed the subscription and wants to renew it in the same window again
       setTimeValid(false);
+      setTimeValidOld(false);
 
       setPaymentrequest(buildUpdateSubscription(response).join("\n"));
     });
@@ -341,6 +344,7 @@ function App() {
         setTime("");
         setNewTime("");
         setTimeValid(false);
+        setTimeValidOld(false);
         renderPopupModal();
         DEBUG && console.log(result);
         setSpinnerQuery(false);
@@ -353,8 +357,10 @@ function App() {
         );
         if (Date.now() < Date.parse(result.subscriptionEnd)) {
           setTimeValid(true);
+          setTimeValidOld(true);
         } else {
-          setTimeValid(false);
+          setTimeValid(true);
+          setTimeValidOld(false);
         }
         // set fetched server domain
         setServer(result.domain);
@@ -518,7 +524,7 @@ function App() {
                               <Form.Control
                                 disabled
                                 value={timeSubscription}
-                                isValid={timeValid}
+                                isValid={timeValidOld}
                               />
                             </InputGroup>
                           </div>
@@ -633,7 +639,7 @@ function App() {
                     setSpinner(true);
                   }}
                   handleClose={closeInvoiceModal}
-                  expiryDate={getTimeStamp(priceDollar)}
+                  expiryDate={getTimeStamp(priceDollar, timeSubscription)}
                   showPaymentAlert={showPaymentSuccessfull}
                 />
               </>

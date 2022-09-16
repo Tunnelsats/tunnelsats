@@ -4,6 +4,9 @@ const bodyParser = require("body-parser");
 const axios = require("axios");
 const nodemailer = require("nodemailer");
 const dayjs = require("dayjs");
+const utc = require("dayjs/plugin/utc");
+dayjs.extend(utc);
+
 const { SocksProxyAgent } = require("socks-proxy-agent");
 const fetch = require("node-fetch-commonjs");
 const { logDim } = require("./logger");
@@ -202,9 +205,13 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
       serverURL,
     })
       .then((result) => {
+        console.log(result.subscriptionEnd);
         newSubscriptionEnd({
           keyID,
-          subExpiry: getTimeStamp(priceDollar, result.subscriptionEnd),
+          subExpiry: getTimeStamp(
+            priceDollar,
+            parseBackendDate(result.subscriptionEnd)
+          ),
           serverURL,
           publicKey,
         })
@@ -356,7 +363,9 @@ io.on("connection", (socket) => {
             })
               .then((result) => {
                 console.log(result);
-                let unixTimestamp = Date.parse(result.subscriptionEnd);
+                // let unixTimestamp = Date.parse(result.subscriptionEnd);
+                // let date = new Date(unixTimestamp);
+                let unixTimestamp = parseBackendDate(result.subscriptionEnd);
                 let date = new Date(unixTimestamp);
                 logDim("SubscriptionEnd: ", date.toISOString());
                 subscriptionEnd = date;
@@ -504,8 +513,7 @@ const getServer = (country) => {
 const getTimeStamp = (selectedValue, offset) => {
   let date = new Date();
   if (offset && Date.now() < Date.parse(offset)) {
-    let unixtime = Date.parse(offset);
-    date = new Date(unixtime);
+    date = new Date(offset);
   }
 
   if (selectedValue == REACT_APP_ONE_MONTH) {
@@ -529,18 +537,22 @@ const getTimeStamp = (selectedValue, offset) => {
   }
 
   function addMonths(date = new Date(), months) {
-    const d = date.getDate();
-    date.setMonth(date.getMonth() + +months);
-    if (date.getDate() != d) {
-      date.setDate(0);
+    var d = date.getUTCDate();
+    date.setUTCMonth(date.getUTCMonth() + +months);
+    if (date.getUTCDate() !== d) {
+      date.setUTCDate(0);
     }
     return date;
   }
 };
 
 // Parse Date object to string format: YYYY-MMM-DD hh:mm:ss A
+const parseBackendDate = (date) => {
+  return dayjs.utc(date + "-00:00	").format("YYYY-MMM-DD hh:mm:ss AZ");
+};
+
 const parseDate = (date) => {
-  return dayjs(date).format("YYYY-MMM-DD hh:mm:ss A");
+  return dayjs.utc(date).format("YYYY-MMM-DD hh:mm:ss A");
 };
 
 // API Calls using Axios
@@ -605,7 +617,7 @@ async function getWireguardConfig(publicKey, presharedKey, timestamp, server) {
       publicKey: publicKey,
       presharedKey: presharedKey,
       bwLimit: 100000, // 100GB
-      subExpiry: parseDate(timestamp),
+      subExpiry: parseBackendDate(timestamp),
       ipIndex: 0,
     },
   };
@@ -734,13 +746,15 @@ async function getKey({ publicKey, serverURL }) {
 }
 
 async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
-  console.log(
-    `new data: ${parseDate(subExpiry)}`,
-    keyID,
-    subExpiry,
-    serverURL,
-    publicKey
-  );
+  DEBUG &&
+    console.log(
+      `New Subscription Data:`,
+      keyID,
+      subExpiry,
+      serverURL,
+      publicKey,
+      parseDate(subExpiry)
+    );
   const request1 = {
     method: "post",
     url: `https://${serverURL}/manager/subscription/edit`,
@@ -765,17 +779,17 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
 
   if (response1.data) {
     // Enable Key if disabled
-    const isEnabled = await getKey({ publicKey, serverURL }).catch((error) => {
+    const keyInfo = await getKey({ publicKey, serverURL }).catch((error) => {
       logDim("newSubscriptionEnd()-lookupKey", error.message);
       return null;
     });
 
-    console.log(`enabled: ${isEnabled}`);
+    DEBUG && logDim(keyInfo.Enabled);
 
-    if (!isEnabled) {
+    if (keyInfo.Enabled === "false") {
       const request2 = {
         method: "post",
-        url: `https://${serverURL}/manager/enable`,
+        url: `https://${serverURL}/manager/key/enable`,
         headers: {
           "Content-Type": "application/json",
           Authorization: process.env.AUTH,
