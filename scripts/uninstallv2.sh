@@ -249,7 +249,7 @@ while true; do
         path=""
         if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
         if [ -f "$HOME"/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config ]; then path="$HOME""/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"; fi
-        if [ -f /data/cln/config ]; then path="/data/cln/config"; fi
+        if [ -f /data/lightningd/config ]; then path="/data/lightningd/config"; fi
 
         if [ "$path" != "" ]; then
             check=$(grep -c "always-use-proxy=false\|always-use-proxy=0" "$path")

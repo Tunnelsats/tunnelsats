@@ -156,6 +156,7 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
       _assertThisInitialized(_this),
       "getClassname",
       function (area) {
+
         if (area === "af" || area === "sa" || area === "oc") {
           return "map-unavailable";
         }
@@ -174,6 +175,7 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
         } else {
           return "map-unselected";
         }
+        
       }
     );
 
@@ -262,10 +264,10 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
             {
               id: "EU",
               className: _this.getClassname("eu"),
-              onClick: _this.onMapClick.bind(
-                _assertThisInitialized(_this),
-                "eu"
-              ),
+              //onClick: _this.onMapClick.bind(
+              //  _assertThisInitialized(_this),
+              //  "eu"
+              //),
             },
             /*#__PURE__*/ React.createElement("path", {
               id: "path5896",
@@ -356,10 +358,10 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
             {
               id: "AS",
               className: _this.getClassname("as"),
-              onClick: _this.onMapClick.bind(
-                _assertThisInitialized(_this),
-                "as"
-              ),
+              //onClick: _this.onMapClick.bind(
+              //  _assertThisInitialized(_this),
+              //  "as"
+              //),
             },
             /*#__PURE__*/ React.createElement("path", {
               id: "path5928",
@@ -506,10 +508,10 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
             {
               id: "NA",
               className: _this.getClassname("na"),
-              onClick: _this.onMapClick.bind(
-                _assertThisInitialized(_this),
-                "na"
-              ),
+              //onClick: _this.onMapClick.bind(
+              //  _assertThisInitialized(_this),
+              //  "na"
+              //),
             },
             /*#__PURE__*/ React.createElement("path", {
               id: "path5926",

@@ -1,4 +1,6 @@
-![TunnelSatsLogo](/docs/assets/tunnelsats11.png)
+<p>
+<img src="/docs/assets/tunnelsats_banner_1280_640.png" width="640" title="TunnelSats Banner" />
+</p>
 
 <br/>
 
@@ -30,7 +32,18 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 
 ## Preconditions ##
 
-- OS: Debian-/Ubuntu-based (apt-get required)
+- RaspiBlitz (LND / CLN) v1.8.0
+- Umbrel-OS (LND) 0.5+ recommended
+- Umbrel-OS (CLN not yet recommended or be tech-savvy)
+- myNode (LND) v0.2.x 
+- RaspiBolt (LND / CLN)
+- For bare metal systems please check the following requirements:
+  - OS: Debian-/Ubuntu-based (apt-get required)
+  - Linux kernel version: 5.10.102+ (`uname -r`)
+  - nftables version: 0.9.6+ (`nft -v` or `apt search nftables | grep "^nftables"`)
+  - LND running as systemd service: `/etc/systemd/system/lnd.service` or
+  - CLN running as systemd service: `/etc/systemd/system/lightningd.service`
+
 - LND latest (minimal requirement `0.14.2-beta`)
 - CLN latest
 - only **one** lightning implementation per system is supported (configured to port 9735)
@@ -116,7 +129,7 @@ Before applying any changes to your config files, please __always__ create a bac
 
 ### LND
 
-Running LND only requires a few parameters to be checked and set to activate hybrid mode. Locate `lnd.conf` depending on your node setup. See the [FAQ](https://blckbx.github.io/tunnelsats/FAQ.html#where-do-i-find-my-lndconf-file) for some default path examples. Just append the lines shown at the end of the setupv2.sh process to your lnd config file:
+Running LND only requires a few parameters to be checked and set to activate hybrid mode. Locate `lnd.conf` depending on your node setup. See the [FAQ](https://blckbx.github.io/tunnelsats/FAQ.html#where-do-i-find-my-lndconf-file) for some default path examples. Please edit the file and put the settings shown below into their corresponding sections. If any of these settings are already present, comment them out and add the new ones below. We need to add or modify the following settings:
 
   ```ini
   [Application Options]
@@ -180,11 +193,16 @@ and enter the following settings:
 
 ## Renew Subscription
 
-Renewing a subscription is simple. Important part is to remember your valid date and get a new `tunnelsatsv2.conf` file before date expires. For renewal:
-- make sure to stop LND/CLN or the node completely 
-- redo the setup procedure again by placing `setupv2.sh` and new `tunnelsatsv2.conf` file into the same directory and 
-- executing the shell script once again (because initial setup still applies, most installation steps will get skipped). 
-- Restart LND/CLN process or node setup afterwards. 
+Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how it works:
+- go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
+- enter the WireGuard public key - find the key either
+  - commented out in your `tunnelsatsv2.conf`, look for `#myPubKey` line (new subscriptions only) or 
+  - in your wireguard connection details extracted by running `sudo wg show | grep "public key"`
+- click "Query Key Info" to fetch your current valid date
+- select the desired term extension of your choice (it is appended to the current expiry)
+- click "Update Subscription" and pay the lightning invoice
+
+⚠️ No new WireGuard file will be handed over to the user. The current lightning settings persist! So there is no further lightning configuration needed. Changing server locations on renewals is not supported for now.
 
 <br />
 

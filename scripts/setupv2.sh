@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=23
+patch=24
 
 #Helper
 function valid_ipv4() {
@@ -123,6 +123,23 @@ if [ ! -f "$directory"/tunnelsatsv2.conf ]; then
 else
   echo "> tunnelsatsv2.conf found, proceeding."
   echo
+fi
+
+# security check - exit if nonDocker and no systemd service found
+if [ $isDocker -eq 0 ]; then
+  echo "Looking for systemd service..."
+
+  if [ "$lnImplementation" == "lnd" ] && [ ! -f /etc/systemd/system/lnd.service ]; then
+    echo "> /etc/systemd/system/lnd.service not found. Setup aborted."
+    echo
+    exit 1
+  fi
+
+  if [ "$lnImplementation" == "cln" ] && [ ! -f /etc/systemd/system/lightningd.service ]; then
+    echo "> /etc/systemd/system/lightningd.service / /etc/systemd/system/cln.service not found. Setup aborted."
+    echo
+    exit 1
+  fi
 fi
 
 # RaspiBlitz: deactivate config checks
@@ -286,6 +303,7 @@ sleep 2
 echo "Copy wireguard conf file to /etc/wireguard and apply network rules..."
 inputDocker="\n
 [Interface]\n
+DNS = 8.8.8.8
 FwMark = 0x3333\n
 Table = off\n
 \n
@@ -398,13 +416,14 @@ fi
   if [ -f /etc/wireguard/tunnelsats-create-cgroup.sh ]; then
     echo "> tunnelsats-create-cgroup.sh created, executing..."
     # run
-    bash /etc/wireguard/tunnelsats-create-cgroup.sh
-    echo "> Created tunnelsats cgroup successfully"
-    echo
-  else
-    echo "> ERR: tunnelsats-create-cgroup.sh execution failed"
-    echo
-    exit 1
+    if bash /etc/wireguard/tunnelsats-create-cgroup.sh; then
+      echo "> Created tunnelsats cgroup successfully"
+      echo
+    else
+      echo "> ERR: tunnelsats-create-cgroup.sh execution failed. Please check for errors."
+      echo
+      exit 1
+    fi
   fi
 
   # enable systemd service
@@ -1013,7 +1032,6 @@ and duplicated lines could lead to errors.
 
 #########################################
 [Application Options]
-listen=0.0.0.0:9735
 externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 [Tor]
 tor.streamisolation=false
@@ -1071,7 +1089,6 @@ if [ $isDocker -eq 0 ]; then
   clnServiceName="${lnImplementation}"
   if [ "${lnImplementation,,}" == "cln" ]; then
     clnServiceName="lightningd"
-    if [ -d /data/cln ]; then clnServiceName="cln"; fi
   fi
   echo "Restart ${lnImplementation} afterwards via the command:
     sudo systemctl restart ${clnServiceName}.service"

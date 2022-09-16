@@ -74,11 +74,11 @@ Currently, 100GB per month are being offered. This should be enough traffic even
 ### Which setups are supported?
 At present we successfully tested the following setups:
 
-- RaspiBlitz (LND / CLN) v1.7.2/v1.8.0
+- RaspiBlitz (LND / CLN) v1.8.0
 - Umbrel-OS (LND)
 - Umbrel-OS (CLN not yet recommended or be tech-savvy)
 - myNode (LND) v0.2.x
-- (Raspi)Bolt (LND / CLN)
+- RaspiBolt (LND / CLN) (please see [preconditions](README.md/#preconditions) if your system or architecture differs from RaspiBolt guide)
 
 For other setups please get back to us on Telegram to discuss if it's viable to go with TunnelSats.
 
@@ -97,12 +97,16 @@ If you experience issues, please contact us and let us know what issues you're e
 <br/>
 
 ### How can I extend my subscription?
-Let's say you bought the 1 month for testing the services and all is going great. Now your subscription is coming to an end and you like to extend it to add another 3 months. Since we don't offer a login-service (yet), you need to remember your subscription end date (look it up in your WireGuard config file: #ValidUntil (mind this is UTC time format)) and before expiry
-- buy a new subscription
-- download or transfer via email the new configuration file from the website 
-- redo installation procedure: place config file in same directory with `setupv2.sh` and run it again
-- adjust the newly assigned {vpnExternalPort} in your lightning configuration (externalhosts (LND) or announce-addr (CLN))
-- restart wireguard and lightning: `sudo systemctl restart wg-quick@tunnelsatsv2` and your lightning implementation
+Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how:
+- go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
+- enter the WireGuard public key - find the key either
+  - commented out in your `tunnelsatsv2.conf`, look for `#myPubKey` line (new subscriptions only) or 
+  - in your wireguard connection details extracted by running `sudo wg show | grep "public key"`
+- click "Query Key Info" to fetch your key's infos
+- select the desired term extension of your choice (it is appended to the current expiry date)
+- click "Update Subscription" and pay the lightning invoice
+
+⚠️ No new WireGuard file will be handed over to the user. The current lightning settings persist! So there is no further lightning configuration needed. Changing server locations on renewals is not supported for now.
 
 <br/>
 
@@ -132,7 +136,7 @@ Keep an eye on your latency, uptime, routing amount week-over-week, and some sub
 <br/>
 
 ### Why shouldn't I just do it myself?
-We offer a full-managed-service, which takes a lot of the server, library, security and operational headache away from you. If you feel you prefer the personal learning experience, we can only encourage you to do so. It is a great adventure to learn more, so please check the footnotes in case you look for ways to dive in.
+We offer a full-managed-service which takes a lot of the server, library, security and operational headache away from you. If you feel you prefer the personal learning experience, we can only encourage you to do so. It is a great adventure to learn more, so please check the footnotes in case you look for ways to dive in.
 
 <br/>
 
@@ -170,6 +174,7 @@ $ scp tunnelsatsv2.conf umbrel@umbrel.local:/home/umbrel/
 
 [ scp <local file> <user>@<ip/hostname>:<destination path> ]
 ```
+Alternatively create a new file on your node and copy/paste the content of `tunnelsatsv2.conf`, save and exit. 
 
 <br/>
 
