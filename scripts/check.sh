@@ -7,7 +7,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=2
+patch=3
 
 # check if sudo
 if [ "$EUID" -ne 0 ]; then
@@ -35,9 +35,7 @@ echo "Checking kernel version..."
 #echo -e "Current kernel:\nmajor: ${kernelMajor}\nminor: ${kernelMinor}\npatch: ${kernelPatch}"
 #echo
 
-#if [[ $(uname -r) =~ ^5.10.102.* ]]; then
-#    echo "> kernel version ✅"
-
+# requirement kernel version 5.10.102+
 if [[ $kernelMajor -ge 5 ]] &&
     ( ([[ $kernelMinor -ge 10 ]] && [[ $kernelPatch -ge 102 ]]) ||
         [[ $kernelMinor -ge 11 ]]); then
@@ -48,14 +46,14 @@ else
     echo
 fi
 
-# check nftable version (min 0.9.6+ required)
+# requirement nftable version 0.9.6+
 echo "Checking nftables version..."
 nftablesVersion=""
 if nft -v &>/dev/null; then
     #nftables installed
     nftablesVersion=$(nft -v | awk '{print $2}' | cut -d 'v' -f2)
 else
-    #nftables not installed, check availbale apt version
+    #nftables not installed, check available apt version
     nftablesVersion=$(apt search nftables | grep "^nftables" | awk '{print $2}' | cut -d '-' -f1)
 fi
 
@@ -81,12 +79,12 @@ else
     echo
 fi
 
-# check if related systemd.services or docker processes are available
+# requirement: systemd.services or docker processes + related naming convention
 echo "Looking for systemd services..."
-if [ -f /etc/systemd/system/lnd.service ]; then
+if [[ -f /etc/systemd/system/lnd.service ]]; then
     echo "> ✅ lnd.service found"
     echo
-elif [ ! -f /etc/systemd/system/lightningd.service ]; then
+elif [[ -f /etc/systemd/system/lightningd.service ]]; then
     echo "> ✅ lightningd.service found"
     echo
 else
