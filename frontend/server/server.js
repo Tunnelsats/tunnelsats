@@ -7,6 +7,8 @@ const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
 dayjs.extend(utc);
 
+const lightningPayReq = require("bolt11");
+
 const { SocksProxyAgent } = require("socks-proxy-agent");
 const fetch = require("node-fetch-commonjs");
 const { logDim } = require("./logger");
@@ -50,6 +52,31 @@ const REACT_APP_ONE_MONTH = process.env.REACT_APP_ONE_MONTH || 3.0;
 const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 8.5;
 const REACT_APP_SIX_MONTHS = process.env.REACT_APP_SIX_MONTHS || 16.0;
 const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 28.5;
+
+// Cleaning Ram from old PaymentRequest data
+
+const intervalId = setInterval(function () {
+  logDim("Cleaning Invoice Data - Every Minute");
+  let index = 0;
+
+  const currentTime = Date.now();
+
+  // Delete all user related information
+  while (index !== -1) {
+    index = invoiceWGKeysMap.findIndex((client) => {
+      // console.log(currentTime - client.timestamp);
+      // After 15 Minutes Invoice Related Date is purged from the memory
+      const invoiceExpiry = lightningPayReq.decode(
+        client.paymentDetails.payment_request
+      ).timeExpireDate;
+      // Remove Invoice as soon as it is expired
+      return currentTime - invoiceExpiry > 0;
+    });
+    if (index !== -1) {
+      invoiceWGKeysMap.splice(index, 1);
+    }
+  }
+}, 15 * 60000);
 
 // Telegram Bot
 
@@ -462,22 +489,6 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log(`User disconnected with ID: ${socket.id} `);
-
-    let index = 0;
-
-    const currentTime = Date.now();
-
-    // Delete all user related information
-    while (index !== -1) {
-      index = invoiceWGKeysMap.findIndex((client) => {
-        // console.log(currentTime - client.timestamp);
-        // After 15 Minutes Invoice Related Date is purged from the memory
-        return currentTime - client.timestamp > 1000 * 60 * TIMERINVOICEDATA;
-      });
-      if (index !== -1) {
-        invoiceWGKeysMap.splice(index, 1);
-      }
-    }
   });
 });
 
