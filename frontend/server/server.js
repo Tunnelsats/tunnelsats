@@ -27,8 +27,7 @@ let invoiceWGKeysMap = [];
 const MAXINVOICES = 100;
 
 // 15 minutes after the invoice is in memory it is purged after any user disconnects
-const TIMERINVOICEDATA = 15;
-
+const TIMERCLEANINGINVOICEDATA = 10 * 60000;
 const app = express();
 
 // helper
@@ -56,7 +55,7 @@ const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 28.5;
 // Cleaning Ram from old PaymentRequest data
 
 const intervalId = setInterval(function () {
-  logDim("Cleaning Invoice Data - Every Minute");
+  DEBUG && logDim("Cleaning Invoice Data Periodically");
   let index = 0;
 
   const currentTime = Date.now();
@@ -76,7 +75,7 @@ const intervalId = setInterval(function () {
       invoiceWGKeysMap.splice(index, 1);
     }
   }
-}, 15 * 60000);
+}, TIMERCLEANINGINVOICEDATA);
 
 // Telegram Bot
 
