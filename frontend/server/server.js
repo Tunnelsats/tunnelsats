@@ -151,47 +151,53 @@ app.post(process.env.WEBHOOK, (req, res) => {
       amountSats,
     } = invoiceWGKeysMap[index];
 
-    invoiceWGKeysMap[index].isPaid = true;
+    checkInvoice(paymentDetails.payment_hash).then((result) => {
+      if (!!result) {
+        invoiceWGKeysMap[index].isPaid = true;
 
-    // Needed for now to notify the client to stop the spinner
-    io.to(id).emit("invoicePaid", paymentDetails.payment_hash);
+        // Needed for now to notify the client to stop the spinner
+        io.to(id).emit("invoicePaid", paymentDetails.payment_hash);
 
-    // Looks through the invoice map saved into ram and
-    // sends the config ONLY to the relevant client
-    getWireguardConfig(
-      publicKey,
-      presharedKey,
-      getTimeStamp(priceDollar),
-      getServer(country)
-    )
-      .then((result) => {
-        io.to(id).emit("receiveConfigData", result);
-        logDim(`Successfully created wg entry for pubkey ${publicKey}`);
-
-        invoiceWGKeysMap[index].resultBackend = result;
-
-        const serverDNS = getServer(country)
-          .replace(/^https?:\/\//, "")
-          .replace(/\/manager\/$/, "");
-        sayWithTelegram({
-          message: `🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(
-            amountSats
-          )}💰`,
-        })
+        // Looks through the invoice map saved into ram and
+        // sends the config ONLY to the relevant client
+        getWireguardConfig(
+          publicKey,
+          presharedKey,
+          getTimeStamp(priceDollar),
+          getServer(country)
+        )
           .then((result) => {
-            DEBUG && logDim(`getWireguardConfig(): ${result}`);
-          })
-          .catch((error) => logDim(error.message));
+            io.to(id).emit("receiveConfigData", result);
+            logDim(`Successfully created wg entry for pubkey ${publicKey}`);
 
-        res.status(200).end();
-      })
-      .catch((error) => {
-        DEBUG && logDim(`getWireguardConfig(): ${error.message}`);
-        sayWithTelegram({
-          message: `🔴 Creating New Subscription failed with ${error.message}`,
-        });
-        res.status(500).end();
-      });
+            invoiceWGKeysMap[index].resultBackend = result;
+
+            const serverDNS = getServer(country)
+              .replace(/^https?:\/\//, "")
+              .replace(/\/manager\/$/, "");
+            sayWithTelegram({
+              message: `🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(
+                amountSats
+              )}💰`,
+            })
+              .then((result) => {
+                DEBUG && logDim(`getWireguardConfig(): ${result}`);
+              })
+              .catch((error) => logDim(error.message));
+
+            res.status(200).end();
+          })
+          .catch((error) => {
+            DEBUG && logDim(`getWireguardConfig(): ${error.message}`);
+            sayWithTelegram({
+              message: `🔴 Creating New Subscription failed with ${error.message}`,
+            });
+            res.status(500).end();
+          });
+      } else {
+        logDim(`Invoice not Paid Invoice: ${paymentDetails.payment_hash}`);
+      }
+    });
   } else {
     logDim(`No Invoice and corresponding connection found in memory`);
     logDim(`Probably Server crashed and lost invoice memory`);
@@ -220,55 +226,61 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
 
     invoiceWGKeysMap[index].isPaid = true;
 
-    // Needed for now to notify the client to stop the spinner
-    io.to(id).emit(
-      "invoicePaidUpdateSubscription",
-      paymentDetails.payment_hash
-    );
+    checkInvoice(paymentDetails.payment_hash).then((result) => {
+      if (!!result) {
+        // Needed for now to notify the client to stop the spinner
+        io.to(id).emit(
+          "invoicePaidUpdateSubscription",
+          paymentDetails.payment_hash
+        );
 
-    getSubscription({
-      keyID,
-      serverURL,
-    })
-      .then((result) => {
-        console.log(result.subscriptionEnd);
-        newSubscriptionEnd({
+        getSubscription({
           keyID,
-          subExpiry: getTimeStamp(
-            priceDollar,
-            parseBackendDate(result.subscriptionEnd)
-          ),
           serverURL,
-          publicKey,
         })
           .then((result) => {
-            io.to(id).emit("receiveUpdateSubscription", result);
-            logDim(
-              `Successfully updated new SubscriptionEnd for  ${publicKey}`
-            );
-
-            invoiceWGKeysMap[index].resultBackend = result;
-
-            sayWithTelegram({
-              message: `🟢 Renewed Subscription: 🍾\n Price: ${priceDollar}\$\n PubKey: ${publicKey} \n ServerLocation: ${serverURL}\n Sats: ${Math.round(
-                amountSats
-              )}💰`,
+            console.log(result.subscriptionEnd);
+            newSubscriptionEnd({
+              keyID,
+              subExpiry: getTimeStamp(
+                priceDollar,
+                parseBackendDate(result.subscriptionEnd)
+              ),
+              serverURL,
+              publicKey,
             })
               .then((result) => {
-                DEBUG && logDim(`getSubscription(): ${result}`);
+                io.to(id).emit("receiveUpdateSubscription", result);
+                logDim(
+                  `Successfully updated new SubscriptionEnd for  ${publicKey}`
+                );
+
+                invoiceWGKeysMap[index].resultBackend = result;
+
+                sayWithTelegram({
+                  message: `🟢 Renewed Subscription: 🍾\n Price: ${priceDollar}\$\n PubKey: ${publicKey} \n ServerLocation: ${serverURL}\n Sats: ${Math.round(
+                    amountSats
+                  )}💰`,
+                })
+                  .then((result) => {
+                    DEBUG && logDim(`getSubscription(): ${result}`);
+                  })
+                  .catch((error) => logDim(error.message));
+                res.status(200).end();
               })
-              .catch((error) => logDim(error.message));
-            res.status(200).end();
+              .catch((error) => {
+                logDim("newSubscriptionEnd() ", error.message);
+                res.status(500).end();
+              });
           })
           .catch((error) => {
-            logDim("newSubscriptionEnd() ", error.message);
+            logDim("getSubscription() ", error.message);
             res.status(500).end();
           });
-      })
-      .catch((error) => {
-        logDim("getSubscription() ", error.message);
-        res.status(500).end();
-      });
+      } else {
+        logDim(`Invoice not Paid Invoice: ${paymentDetails.payment_hash}`);
+      }
+    });
   }
 });
 
