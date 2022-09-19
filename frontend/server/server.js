@@ -181,7 +181,8 @@ app.post(process.env.WEBHOOK, (req, res) => {
               )}💰`,
             })
               .then((result) => {
-                DEBUG && logDim(`getWireguardConfig(): ${result}`);
+                DEBUG &&
+                  logDim(`getWireguardConfig(): ${JSON.stringify(result)}`);
               })
               .catch((error) => logDim(error.message));
 
@@ -263,7 +264,8 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
                   )}💰`,
                 })
                   .then((result) => {
-                    DEBUG && logDim(`getSubscription(): ${result}`);
+                    DEBUG &&
+                      logDim(`getSubscription(): ${JSON.stringify(result)}`);
                   })
                   .catch((error) => logDim(error.message));
                 res.status(200).end();
