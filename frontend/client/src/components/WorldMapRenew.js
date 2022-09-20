@@ -194,6 +194,8 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
             height: "315",
             viewBox: "0 0 672 315",
             id: "svg5249",
+            pointerEvents: "none",
+            cursor: "not-allowed",            
           },
           /*#__PURE__*/ React.createElement(
             "defs",
