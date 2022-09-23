@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=24
+patch=25
 
 #Helper
 function valid_ipv4() {
@@ -160,7 +160,7 @@ fi
 # check requirements and update repos
 echo "Checking and installing requirements..."
 echo "Updating the package repositories..."
-apt-get update >/dev/null
+apt update >/dev/null
 echo
 
 # only non-docker
@@ -172,7 +172,7 @@ if [ $isDocker -eq 0 ]; then
     checkcgroup=$(cgcreate -h 2>/dev/null | grep -c "Usage")
     if [ $checkcgroup -eq 0 ]; then
       echo "Installing cgroup-tools..."
-      if apt-get install -y cgroup-tools >/dev/null; then
+      if apt install -y cgroup-tools >/dev/null; then
         echo "> cgroup-tools installed"
         echo
       else
@@ -194,7 +194,7 @@ echo "Checking nftables installation..."
 checknft=$(nft -v 2>/dev/null | grep -c "nftables")
 if [ $checknft -eq 0 ]; then
   echo "Installing nftables..."
-  if apt-get install -y nftables >/dev/null; then
+  if apt install -y nftables >/dev/null; then
     echo "> nftables installed"
     echo
   else
@@ -215,14 +215,14 @@ checkwg=$(wg -v 2>/dev/null | grep -c "wireguard-tools")
 if [ $checkwg -eq 0 ]; then
   echo "Installing wireguard..."
 
-  if apt-get install -y wireguard >/dev/null; then
+  if apt install -y wireguard >/dev/null; then
     echo "> wireguard installed"
     echo
   else
     # try Debian 10 Buster workaround / myNode
     codename=$(lsb_release -c 2>/dev/null | awk '{print $2}')
     if [ "$codename" == "buster" ] && [ "$(hostname)" != "umbrel" ]; then
-      if apt-get install -y -t buster-backports wireguard >/dev/null; then
+      if apt install -y -t buster-backports wireguard >/dev/null; then
         echo "> wireguard installed"
         echo
       else
