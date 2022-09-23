@@ -156,7 +156,7 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
       _assertThisInitialized(_this),
       "getClassname",
       function (area) {
-        if (area === "af" || area === "sa" || area === "oc") {
+        if (area === "af" || area === "oc") {
           return "map-unavailable";
         }
 
@@ -242,7 +242,7 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
             {
               id: "SA",
               className: _this.getClassname("sa"),
-              //onClick: _this.onMapClick.bind(_assertThisInitialized(_this), 'sa')
+              onClick: _this.onMapClick.bind(_assertThisInitialized(_this), 'sa')
             },
             /*#__PURE__*/ React.createElement("path", {
               id: "path5918",
@@ -256,7 +256,50 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
               id: "path5842",
               d: "M178.366 306.535c-1.333-.773-2.788-.467-4.18-.606-.96-.1-1.134.7-1.27 1.21-.196.735.636.665 1.093.9 1.92.987 3.192.083 4.355-1.506z",
             })
-          ),
+            ),
+            // circle Sao Paolo
+            React.createElement("circle", {
+              cx: "186",
+              cy: "240",
+              r: "3",
+              fill: "#CC0000" /*"#4c619b"*/,
+            }),
+            React.createElement(
+              "circle",
+              {
+                cx: "186",
+                cy: "240",
+                r: "1",
+                fill: "#CC0000" /*"#4c619b"*/,
+              },
+              React.createElement("animate", {
+                attributeType: "SVG",
+                attributeName: "r",
+                begin: "0s",
+                dur: "2.5s",
+                repeatCount: "indefinite",
+                from: "1%",
+                to: "3%",
+              }),
+              React.createElement("animate", {
+                attributeType: "CSS",
+                attributeName: "stroke-width",
+                begin: "0s",
+                dur: "2.5s",
+                repeatCount: "indefinite",
+                from: "3%",
+                to: "0%",
+              }),
+              React.createElement("animate", {
+                attributeType: "CSS",
+                attributeName: "opacity",
+                begin: "0s",
+                dur: "2.5s",
+                repeatCount: "indefinite",
+                from: "0.75",
+                to: "0",
+              })
+            ),
           /*#__PURE__*/ React.createElement(
             "g",
             {
