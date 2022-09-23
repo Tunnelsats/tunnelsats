@@ -239,6 +239,27 @@ fi
 
 sleep 2
 
+# add resolvconf package to docker systems for DNS resolving
+if [ $isDocker -eq 1 ]; then
+  echo "Checking resolvconf installation..."
+  checkResolv=$(resolvconf 2>/dev/null | grep -c "^Usage")
+  if [ $checkResolv -eq 0 ]; then
+    echo "Installing resolvconf..."
+    if apt install -y resolvconf >/dev/null; then
+      echo "> resolvconf installed"
+      echo
+    else
+      echo ">failed to install resolvconf"
+      echo
+      exit 1
+    fi
+  else
+    echo "> resolvconf found"
+    echo
+  fi
+  sleep 2
+fi
+
 #Create Docker Tunnelsat Network which stays persistent over restarts
 if [ $isDocker -eq 1 ]; then
 
