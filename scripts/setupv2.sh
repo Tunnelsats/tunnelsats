@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=25
+patch=26
 
 #Helper
 function valid_ipv4() {
@@ -136,7 +136,7 @@ if [ $isDocker -eq 0 ]; then
   fi
 
   if [ "$lnImplementation" == "cln" ] && [ ! -f /etc/systemd/system/lightningd.service ]; then
-    echo "> /etc/systemd/system/lightningd.service / /etc/systemd/system/cln.service not found. Setup aborted."
+    echo "> /etc/systemd/system/lightningd.service not found. Setup aborted."
     echo
     exit 1
   fi
@@ -1107,12 +1107,12 @@ Feel free to join the Amboss Community here: https://amboss.space/community/29db
 echo
 
 if [ $isDocker -eq 0 ]; then
-  clnServiceName="${lnImplementation}"
+  serviceName="${lnImplementation}"
   if [ "${lnImplementation,,}" == "cln" ]; then
-    clnServiceName="lightningd"
+    serviceName="lightningd"
   fi
   echo "Restart ${lnImplementation} afterwards via the command:
-    sudo systemctl restart ${clnServiceName}.service"
+    sudo systemctl restart ${serviceName}.service"
   echo
 else
   echo "Restart ${lnImplementation} on umbrel afterwards via the command:
