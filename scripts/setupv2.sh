@@ -249,7 +249,7 @@ if [ $isDocker -eq 1 ]; then
       echo "> resolvconf installed"
       echo
     else
-      echo ">failed to install resolvconf"
+      echo "> failed to install resolvconf"
       echo
       exit 1
     fi
