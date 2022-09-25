@@ -631,12 +631,18 @@ async function getPrice() {
 
 // Get Wireguard Config
 async function getWireguardConfig(publicKey, presharedKey, timestamp, server) {
+  const serverURL = server
+    .replace(/^https?:\/\//, "")
+    .replace(/\/manager\/$/, "");
+
   const request1 = {
     method: "post",
     url: server + "key",
     headers: {
       "Content-Type": "application/json",
-      Authorization: process.env.AUTH,
+      Authorization: serverURL.includes("br1")
+        ? process.env.AUTH_VULTR
+        : process.env.AUTH,
     },
     data: {
       publicKey: publicKey,
@@ -657,7 +663,9 @@ async function getWireguardConfig(publicKey, presharedKey, timestamp, server) {
       url: server + "portFwd",
       headers: {
         "Content-Type": "application/json",
-        Authorization: process.env.AUTH,
+        Authorization: serverURL.includes("br1")
+          ? process.env.AUTH_VULTR
+          : process.env.AUTH,
       },
       data: {
         keyID: response1.data.keyID,
@@ -745,7 +753,9 @@ async function getKey({ publicKey, serverURL }) {
     url: `https://${serverURL}/manager/key`,
     headers: {
       "Content-Type": "application/json",
-      Authorization: process.env.AUTH,
+      Authorization: serverURL.includes("br1")
+        ? process.env.AUTH_VULTR
+        : process.env.AUTH,
     },
   })
     .then(function (response) {
@@ -785,7 +795,9 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
     url: `https://${serverURL}/manager/subscription/edit`,
     headers: {
       "Content-Type": "application/json",
-      Authorization: process.env.AUTH,
+      Authorization: serverURL.includes("br1")
+        ? process.env.AUTH_VULTR
+        : process.env.AUTH,
     },
     data: {
       keyID: `${keyID}`,
@@ -817,7 +829,9 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
         url: `https://${serverURL}/manager/key/enable`,
         headers: {
           "Content-Type": "application/json",
-          Authorization: process.env.AUTH,
+          Authorization: serverURL.includes("br1")
+            ? process.env.AUTH_VULTR
+            : process.env.AUTH,
         },
         data: {
           keyID: `${keyID}`,
@@ -847,7 +861,9 @@ async function getSubscription({ keyID, serverURL }) {
     url: `https://${serverURL}/manager/subscription`,
     headers: {
       "Content-Type": "application/json",
-      Authorization: process.env.AUTH,
+      Authorization: serverURL.includes("br1")
+        ? process.env.AUTH_VULTR
+        : process.env.AUTH,
     },
     data: {
       keyID: `${keyID}`,
