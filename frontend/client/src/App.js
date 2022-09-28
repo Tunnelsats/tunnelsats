@@ -75,7 +75,7 @@ function App() {
   //const hideLoginModal = () => showLoginModal(false);
 
   // World Map
-  const [country, updateCountry] = useState("eu");
+  const [country, updateCountry] = useState("eu2");
 
   /* WorldMap Continent Codes
     AF = Africa
@@ -364,7 +364,9 @@ function App() {
         }
         // set fetched server domain
         setServer(result.domain);
+
         updateCountry(result.country);
+
         setSpinnerQuery(false);
       }
     });

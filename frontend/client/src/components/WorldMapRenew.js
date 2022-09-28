@@ -156,8 +156,7 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
       _assertThisInitialized(_this),
       "getClassname",
       function (area) {
-
-        if (area === "af" || area === "oc") {
+        if (area.indexOf("af") !== -1 || area.indexOf("oc") !== -1) {
           return "map-unavailable";
         }
 
@@ -165,17 +164,16 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
           _this.props.selected !== null &&
           _typeof(_this.props.selected) === "object"
         ) {
-          return _this.props.selected.indexOf(area) === -1
+          return area.indexOf(_this.props.selected) === -1
             ? "map-unselected"
             : "map-selected";
         }
 
-        if (area === _this.props.selected) {
+        if (area.indexOf(_this.props.selected) !== -1) {
           return "map-selected";
         } else {
           return "map-unselected";
         }
-        
       }
     );
 
@@ -195,7 +193,7 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
             viewBox: "0 0 672 315",
             id: "svg5249",
             pointerEvents: "none",
-            cursor: "not-allowed",            
+            cursor: "not-allowed",
           },
           /*#__PURE__*/ React.createElement(
             "defs",
@@ -229,7 +227,7 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
             "g",
             {
               id: "AF",
-              className: _this.getClassname("af"),
+              className: _this.getClassname(["af"]),
               //onClick: _this.onMapClick.bind(_assertThisInitialized(_this), 'af')
             },
             /*#__PURE__*/ React.createElement("path", {
@@ -245,8 +243,11 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
             "g",
             {
               id: "SA",
-              className: _this.getClassname("sa"),
-              onClick: _this.onMapClick.bind(_assertThisInitialized(_this), 'sa')
+              className: _this.getClassname(["sa"]),
+              onClick: _this.onMapClick.bind(
+                _assertThisInitialized(_this),
+                "sa"
+              ),
             },
             /*#__PURE__*/ React.createElement("path", {
               id: "path5918",
@@ -260,55 +261,55 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
               id: "path5842",
               d: "M178.366 306.535c-1.333-.773-2.788-.467-4.18-.606-.96-.1-1.134.7-1.27 1.21-.196.735.636.665 1.093.9 1.92.987 3.192.083 4.355-1.506z",
             })
-            ),
-            // circle Sao Paolo
-            React.createElement("circle", {
+          ),
+          // circle Sao Paolo
+          React.createElement("circle", {
+            cx: "186",
+            cy: "240",
+            r: "3",
+            fill: "#CC0000" /*"#4c619b"*/,
+          }),
+          React.createElement(
+            "circle",
+            {
               cx: "186",
               cy: "240",
-              r: "3",
+              r: "1",
               fill: "#CC0000" /*"#4c619b"*/,
+            },
+            React.createElement("animate", {
+              attributeType: "SVG",
+              attributeName: "r",
+              begin: "0s",
+              dur: "2.5s",
+              repeatCount: "indefinite",
+              from: "1%",
+              to: "3%",
             }),
-            React.createElement(
-              "circle",
-              {
-                cx: "186",
-                cy: "240",
-                r: "1",
-                fill: "#CC0000" /*"#4c619b"*/,
-              },
-              React.createElement("animate", {
-                attributeType: "SVG",
-                attributeName: "r",
-                begin: "0s",
-                dur: "2.5s",
-                repeatCount: "indefinite",
-                from: "1%",
-                to: "3%",
-              }),
-              React.createElement("animate", {
-                attributeType: "CSS",
-                attributeName: "stroke-width",
-                begin: "0s",
-                dur: "2.5s",
-                repeatCount: "indefinite",
-                from: "3%",
-                to: "0%",
-              }),
-              React.createElement("animate", {
-                attributeType: "CSS",
-                attributeName: "opacity",
-                begin: "0s",
-                dur: "2.5s",
-                repeatCount: "indefinite",
-                from: "0.75",
-                to: "0",
-              })
-            ),
+            React.createElement("animate", {
+              attributeType: "CSS",
+              attributeName: "stroke-width",
+              begin: "0s",
+              dur: "2.5s",
+              repeatCount: "indefinite",
+              from: "3%",
+              to: "0%",
+            }),
+            React.createElement("animate", {
+              attributeType: "CSS",
+              attributeName: "opacity",
+              begin: "0s",
+              dur: "2.5s",
+              repeatCount: "indefinite",
+              from: "0.75",
+              to: "0",
+            })
+          ),
           /*#__PURE__*/ React.createElement(
             "g",
             {
               id: "EU",
-              className: _this.getClassname("eu"),
+              className: _this.getClassname(["eu", "eu2"]),
               //onClick: _this.onMapClick.bind(
               //  _assertThisInitialized(_this),
               //  "eu"
@@ -402,7 +403,7 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
             "g",
             {
               id: "AS",
-              className: _this.getClassname("as"),
+              className: _this.getClassname(["as"]),
               //onClick: _this.onMapClick.bind(
               //  _assertThisInitialized(_this),
               //  "as"
@@ -552,7 +553,7 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
             "g",
             {
               id: "NA",
-              className: _this.getClassname("na"),
+              className: _this.getClassname(["na"]),
               //onClick: _this.onMapClick.bind(
               //  _assertThisInitialized(_this),
               //  "na"
@@ -674,7 +675,7 @@ var ControlledWorldMap = /*#__PURE__*/ (function (_React$Component) {
             "g",
             {
               id: "OC",
-              className: _this.getClassname("oc"),
+              className: _this.getClassname(["oc"]),
               //onClick: _this.onMapClick.bind(_assertThisInitialized(_this), 'oc')
             },
             /*#__PURE__*/ React.createElement("path", {
