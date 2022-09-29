@@ -101,6 +101,7 @@ function App() {
   const [isPopupModal, showPopupModal] = useState(false);
   const renderPopupModal = () => showPopupModal(true);
   const hidePopupModal = () => showPopupModal(false);
+  let errorMessage = "";
 
   // special discounts
   const [discount, setDiscount] = useState(1.0);
@@ -367,6 +368,7 @@ function App() {
       DEBUG && console.log("%o", result);
 
       if (result == null) {
+        errorMessage = "The provided WireGuard pubkey was not found on any server!";
         setTime("");
         setNewTime("");
         setTimeValid(false);
@@ -374,6 +376,8 @@ function App() {
         renderPopupModal();
         DEBUG && console.log(result);
         setSpinnerQuery(false);
+      } else if (typeof result === "string") {
+        errorMessage = "Server capacity limit reached. Please buy a new subscription from the same continent.";
       } else if (typeof result === "object") {
         keyID = result.keyID;
 
@@ -824,9 +828,7 @@ function App() {
               <Popup
                 show={isPopupModal}
                 title={"⚠️ Error"}
-                errorMessage={
-                  "The provided WireGuard pubkey was not found on any server!"
-                }
+                errorMessage={errorMessage}
                 handleClose={hidePopupModal}
               />
             ) : null}
