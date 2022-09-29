@@ -10,19 +10,16 @@ const WorldMap = (props) => {
   }
 
   function getClassname(area) {
-    if (area === "af" || area === "oc") {
+    if (area.indexOf("af") !== -1 || area.indexOf("oc") !== -1) {
       return "map-unavailable";
     }
 
-    if (props.selected !== null && typeof props.selected === "object") {
-      return props.selected.indexOf(area) === -1
+    if (props.selected !== null) {
+      return area.indexOf(props.selected) === -1
         ? "map-unselected"
         : "map-selected";
-    }
-
-    if (area === props.selected) {
-      return "map-selected";
     } else {
+      console.log("unselected");
       return "map-unselected";
     }
   }
@@ -36,6 +33,8 @@ const WorldMap = (props) => {
         height="315"
         viewBox="0 0 672 315"
         id="svg5249"
+        pointerEvents={props.pointerEvents}
+        cursor={props.Cursor}
       >
         <defs id="defs5257">
           <linearGradient id="linearGradient4299">
@@ -47,7 +46,7 @@ const WorldMap = (props) => {
         </defs>
         <g
           id="AF"
-          className={getClassname("af")}
+          className={getClassname(["af"])}
           //onClick={onMapClick.bind(this, "af")}
         >
           <path
@@ -61,7 +60,7 @@ const WorldMap = (props) => {
         </g>
         <g
           id="SA"
-          className={getClassname("sa")}
+          className={getClassname(["sa"])}
           onClick={onMapClick.bind(this, "sa")}
         >
           <path
@@ -112,8 +111,8 @@ const WorldMap = (props) => {
 
         <g
           id="EU"
-          className={getClassname("eu")}
-          onClick={onMapClick.bind(this, "eu")}
+          className={getClassname(["eu", "eu2"])}
+          onClick={onMapClick.bind(this, "eu2")}
         >
           <path
             id="path5896"
@@ -191,7 +190,7 @@ const WorldMap = (props) => {
 
         <g
           id="AS"
-          className={getClassname("as")}
+          className={getClassname(["as"])}
           onClick={onMapClick.bind(this, "as")}
         >
           <path
@@ -326,7 +325,7 @@ const WorldMap = (props) => {
 
         <g
           id="NA"
-          className={getClassname("na")}
+          className={getClassname(["na"])}
           onClick={onMapClick.bind(this, "na")}
         >
           <path
@@ -433,7 +432,7 @@ const WorldMap = (props) => {
 
         <g
           id="OC"
-          className={getClassname("oc")}
+          className={getClassname(["oc"])}
           //onClick={onMapClick.bind(this, "oc")}
         >
           <path

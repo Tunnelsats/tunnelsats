@@ -480,7 +480,11 @@ function App() {
             {isRenewSub ? (
               <>
                 {/* WorldMap */}
-                <WorldMapRenew selected={country} />
+                <WorldMap
+                  selected={country}
+                  pointerEvents={"none"}
+                  Cusor={"not-allowed"}
+                />
 
                 <Form onSubmit={(e) => handleSubmit(e)}>
                   {" "}
