@@ -382,7 +382,8 @@ function App() {
         setNewTime("");
         setTimeValid(false);
         setTimeValidOld(false);
-        renderPopupModal();        
+        renderPopupModal();
+        setSpinnerQuery(false);
       } else if (typeof result === "object") {
         keyID = result.keyID;
 
