@@ -376,7 +376,7 @@ function App() {
         renderPopupModal();
         DEBUG && console.log(result);
         setSpinnerQuery(false);
-      } else if (result.data.match("not-allowed")) {
+      } else if (result == "not-allowed") {
         setPopupMessage("Server capacity limit reached. Please buy a new subscription from the same continent.");
         setTime("");
         setNewTime("");
