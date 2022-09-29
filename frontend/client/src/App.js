@@ -378,6 +378,11 @@ function App() {
         setSpinnerQuery(false);
       } else if (result.data.match("not-allowed")) {
         setPopupMessage("Server capacity limit reached. Please buy a new subscription from the same continent.");
+        setTime("");
+        setNewTime("");
+        setTimeValid(false);
+        setTimeValidOld(false);
+        renderPopupModal();        
       } else if (typeof result === "object") {
         keyID = result.keyID;
 
