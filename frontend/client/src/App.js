@@ -20,7 +20,6 @@ import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
 import logo from "./media/tunnelsats_headerlogo5.png";
 import WorldMap from "./components/WorldMap";
-import WorldMapRenew from "./components/WorldMapRenew";
 import { IoIosRefresh, IoIosInformationCircleOutline } from "react-icons/io";
 import "./wireguard.js";
 
