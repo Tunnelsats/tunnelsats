@@ -368,7 +368,9 @@ function App() {
       DEBUG && console.log("%o", result);
 
       if (result == null) {
-        setPopupMessage("The provided WireGuard pubkey was not found on any server!");
+        setPopupMessage(
+          "The provided WireGuard pubkey was not found on any server!"
+        );
         setTime("");
         setNewTime("");
         setTimeValid(false);
@@ -377,7 +379,9 @@ function App() {
         DEBUG && console.log(result);
         setSpinnerQuery(false);
       } else if (result == "not-allowed") {
-        setPopupMessage("Server capacity limit reached. Please buy a new subscription from the same continent.");
+        setPopupMessage(
+          "Server capacity limit reached. Please buy a new subscription from the same continent."
+        );
         setTime("");
         setNewTime("");
         setTimeValid(false);
