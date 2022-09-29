@@ -382,7 +382,6 @@ io.on("connection", (socket) => {
     let subscriptionEnd;
     let success = false;
     const servers = [
-      { domain: "de1.tunnelsats.com", country: "eu" },
       { domain: "de2.tunnelsats.com", country: "eu2" },
       { domain: "us1.tunnelsats.com", country: "na" },
       { domain: "sg1.tunnelsats.com", country: "as" },
