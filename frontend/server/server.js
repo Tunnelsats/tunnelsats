@@ -413,7 +413,7 @@ io.on("connection", (socket) => {
                 logDim("SubscriptionEnd: ", date.toISOString());
                 subscriptionEnd = date;
 
-                if (domain.match("de1.tunnelsats.com")) {
+                if (domain.match(servers[0].domain)) {
                   socket.emit("receiveKeyLookup", "not-allowed");
                 } else {
                   socket.emit("receiveKeyLookup", {
