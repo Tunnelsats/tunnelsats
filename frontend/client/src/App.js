@@ -20,7 +20,6 @@ import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
 import logo from "./media/tunnelsats_headerlogo5.png";
 import WorldMap from "./components/WorldMap";
-import WorldMapRenew from "./components/WorldMapRenew";
 import { IoIosRefresh, IoIosInformationCircleOutline } from "react-icons/io";
 import "./wireguard.js";
 
@@ -102,9 +101,13 @@ function App() {
   const [isPopupModal, showPopupModal] = useState(false);
   const renderPopupModal = () => showPopupModal(true);
   const hidePopupModal = () => showPopupModal(false);
+  const [popupMessage, setPopupMessage] = useState("");
 
   // special discounts
   const [discount, setDiscount] = useState(1.0);
+
+  // node stats from mempool.space
+  const [nodeStats, setNodeStats] = useState([0, 0, 0, 0]);
 
   //Successful payment alert
   const renderAlert = (show) => {
@@ -135,6 +138,30 @@ function App() {
 
     // check for discounts
     getDiscount();
+
+    // get node stats
+    getNodeStats();
+  });
+
+  // get node stats from mempool.space
+  const getNodeStats = () => {
+    socket.removeAllListeners("getNodeStats").emit("getNodeStats");
+    DEBUG && console.log(`${getDate()} App.js: server.getNodeStats() ${socket.id}`);
+  };
+
+  socket.off("receiveNodeStats").on("receiveNodeStats", (result) => {
+    DEBUG && console.log(`${getDate()} App.js: server.receiveNodeStats() ${[
+      result.node_count,
+      result.clearnet_nodes,
+      result.clearnet_tor_nodes,
+      result.tor_nodes
+    ]}`);
+    setNodeStats([
+      result.node_count,
+      result.clearnet_nodes,
+      result.clearnet_tor_nodes,
+      result.tor_nodes
+    ]);
   });
 
   const getDiscount = () => {
@@ -341,12 +368,26 @@ function App() {
       DEBUG && console.log("%o", result);
 
       if (result == null) {
+        setPopupMessage(
+          "The provided WireGuard pubkey was not found on any server!"
+        );
         setTime("");
         setNewTime("");
         setTimeValid(false);
         setTimeValidOld(false);
         renderPopupModal();
         DEBUG && console.log(result);
+        setSpinnerQuery(false);
+      } else if (result == "not-allowed") {
+        setPopupMessage(
+          "Server capacity limit reached. Please buy a new subscription from the same continent."
+        );
+        setTime("");
+        setNewTime("");
+        setTimeValid(false);
+        setTimeValidOld(false);
+        renderPopupModal();
+        DEBUG && console.log(result);        
         setSpinnerQuery(false);
       } else if (typeof result === "object") {
         keyID = result.keyID;
@@ -475,12 +516,19 @@ function App() {
             <img src={logo} alt="" className="logo" />
 
             {/* Intro Text */}
-            <HeaderInfo />
+            <HeaderInfo stats={nodeStats} />
 
             {isRenewSub ? (
               <>
+                <hr />
                 {/* WorldMap */}
-                <WorldMapRenew selected={country} />
+                <WorldMap
+                  selected={country}
+                  pointerEvents={"none"}
+                  Cursor={"not-allowed"}
+                />
+
+                <hr />
 
                 <Form onSubmit={(e) => handleSubmit(e)}>
                   {" "}
@@ -647,8 +695,10 @@ function App() {
               </>
             ) : (
               <>
+                <hr />
                 {/* WorldMap */}
                 <WorldMap selected={country} onSelect={updateCountry} />
+                <hr />
 
                 <Form>
                   {/* else default: WG keys for first subscription */}
@@ -789,9 +839,7 @@ function App() {
               <Popup
                 show={isPopupModal}
                 title={"⚠️ Error"}
-                errorMessage={
-                  "The provided WireGuard pubkey was not found on any server!"
-                }
+                errorMessage={popupMessage}
                 handleClose={hidePopupModal}
               />
             ) : null}
