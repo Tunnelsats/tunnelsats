@@ -4,6 +4,7 @@ import { SiTorproject } from "react-icons/si";
 import { TbSum } from "react-icons/tb";
 import { IoGitNetworkSharp } from "react-icons/io5";
 import { FaNetworkWired } from "react-icons/fa";
+import CountUp from "react-countup";
 
 const HeaderInfo = (props) => {
   return (
@@ -44,22 +45,22 @@ const HeaderInfo = (props) => {
           <Col>
             <TbSum size={20} title="sum" />
             <br />
-            {props.stats[0]}
+            <CountUp end={props.stats[0]} duration={4.0} />
           </Col>
           <Col>
             <FaNetworkWired size={20} title="clearnet" />
             <br />
-            {props.stats[1]}
+            <CountUp end={props.stats[1]} duration={3.0} />
           </Col>
           <Col>
             <IoGitNetworkSharp size={20} title="hybrid" />
             <br />
-            {props.stats[2]}
+            <CountUp end={props.stats[2]} duration={2.5} />
           </Col>
           <Col>
             <SiTorproject size={20} title="Tor" />
             <br />
-            {props.stats[3]}
+            <CountUp end={props.stats[3]} duration={3.5}/>
           </Col>
         </Row>
         {/*
