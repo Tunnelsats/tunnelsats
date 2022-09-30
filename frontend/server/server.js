@@ -115,6 +115,7 @@ const sayWithTelegram = async ({ message, parse_mode = "HTML" }) => {
 
 // Server Settings
 const createServer = require("http");
+const { response } = require("express");
 // const { rootCertificates } = require('tls');
 const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
@@ -498,7 +499,23 @@ io.on("connection", (socket) => {
 
   socket.on("getPrice", () => {
     logDim(`getPrice() id: ${socket.id}`);
-    getPrice().then((result) => io.to(socket.id).emit("receivePrice", result));
+    getPrice()
+      .then((result) => io.to(socket.id).emit("receivePrice", result))
+      .catch((error) => {
+        return error;
+      });
+  });
+
+  socket.on("getNodeStats", () => {
+    logDim(`getNodeStats() id: ${socket.id}`);
+    getNodeStats()
+      .then((result) => {
+        io.to(socket.id).emit("receiveNodeStats", result);
+        logDim(`getNodeStats() result: ${result}`);
+      })
+      .catch((error) => {
+        return error;
+      });
   });
 
   socket.on("disconnect", () => {
@@ -629,6 +646,23 @@ async function getPrice() {
     .catch((error) => {
       logDim(`Error - getPrice() ${error}`);
       return null;
+    });
+}
+
+// fetch node stats
+async function getNodeStats() {
+  return axios({
+    method: "get",
+    url: "https://mempool.space/api/v1/lightning/statistics/latest",
+  })
+    .then(function (response) {
+      if (!isEmpty(response.data)) {
+        //logDim(`getNodeStats() response: ${response.data.latest}`);
+        return response.data.latest;
+      }
+    })
+    .catch((error) => {
+      return error;
     });
 }
 

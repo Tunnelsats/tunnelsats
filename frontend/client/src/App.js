@@ -105,6 +105,9 @@ function App() {
   // special discounts
   const [discount, setDiscount] = useState(1.0);
 
+  // node stats from mempool.space
+  const [nodeStats, setNodeStats] = useState([0, 0, 0, 0]);
+
   //Successful payment alert
   const renderAlert = (show) => {
     setPaymentAlert(show);
@@ -134,6 +137,30 @@ function App() {
 
     // check for discounts
     getDiscount();
+
+    // get node stats
+    getNodeStats();
+  });
+
+  // get node stats from mempool.space
+  const getNodeStats = () => {
+    socket.removeAllListeners("getNodeStats").emit("getNodeStats");
+    DEBUG && console.log(`${getDate()} App.js: server.getNodeStats() ${socket.id}`);
+  };
+
+  socket.off("receiveNodeStats").on("receiveNodeStats", (result) => {
+    DEBUG && console.log(`${getDate()} App.js: server.receiveNodeStats() ${[
+      result.node_count,
+      result.clearnet_nodes,
+      result.clearnet_tor_nodes,
+      result.tor_nodes
+    ]}`);
+    setNodeStats([
+      result.node_count,
+      result.clearnet_nodes,
+      result.clearnet_tor_nodes,
+      result.tor_nodes
+    ]);
   });
 
   const getDiscount = () => {
@@ -474,16 +501,19 @@ function App() {
             <img src={logo} alt="" className="logo" />
 
             {/* Intro Text */}
-            <HeaderInfo />
+            <HeaderInfo stats={nodeStats} />
 
             {isRenewSub ? (
               <>
+                <hr />
                 {/* WorldMap */}
                 <WorldMap
                   selected={country}
                   pointerEvents={"none"}
                   Cusor={"not-allowed"}
                 />
+
+                <hr />
 
                 <Form onSubmit={(e) => handleSubmit(e)}>
                   {" "}
@@ -650,8 +680,10 @@ function App() {
               </>
             ) : (
               <>
+                <hr />
                 {/* WorldMap */}
                 <WorldMap selected={country} onSelect={updateCountry} />
+                <hr />
 
                 <Form>
                   {/* else default: WG keys for first subscription */}
