@@ -383,6 +383,7 @@ io.on("connection", (socket) => {
     let subscriptionEnd;
     let success = false;
     const servers = [
+      { domain: "de1.tunnelsats.com", country: "eu" },
       { domain: "de2.tunnelsats.com", country: "eu2" },
       { domain: "us1.tunnelsats.com", country: "na" },
       { domain: "sg1.tunnelsats.com", country: "as" },
@@ -412,12 +413,16 @@ io.on("connection", (socket) => {
                 logDim("SubscriptionEnd: ", date.toISOString());
                 subscriptionEnd = date;
 
-                socket.emit("receiveKeyLookup", {
-                  keyID,
-                  subscriptionEnd,
-                  domain,
-                  country,
-                });
+                if (domain.includes("de1")) {
+                  socket.emit("receiveKeyLookup", "not-allowed");
+                } else {
+                  socket.emit("receiveKeyLookup", {
+                    keyID,
+                    subscriptionEnd,
+                    domain,
+                    country,
+                  });
+                }
 
                 return true;
               })
