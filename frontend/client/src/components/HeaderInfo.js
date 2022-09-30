@@ -4,6 +4,7 @@ import { SiTorproject } from "react-icons/si";
 import { TbSum } from "react-icons/tb";
 import { IoGitNetworkSharp } from "react-icons/io5";
 import { FaNetworkWired } from "react-icons/fa";
+import CountUp from "react-countup";
 
 const HeaderInfo = (props) => {
   return (
