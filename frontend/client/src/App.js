@@ -730,7 +730,11 @@ function App() {
               <>
                 <hr />
                 {/* WorldMap */}
-                <WorldMap selected={country} onSelect={updateCountry} />
+                <WorldMap
+                  selected={country}
+                  onSelect={updateCountry}
+                  pointerEvents={"all"}
+                />
                 <hr />
 
                 <Form>
