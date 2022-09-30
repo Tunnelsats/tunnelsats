@@ -292,8 +292,8 @@ const WorldMap = (props) => {
         </g>
 
         {/* circle Singapore */}
-        <circle cx="508" cy="108" r="3" fill="#cc0000" />
-        <circle cx="508" cy="108" r="1" fill="#cc0000">
+        <circle cx="508" cy="180" r="3" fill="#cc0000" />
+        <circle cx="508" cy="180" r="1" fill="#cc0000">
           <animate
             attributeType="SVG"
             attributeName="r"
