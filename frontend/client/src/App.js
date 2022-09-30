@@ -525,7 +525,7 @@ function App() {
                 <WorldMap
                   selected={country}
                   pointerEvents={"none"}
-                  Cusor={"not-allowed"}
+                  Cursor={"not-allowed"}
                 />
 
                 <hr />
