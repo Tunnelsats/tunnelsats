@@ -39,7 +39,7 @@ const HeaderInfo = (props) => {
           pages.
         </p>
         <hr />
-        Lightning Node Statistics
+        <p>Lightning Node Statistics</p>
         <Row>
           <Col>
             <TbSum size={20} title="sum" />
