@@ -41,7 +41,7 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
   - nftables version: 0.9.6+ (`nft -v` or `apt search nftables | grep "^nftables"`)
   - LND running as systemd service: `/etc/systemd/system/lnd.service` or
   - CLN running as systemd service: `/etc/systemd/system/lightningd.service`
-  - run the `check.sh` in `/scripts/` to compare system infos and TunnelSats requirements
+  - run `sudo bash check.sh` from `/scripts/` directory to compare your system to TunnelSats' requirements
 
 - LND latest (minimal requirement `0.14.2-beta`)
 - CLN latest
