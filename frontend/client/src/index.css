@@ -3,22 +3,21 @@ html {
   height: 100vh;
 }
 body {
+  background-image: url("media/background-l-middle.jpg");
+  background-size: cover;
+  background-repeat: no-repeat;
   background-color: black;
+  background-position: top;  
+
   height: 100vh;
   align-items: center;
   justify-content: center;
   text-align: center;
 }
 @media (max-width: 900px) {
-  body {
-    background-image: url("media/background-s.jpg");
-    background-repeat: no-repeat;
-    background-size: cover;
-    background-color: black;
-  }
   .main-middle {
     max-width: 90%;
-    margin-top: 2vh;
+    margin-top: 1vh;
     align-items: center;
     flex-direction: column;
     border-radius: 30px;
@@ -27,15 +26,9 @@ body {
 }
 
 @media (min-width: 901px) {
-  body {
-    background-image: url("media/background-l-dark.jpg");
-    background-size: cover;
-    background-repeat: no-repeat;
-    background-color: black;
-  }
   .main-middle {
     max-width: 726px;
-    margin-top: 2vh;
+    margin-top: 1vh;
     align-items: center;
     flex-direction: column;
     border-radius: 30px;
