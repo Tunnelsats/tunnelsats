@@ -19,6 +19,7 @@ import Popup from "./components/Popup";
 import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
 import logo from "./media/tunnelsats_headerlogo5.png";
+import SatsSign from "./media/sats.svg";
 import WorldMap from "./components/WorldMap";
 import { IoIosRefresh, IoIosInformationCircleOutline } from "react-icons/io";
 import "./wireguard.js";
@@ -40,7 +41,7 @@ const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT);
 const DEBUG = false;
 
 // WebSocket
-var socket = io.connect(REACT_APP_SOCKETIO);
+var socket = io.connect("http://localhost:2000");
 
 // Consts
 var emailAddress;
@@ -146,21 +147,25 @@ function App() {
   // get node stats from mempool.space
   const getNodeStats = () => {
     socket.removeAllListeners("getNodeStats").emit("getNodeStats");
-    DEBUG && console.log(`${getDate()} App.js: server.getNodeStats() ${socket.id}`);
+    DEBUG &&
+      console.log(`${getDate()} App.js: server.getNodeStats() ${socket.id}`);
   };
 
   socket.off("receiveNodeStats").on("receiveNodeStats", (result) => {
-    DEBUG && console.log(`${getDate()} App.js: server.receiveNodeStats() ${[
-      result.node_count - result.unannounced_nodes,
-      result.clearnet_nodes,
-      result.clearnet_tor_nodes,
-      result.tor_nodes
-    ]}`);
+    DEBUG &&
+      console.log(
+        `${getDate()} App.js: server.receiveNodeStats() ${[
+          result.node_count - result.unannounced_nodes,
+          result.clearnet_nodes,
+          result.clearnet_tor_nodes,
+          result.tor_nodes,
+        ]}`
+      );
     setNodeStats([
       result.node_count - result.unannounced_nodes,
       result.clearnet_nodes,
       result.clearnet_tor_nodes,
-      result.tor_nodes
+      result.tor_nodes,
     ]);
   });
 
@@ -387,7 +392,7 @@ function App() {
         setTimeValid(false);
         setTimeValidOld(false);
         renderPopupModal();
-        DEBUG && console.log(result);        
+        DEBUG && console.log(result);
         setSpinnerQuery(false);
       } else if (typeof result === "object") {
         keyID = result.keyID;
@@ -635,7 +640,7 @@ function App() {
                                   : Math.trunc(
                                       Math.round(priceDollar * satsPerDollar)
                                     ).toLocaleString()}{" "}
-                                <i class="fak fa-satoshisymbol-solidtilt" />
+                                <span class="icon icon-sats"></span>
                               </h3>
                             </div>
                           )}
@@ -768,7 +773,7 @@ function App() {
                             : Math.trunc(
                                 Math.round(priceDollar * satsPerDollar)
                               ).toLocaleString()}{" "}
-                          <i class="fak fa-satoshisymbol-solidtilt" />
+                          <span class="icon icon-sats"></span>
                         </h3>
                       </div>
                     )}

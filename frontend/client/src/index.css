@@ -160,6 +160,7 @@ a:active {
   margin-left: 10px;
 }
 
+/*
 title {
   text-align: center;
 }
@@ -172,6 +173,8 @@ title {
 #countryselector label {
   width: 20%;
 }
+*/
+
 #runtimeselector {
   width: 100%;
   margin: 10px 0 10px 0;
@@ -184,10 +187,13 @@ title {
   background-color: #ffc700;
   color: black;
 }
+/*
 #countryselector label.btn.active {
   background-color: #ffc700;
   color: black;
 }
+*/
+
 #invoicestring {
   text-align: left;
   margin-top: 10px;
@@ -205,22 +211,6 @@ title {
   word-wrap: break-word; /* IE */
 }
 
-#invoicestringrenew {
-  text-align: center;
-  margin-top: 10px;
-  display: inline-block;
-  border: 1px;
-  padding: 5px;
-  border-style: solid;
-  border-radius: 15px;
-  width: 100%;
-  height: 100%;
-  white-space: pre-wrap; /* CSS3 */
-  white-space: -moz-pre-wrap; /* Firefox */
-  white-space: -pre-wrap; /* Opera <7 */
-  white-space: -o-pre-wrap; /* Opera 7 */
-  word-wrap: break-word; /* IE */
-}
 
 #main_modal {
   min-width: 50%;
@@ -251,8 +241,9 @@ title {
 }
 
 canvas {
-  padding: 15px;
-  background-color: white;
+  border: 0px solid red;
+  position: absolute;
+  left: 0px;
 }
 
 button.close {
@@ -261,6 +252,8 @@ button.close {
 .modal-content {
   border: 1px solid #375a7f !important;
 }
+
+/* footer */
 .footer-text {
   text-align: center;
   color: #000000;
@@ -276,6 +269,11 @@ button.close {
   background-size: cover;
   width: 30px;
   height: 30px;
+}
+.icon-sats {
+  background-image: url("./media/sats.svg");
+  width: 25px;
+  height: 25px;
 }
 .icon-twitter {
   background-image: url("./media/twitter-128.png");
@@ -317,9 +315,11 @@ button.close {
 #expirydate {
   color: #ffc700;
 }
+/*
 #dataplanlist {
   list-style: none;
 }
+*/
 
 img {
   padding: 5px;

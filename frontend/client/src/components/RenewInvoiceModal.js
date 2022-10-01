@@ -138,7 +138,7 @@ function RenewInvoiceModal(props) {
           <Collapse in={openCollapse}>
             <div id="example-collapse-text">
               {props.showSpinner ? null : (
-                <div id="invoicestringrenew" className="container">
+                <div id="invoicestring" className="container">
                   {props.value}
                 </div>
               )}
