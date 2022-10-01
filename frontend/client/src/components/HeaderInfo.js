@@ -43,7 +43,7 @@ const HeaderInfo = (props) => {
         <p>Lightning Node Statistics</p>
         <Row>
           <Col>
-            <TbSum size={20} title="sum" />
+            <TbSum size={20} title="total" />
             <br />
             <CountUp end={props.stats[0]} duration={4.0} />
           </Col>

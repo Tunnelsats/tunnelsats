@@ -151,13 +151,13 @@ function App() {
 
   socket.off("receiveNodeStats").on("receiveNodeStats", (result) => {
     DEBUG && console.log(`${getDate()} App.js: server.receiveNodeStats() ${[
-      result.node_count,
+      result.node_count - result.unannounced_nodes,
       result.clearnet_nodes,
       result.clearnet_tor_nodes,
       result.tor_nodes
     ]}`);
     setNodeStats([
-      result.node_count,
+      result.node_count - result.unannounced_nodes,
       result.clearnet_nodes,
       result.clearnet_tor_nodes,
       result.tor_nodes
