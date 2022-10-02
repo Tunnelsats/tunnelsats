@@ -150,9 +150,14 @@ With CLN it's a bit trickier. Most node setups like Umbrel, RaspiBolt, RaspiBlit
 Locate data directory of your CLN installation. By default CLN's configuration is stored in a file named `config`. Edit the file and look out for network settings section. Configured to hybrid it should look like this:
 
   ```ini
+  # Tor
+  addr=statictor:127.0.0.1:9051/torport=9735
+  proxy=127.0.0.1:9050
+  always-use-proxy=false
+
+  # Clearnet
   bind-addr=0.0.0.0:9735
   announce-addr={vpnDNS}:{vpnPort}
-  always-use-proxy=false
   ```
 
 On docker-based systems this might look very different. The following shows how to enable hybrid on Umbrel v0.5+:

@@ -19,7 +19,6 @@ import Popup from "./components/Popup";
 import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
 import logo from "./media/tunnelsats_headerlogo5.png";
-import SatsSign from "./media/sats.svg";
 import WorldMap from "./components/WorldMap";
 import { IoIosRefresh, IoIosInformationCircleOutline } from "react-icons/io";
 import "./wireguard.js";
@@ -41,7 +40,7 @@ const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT);
 const DEBUG = false;
 
 // WebSocket
-var socket = io.connect("http://localhost:2000");
+var socket = io.connect(REACT_APP_SOCKETIO);
 
 // Consts
 var emailAddress;

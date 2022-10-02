@@ -1088,6 +1088,12 @@ change assigned port of APP_CORE_LIGHTNING_DAEMON_PORT from 9736 to 9735:
 ###############################################################################
 
 Native CLN installation (config file):
+  # Tor
+  addr=statictor:127.0.0.1:9051/torport=9735
+  proxy=127.0.0.1:9050
+  always-use-proxy=false
+
+  # VPN
   bind-addr=0.0.0.0:9735
   announce-addr=${vpnExternalDNS}:${vpnExternalPort}
   always-use-proxy=false
