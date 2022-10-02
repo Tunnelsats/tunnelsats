@@ -749,12 +749,12 @@ table ip tunnelsatsv2 {
   }
   #block traffic from lighting containers
   chain forward {
-    type filter hook forward priority filter; policy accept;
+    type filter hook forward priority filter -1; policy accept;
     oifname ${mainif} ip daddr != ${localsubnet} ip saddr @killswitch_tunnelsats counter  drop
   }
   #restrict traffic from the tunnelsats network other than the lightning traffic
   chain input {
-    type filter hook input priority filter; policy accept;
+    type filter hook input priority filter - 1; policy accept;
     iifname tunnelsatsv2  ct state established,related counter accept
     iifname tunnelsatsv2   tcp dport != 9735 counter drop 
     iifname tunnelsatsv2   udp dport != 9735 counter drop 
