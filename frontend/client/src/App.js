@@ -639,7 +639,7 @@ function App() {
                                   : Math.trunc(
                                       Math.round(priceDollar * satsPerDollar)
                                     ).toLocaleString()}{" "}
-                                <span class="icon icon-sats"></span>
+                                <i class="fak fa-satoshisymbol-solidcirtilt" />
                               </h3>
                             </div>
                           )}
@@ -772,7 +772,7 @@ function App() {
                             : Math.trunc(
                                 Math.round(priceDollar * satsPerDollar)
                               ).toLocaleString()}{" "}
-                          <span class="icon icon-sats"></span>
+                          <i class="fak fa-satoshisymbol-solidcirtilt" />
                         </h3>
                       </div>
                     )}

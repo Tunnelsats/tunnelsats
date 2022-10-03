@@ -269,9 +269,11 @@ button.close {
   width: 30px;
   height: 30px;
 }
+/*
 .icon-sats {
   background-image: url("./media/sats-orange.png");
 }
+*/
 .icon-twitter {
   background-image: url("./media/twitter-128.png");
   opacity: 0.5;
