@@ -28,7 +28,7 @@ body {
 @media (min-width: 901px) {
   .main-middle {
     max-width: 726px;
-    margin-top: 1vh;
+    margin-top: 1.5vh;
     align-items: center;
     flex-direction: column;
     border-radius: 30px;
