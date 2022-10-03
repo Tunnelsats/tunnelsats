@@ -117,8 +117,8 @@ function RenewInvoiceModal(props) {
                 Phoenix
               </a>
               ,{" "}
-              <a href="https://muun.com" target="_blank" rel="noreferrer">
-                Muun
+              <a href="https://www.walletofsatoshi.com/" target="_blank" rel="noreferrer">
+                WoS
               </a>
               ,{" "}
               <a
