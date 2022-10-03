@@ -134,16 +134,16 @@ while true; do
             fi
         fi
 
-        # RaspiBlitz: try to recover lnd.check.sh
+        # delete tunnelsats dependencies and try to recover lnd.check.sh (RaspiBlitz)
         lnImplementation="lnd"
-        if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lnd.service ]; then
-            echo "RaspiBlitz: Removing dependendency lnd.service.d ..."
-            if [ -f /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf ] && ! rm /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf &>/dev/null; then
+        if [ -f /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf ]; then
+            echo "Removing lnd.service.d dependendency ..."
+            if ! rm /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf &>/dev/null; then
                 echo "> ERR: Failed to remove dependency /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf"
                 echo
                 exit 1
             else
-                echo "> lnd.service.d dependency removed"
+                echo "> dependency removed"
                 echo
             fi
             systemctl daemon-reload &>/dev/null
@@ -223,15 +223,17 @@ while true; do
             fi
         fi
 
-        # check CLN (RaspiBlitz)
+        # check CLN and delete tunnelsats dependencies
         lnImplementation="cln"
         # RaspiBlitz: try to recover cl.check.sh
-        if [ "$(hostname)" == "raspberrypi" ] && [ -f /etc/systemd/system/lightningd.service ]; then
-            echo "RaspiBlitz: Removing dependendency lightningd.service.d ..."
-            if [ -f /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf ] && ! rm /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf &>/dev/null; then
+        if [ -f /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf ]; then
+            echo "Removing lightningd.service.d dependendency ..."
+            if ! rm /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf &>/dev/null; then
                 echo "> ERR: Failed to remove dependency /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf"
                 echo
                 exit 1
+            else
+                echo "> dependency removed"
             fi
             systemctl daemon-reload &>/dev/null
 
