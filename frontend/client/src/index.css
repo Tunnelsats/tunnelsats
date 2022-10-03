@@ -241,9 +241,8 @@ title {
 }
 
 canvas {
-  border: 0px solid red;
-  position: absolute;
-  left: 0px;
+  padding: 15px;
+  background-color: white;
 }
 
 button.close {
