@@ -160,7 +160,7 @@ a:active {
   margin-left: 10px;
 }
 
-/*
+
 title {
   text-align: center;
 }
@@ -173,7 +173,7 @@ title {
 #countryselector label {
   width: 20%;
 }
-*/
+
 
 #runtimeselector {
   width: 100%;
@@ -187,12 +187,12 @@ title {
   background-color: #ffc700;
   color: black;
 }
-/*
+
 #countryselector label.btn.active {
   background-color: #ffc700;
   color: black;
 }
-*/
+
 
 #invoicestring {
   text-align: left;
@@ -313,11 +313,11 @@ button.close {
 #expirydate {
   color: #ffc700;
 }
-/*
+
 #dataplanlist {
   list-style: none;
 }
-*/
+
 
 img {
   padding: 5px;
