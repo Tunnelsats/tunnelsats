@@ -64,10 +64,11 @@ const intervalId = setInterval(function () {
   while (index !== -1) {
     index = invoiceWGKeysMap.findIndex((client) => {
       // console.log(currentTime - client.timestamp);
-      // After 15 Minutes Invoice Related Date is purged from the memory
-      const invoiceExpiry = lightningPayReq.decode(
-        client.paymentDetails.payment_request
-      ).timeExpireDate;
+      // Timeinterval in which Invoice Related Date is purged from the memory
+      // in milliseconds
+      const invoiceExpiry =
+        lightningPayReq.decode(client.paymentDetails.payment_request)
+          .timeExpireDate * 1000;
       // Remove Invoice as soon as it is expired
       return currentTime - invoiceExpiry > 0;
     });
