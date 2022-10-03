@@ -543,7 +543,7 @@ function App() {
                       <Form.Control
                         disabled
                         value={server}
-                        placeholder="Tunnelsats Server"
+                        placeholder="Tunnel⚡️Sats Server"
                         onChange={handleChangeServer}
                         type="text"
                       />
@@ -553,7 +553,7 @@ function App() {
                       <Form.Control
                         enabled
                         value={pubkey}
-                        placeholder="Wireguard Pubkey (base64 encoded)"
+                        placeholder="WireGuard Pubkey (base64 encoded)"
                         isValid={valid}
                         onChange={handleChangePubkey}
                       />

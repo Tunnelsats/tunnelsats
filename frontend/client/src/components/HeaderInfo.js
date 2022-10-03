@@ -16,9 +16,9 @@ const HeaderInfo = (props) => {
           mode (Clearnet & Tor) and offers paid VPN servers on various
           continents for fixed terms. Our secured and LN-only configured VPNs
           support port-forwarding to connect with other lightning nodes.
-          <br></br>
-          <br></br>
-          <b>How Tunnel⚡️Sats works</b>
+        </p>
+        <p>
+          <b className="price">How Tunnel⚡️Sats works</b>
           <br></br>Select a preferred region, timeframe and pay the invoice via
           lightning to receive a WireGuard configuration file. Please follow the
           detailed installation instructions described on the TunnelSats{" "}
@@ -40,27 +40,27 @@ const HeaderInfo = (props) => {
           pages.
         </p>
         <hr />
-        <p>Lightning Node Statistics</p>
+        <p className="price"><strong>Lightning Node Statistics</strong></p>
         <Row>
           <Col>
             <TbSum size={20} title="total" />
             <br />
-            <CountUp end={props.stats[0]} duration={4.0} />
+            <CountUp end={props.stats[0]} duration={4.0} className="price" />
           </Col>
           <Col>
             <FaNetworkWired size={20} title="clearnet" />
             <br />
-            <CountUp end={props.stats[1]} duration={3.0} />
+            <CountUp end={props.stats[1]} duration={3.0} className="price" />
           </Col>
           <Col>
             <IoGitNetworkSharp size={20} title="hybrid" />
             <br />
-            <CountUp end={props.stats[2]} duration={2.5} />
+            <CountUp end={props.stats[2]} duration={2.5} className="price" />
           </Col>
           <Col>
             <SiTorproject size={20} title="Tor" />
             <br />
-            <CountUp end={props.stats[3]} duration={3.5}/>
+            <CountUp end={props.stats[3]} duration={3.5} className="price" />
           </Col>
         </Row>
         {/*
