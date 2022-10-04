@@ -330,6 +330,7 @@ Table = off\n
 \n
 PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
 PostUp = ip rule add from all table main suppress_prefixlength 0\n
+PostUp = ip rule add from all fwmark 0x1111 table main \n
 PostUp = ip route add blackhole default metric 3 table 51820\n
 PostUp = ip route add default dev %i metric 2 table 51820\n
 PostUp = ip route add  10.9.0.0/24 dev %i  proto kernel scope link; ping -c1 10.9.0.1\n
@@ -340,6 +341,7 @@ PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
 \n
 PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
 PostDown = ip rule del from all table  main suppress_prefixlength 0\n
+PostDown = ip rule del from all fwmark 0x1111 table main \n
 PostDown = ip route flush table 51820\n
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
 "
@@ -358,7 +360,7 @@ PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
 PostUp = nft add table ip %i\n
 PostUp = nft add chain ip %i prerouting '{type filter hook prerouting priority mangle -1; policy accept;}'; nft add rule ip %i prerouting meta mark set ct mark\n
 PostUp = nft add chain ip %i mangle '{type route hook output priority mangle -1 ; policy accept;}'; nft add rule ip %i mangle tcp sport != { 8080, 10009 } meta mark != 0x3333 meta cgroup 1118498 meta mark set 0xdeadbeef\n
-PostUp = nft add chain ip %i nat'{type nat hook postrouting priority srcnat -1 ; policy accept;}'; nft insert rule ip %i nat fib saddr type != local oif != %i ct mark 0xdeadbeef drop;nft add rule ip %i nat oif != \"lo\" ct mark 0xdeadbeef masquerade\n
+PostUp = nft add chain ip %i nat'{type nat hook postrouting priority srcnat -1 ; policy accept;}'; nft insert rule ip %i nat fib daddr type != local oif != %i ct mark 0xdeadbeef drop;nft add rule ip %i nat oif != \"lo\" ct mark 0xdeadbeef masquerade\n
 PostUp = nft add chain ip %i postroutingmangle'{type filter hook postrouting -1 priority mangle; policy accept;}'; nft add rule ip %i postroutingmangle meta mark 0xdeadbeef ct mark set meta mark\n
 PostUp = nft add chain ip %i input'{type filter hook input priority filter -1; policy accept;}'; nft add rule ip %i input iifname %i  ct state established,related counter accept; nft add rule ip %i input iifname %i tcp dport != 9735 counter drop; nft add rule ip %i input iifname %i udp dport != 9735 counter drop\n
 
@@ -750,7 +752,7 @@ table ip tunnelsatsv2 {
   #block traffic from lighting containers
   chain forward {
     type filter hook forward priority filter -1; policy accept;
-    oifname ${mainif} ip daddr != ${localsubnet} ip saddr @killswitch_tunnelsats counter  drop
+    oifname ${mainif} ip daddr != ${localsubnet} ip saddr @killswitch_tunnelsats  meta mark != 0x00001111 counter  drop
   }
   #restrict traffic from the tunnelsats network other than the lightning traffic
   chain input {
@@ -759,6 +761,13 @@ table ip tunnelsatsv2 {
     iifname tunnelsatsv2   tcp dport != 9735 counter drop 
     iifname tunnelsatsv2   udp dport != 9735 counter drop 
   }
+
+  #Allow Access via tailscale/zerotier
+  	chain prerouting { 
+		type filter hook prerouting priority dstnat - 10; policy accept;
+		ip saddr ${dockertunnelsatsip} tcp sport { 8080, 10009 } fib daddr type != local meta mark set 0x00001111 counter
+	}
+
 }" >/etc/nftables.conf
 
     # check application
