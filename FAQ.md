@@ -6,9 +6,9 @@
 - [Is your service reliable?](#is-your-service-reliable)
 - [What services are used?](#what-services-are-used)
 - [What about data storage and privacy?](#what-about-data-storage-and-privacy)
+- [Do you store my data? If so, which one and how do you use it?](#do-you-store-my-data-if-so-which-one-and-how-do-you-use-it)
 - [Is there a data transfer limit?](#is-there-a-data-transfer-limit)
 - [Which setups are supported?](#which-setups-are-supported)
-- [Do you store my data? If so, which one and how do you use it?](#do-you-store-my-data-if-so-which-one-and-how-do-you-use-it)
 - [What options do I have if I'm not happy?](#what-options-do-i-have-if-im-not-happy)
 - [How can I extend my subscription?](#how-can-i-extend-my-subscription)
 - [Are you offering any discounts?](#are-you-offering-any-discounts)
@@ -25,6 +25,7 @@
 - [Tuning Tor](#tuning-tor)
 - [What does v2 stand for?](#what-does-v2-stand-for)
 - [Running tunnelsatsv2 and mullvad in parallel?](#running-tunnelsatsv2-and-mullvad-in-parallel)
+- [Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?](#am-i-still-able-to-connect-to-grpc-or-rest-via-tailscale-zerotier)
 - [Do you offer full-service VPNs too?](#do-you-offer-full-service-vpns-too)
 - [Who built this?](#who-built-this)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
@@ -66,6 +67,13 @@ On the website, no cookies and only first half of IP addresses is stored in our 
 
 <br />
 
+### Do you store my data? If so, which one and how do you use it?
+We don't log IPs in our webserver access data. We also offer an .onion website to allow for even greater anonymity: [http://tunnelpasz3fpxhuw6obb5tpuqkxmcmvqh7asx5vkqfwe7ix74ry22ad.onion](http://tunnelpasz3fpxhuw6obb5tpuqkxmcmvqh7asx5vkqfwe7ix74ry22ad.onion)
+
+We don't store packets or logfiles from or to your node once the tunnel is established. What we do store: We store the payment hash as accounting confirmation in LNBits. We do have to keep your node's IP address in memory for the tunnel connection to stay alive, which will be discarded once you disconnect. Hence it's extremely important to save your WireGuard configuration file because there is no way for us to re-retrieve that information.
+
+<br/>
+
 ### Is there a data transfer limit?
 Currently, 100GB per month are being offered. This should be enough traffic even for bigger nodes with lots of channels.
 
@@ -83,13 +91,6 @@ At present we successfully tested the following setups:
 For other setups please get back to us on Telegram to discuss if it's viable to go with TunnelSats.
 
 <br />
-
-### Do you store my data? If so, which one and how do you use it?
-We don't log IPs in our webserver access data. We also offer an .onion website to allow for even greater anonymity: [http://tunnelpasz3fpxhuw6obb5tpuqkxmcmvqh7asx5vkqfwe7ix74ry22ad.onion](http://tunnelpasz3fpxhuw6obb5tpuqkxmcmvqh7asx5vkqfwe7ix74ry22ad.onion)
-
-We don't store packets or logfiles from or to your node once the tunnel is established. What we do store: We store the payment hash as accounting confirmation in LNBits. We do have to keep your node's IP address in memory for the tunnel connection to stay alive, which will be discarded once you disconnect. Hence it's extremely important to save your WireGuard configuration file because there is no way for us to re-retrieve that information.
-
-<br/>
 
 ### What options do I have if I'm not happy?
 If you experience issues, please contact us and let us know what issues you're encountering. We are approachable and can discuss whatever is bugging you and see how we can find a solution.
@@ -234,6 +235,11 @@ table inet excludeTraffic {
 Replace the ip_of_tunnelsats_vpn with the ip of the related tunnelsats vpn server and flush this file with `sudo nft -f exclude.rules`. Now you should be able to run mullvad and TunnelSats in parallel.
 
 <br/>
+
+### Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?
+As of commit [24f0f3c](https://github.com/blckbx/tunnelsats/commit/24f0f3c969cac04059aa8b8bfe1be3add08ae4bb) gRPC and Rest interfaces (ports 10009 and 8080) are no longer tunneled by TunnelSats. This means you can access these ports and tunnel them via ZeroTier or Tailscale additionally. This solution works for Docker (e.g. Umbrel) and non-Docker (e.g. RaspiBlitz) setups. In case you got a subscription before this change was introduced, just get and run the latest setup script again. Installation steps are any different than setting it up without TunnelSats.
+
+<br />
 
 ### Do you offer full-service VPNs too?
 In short: No. Currently we are specializing VPN usage for the sole purpose of lightning node running. If you are looking for a privacy-preserving, lightning-payment enabled VPN provider, we recommend to take a look at [LNVPN.net](https://lnvpn.net).
