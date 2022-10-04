@@ -40,7 +40,8 @@ const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT);
 const DEBUG = false;
 
 // WebSocket
-var socket = io.connect(REACT_APP_SOCKETIO);
+//var socket = io.connect(REACT_APP_SOCKETIO);
+var socket = io.connect("http://localhost:2000");
 
 // Consts
 var emailAddress;
@@ -109,6 +110,9 @@ function App() {
   // node stats from mempool.space
   const [nodeStats, setNodeStats] = useState([0, 0, 0, 0]);
 
+  // github last commit hash
+  const [commitHash, setCommitHash] = useState("");
+
   //Successful payment alert
   const renderAlert = (show) => {
     setPaymentAlert(show);
@@ -141,6 +145,9 @@ function App() {
 
     // get node stats
     getNodeStats();
+
+    // get latest commit hash
+    getCommitHash();
   });
 
   // get node stats from mempool.space
@@ -193,6 +200,17 @@ function App() {
     DEBUG && console.log(`${getDate()} App.js: server.getPrice(): ${price}`);
     setSatsPerDollar(Math.trunc(Math.round(price)));
     setSpinner(false);
+  });
+
+  // get latest git commit hash
+  const getCommitHash = () => {
+    socket.removeAllListeners("getCommitHash").emit("getCommitHash");
+  };
+
+  socket.off("receiveCommitHash").on("receiveCommitHash", (hash) => {
+    DEBUG &&
+      console.log(`${getDate()} App.js: server.getCommitHash(): ${hash}`);
+    setCommitHash(hash);
   });
 
   // check invoice
@@ -508,6 +526,15 @@ function App() {
             </Nav>
             */}
           </Nav>
+          <Nav className="mr-right">
+            <Nav.Link
+              href="https://github.com/blckbx/tunnelsats"
+              target="_blank"
+              rel="noreferrer"
+            >
+              latest commit: {commitHash.substring(0, 7)}
+            </Nav.Link>
+          </Nav>
         </Navbar>
       </Container>
 
@@ -647,6 +674,8 @@ function App() {
                       }
                     </div>
                   </Collapse>
+
+                  {/* renew update button */}
                   <div className="main-buttons">
                     <Button
                       variant="outline-warning"
@@ -674,6 +703,8 @@ function App() {
                     </Button>
                   </div>
                 </Form>
+
+                {/* renew invoice modal */}
                 <RenewInvoiceModal
                   show={visibleInvoiceModal}
                   showSpinner={showSpinner}

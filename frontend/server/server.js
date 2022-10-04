@@ -52,6 +52,9 @@ const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 8.5;
 const REACT_APP_SIX_MONTHS = process.env.REACT_APP_SIX_MONTHS || 16.0;
 const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 28.5;
 
+// fetch latest git commit hash
+const URL_GIT_COMMIT_HASH = process.env.URL_GIT_COMMIT_HASH || "";
+
 // Cleaning Ram from old PaymentRequest data
 
 const intervalId = setInterval(function () {
@@ -497,21 +500,40 @@ io.on("connection", (socket) => {
   });
   */
 
+  // send mail
   socket.on("sendEmail", (emailAddress, configData, date) => {
     sendEmail(emailAddress, configData, date).then((result) =>
       console.log(result)
     );
   });
 
+  // getPrice
   socket.on("getPrice", () => {
     logDim(`getPrice() id: ${socket.id}`);
     getPrice()
-      .then((result) => io.to(socket.id).emit("receivePrice", result))
+      .then((result) => { 
+        io.to(socket.id).emit("receivePrice", result);
+        logDim(`getPrice result: ${result}`);
+      })
       .catch((error) => {
         return error;
       });
   });
 
+  // getCommitHash
+  socket.on("getCommitHash", () => {
+    logDim(`getCommitHash() id: ${socket.id}`);
+    getCommitHash()
+      .then((result) => { 
+        io.to(socket.id).emit("receiveCommitHash", result);
+        logDim(`getCommitHash() result: ${result}`);
+      })
+      .catch((error) => {
+        return error;
+      });
+  });
+
+  // getNodeStats
   socket.on("getNodeStats", () => {
     logDim(`getNodeStats() id: ${socket.id}`);
     getNodeStats()
@@ -524,6 +546,7 @@ io.on("connection", (socket) => {
       });
   });
 
+  // disconnect
   socket.on("disconnect", () => {
     console.log(`User disconnected with ID: ${socket.id} `);
   });
@@ -669,6 +692,27 @@ async function getNodeStats() {
     })
     .catch((error) => {
       return error;
+    });
+}
+
+// Get latest commit hash 
+async function getCommitHash() {
+  return axios({
+    method: "get",
+    url: URL_GIT_COMMIT_HASH,
+    headers: { 
+      "accept": "application/vnd.github.VERSION.sha",
+    }
+  })
+    .then(function (response) {
+      if (!isEmpty(response.data)) {
+        //logDim(`getCommitHash(): result ${response.data}`)
+        return response.data;
+      }
+    })
+    .catch((error) => {
+      logDim(`Error - getCommitHash() ${error}`);
+      return null;
     });
 }
 
