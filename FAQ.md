@@ -237,7 +237,7 @@ Replace the ip_of_tunnelsats_vpn with the ip of the related tunnelsats vpn serve
 <br/>
 
 ### Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?
-As of commit [24f0f3c](https://github.com/blckbx/tunnelsats/commit/24f0f3c969cac04059aa8b8bfe1be3add08ae4bb) gRPC and Rest interfaces (ports 10009 and 8080) are no longer tunneled by TunnelSats. This means you can access these ports and tunnel them via ZeroTier or Tailscale additionally. This solution works for Docker (e.g. Umbrel) and non-Docker (e.g. RaspiBlitz) setups. In case you got a subscription before this change was introduced, just get and run the latest setup script again. Installation steps are any different than setting it up without TunnelSats.
+As of commit [24f0f3c](https://github.com/blckbx/tunnelsats/commit/24f0f3c969cac04059aa8b8bfe1be3add08ae4bb) gRPC and Rest interfaces (ports 10009 and 8080) are no longer tunneled by TunnelSats. This means you can access these ports and tunnel them via ZeroTier or Tailscale additionally. This solution works for Docker (e.g. Umbrel) and non-Docker (e.g. RaspiBlitz) setups. In case you got a subscription before this change was introduced, just get and run the latest setup script again. Installation steps are no different than setting it up without TunnelSats.
 
 <br />
 
