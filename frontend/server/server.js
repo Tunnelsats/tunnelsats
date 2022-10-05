@@ -511,7 +511,7 @@ io.on("connection", (socket) => {
   socket.on("getPrice", () => {
     logDim(`getPrice() id: ${socket.id}`);
     getPrice()
-      .then((result) => { 
+      .then((result) => {
         io.to(socket.id).emit("receivePrice", result);
         logDim(`getPrice result: ${result}`);
       })
@@ -524,7 +524,7 @@ io.on("connection", (socket) => {
   socket.on("getCommitHash", () => {
     logDim(`getCommitHash() id: ${socket.id}`);
     getCommitHash()
-      .then((result) => { 
+      .then((result) => {
         io.to(socket.id).emit("receiveCommitHash", result);
         logDim(`getCommitHash() result: ${result}`);
       })
@@ -695,14 +695,14 @@ async function getNodeStats() {
     });
 }
 
-// Get latest commit hash 
+// Get latest commit hash
 async function getCommitHash() {
   return axios({
     method: "get",
     url: URL_GIT_COMMIT_HASH,
-    headers: { 
-      "accept": "application/vnd.github.VERSION.sha",
-    }
+    headers: {
+      Accept: "application/vnd.github.VERSION.sha",
+    },
   })
     .then(function (response) {
       if (!isEmpty(response.data)) {
