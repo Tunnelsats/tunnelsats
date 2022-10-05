@@ -532,7 +532,7 @@ function App() {
               target="_blank"
               rel="noreferrer"
             >
-              latest commit: {commitHash.substring(0, 7)}
+              latest commit: {commitHash?.substring(0, 7)}
             </Nav.Link>
           </Nav>
         </Navbar>
@@ -674,7 +674,6 @@ function App() {
                       }
                     </div>
                   </Collapse>
-
                   {/* renew update button */}
                   <div className="main-buttons">
                     <Button
