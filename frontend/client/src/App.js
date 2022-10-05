@@ -527,7 +527,7 @@ function App() {
           </Nav>
           <Nav className="mr-right">
             <Nav.Link
-              href="https://github.com/blckbx/tunnelsats"
+              href={`https://github.com/blckbx/tunnelsats/commit/${commitHash}`}
               target="_blank"
               rel="noreferrer"
             >
@@ -579,7 +579,7 @@ function App() {
                       <Form.Control
                         enabled
                         value={pubkey}
-                        placeholder="WireGuard Pubkey (base64 encoded)"
+                        placeholder="WireGuard public key (base64 encoded)"
                         isValid={valid}
                         onChange={handleChangePubkey}
                       />
