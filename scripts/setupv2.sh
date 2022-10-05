@@ -1123,16 +1123,16 @@ echo
 
 if [ $isDocker -eq 0 ]; then
   serviceName="${lnImplementation}"
-  if [ "${lnImplementation,,}" == "cln" ]; then
+  if [ "${lnImplementation}" == "cln" ]; then
     serviceName="lightningd"
   fi
   echo "Restart ${lnImplementation} afterwards via the command:
     sudo systemctl restart ${serviceName}.service"
   echo
 else
-  echo "Restart ${lnImplementation} on umbrel afterwards via the command:
-    sudo ${HOME}/umbrel/scripts/stop (umbrel)
-    sudo ${HOME}/umbrel/scripts/start (umbrel)"
+  echo "Restart ${lnImplementation} on Umbrel afterwards via the command:
+    sudo ~/umbrel/scripts/stop
+    sudo ~/umbrel/scripts/start"
   echo
 fi
 
