@@ -40,8 +40,7 @@ const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT);
 const DEBUG = false;
 
 // WebSocket
-//var socket = io.connect(REACT_APP_SOCKETIO);
-var socket = io.connect("http://localhost:2000");
+var socket = io.connect(REACT_APP_SOCKETIO);
 
 // Consts
 var emailAddress;
