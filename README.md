@@ -21,6 +21,9 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 - [Enabling hybrid mode](#enabling-hybrid-mode)
   - [LND](#lnd)
   - [CLN](#cln)
+    - [RaspiBolt Setup](#raspibolt-setup)
+    - [RaspiBlitz Setup](#raspiblitz-setup)
+    - [Umbrel Setup](#umbrel-setup)
 - [Renew Subscription](#renew-subscription)
 - [Uninstall](#uninstall)
 - [Deep Dive](#deep-dive)
@@ -145,9 +148,9 @@ Running LND only requires a few parameters to be checked and set to activate hyb
 
 ### CLN
 
-With CLN it's a bit trickier. Most node setups like Umbrel, RaspiBolt, RaspiBlitz etc. default CLN's daemon port to `9736`. So in order to route CLN clearnet over VPN, we need to change CLN's default port to `9735`. The following shows how to edit non-docker CLN configuration:
+With CLN it's a bit trickier. Most node setups like Umbrel, RaspiBolt, RaspiBlitz etc. default CLN's daemon port to `9736`. So in order to route CLN clearnet over VPN, we need to change CLN's default port to `9735`. Locate data directory of your CLN installation. By default CLN's configuration is stored in a file named `config`. Edit the file and look out for network settings section.
 
-Locate data directory of your CLN installation. By default CLN's configuration is stored in a file named `config`. Edit the file and look out for network settings section. Configured to hybrid it should look like this:
+#### RaspiBolt Setup
 
   ```ini
   # Tor
@@ -159,6 +162,22 @@ Locate data directory of your CLN installation. By default CLN's configuration i
   bind-addr=0.0.0.0:9735
   announce-addr={vpnDNS}:{vpnPort}
   ```
+
+#### RaspiBlitz Setup
+
+  ```ini
+  # Tor
+  addr=statictor:127.0.0.1:9051/torport=9736
+  proxy=127.0.0.1:9050
+  bind-addr=127.0.0.1:9736
+  always-use-proxy=false  
+
+  # Clearnet
+  bind-addr=0.0.0.0:9735
+  announce-addr={vpnDNS}:{vpnPort}
+  ```
+
+#### Umbrel Setup
 
 On docker-based systems this might look very different. The following shows how to enable hybrid on Umbrel v0.5+:
 
