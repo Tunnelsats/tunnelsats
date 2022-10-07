@@ -324,7 +324,7 @@ sleep 2
 echo "Copy wireguard conf file to /etc/wireguard and apply network rules..."
 inputDocker="\n
 [Interface]\n
-DNS = 8.8.8.8
+DNS = 8.8.8.8\n
 FwMark = 0x3333\n
 Table = off\n
 \n
