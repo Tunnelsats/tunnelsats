@@ -4,10 +4,10 @@ html {
 }
 body {
   background-image: url("media/background-l-middle2.jpg");
-  background-size: 100% auto;
+  background-size: 1920px 1080px;
   background-repeat: no-repeat;
   background-color: black;
-  background-position: center;  
+  background-position: 50% 50%;
 
   height: 100vh;
   align-items: center;
