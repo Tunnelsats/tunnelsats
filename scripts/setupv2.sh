@@ -116,7 +116,7 @@ done
 # get current directory
 directory=$(dirname -- "$(readlink -fn -- "$0")")
 echo "Looking for WireGuard config file..."
-if [ ! -f "$directory"/tunnelsatsv2.conf ] || [ "$(grep -c "Endpoint" $directory/tunnelsatsv2.con)" = 0 ]; then
+if [ ! -f "$directory"/tunnelsatsv2.conf ] || [ "$(grep -c "Endpoint" $directory/tunnelsatsv2.conf)" = 0 ]; then
   echo "> ERR: tunnelsatsv2.conf not found or missing Endpoint."
   echo "> Please place it in this script's location and check original tunnelsatsv2 for Endpoint entry"
   echo
