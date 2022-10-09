@@ -41,6 +41,7 @@ h1 {
   font-family: arista;
 }
 
+/* World Map */
 .map-selected {
   fill: #ffc700;
 }
@@ -60,6 +61,12 @@ h1 {
   cursor: pointer;
   fill: #ffc700;
 }
+
+.customPopover {
+  border-color: #ffc700;
+  border-width: 1px;
+}
+
 
 a:link {
   color: #ffc700;
