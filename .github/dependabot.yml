@@ -4,10 +4,9 @@
 # https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
 
 
-# Configuration for npm
+# Configuration for npm frontend
 - package-ecosystem: "npm"
   directory: "frontend/client/"
-  directory: "frontend/server/"
   schedule:
     interval: "weekly"
   ignore:
@@ -15,3 +14,12 @@
     # Wildcards match zero or more arbitrary characters
     - dependency-name: "react-bootstrap"
     
+# Configuration for npm server
+- package-ecosystem: "npm"
+  directory: "frontend/server/"
+  schedule:
+    interval: "weekly"
+  ignore:
+    # Ignore updates to packages that start with 'aws'
+    # Wildcards match zero or more arbitrary characters
+    - dependency-name: "react-bootstrap"
