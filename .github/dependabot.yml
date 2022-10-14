@@ -6,7 +6,7 @@
 
 # Configuration for npm frontend
 - package-ecosystem: "npm"
-  directory: "frontend/client/"
+  directory: "/frontend/client"
   schedule:
     interval: "weekly"
   ignore:
@@ -16,10 +16,6 @@
     
 # Configuration for npm server
 - package-ecosystem: "npm"
-  directory: "frontend/server/"
+  directory: "/frontend/server"
   schedule:
     interval: "weekly"
-  ignore:
-    # Ignore updates to packages that start with 'aws'
-    # Wildcards match zero or more arbitrary characters
-    - dependency-name: "react-bootstrap"
