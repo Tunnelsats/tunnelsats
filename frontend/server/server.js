@@ -348,32 +348,40 @@ io.on("connection", (socket) => {
     (amount, publicKey, presharedKey, priceDollar, country) => {
       DEBUG && logDim(`getInvoice() called id: ${socket.id}`);
 
-      if (invoiceWGKeysMap.length <= MAXINVOICES) {
-        getInvoice(amount, priceDollar, process.env.URL_WEBHOOK)
-          .then((result) => {
-            socket.emit("lnbitsInvoice", result);
+      if (
+        !!amount &&
+        !!publicKey &&
+        !!presharedKey &&
+        !!priceDollar &&
+        !!country
+      ) {
+        if (invoiceWGKeysMap.length <= MAXINVOICES) {
+          getInvoice(amount, priceDollar, process.env.URL_WEBHOOK)
+            .then((result) => {
+              socket.emit("lnbitsInvoice", result);
 
-            // Safes the client request related to the socket id including
-            // the payment_hash to later send the config data only to the right client
-            invoiceWGKeysMap.push({
-              paymentDetails: result,
-              publicKey: publicKey,
-              presharedKey: presharedKey,
-              priceDollar: priceDollar,
-              country: country,
-              id: socket.id,
-              amountSats: amount,
-              timestamp: Date.now(),
-              isPaid: false,
-              tag: "New Subscription",
-            });
-            DEBUG && console.log(invoiceWGKeysMap);
-          })
-          .catch((error) => logDim(error.message));
-      } else {
-        logDim(
-          `restrict overall invoices to ${MAXINVOICES} to prevent mem overflow `
-        );
+              // Safes the client request related to the socket id including
+              // the payment_hash to later send the config data only to the right client
+              invoiceWGKeysMap.push({
+                paymentDetails: result,
+                publicKey: publicKey,
+                presharedKey: presharedKey,
+                priceDollar: priceDollar,
+                country: country,
+                id: socket.id,
+                amountSats: amount,
+                timestamp: Date.now(),
+                isPaid: false,
+                tag: "New Subscription",
+              });
+              DEBUG && console.log(invoiceWGKeysMap);
+            })
+            .catch((error) => logDim(error.message));
+        } else {
+          logDim(
+            `restrict overall invoices to ${MAXINVOICES} to prevent mem overflow `
+          );
+        }
       }
     }
   );
@@ -420,12 +428,12 @@ io.on("connection", (socket) => {
                 //if (domain.includes("de1")) {
                 //  socket.emit("receiveKeyLookup", "not-allowed");
                 //} else {
-                  socket.emit("receiveKeyLookup", {
-                    keyID,
-                    subscriptionEnd,
-                    domain,
-                    country,
-                  });
+                socket.emit("receiveKeyLookup", {
+                  keyID,
+                  subscriptionEnd,
+                  domain,
+                  country,
+                });
                 //}
 
                 return true;

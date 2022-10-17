@@ -2,9 +2,7 @@ import React from "react";
 
 const WorldMap = (props) => {
   function onMapClick(area) {
-    if (props.selected === area) {
-      props.onSelect("");
-    } else {
+    if (props.selected !== area) {
       props.onSelect(area);
     }
   }
