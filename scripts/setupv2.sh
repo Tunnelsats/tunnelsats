@@ -731,7 +731,7 @@ if [ $isDocker -eq 1 ]; then
   localsubnet="$(hostname -I | awk '{print $1}' | cut -d"." -f1-3)".0/24
 
   #Get docker umbrel|citadel lnd/cln ip address
-  dockerlndip=$(grep LND_IP "$HOME"/${hostName}/.env 2>/dev/null | cut -d= -f2)
+  dockerlndip=$(grep ^LND_IP "$HOME"/${hostName}/.env 2>/dev/null | cut -d= -f2)
   dockerlndip=${dockerlndip:-"10.21.21.9"}
 
   if [ -d "$HOME"/${hostName}/app-data/core-lightning ]; then
