@@ -51,10 +51,13 @@ done
 
 # Check if docker / non-docker
 isDocker=0
+
+hostName=$(hostname)
+
 while true; do
     read -p "What lightning node package are you running?: 
     1) RaspiBlitz
-    2) Umbrel
+    2) Umbrel | Citadel
     3) myNode
     4) RaspiBolt / Bare Metal
     > " answer
@@ -68,7 +71,7 @@ while true; do
         ;;
 
     2)
-        echo "> Umbrel"
+        echo "> Umbrel | Citadel"
         echo
         isDocker=1
         break
@@ -161,8 +164,8 @@ while true; do
         # modify LND configuration
         path=""
         if [ -f /mnt/hdd/lnd/lnd.conf ]; then path="/mnt/hdd/lnd/lnd.conf"; fi
-        if [ -f "$HOME"/umbrel/lnd/lnd.conf ]; then path="$HOME""/umbrel/lnd/lnd.conf"; fi
-        if [ -f "$HOME"/umbrel/app-data/lightning/data/lnd/lnd.conf ]; then path="$HOME""/umbrel/app-data/lightning/data/lnd/lnd.conf"; fi
+        if [ -f "$HOME"/${hostName}/lnd/lnd.conf ]; then path="$HOME""/${hostName}/lnd/lnd.conf"; fi
+        if [ -f "$HOME"/${hostName}/app-data/lightning/data/lnd/lnd.conf ]; then path="$HOME""/${hostName}/app-data/lightning/data/lnd/lnd.conf"; fi
         if [ -f /data/lnd/lnd.conf ]; then path="/data/lnd/lnd.conf"; fi
         if [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"; fi
         if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
@@ -250,7 +253,7 @@ while true; do
         # modify CLN configuration
         path=""
         if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
-        if [ -f "$HOME"/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config ]; then path="$HOME""/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"; fi
+        if [ -f "$HOME"/${hostName}/app-data/core-lightning/data/lightningd/bitcoin/config ]; then path="$HOME""/${hostName}/app-data/core-lightning/data/lightningd/bitcoin/config"; fi
         if [ -f /data/lightningd/config ]; then path="/data/lightningd/config"; fi
 
         if [ "$path" != "" ]; then
@@ -271,8 +274,8 @@ while true; do
                 fi
             fi
 
-            # Umbrel 0.5+ CLN: restore default configuration
-            if [ "$path" == "$HOME""/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config" ]; then
+            # Umbrel | Citadel 0.5+ CLN: restore default configuration
+            if [ "$path" == "$HOME""/${hostName}/app-data/core-lightning/data/lightningd/bitcoin/config" ]; then
                 deleteBind=$(grep -n "^bind-addr" "$path" | cut -d ':' -f1)
                 if [ "$deleteBind" != "" ]; then
                     sed -i "${deleteBind}d" "$path" >/dev/null
@@ -292,8 +295,8 @@ while true; do
                     echo
                 fi
             fi
-            # Umbrel 0.5+ CLN: restore assigned port
-            if [ "$path" == "$HOME""/umbrel/app-data/core-lightning/exports.sh" ]; then
+            # Umbrel | Citadel  0.5+ CLN: restore assigned port
+            if [ "$path" == "$HOME""/${hostName}/app-data/core-lightning/exports.sh" ]; then
                 getPort=$(grep -n "export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"" | cut -d ':' -f1)
                 if [ "$getPort" != "" ]; then
                     sed -i "s/export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"/export APP_CORE_LIGHTNING_DAEMON_PORT=\"9736\"/g" "$path" >/dev/null
@@ -304,7 +307,7 @@ while true; do
                     echo "> Restoring assigned port failed. Please check ${path} file and set APP_CORE_LIGHTNING_DAEMON_PORT=\"9736\"."
                     echo
                 else
-                    echo "> Umbrel 0.5+ CLN: port assignment successfully restored."
+                    echo "> Umbrel | Citadel 0.5+ CLN: port assignment successfully restored."
                     echo
                 fi
             fi
@@ -453,15 +456,15 @@ fi
 
 sleep 2
 
-# remove killswitch requirement for umbrel startup
-if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf ]; then
+# remove killswitch requirement for umbrel | citadel startup
+if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/${hostName}-startup.service.d/tunnelsats_killswitch.conf ]; then
     echo "Removing tunnelsats_killswitch.conf..."
-    if rm /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf; then
-        # rm -r /etc/systemd/system/umbrel-startup.service.d >/dev/null
-        echo "> /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf  removed"
+    if rm /etc/systemd/system/${hostName}-startup.service.d/tunnelsats_killswitch.conf; then
+        # rm -r /etc/systemd/system/${hostName}-startup.service.d >/dev/null
+        echo "> /etc/systemd/system/${hostName}-startup.service.d/tunnelsats_killswitch.conf  removed"
         echo
     else
-        echo "> ERR: could not remove /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf. Please check manually."
+        echo "> ERR: could not remove /etc/systemd/system/${hostName}-startup.service.d/tunnelsats_killswitch.conf. Please check manually."
         echo
     fi
 fi
@@ -612,8 +615,8 @@ echo
 if [ $isDocker -eq 1 ]; then
     echo "
     Restart lightning container with
-    sudo ~/umbrel/scripts/stop (Umbrel-OS)
-    sudo ~/umbrel/scripts/start (Umbrel-OS)"
+    sudo ${HOME}/${hostName}/scripts/stop (${hostName}-OS)
+    sudo ${HOME}/${hostName}/scripts/start (${hostName}-OS)"
     echo
 else
     echo "

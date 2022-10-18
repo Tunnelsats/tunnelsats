@@ -46,6 +46,7 @@ You also provide better user experience for customers actually using lightning a
 
 ### Why choose Tunnel⚡Sats over other VPN providers?
 
+
 Running a lightning nodes behind a VPN requires a range of features public VPN providers usually do not offer. **Tunnel⚡Sats** is specially designed for the lightning node use case in mind. So we pack up everything that's needed:
 
 - anonymous payment method via Lightning (we don't know the sender of the payment)
@@ -57,6 +58,8 @@ Running a lightning nodes behind a VPN requires a range of features public VPN p
 <br/>
 
 ### Is your service reliable?
+
+We use premium VPS Services with tight SLAs and proven, recorded high uptime (99,99%). We also setup servers across different service providers to allow for switching in case something out of our control happens. We also setup tight monitoring systems for our VMs, with alert mechanisms and coverage by 3 people in operations. That said, we're early in our offering and happily provide regular uptime metrics when we enter beta phase, to provide more objective reliability data here.
 
 We use premium VPS Services with tight SLAs and proven, recorded high uptime (99,99%). We also setup servers across different service providers to allow for switching in case something out of our control happens. We also setup tight monitoring systems for our VMs, with alert mechanisms and coverage by 3 people in operations. That said, we're early in our offering and happily provide regular uptime metrics to provide more objective reliability data here.
 
@@ -95,6 +98,7 @@ At present we successfully tested the following setups:
 
 - RaspiBlitz (LND / CLN) v1.8.0
 - Umbrel-OS (LND)
+- Citadel-OS (LND)
 - Umbrel-OS (CLN not yet recommended or be tech-savvy)
 - myNode (LND) v0.2.x
 - RaspiBolt (LND / CLN) (please see [preconditions](README.md/#preconditions) if your system or architecture differs from RaspiBolt guide)
@@ -178,6 +182,7 @@ LND:
 RaspiBlitz: /mnt/hdd/lnd/lnd.conf
 RaspiBolt: /data/lnd/lnd.conf
 Umbrel: /home/umbrel/umbrel/lnd/lnd.conf
+Citadel: /home/citadel/citadel/lnd/lnd.conf
 Umbrel 0.5+: /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf
 Start9: /embassy-data/package-data/volumes/lnd/data/main/lnd.conf
 myNode: /mnt/hdd/mynode/lnd/lnd.conf
