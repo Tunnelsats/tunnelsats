@@ -54,9 +54,8 @@ while true; do
   read -p "What lightning node package are you running?: 
     1) RaspiBlitz
     2) Umbrel | Citadel
-    3) Citadel
-    4) myNode
-    5) RaspiBolt / Bare Metal
+    3) myNode
+    4) RaspiBolt / Bare Metal
     > " answer
 
   case $answer in
