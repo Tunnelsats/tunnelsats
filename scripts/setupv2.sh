@@ -48,12 +48,15 @@ echo
 isDocker=0
 killswitchRaspi=0
 
+hostName=$(hostname)
+
 while true; do
   read -p "What lightning node package are you running?: 
     1) RaspiBlitz
-    2) Umbrel
-    3) myNode
-    4) RaspiBolt / Bare Metal
+    2) Umbrel | Citadel
+    3) Citadel
+    4) myNode
+    5) RaspiBolt / Bare Metal
     > " answer
 
   case $answer in
@@ -66,7 +69,7 @@ while true; do
     ;;
 
   2)
-    echo "> Umbrel"
+    echo "> Umbrel | Citadel"
     echo
     isDocker=1
     break
@@ -226,7 +229,7 @@ if [ $checkwg -eq 0 ]; then
   else
     # try Debian 10 Buster workaround / myNode
     codename=$(lsb_release -c 2>/dev/null | awk '{print $2}')
-    if [ "$codename" == "buster" ] && [ "$(hostname)" != "umbrel" ]; then
+    if [ "$codename" == "buster" ] && [ $isDocker -ne 1 ]; then
       if apt install -y -t buster-backports wireguard >/dev/null; then
         echo "> wireguard installed"
         echo
@@ -270,8 +273,7 @@ if [ $isDocker -eq 1 ]; then
 
   echo "Creating TunnelSats Docker Network..."
   checkdockernetwork=$(docker network ls 2>/dev/null | grep -c "docker-tunnelsats")
-  #the subnet needs a bigger subnetmask (25) than the normal umbrel_mainet subnetmask of 24
-  #otherwise the network will not be chosen as the gateway for outside connection
+
   dockersubnet="10.9.9.0/25"
 
   if [ $checkdockernetwork -eq 0 ]; then
@@ -729,12 +731,12 @@ if [ $isDocker -eq 1 ]; then
   mainif=$(ip route | grep default | cut -d' ' -f5)
   localsubnet="$(hostname -I | awk '{print $1}' | cut -d"." -f1-3)".0/24
 
-  #Get docker umbrel lnd/cln ip address
-  dockerlndip=$(grep LND_IP "$HOME"/umbrel/.env 2>/dev/null | cut -d= -f2)
+  #Get docker umbrel|citadel lnd/cln ip address
+  dockerlndip=$(grep LND_IP "$HOME"/${hostName}/.env 2>/dev/null | cut -d= -f2)
   dockerlndip=${dockerlndip:-"10.21.21.9"}
 
-  if [ -d "$HOME"/umbrel/app-data/core-lightning ]; then
-    dockerclnip=$(grep APP_CORE_LIGHTNING_DAEMON_IP "$HOME"/umbrel/app-data/core-lightning/exports.sh | cut -d "\"" -f2)
+  if [ -d "$HOME"/${hostName}/app-data/core-lightning ]; then
+    dockerclnip=$(grep APP_CORE_LIGHTNING_DAEMON_IP "$HOME"/${hostName}/app-data/core-lightning/exports.sh | cut -d "\"" -f2)
   else
     dockerclnip=""
   fi
@@ -808,16 +810,16 @@ table ip tunnelsatsv2 {
   systemctl daemon-reload >/dev/null
   if systemctl enable nftables >/dev/null && systemctl start nftables >/dev/null; then
 
-    if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
-      mkdir /etc/systemd/system/umbrel-startup.service.d >/dev/null
+    if [ ! -d /etc/systemd/system/${hostName}-startup.service.d ]; then
+      mkdir /etc/systemd/system/${hostName}-startup.service.d >/dev/null
     fi
 
     echo "[Unit]
-Description=Forcing wg-quick to start after umbrel startup scripts
-# Make sure kill switch is in place before starting umbrel containers
+Description=Forcing wg-quick to start after ${hostName} startup scripts
+# Make sure kill switch is in place before starting ${hostName} containers
 Requires=nftables.service
 After=nftables.service
-" >/etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf
+" >/etc/systemd/system/${hostName}-startup.service.d/tunnelsats_killswitch.conf
 
     #Start nftables service
     systemctl daemon-reload >/dev/null
@@ -968,15 +970,15 @@ echo "Initializing the service..."
 systemctl daemon-reload >/dev/null
 if systemctl enable wg-quick@tunnelsatsv2 >/dev/null; then
 
-  if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service ]; then
+  if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/${hostName}-startup.service ]; then
     if [ ! -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d ]; then
       mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d >/dev/null
     fi
     echo "[Unit]
-Description=Forcing wg-quick to start after umbrel startup scripts
-# Make sure to start vpn after umbrel start up to have lnd containers available
-Requires=umbrel-startup.service
-After=umbrel-startup.service
+Description=Forcing wg-quick to start after ${hostName} startup scripts
+# Make sure to start vpn after $hostnamme start up to have lnd containers available
+Requires=${hostName}-startup.service
+After=${hostName}-startup.service
 " >/etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf
   fi
 
@@ -1155,16 +1157,16 @@ settings could already be part of your configuration file
 and duplicated lines could lead to errors.
 
 ###############################################################################
-Umbrel 0.5+:
+Umbrel|Citadel 0.5+:
 create CLN config file 'config':
-  $ nano ${HOME}/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config 
+  $ nano ${HOME}/${hostName}/app-data/core-lightning/data/lightningd/bitcoin/config 
 insert:
   bind-addr=10.9.9.9:9735
   announce-addr=${vpnExternalDNS}:${vpnExternalPort}
   always-use-proxy=false
 
 edit 'export.sh':
-  $ nano ${HOME}/umbrel/app-data/core-lightning/export.sh
+  $ nano ${HOME}/${hostName}/app-data/core-lightning/export.sh
 change assigned port of APP_CORE_LIGHTNING_DAEMON_PORT from 9736 to 9735:
   export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"
 
@@ -1203,9 +1205,9 @@ if [ $isDocker -eq 0 ]; then
     sudo systemctl restart ${serviceName}.service"
   echo
 else
-  echo "Restart ${lnImplementation} on Umbrel afterwards via the command:
-    sudo ~/umbrel/scripts/stop
-    sudo ~/umbrel/scripts/start"
+  echo "Restart ${lnImplementation} on Umbrel | Citadel afterwards via the command:
+    sudo ~/${hostName}/scripts/stop
+    sudo ~/${hostName}/scripts/start"
   echo
 fi
 
