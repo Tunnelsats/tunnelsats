@@ -584,9 +584,9 @@ const getServer = (country) => {
   if (country == "oc") {
     server = process.env.IP_OCEANIA;
   }
-  if (country == "ca") {
-    server = process.env.IP_CANADA;
-  }
+  //if (country == "ca") {
+  //  server = process.env.IP_CANADA;
+  //}
   return server;
 };
 
