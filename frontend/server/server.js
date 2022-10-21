@@ -782,8 +782,8 @@ async function sendEmail(emailAddress, configData, date) {
   const msg = {
     to: emailAddress,
     from: "payment@tunnelsats.com",
-    subject: `Your Tunnel Sats VPN config file for Wireguard. Valid until: ${date.toString()}`,
-    text: `Thank you for using Tunnel Sats!\n\nFind your personal config file attached. Don't lose it!\n\nYour subscription is valid until: ${date.toString()}`,
+    subject: `Your Tunnel Sats VPN config file for Wireguard`,
+    text: `Thank you for using Tunnel Sats!\n\nFind your personal config file attached. Don't lose it!\n\nFind your expiration date and wireguard public key within the config file (#ValidUntil).`,
     attachments: [
       {
         content: configData,
