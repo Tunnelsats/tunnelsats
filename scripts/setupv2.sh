@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=26
+patch=27
 
 #Helper
 function valid_ipv4() {
@@ -548,8 +548,6 @@ else
   echo \"> \${count} Process(es) successfully excluded\"
 fi
 " >/etc/wireguard/tunnelsats-splitting-processes.sh
-
-  chmod +x /etc/wireguard/tunnelsats-splitting-processes.sh
 
   if [ -f /etc/wireguard/tunnelsats-splitting-processes.sh ]; then
     echo "> /etc/wireguard/tunnelsats-splitting-processes.sh created"
@@ -1181,7 +1179,6 @@ Native CLN installation (config file):
   # VPN
   bind-addr=0.0.0.0:9735
   announce-addr=${vpnExternalDNS}:${vpnExternalPort}
-  always-use-proxy=false
 ###############################################################################"
   echo
 
