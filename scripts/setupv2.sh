@@ -78,7 +78,8 @@ while true; do
     dockerScriptPrefix="umbrel"
     dockerMainDir=$(find / -maxdepth 5 -not -path "/mnt/*" -type f -name ".env" -print 2>/dev/null | xargs -r -I {} dirname {})
     if [[ $dockerMainDir =~ [[:space:]] ]]; then
-      echo "> umbrel path is not ambigious"
+      echo "> umbrel main path is ambigious"
+      echo "> error: $dockerMainDir (contains more than one)"
       echo "> your umbrel setup is not compatibel with tunnelsats"
       exit 1
     fi
@@ -107,7 +108,8 @@ while true; do
     dockerScriptPrefix="citadel"
     dockerMainDir=$(find / -maxdepth 5 -not -path "/mnt/*" -type f -name ".env" -print 2>/dev/null | xargs -r -I {} dirname {})
     if [[ $dockerMainDir =~ [[:space:]] ]]; then
-      echo "> citadel path is not ambigious"
+      echo "> citadel main path is ambigious"
+      echo "> error: $dockerMainDir (contains more than one)"
       echo "> your citadel setup is not compatibel with tunnelsats"
       exit 1
     fi
