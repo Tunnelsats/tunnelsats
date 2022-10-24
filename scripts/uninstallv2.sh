@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=8
+patch=9
 
 # check if sudo
 if [ "$EUID" -ne 0 ]; then
@@ -307,7 +307,7 @@ while true; do
                     echo "> Restoring assigned port failed. Please check ${path} file and set APP_CORE_LIGHTNING_DAEMON_PORT=\"9736\"."
                     echo
                 else
-                    echo "> Umbrel | Citadel 0.5+ CLN: port assignment successfully restored."
+                    echo "> Umbrel | Citadel CLN: port assignment successfully restored."
                     echo
                 fi
             fi
