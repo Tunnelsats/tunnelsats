@@ -98,7 +98,7 @@ At present we successfully tested the following setups:
 
 - RaspiBlitz (LND / CLN) v1.8.0
 - Umbrel-OS (LND)
-- Citadel-OS (LND)
+- Citadel-OS (LND) (beta)
 - Umbrel-OS (CLN not yet recommended or be tech-savvy)
 - myNode (LND) v0.2.x
 - RaspiBolt (LND / CLN) (please see [preconditions](README.md/#preconditions) if your system or architecture differs from RaspiBolt guide)

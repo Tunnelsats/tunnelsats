@@ -274,7 +274,7 @@ while true; do
                 fi
             fi
 
-            # Umbrel | Citadel 0.5+ CLN: restore default configuration
+            # Umbrel | Citadel CLN: restore default configuration
             if [ "$path" == "$HOME""/${hostName}/app-data/core-lightning/data/lightningd/bitcoin/config" ]; then
                 deleteBind=$(grep -n "^bind-addr" "$path" | cut -d ':' -f1)
                 if [ "$deleteBind" != "" ]; then
@@ -295,7 +295,7 @@ while true; do
                     echo
                 fi
             fi
-            # Umbrel | Citadel  0.5+ CLN: restore assigned port
+            # Umbrel | Citadel CLN: restore assigned port
             if [ "$path" == "$HOME""/${hostName}/app-data/core-lightning/exports.sh" ]; then
                 getPort=$(grep -n "export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"" | cut -d ':' -f1)
                 if [ "$getPort" != "" ]; then
