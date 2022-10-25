@@ -196,8 +196,8 @@ while true; do
         if [ -f /data/lnd/lnd.conf ]; then path="/data/lnd/lnd.conf"; fi
         if [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"; fi
         if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
-        if [ -f ${dockerMainDir}/templates/lnd-sample.conf ] && [ $dockerScriptPrefix == "citadel" ]; then path="${dockerMainDir}/templates/lnd-sample.conf"; fi
 
+        # delete tor.skip entry
         if [ "$path" != "" ]; then
             check=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
             if [ $check -ne 0 ]; then
@@ -207,7 +207,7 @@ while true; do
                 # recheck
                 checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
                 if [ $checkAgain -ne 0 ]; then
-                    echo "> CAUTION: Could not deactivate hybrid mode!! Please check your CLN configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!"
+                    echo "> CAUTION: Could not deactivate hybrid mode!! Please check your LND configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!"
                     echo
                 else
                     echo "> Hybrid Mode successfully deactivated"
@@ -215,6 +215,29 @@ while true; do
                 fi
             fi
         fi
+
+        # citadel: extra round for lnd-sample.conf template
+        if [ $dockerScriptPrefix == "citadel" ]; then
+            if [ -f ${dockerMainDir}/templates/lnd-sample.conf ]; then
+                path="${dockerMainDir}/templates/lnd-sample.conf"
+                check=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
+                if [ $check -ne 0 ]; then
+
+                    sed -i "/tor.skip-proxy-for-clearnet-targets/d" "$path"
+
+                    # recheck
+                    checkAgain=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
+                    if [ $checkAgain -ne 0 ]; then
+                        echo "> CAUTION: Could not deactivate hybrid mode!! Please check your LND configuration file and set all 'tor.skip-proxy-for-clearnet-targets=true' to 'false' before restarting!!"
+                        echo
+                    else
+                        echo "> Hybrid Mode successfully deactivated"
+                        echo
+                    fi
+                fi                
+            fi
+        fi
+
         break
         ;;
 
@@ -323,6 +346,7 @@ while true; do
                     echo
                 fi
             fi
+            
             # Umbrel | Citadel CLN: restore assigned port
             if [ "$path" == "${dockerMainDir}/app-data/core-lightning/exports.sh" ]; then
                 getPort=$(grep -n "export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"" | cut -d ':' -f1)
