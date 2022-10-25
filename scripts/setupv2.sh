@@ -45,6 +45,7 @@ echo -e "
 echo
 
 # Check if docker / non-docker
+dockerNetwork="docker-tunnelsats"
 isDocker=0
 killswitchRaspi=0
 
@@ -106,6 +107,7 @@ while true; do
     echo "> citadel"
     echo
     isDocker=1
+    dockerNetwork="a-docker-tunnelsats"
     dockerScriptPrefix="citadel"
     dockerMainDir=$(find / -maxdepth 6 -not -path "/mnt/*" -type f -name "bitcoin.conf" -print 2>/dev/null | sed -e 's#/bitcoin/bitcoin.conf##')
     if [[ $dockerMainDir =~ [[:space:]] ]]; then
@@ -306,22 +308,22 @@ fi
 if [ $isDocker -eq 1 ]; then
 
   echo "Creating TunnelSats Docker Network..."
-  checkdockernetwork=$(docker network ls 2>/dev/null | grep -c "a-docker-tunnelsats")
+  checkdockernetwork=$(docker network ls 2>/dev/null | grep -c $dockerNetwork)
 
   dockersubnet="10.9.9.0/25"
 
   if [ $checkdockernetwork -eq 0 ]; then
     docker network create "a-docker-tunnelsats" --subnet $dockersubnet -o "com.docker.network.driver.mtu"="1420" &>/dev/null
     if [ $? -eq 0 ]; then
-      echo "> a-docker-tunnelsats created successfully"
+      echo "> $dockerNetwork created successfully"
       echo
     else
-      echo "> failed to create a-docker-tunnelsats network"
+      echo "> failed to create $dockerNetwork network"
       echo
       exit 1
     fi
   else
-    echo "> a-docker-tunnelsats already created"
+    echo "> $dockerNetwork already created"
     echo
   fi
 
@@ -381,7 +383,7 @@ DNS = 8.8.8.8\n
 FwMark = 0x3333\n
 Table = off\n
 \n
-PostUp = ip rule add from \$(docker network inspect \"a-docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
+PostUp = ip rule add from \$(docker network inspect \"\$dockerNetwork\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
 PostUp = ip rule add from all table main suppress_prefixlength 0\n
 PostUp = ip rule add from all fwmark 0x1111 table main \n
 PostUp = ip route add blackhole default metric 3 table 51820\n
@@ -392,7 +394,7 @@ PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0\n
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1\n
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
 \n
-PostDown = ip rule del from \$(docker network inspect \"a-docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
+PostDown = ip rule del from \$(docker network inspect \"\$dockerNetwork\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
 PostDown = ip rule del from all table  main suppress_prefixlength 0\n
 PostDown = ip rule del from all fwmark 0x1111 table main \n
 PostDown = ip route flush table 51820\n
@@ -887,17 +889,17 @@ fi
 
 sleep 2
 
-#Add Monitor which connects the a-docker-tunnelsats network to the lightning container
+#Add Monitor which connects the $dockerNetwork network to the lightning container
 if [ $isDocker -eq 1 ]; then
   # create file
   echo "Creating tunnelsats-docker-network.sh file in /etc/wireguard/..."
   echo "#!/bin/sh
 set -e
 lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 0.0.0.0:9735 | awk '{print \$2}')
-checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"a-docker-tunnelsats\")
+checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"$dockerNetwork\")
 if [ \$checkdockernetwork -ne 0 ] && [ ! -z \$lightningcontainer ]; then
   if ! docker inspect \$lightningcontainer | grep -c \"tunnelsats\" > /dev/null; then
-  docker network connect --ip 10.9.9.9 a-docker-tunnelsats \$lightningcontainer  > /dev/null
+  docker network connect --ip 10.9.9.9 $dockerNetwork \$lightningcontainer  > /dev/null
   fi
 fi" >/etc/wireguard/tunnelsats-docker-network.sh
 
@@ -1117,7 +1119,7 @@ else #Docker
 
   if docker pull curlimages/curl >/dev/null; then
     ipHome=$(curl --silent https://api.ipify.org)
-    ipVPN=$(docker run -ti --rm --net=a-docker-tunnelsats curlimages/curl https://api.ipify.org 2>/dev/null)
+    ipVPN=$(docker run -ti --rm --net=$dockerNetwork curlimages/curl https://api.ipify.org 2>/dev/null)
     if [ "$ipHome" != "$ipVPN" ] && valid_ipv4 $ipHome && valid_ipv4 $ipVPN; then
       echo "> Tunnel is active ✅
       Your ISP external IP: ${ipHome} 

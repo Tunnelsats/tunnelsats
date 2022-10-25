@@ -51,15 +51,18 @@ done
 
 # Check if docker / non-docker
 isDocker=0
+dockerNetwork="docker-tunnelsats"
 
-hostName=$(hostname)
+dockerScriptPrefix=""
+dockerMainDir=""
 
 while true; do
     read -p "What lightning node package are you running?: 
     1) RaspiBlitz
-    2) Umbrel | Citadel
+    2) Umbrel 
     3) myNode
     4) RaspiBolt / Bare Metal
+    5) Citadel
     > " answer
 
     case $answer in
@@ -71,9 +74,17 @@ while true; do
         ;;
 
     2)
-        echo "> Umbrel | Citadel"
+        echo "> Umbrel"
         echo
         isDocker=1
+        dockerScriptPrefix="umbrel"
+        dockerMainDir=$(find / -maxdepth 6 -not -path "/mnt/*" -type f -name "bitcoin.conf" -print 2>/dev/null | sed -e 's#/bitcoin/bitcoin.conf##')
+        if [[ $dockerMainDir =~ [[:space:]] ]]; then
+            echo "> umbrel main path is ambiguous"
+            echo "> error: $dockerMainDir (contains more than one)"
+            echo "> your umbrel setup is not compatible with TunnelSats"
+            exit 1
+        fi
         break
         ;;
 
@@ -91,7 +102,23 @@ while true; do
         break
         ;;
 
-    *) echo "Please enter a number from 1 to 4." ;;
+    5)
+        echo "> Citadel"
+        echo
+        isDocker=1
+        dockerNetwork="a-docker-tunnelsats"
+        dockerScriptPrefix="citadel"
+        dockerMainDir=$(find / -maxdepth 6 -not -path "/mnt/*" -type f -name "bitcoin.conf" -print 2>/dev/null | sed -e 's#/bitcoin/bitcoin.conf##')
+        if [[ $dockerMainDir =~ [[:space:]] ]]; then
+            echo "> citadel main path is ambiguous"
+            echo "> error: $dockerMainDir (contains more than one)"
+            echo "> your citadel setup is not compatible with TunnelSats"
+            exit 1
+        fi
+        break
+        ;;
+
+    *) echo "Please enter a number from 1 to 5." ;;
     esac
 done
 
@@ -111,7 +138,7 @@ while true; do
             if [ -n "$container" ]; then
                 if docker stop "$container" &>/dev/null; then
                     #try disconnecting network if present
-                    docker network disconnect docker-tunnelsats "$container" &>/dev/null
+                    docker network disconnect $dockerNetwork "$container" &>/dev/null
                     docker rm "$container" &>/dev/null
                     echo "> Successfully stopped $container docker container"
                     echo
@@ -164,11 +191,12 @@ while true; do
         # modify LND configuration
         path=""
         if [ -f /mnt/hdd/lnd/lnd.conf ]; then path="/mnt/hdd/lnd/lnd.conf"; fi
-        if [ -f "$HOME"/${hostName}/lnd/lnd.conf ]; then path="$HOME""/${hostName}/lnd/lnd.conf"; fi
-        if [ -f "$HOME"/${hostName}/app-data/lightning/data/lnd/lnd.conf ]; then path="$HOME""/${hostName}/app-data/lightning/data/lnd/lnd.conf"; fi
+        if [ -f ${dockerMainDir}/lnd/lnd.conf ]; then path="/${dockerMainDir}/lnd/lnd.conf"; fi
+        if [ -f ${dockerMainDir}/app-data/lightning/data/lnd/lnd.conf ]; then path="/${dockerMainDir}/app-data/lightning/data/lnd/lnd.conf"; fi
         if [ -f /data/lnd/lnd.conf ]; then path="/data/lnd/lnd.conf"; fi
         if [ -f /embassy-data/package-data/volumes/lnd/data/main/lnd.conf ]; then path="/embassy-data/package-data/volumes/lnd/data/main/lnd.conf"; fi
         if [ -f /mnt/hdd/mynode/lnd/lnd.conf ]; then path="/mnt/hdd/mynode/lnd/lnd.conf"; fi
+        if [ -f ${dockerMainDir}/templates/lnd-sample.conf ] && [ $dockerScriptPrefix == "citadel" ]; then path="${dockerMainDir}/templates/lnd-sample.conf"; fi
 
         if [ "$path" != "" ]; then
             check=$(grep -c "tor.skip-proxy-for-clearnet-targets" "$path")
@@ -200,7 +228,7 @@ while true; do
             if [ -n "$container" ]; then
                 if docker stop "$container" &>/dev/null; then
                     #try disconnecting network if present
-                    docker network disconnect docker-tunnelsats "$container" &>/dev/null
+                    docker network disconnect $dockerNetwork "$container" &>/dev/null
                     docker rm "$container" &>/dev/null
                     echo "> Successfully stopped $container docker container"
                     echo
@@ -253,7 +281,7 @@ while true; do
         # modify CLN configuration
         path=""
         if [ -f /mnt/hdd/app-data/.lightning/config ]; then path="/mnt/hdd/app-data/.lightning/config"; fi
-        if [ -f "$HOME"/${hostName}/app-data/core-lightning/data/lightningd/bitcoin/config ]; then path="$HOME""/${hostName}/app-data/core-lightning/data/lightningd/bitcoin/config"; fi
+        if [ -f ${dockerMainDir}/app-data/core-lightning/data/lightningd/bitcoin/config ]; then path="/${dockerMainDir}/app-data/core-lightning/data/lightningd/bitcoin/config"; fi
         if [ -f /data/lightningd/config ]; then path="/data/lightningd/config"; fi
 
         if [ "$path" != "" ]; then
@@ -275,7 +303,7 @@ while true; do
             fi
 
             # Umbrel | Citadel CLN: restore default configuration
-            if [ "$path" == "$HOME""/${hostName}/app-data/core-lightning/data/lightningd/bitcoin/config" ]; then
+            if [ "$path" == "${dockerMainDir}/app-data/core-lightning/data/lightningd/bitcoin/config" ]; then
                 deleteBind=$(grep -n "^bind-addr" "$path" | cut -d ':' -f1)
                 if [ "$deleteBind" != "" ]; then
                     sed -i "${deleteBind}d" "$path" >/dev/null
@@ -296,7 +324,7 @@ while true; do
                 fi
             fi
             # Umbrel | Citadel CLN: restore assigned port
-            if [ "$path" == "$HOME""/${hostName}/app-data/core-lightning/exports.sh" ]; then
+            if [ "$path" == "${dockerMainDir}/app-data/core-lightning/exports.sh" ]; then
                 getPort=$(grep -n "export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"" | cut -d ':' -f1)
                 if [ "$getPort" != "" ]; then
                     sed -i "s/export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"/export APP_CORE_LIGHTNING_DAEMON_PORT=\"9736\"/g" "$path" >/dev/null
@@ -431,24 +459,24 @@ fi
 
 sleep 2
 
-#remove docker-tunnelsats network
+#remove $dockerNetwork network
 if [ $isDocker -eq 1 ]; then
     #Disconnect all containers from the network first
     #Removing rules from routing table
     echo "Removing tunnelsats specific routing rules..."
     ip route flush table 51820 &>/dev/null
 
-    echo "Disconnecting containers from docker-tunnelsats network..."
-    docker inspect docker-tunnelsats | jq .[].Containers | grep Name | sed 's/[\",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats  %'
+    echo "Disconnecting containers from $dockerNetwork network..."
+    docker inspect $dockerNetwork | jq .[].Containers | grep Name | sed 's/[\",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect $dockerNetwork  %'
 
-    checkdockernetwork=$(docker network ls 2>/dev/null | grep -c "docker-tunnelsats")
+    checkdockernetwork=$(docker network ls 2>/dev/null | grep -c "$dockerNetwork")
     if [ $checkdockernetwork -ne 0 ]; then
-        echo "Removing docker-tunnelsats network..."
-        if docker network rm "docker-tunnelsats" >/dev/null; then
-            echo "> docker-tunnelsats network removed"
+        echo "Removing $dockerNetwork network..."
+        if docker network rm "$dockerNetwork" >/dev/null; then
+            echo "> $dockerNetwork network removed"
             echo
         else
-            echo "> ERR: could not remove docker-tunnelsats network. Please check manually."
+            echo "> ERR: could not remove $dockerNetwork network. Please check manually."
             echo
         fi
     fi
@@ -457,14 +485,14 @@ fi
 sleep 2
 
 # remove killswitch requirement for umbrel | citadel startup
-if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/${hostName}-startup.service.d/tunnelsats_killswitch.conf ]; then
+if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/${dockerScriptPrefix}-startup.service.d/tunnelsats_killswitch.conf ]; then
     echo "Removing tunnelsats_killswitch.conf..."
-    if rm /etc/systemd/system/${hostName}-startup.service.d/tunnelsats_killswitch.conf; then
-        # rm -r /etc/systemd/system/${hostName}-startup.service.d >/dev/null
-        echo "> /etc/systemd/system/${hostName}-startup.service.d/tunnelsats_killswitch.conf  removed"
+    if rm /etc/systemd/system/${dockerScriptPrefix}-startup.service.d/tunnelsats_killswitch.conf; then
+        # rm -r /etc/systemd/system/${dockerScriptPrefix}-startup.service.d >/dev/null
+        echo "> /etc/systemd/system/${dockerScriptPrefix}-startup.service.d/tunnelsats_killswitch.conf  removed"
         echo
     else
-        echo "> ERR: could not remove /etc/systemd/system/${hostName}-startup.service.d/tunnelsats_killswitch.conf. Please check manually."
+        echo "> ERR: could not remove /etc/systemd/system/${dockerScriptPrefix}-startup.service.d/tunnelsats_killswitch.conf. Please check manually."
         echo
     fi
 fi
@@ -615,8 +643,8 @@ echo
 if [ $isDocker -eq 1 ]; then
     echo "
     Restart lightning container with
-    sudo ${HOME}/${hostName}/scripts/stop (${hostName}-OS)
-    sudo ${HOME}/${hostName}/scripts/start (${hostName}-OS)"
+    sudo ${dockerMainDir}/scripts/stop (${dockerScriptPrefix}-OS)
+    sudo ${dockerMainDir}/scripts/start (${dockerScriptPrefix}-OS)"
     echo
 else
     echo "
