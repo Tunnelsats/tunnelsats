@@ -383,7 +383,7 @@ DNS = 8.8.8.8\n
 FwMark = 0x3333\n
 Table = off\n
 \n
-PostUp = ip rule add from \$(docker network inspect \"\$dockerNetwork\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
+PostUp = ip rule add from \$(docker network inspect \"$dockerNetwork\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
 PostUp = ip rule add from all table main suppress_prefixlength 0\n
 PostUp = ip rule add from all fwmark 0x1111 table main \n
 PostUp = ip route add blackhole default metric 3 table 51820\n
@@ -394,7 +394,7 @@ PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0\n
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1\n
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
 \n
-PostDown = ip rule del from \$(docker network inspect \"\$dockerNetwork\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
+PostDown = ip rule del from \$(docker network inspect \"$dockerNetwork\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
 PostDown = ip rule del from all table  main suppress_prefixlength 0\n
 PostDown = ip rule del from all fwmark 0x1111 table main \n
 PostDown = ip route flush table 51820\n
