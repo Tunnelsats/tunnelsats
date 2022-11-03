@@ -52,13 +52,13 @@ Running a lightning nodes behind a VPN requires a range of features public VPN p
 <br/>
 
 ### Is your service reliable?
-We use premium VPS Services with tight SLAs and proven, recorded high uptime (99,99%). We also setup servers across different service providers to allow for switching in case something out of our control happens. We also setup tight monitoring systems for our VMs, with alert mechanisms and coverage by 3 people in operations. That said, we're early in our offering and happily provide regular uptime metrics when we enter beta phase, to provide more objective reliability data here.
+We use premium VPS Services with tight SLAs and proven, recorded high uptime (99,99%). We also setup servers across different service providers to allow for switching in case something out of our control happens. We also setup tight monitoring systems for our VMs, with alert mechanisms and coverage by 3 people in operations. That said, we're early in our offering and happily provide regular uptime metrics to provide more objective reliability data here.
 
 <br/>
 
 ### What services are used?
 As payment backend we use <a href="https://legend.lnbits.com/" target="_blank" rel="noreferrer">LNBits</a> for lightning payments, to send WireGuard config files via email we use our own mailserver and to provide this frontend React and WebSockets are being imported.
-As for the VPN endpoints, we make use of our own rented virtual servers from Digital Ocean (EU) and (US) with <a href="https://github.com/Mawthuq-Software/wireguard-manager-and-api" target="_blank" rel="noreferrer">WireGuard Manager and API</a> managing the WireGuard setup and accounts safely.
+As for the VPN endpoints, we make use of our own rented virtual servers from Digital Ocean (EU, Asia and NorthAmerica), Contabo (EU) and Vultr (LatAM) with <a href="https://github.com/Mawthuq-Software/wireguard-manager-and-api" target="_blank" rel="noreferrer">WireGuard Manager and API</a> managing the WireGuard setup and accounts safely.
 
 <br />
 
@@ -87,6 +87,7 @@ At present we successfully tested the following setups:
 - Umbrel-OS (CLN not yet recommended or be tech-savvy)
 - myNode (LND) v0.2.x
 - RaspiBolt (LND / CLN) (please see [preconditions](README.md/#preconditions) if your system or architecture differs from RaspiBolt guide)
+- Citadel (Beta, please join the Telegram Group for instructions)
 
 For other setups please get back to us on Telegram to discuss if it's viable to go with TunnelSats.
 
@@ -107,7 +108,7 @@ Renewal of existing subscriptions has been reworked. Now it is possible to prolo
 - select the desired term extension of your choice (it is appended to the current expiry date)
 - click "Update Subscription" and pay the lightning invoice
 
-⚠️ No new WireGuard file will be handed over to the user. The current lightning settings persist! So there is no further lightning configuration needed. Changing server locations on renewals is not supported for now.
+⚠️ No new WireGuard file will be handed over to the user. The current lightning settings persist, and we just extend your subscription with the purchased time. So there is no further lightning configuration needed. Changing server locations on renewals is not supported for now.
 
 <br/>
 
@@ -201,7 +202,11 @@ NumEntryGuards 8
 <br/>
 
 ### What does v2 stand for?
-In v2 we changed the network architecture compared to v1 where all traffic was directed via the VPN except Tor and ssh. This approach resulted in a lot of exceptions for different users. For example, if you were running ThunderHub on your node with v1, you were not able to access it via the external clearnet. In v2 we are now isolating only lightning traffic via the VPN meaning that all traffic not routed via your local proxy or not destined for your local network will be directed through the tunnel. This means apps like ThunderHub which run locally on your node are not tunneled and are accessible from the external clearnet. Nothing changes for your setup except for the lightning process. You will have no problems accessing your node from the external clearnet via ssh. So keep in mind that in case you want to access the gRPC or REST interface form the external clearnet, it will not be possible. In this case services like ZeroTier are recommended which let's you access your node as if it would be in your local network. Normally accessing your nodes gRPC or REST API from the external clearnet shouldn't be a general use case, it's recommended to access the API via the local network or on the same computer resulting in better efficiency.
+In v2 we changed the network architecture compared to v1 where all traffic was directed via the VPN except Tor and ssh. This approach resulted in a lot of exceptions for different users. For example, if you were running ThunderHub on your node with v1, you were not able to access it via the external clearnet. 
+
+In v2 we are now isolating only lightning traffic via the VPN, all traffic not routed via your local proxy or not destined for your local network will be directed through the tunnel. The benefit is, apps like ThunderHub which run locally on your node are not tunneled and are accessible from the external clearnet. Nothing changes for your setup except for the lightning process. You will have no problems accessing your node from the external clearnet via ssh. 
+
+In case you want to access the gRPC or REST interface form the external clearnet, it will not be possible. In this case services like ZeroTier or Tailscale are recommended, which let you access your node as if it would be in your local network. Normally accessing your nodes gRPC or REST API from the external clearnet shouldn't be a general use case, it's recommended to access the API via the local network or on the same computer resulting in better efficiency.
 
 <br/>
 
