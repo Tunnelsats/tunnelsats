@@ -77,7 +77,7 @@ while true; do
     echo
     isDocker=1
     dockerScriptPrefix="umbrel"
-    dockerMainDir=$(find / -maxdepth 6 -not -path "/mnt/*" -type f -name "bitcoin.conf" -print 2>/dev/null | sed -e 's#/bitcoin/bitcoin.conf##')
+    dockerMainDir=$(find / -maxdepth 5 \( -path /mnt -prune -o -path /sd-root -prune \) -o -type f -name "karen" -print 2>/dev/null | awk -F '/db' '{print $1}')
 
     if [[ $dockerMainDir =~ [[:space:]] ]]; then
       echo "> umbrel main path is ambiguous"
@@ -104,12 +104,12 @@ while true; do
     ;;
 
   5)
-    echo "> citadel"
+    echo "> Citadel"
     echo
     isDocker=1
     dockerNetwork="a-docker-tunnelsats"
     dockerScriptPrefix="citadel"
-    dockerMainDir=$(find / -maxdepth 6 -not -path "/mnt/*" -type f -name "bitcoin.conf" -print 2>/dev/null | sed -e 's#/bitcoin/bitcoin.conf##')
+    dockerMainDir=$(find / -maxdepth 5 \( -path /mnt -prune -o -path /sd-root -prune \) -o -type f -name "karen" -print 2>/dev/null | awk -F '/db' '{print $1}')
     if [[ $dockerMainDir =~ [[:space:]] ]]; then
       echo "> citadel main path is ambiguous"
       echo "> error: $dockerMainDir (contains more than one)"
