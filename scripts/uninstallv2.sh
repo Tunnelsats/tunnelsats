@@ -135,7 +135,7 @@ while true; do
         echo "Ensure lnd lightning process is stopped ..."
 
         if [ $isDocker -eq 1 ]; then
-            container=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}')
+            container=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 0.0.0.0:9735 | awk '{print $2}')
             if [ -n "$container" ]; then
                 if docker stop "$container" &>/dev/null; then
                     #try disconnecting network if present
