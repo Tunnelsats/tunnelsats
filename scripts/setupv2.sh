@@ -320,6 +320,9 @@ fi
 
 sleep 2
 
+# Fetch all local networks and exclude them from kill switch
+localNetworks=$(ip route | awk '{print $1}' | grep -v default | sed -z 's/\n/, /g')
+
 # edit tunnelsats.conf, add PostUp/Down rules
 # and copy to destination folder
 echo "Copy wireguard conf file to /etc/wireguard and apply network rules..."
@@ -361,7 +364,7 @@ PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
 PostUp = nft add table ip %i\n
 PostUp = nft add chain ip %i prerouting '{type filter hook prerouting priority mangle -1; policy accept;}'; nft add rule ip %i prerouting meta mark set ct mark\n
 PostUp = nft add chain ip %i mangle '{type route hook output priority mangle -1; policy accept;}'; nft add rule ip %i mangle tcp sport != { 8080, 10009 } meta mark != 0x3333 meta cgroup 1118498 meta mark set 0xdeadbeef\n
-PostUp = nft add chain ip %i nat'{type nat hook postrouting priority srcnat -1; policy accept;}'; nft insert rule ip %i nat fib daddr type != local oif != %i ct mark 0xdeadbeef drop;nft add rule ip %i nat oif != \"lo\" ct mark 0xdeadbeef masquerade\n
+PostUp = nft add chain ip %i nat'{type nat hook postrouting priority srcnat -1; policy accept;}'; nft insert rule ip %i nat  fib daddr type != local ip daddr != {$localNetworks} oifname != %i ct mark 0xdeadbeef drop;nft add rule ip %i nat oifname %i ct mark 0xdeadbeef masquerade\n
 PostUp = nft add chain ip %i postroutingmangle'{type filter hook postrouting priority mangle -1; policy accept;}'; nft add rule ip %i postroutingmangle meta mark 0xdeadbeef ct mark set meta mark\n
 PostUp = nft add chain ip %i input'{type filter hook input priority filter -1; policy accept;}'; nft add rule ip %i input iifname %i  ct state established,related counter accept; nft add rule ip %i input iifname %i tcp dport != 9735 counter drop; nft add rule ip %i input iifname %i udp dport != 9735 counter drop\n
 
