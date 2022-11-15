@@ -134,7 +134,7 @@ const WorldMap = (props) => {
             <Popover id="popover-basic" className="customPopover">
               <Popover.Title as="h3">Europe</Popover.Title>
               <Popover.Content>
-                <strong>Location:</strong> Germany / Frankfurt
+                <strong>Location:</strong> Germany / Nuremberg
                 <br />
                 <strong>Status:</strong> 🟢 online
               </Popover.Content>
