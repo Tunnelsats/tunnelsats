@@ -2,38 +2,35 @@
 
 ## Table of Contents
 
-- [FAQ](#faq)
-  - [Table of Contents](#table-of-contents)
-  - [Frequently asked Questions](#frequently-asked-questions)
-    - [Why should I use this service?](#why-should-i-use-this-service)
-    - [Why choose Tunnel⚡Sats over other VPN providers?](#why-choose-tunnelsats-over-other-vpn-providers)
-    - [Is your service reliable?](#is-your-service-reliable)
-    - [What services are used?](#what-services-are-used)
-    - [What about data storage and privacy?](#what-about-data-storage-and-privacy)
-    - [Do you store my data? If so, which one and how do you use it?](#do-you-store-my-data-if-so-which-one-and-how-do-you-use-it)
-    - [Is there a data transfer limit?](#is-there-a-data-transfer-limit)
-    - [Which setups are supported?](#which-setups-are-supported)
-    - [What options do I have if I'm not happy?](#what-options-do-i-have-if-im-not-happy)
-    - [How can I extend my subscription?](#how-can-i-extend-my-subscription)
-    - [Are you offering any discounts?](#are-you-offering-any-discounts)
-    - [Is there a referral program?](#is-there-a-referral-program)
-    - [My payment did confirm on my wallet, but I didn't get my configuration files. What can I do?](#my-payment-did-confirm-on-my-wallet-but-i-didnt-get-my-configuration-files-what-can-i-do)
-    - [I'm stuck with the setup process, can you help?](#im-stuck-with-the-setup-process-can-you-help)
-    - [How do I know what value I got from subscribing to your service?](#how-do-i-know-what-value-i-got-from-subscribing-to-your-service)
-    - [Why shouldn't I just do it myself?](#why-shouldnt-i-just-do-it-myself)
-    - [Why are you charging fees?](#why-are-you-charging-fees)
-    - [Where do I find my lightning configuration file?](#where-do-i-find-my-lightning-configuration-file)
-    - [How to transfer `tunnelsatsv2.conf` to my node?](#how-to-transfer-tunnelsatsv2conf-to-my-node)
-    - [How does it actually look like, how am I connected?](#how-does-it-actually-look-like-how-am-i-connected)
-    - [How can I verify that my VPN connection is online and active?](#how-can-i-verify-that-my-vpn-connection-is-online-and-active)
-    - [Tuning Tor](#tuning-tor)
-    - [What does v2 stand for?](#what-does-v2-stand-for)
-    - [Running tunnelsatsv2 and mullvad in parallel?](#running-tunnelsatsv2-and-mullvad-in-parallel)
-    - [Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?](#am-i-still-able-to-connect-to-grpc-or-rest-via-tailscalezerotier)
-    - [Phasing out de2.tunnelsats.com - How to switch to de3.tunnelsats.com](#phasing-out-de2tunnelsatscom---how-to-switch-to-de3tunnelsatscom)
-    - [Do you offer full-service VPNs too?](#do-you-offer-full-service-vpns-too)
-    - [Who built this?](#who-built-this)
-    - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
+- [Why should I use this service?](#why-should-i-use-this-service)
+- [Why choose Tunnel⚡Sats over other VPN providers?](#why-choose-tunnelsats-over-other-vpn-providers)
+- [Is your service reliable?](#is-your-service-reliable)
+- [What services are used?](#what-services-are-used)
+- [What about data storage and privacy?](#what-about-data-storage-and-privacy)
+- [Do you store my data? If so, which one and how do you use it?](#do-you-store-my-data-if-so-which-one-and-how-do-you-use-it)
+- [Is there a data transfer limit?](#is-there-a-data-transfer-limit)
+- [Which setups are supported?](#which-setups-are-supported)
+- [What options do I have if I'm not happy?](#what-options-do-i-have-if-im-not-happy)
+- [How can I extend my subscription?](#how-can-i-extend-my-subscription)
+- [Are you offering any discounts?](#are-you-offering-any-discounts)
+- [Is there a referral program?](#is-there-a-referral-program)
+- [My payment did confirm on my wallet, but I didn't get my configuration files. What can I do?](#my-payment-did-confirm-on-my-wallet-but-i-didnt-get-my-configuration-files-what-can-i-do)
+- [I'm stuck with the setup process, can you help?](#im-stuck-with-the-setup-process-can-you-help)
+- [How do I know what value I got from subscribing to your service?](#how-do-i-know-what-value-i-got-from-subscribing-to-your-service)
+- [Why shouldn't I just do it myself?](#why-shouldnt-i-just-do-it-myself)
+- [Why are you charging fees?](#why-are-you-charging-fees)
+- [Where do I find my lightning configuration file?](#where-do-i-find-my-lightning-configuration-file)
+- [How to transfer `tunnelsatsv2.conf` to my node?](#how-to-transfer-tunnelsatsv2conf-to-my-node)
+- [How does it actually look like, how am I connected?](#how-does-it-actually-look-like-how-am-i-connected)
+- [How can I verify that my VPN connection is online and active?](#how-can-i-verify-that-my-vpn-connection-is-online-and-active)
+- [Tuning Tor](#tuning-tor)
+- [What does v2 stand for?](#what-does-v2-stand-for)
+- [Running tunnelsatsv2 and mullvad in parallel?](#running-tunnelsatsv2-and-mullvad-in-parallel)
+- [Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?](#am-i-still-able-to-connect-to-grpc-or-rest-via-tailscalezerotier)
+- [Phasing out de2.tunnelsats.com - How to switch to de3.tunnelsats.com](#phasing-out-de2tunnelsatscom---how-to-switch-to-de3tunnelsatscom)
+- [Do you offer full-service VPNs too?](#do-you-offer-full-service-vpns-too)
+- [Who built this?](#who-built-this)
+- [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
 
 <br/>
 
@@ -300,7 +297,7 @@ In fact there are five simple steps to take:
    - LND: `externalhosts=de3.tunnelsats.com:<yourVPNport>`
    - CLN: `announce-addr=de3.tunnelsats.com:<yourVPNport>`
    - As allways before changing the config, it is good practice to backup your config.
-     - To backup the conf use `sudo cp <path/to/conf> <path/where/tosafe/backup>
+     - To backup the conf use `sudo cp <path/to/conf> <path/where/tosafe/backup>`
      - E.g., for raspiblitz and lnd: `sudo cp /mnt/hdd/lnd/lnd.conf ~/lnd_backup.conf`
 
 5. Restart your lightning implementation
