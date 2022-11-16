@@ -255,7 +255,7 @@ In fact there are three steps to take:
 - fetch latest version of setup script: `wget -O setupv2.sh https://github.com/blckbx/tunnelsats/raw/main/scripts/setupv2.sh`
 - run it: `sudo bash setupv2.sh`
 - edit your lightning config file and change the DNS entry accordingly: 
-  - LND: `externalip=de3.tunnelsats.com:<yourVPNport>`
+  - LND: `externalhosts=de3.tunnelsats.com:<yourVPNport>`
   - CLN: `announce-addr=de3.tunnelsats.com:<yourVPNport>`
 - restart your lightning implementation
 
