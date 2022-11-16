@@ -26,7 +26,7 @@
 - [What does v2 stand for?](#what-does-v2-stand-for)
 - [Running tunnelsatsv2 and mullvad in parallel?](#running-tunnelsatsv2-and-mullvad-in-parallel)
 - [Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?](#am-i-still-able-to-connect-to-grpc-or-rest-via-tailscalezerotier)
-- [Phasing out de2.tunnelsats.com - How to switch to de3.tunnelsats.com](#phasing-out-de2-tunnelsats-com-how-to-switch-to-de3-tunnelsats-com)
+- [Phasing out de2.tunnelsats.com - How to switch to de3.tunnelsats.com](#phasing-out-de2tunnelsatscom---how-to-switch-to-de3tunnelsatscom)
 - [Do you offer full-service VPNs too?](#do-you-offer-full-service-vpns-too)
 - [Who built this?](#who-built-this)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
