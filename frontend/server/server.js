@@ -396,7 +396,7 @@ io.on("connection", (socket) => {
     let success = false;
     const servers = [
       { domain: "de1.tunnelsats.com", country: "eu" },
-      { domain: "de2.tunnelsats.com", country: "eu2" },
+      //{ domain: "de2.tunnelsats.com", country: "eu2" }, # phasing out de2, renew subs on de3
       { domain: "de3.tunnelsats.com", country: "eu2" },
       { domain: "us1.tunnelsats.com", country: "na" },
       { domain: "sg1.tunnelsats.com", country: "as" },
