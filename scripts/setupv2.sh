@@ -1005,10 +1005,10 @@ fi
 
 # Create dns-resolver of the wg interface
 
-wget -O /etc/wireguard/tunnelsats-resolve-dns-wg.sh https://raw.githubusercontent.com/WireGuard/wireguard-tools/master/contrib/reresolve-dns/reresolve-dns.sh
+wget -O /etc/wireguard/tunnelsats-resolve-dns-wg.sh https://raw.githubusercontent.com/blckbx/tunnelsats/main/scripts/resolve-dns-wg.sh
 chmod u+x /etc/wireguard/tunnelsats-resolve-dns-wg.sh
 if [ $? -ne 0 ]; then
-  echo "> ERR: could not fetch tunnelsats-resolve-dns-wg.sh (check source: https://raw.githubusercontent.com/WireGuard/wireguard-tools/master/contrib/reresolve-dns/reresolve-dns.sh)"
+  echo "> ERR: could not fetch tunnelsats-resolve-dns-wg.sh (check source: https://raw.githubusercontent.com/blckbx/tunnelsats/main/scripts/resolve-dns-wg.sh)"
   echo
   exit 1
 fi
