@@ -39,8 +39,23 @@ const HeaderInfo = (props) => {
           </a>{" "}
           pages.
         </p>
+        <p>
+          <b className="price">⚠️ Server switch required! ⚠️</b>
+          <br></br>Phasing out de2.tunnelsats.com we need you to make the change
+          from de2.tunnelsats.com to de3.tunnelsats.com. Here is how to easily
+          get there:{" "}
+          <a
+            href="https://blckbx.github.io/tunnelsats/FAQ.html#phasing-out-de2tunnelsatscom---how-to-switch-to-de3tunnelsatscom"
+            target="_blank"
+            rel="noreferrer"
+          >
+            migration guide
+          </a>
+        </p>
         <hr />
-        <p className="price"><strong>Lightning Node Statistics</strong></p>
+        <p className="price">
+          <strong>Lightning Node Statistics</strong>
+        </p>
         <Row>
           <Col>
             <TbSum size={20} title="total" />
