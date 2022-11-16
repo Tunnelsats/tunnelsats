@@ -300,7 +300,7 @@ In fact there are five simple steps to take:
    - LND: `externalhosts=de3.tunnelsats.com:<yourVPNport>`
    - CLN: `announce-addr=de3.tunnelsats.com:<yourVPNport>`
    - As allways before changing the config, it is good practice to backup your config.
-     - To backup the conf use `sudo cp <path/to/conf> <path/where/tosafe/backup>
+     - To backup the conf use `sudo cp <path/to/conf> <path/where/tosafe/backup>`
      - E.g., for raspiblitz and lnd: `sudo cp /mnt/hdd/lnd/lnd.conf ~/lnd_backup.conf`
 
 5. Restart your lightning implementation
