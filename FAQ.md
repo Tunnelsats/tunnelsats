@@ -248,7 +248,7 @@ As of commit [24f0f3c](https://github.com/blckbx/tunnelsats/commit/24f0f3c969cac
 <br />
 
 ### Phasing out de2.tunnelsats.com - How to switch to de3.tunnelsats.com
-Problems with one of our providers forced us to switch to a new one. If you still encounter problems on de2.tunnelsats.com, please take a minute to read how to switch your connection to the new vpn: de3.tunnelsats.com
+Problems with one of our providers forced us to switch to a new one, so we phasing out `de2.tunnelsats.com` slowly. If you are running your node on this VPN (EU continent), please take a minute to read how to switch your connection to the new vpn: `de3.tunnelsats.com`
 
 In fact there are three steps to take: 
 - edit your `tunnelsatsv2.conf` and change `Endpoint` entry to `Endpoint = de3.tunnelsats.com:51820`
