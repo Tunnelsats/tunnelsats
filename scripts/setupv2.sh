@@ -990,6 +990,64 @@ else
   exit 1
 fi
 
+# Create dns-resolver of the wg interface
+
+wget -O /etc/wireguard/tunnelsats-resolve-dns-wg.sh https://raw.githubusercontent.com/WireGuard/wireguard-tools/master/contrib/reresolve-dns/reresolve-dns.sh
+chmod u+x /etc/wireguard/tunnelsats-resolve-dns-wg.sh
+if [ $? -nq 0 ]; then
+  echo "> ERR: could not fetch tunnelsats-resolve-dns-wg.sh (check source: https://raw.githubusercontent.com/WireGuard/wireguard-tools/master/contrib/reresolve-dns/reresolve-dns.sh)"
+  echo
+  exit 1
+fi
+# Create systemd service
+if [ ! -f /etc/systemd/system/tunnelsats-resolve-dns-wg.sh ]; then
+  echo "[Unit]
+Description=Trigger Resolve DNS in case Handshake is older than 2 minutes
+StartLimitInterval=200
+StartLimitBurst=5
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /etc/wireguard/tunnelsats-resolve-dns-wg.sh tunnelsatsv2
+[Install]
+WantedBy=multi-user.target
+" >/etc/systemd/system/tunnelsats-resolve-dns-wg.service
+
+  echo "[Unit]
+Description=30sec timer for tunnelsats-resolve-dns-wg.service
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=30
+Persistent=true
+[Install]
+WantedBy=timers.target
+" >/etc/systemd/system/tunnelsats-resolve-dns-wg.timer
+
+fi
+
+# enable and start tunnelsats-resolve-dns-wg.service
+if [ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.service ]; then
+  systemctl daemon-reload >/dev/null
+  if systemctl enable tunnelsats-resolve-dns-wg.service >/dev/null &&
+    systemctl start tunnelsats-resolve-dns-wg.service >/dev/null; then
+    echo "> tunnelsats-resolve-dns-wg.service : systemd service enabled and started"
+  else
+    echo "> ERR: tunnelsats-resolve-dns-wg.service  could not be enabled or started. Please check for errors."
+    echo
+    exit 1
+  fi
+  if [ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.timer]; then
+    if systemctl enable tunnelsats-resolve-dns-wg.timer >/dev/null &&
+      systemctl start tunnelsats-resolve-dns-wg.timer >/dev/null; then
+      echo "> tunnelsats-resolve-dns-wg.timer: systemd timer enabled and started"
+      echo
+    else
+      echo "> ERR: tunnelsats-resolve-dns-wg.timer: systemd timer could not be enabled or started. Please check for errors."
+      echo
+      exit 1
+    fi
+  fi
+fi
+
 sleep 2
 
 #Check if tunnel works
