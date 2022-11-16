@@ -250,21 +250,14 @@ As of commit [24f0f3c](https://github.com/blckbx/tunnelsats/commit/24f0f3c969cac
 ### Phasing out de2.tunnelsats.com - How to switch to de3.tunnelsats.com
 Problems with one of our providers forced us to switch to a new one. If you still encounter problems on de2.tunnelsats.com, please take a minute to read how to switch your connection to the new vpn: de3.tunnelsats.com
 
-In fact there are two little things to adjust: 
-- Stop your node
-- Stop wireguard service: `sudo systemctl stop wg-quick@tunnelsatsv2.service`
-- Open `nano /etc/wireguard/tunnelsatsv2.conf`
-- Edit: `Endpoint: de2.tunnelsats.com:<yourPort>` to `Endpoint: de3.tunnelsats.com:<yourPort>` (yourPort stays the same)
-- Save and exit with Ctrl+O and Ctrl+X
-
-The same goes for your lightning configuration:
-- Open your lightning config file (`lnd.conf` for LND or `config` for CLN)
-- Edit for LND: `externalhosts=de2.tunnelsats.com:<yourPort>` to `externalhosts=de3.tunnelsats.com:<yourPort>`
-- Edit for CLN: `announce-addr=de2.tunnelsats.com:<yourPort>` to `announce-addr=de3.tunnelsats.com:<yourPort>`
-- Save and exit with Ctrl+O and Ctrl+X
-
-Now please restart the system or restart wireguard service(`sudo systemctl start wg-quick@tunnelsatsv2.service`) and your node manually.
-
+In fact there are three steps to take: 
+- edit your `tunnelsatsv2.conf` and change `Endpoint` entry to `Endpoint = de3.tunnelsats.com:51820`
+- fetch latest version of setup script: `wget -O setupv2.sh https://github.com/blckbx/tunnelsats/raw/main/scripts/setupv2.sh`
+- run it: `sudo bash setupv2.sh`
+- edit your lightning config file and change the DNS entry accordingly: 
+  - LND: `externalip=de3.tunnelsats.com:<yourVPNport>`
+  - CLN: `announce-addr=de3.tunnelsats.com:<yourVPNport>`
+- restart your lightning implementation
 
 <br />
 
