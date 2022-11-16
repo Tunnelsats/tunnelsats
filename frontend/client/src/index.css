@@ -167,6 +167,10 @@ a:active {
   margin-left: 10px;
 }
 
+.warning {
+  color: #ff7700;
+  text-align: center;
+}
 
 title {
   text-align: center;

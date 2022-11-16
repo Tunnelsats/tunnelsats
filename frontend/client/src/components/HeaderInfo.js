@@ -40,7 +40,7 @@ const HeaderInfo = (props) => {
           pages.
         </p>
         <p>
-          <b className="price">⚠️ Server switch required! ⚠️</b>
+          <b className="warning">⚠️ Server switch required! ⚠️
           <br></br>Phasing out de2.tunnelsats.com we need you to make the change
           from de2.tunnelsats.com to de3.tunnelsats.com. Here is how to easily
           get there:{" "}
@@ -50,7 +50,7 @@ const HeaderInfo = (props) => {
             rel="noreferrer"
           >
             migration guide
-          </a>
+          </a></b>
         </p>
         <hr />
         <p className="price">
