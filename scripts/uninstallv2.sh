@@ -612,8 +612,8 @@ echo
 if [ $isDocker -eq 1 ]; then
     echo "
     Restart lightning container with
-    sudo ${HOME}/umbrel/scripts/stop (Umbrel-OS)
-    sudo ${HOME}/umbrel/scripts/start (Umbrel-OS)"
+    sudo ~/umbrel/scripts/stop (Umbrel-OS)
+    sudo ~/umbrel/scripts/start (Umbrel-OS)"
     echo
 else
     echo "
