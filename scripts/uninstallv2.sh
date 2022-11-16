@@ -392,8 +392,8 @@ if [ -f /lib/systemd/system/wg-quick@.service ]; then
         fi
     fi
 
-    if [ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.service]; then
-        echo "Removing tunnelsats tunnelsats-resolve-dns-wg  service..."
+    if [ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.service ]; then
+        echo "Removing tunnelsats-resolve-dns-wg service..."
         systemctl stop tunnelsats-resolve-dns-wg.service >/dev/null
         systemctl disable tunnelsats-resolve-dns-wg.service >/dev/null
         rm /etc/systemd/system/tunnelsats-resolve-dns-wg.service >/dev/null
@@ -402,7 +402,7 @@ if [ -f /lib/systemd/system/wg-quick@.service ]; then
     fi
 
     # remove tunnelsats-splitting-processes.timer systemd (v1)
-    if [ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.timer]; then
+    if [ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.timer ]; then
         echo "Removing tunnelsats-resolve-dns-wg systemd timer..."
         systemctl stop tunnelsats-resolve-dns-wg.timer >/dev/null
         systemctl disable tunnelsats-resolve-dns-wg.timer >/dev/null

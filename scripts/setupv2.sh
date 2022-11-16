@@ -994,7 +994,7 @@ fi
 
 wget -O /etc/wireguard/tunnelsats-resolve-dns-wg.sh https://raw.githubusercontent.com/WireGuard/wireguard-tools/master/contrib/reresolve-dns/reresolve-dns.sh
 chmod u+x /etc/wireguard/tunnelsats-resolve-dns-wg.sh
-if [ $? -nq 0 ]; then
+if [ $? -ne 0 ]; then
   echo "> ERR: could not fetch tunnelsats-resolve-dns-wg.sh (check source: https://raw.githubusercontent.com/WireGuard/wireguard-tools/master/contrib/reresolve-dns/reresolve-dns.sh)"
   echo
   exit 1
@@ -1035,7 +1035,7 @@ if [ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.service ]; then
     echo
     exit 1
   fi
-  if [ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.timer]; then
+  if [ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.timer ]; then
     if systemctl enable tunnelsats-resolve-dns-wg.timer >/dev/null &&
       systemctl start tunnelsats-resolve-dns-wg.timer >/dev/null; then
       echo "> tunnelsats-resolve-dns-wg.timer: systemd timer enabled and started"
