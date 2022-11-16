@@ -401,7 +401,7 @@ function App() {
         setSpinnerQuery(false);
       } else if (result == "not-allowed") {
         setPopupMessage(
-          "Server capacity limit reached. Please buy a new subscription from the same continent."
+          "This server is going to be phased out. Please switch to de3.tunnelsats.com and restart your node (see FAQ page for instructions). Your subscription has already been moved to the new server."
         );
         setTime("");
         setNewTime("");

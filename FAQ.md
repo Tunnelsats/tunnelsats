@@ -26,6 +26,7 @@
 - [What does v2 stand for?](#what-does-v2-stand-for)
 - [Running tunnelsatsv2 and mullvad in parallel?](#running-tunnelsatsv2-and-mullvad-in-parallel)
 - [Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?](#am-i-still-able-to-connect-to-grpc-or-rest-via-tailscalezerotier)
+- [Phasing out de2.tunnelsats.com - How to switch to de3.tunnelsats.com](#phasing-out-de2-tunnelsats-com-how-to-switch-to-de3-tunnelsats-com)
 - [Do you offer full-service VPNs too?](#do-you-offer-full-service-vpns-too)
 - [Who built this?](#who-built-this)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
@@ -243,6 +244,27 @@ Replace the ip_of_tunnelsats_vpn with the ip of the related tunnelsats vpn serve
 
 ### Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?
 As of commit [24f0f3c](https://github.com/blckbx/tunnelsats/commit/24f0f3c969cac04059aa8b8bfe1be3add08ae4bb) gRPC and Rest interfaces (ports 10009 and 8080) are no longer tunneled by TunnelSats. This means you can access these ports and tunnel them via ZeroTier or Tailscale additionally. This solution works for Docker (e.g. Umbrel) and non-Docker (e.g. RaspiBlitz) setups. In case you got a subscription before this change was introduced, just get and run the latest setup script again. Installation steps are any different than setting it up without TunnelSats.
+
+<br />
+
+### Phasing out de2.tunnelsats.com - How to switch to de3.tunnelsats.com
+Problems with one of our providers forced us to switch to a new one. If you still encounter problems on de2.tunnelsats.com, please take a minute to read how to switch your connection to the new vpn: de3.tunnelsats.com
+
+In fact there are two little things to adjust: 
+- Stop your node
+- Stop wireguard service: `sudo systemctl stop wg-quick@tunnelsatsv2.service`
+- Open `nano /etc/wireguard/tunnelsatsv2.conf`
+- Edit: `Endpoint: de2.tunnelsats.com:<yourPort>` to `Endpoint: de3.tunnelsats.com:<yourPort>` (yourPort stays the same)
+- Save and exit with Ctrl+O and Ctrl+X
+
+The same goes for your lightning configuration:
+- Open your lightning config file (`lnd.conf` for LND or `config` for CLN)
+- Edit for LND: `externalhosts=de2.tunnelsats.com:<yourPort>` to `externalhosts=de3.tunnelsats.com:<yourPort>`
+- Edit for CLN: `announce-addr=de2.tunnelsats.com:<yourPort>` to `announce-addr=de3.tunnelsats.com:<yourPort>`
+- Save and exit with Ctrl+O and Ctrl+X
+
+Now please restart the system or restart wireguard service(`sudo systemctl start wg-quick@tunnelsatsv2.service`) and your node manually.
+
 
 <br />
 
