@@ -7,7 +7,7 @@
 - [Is your service reliable?](#is-your-service-reliable)
 - [What services are used?](#what-services-are-used)
 - [What about data storage and privacy?](#what-about-data-storage-and-privacy)
-- [Do you store my data? If so, which one and how do you use it?](#do-you-store-my-data-if-so-which-one-and-how-do-you-use-it)
+- [Do you store my data? If so, which one and how do you use it?](#do-you-store-my-data-if-so-which-oneP-and-how-do-you-use-it)
 - [Is there a data transfer limit?](#is-there-a-data-transfer-limit)
 - [Which setups are supported?](#which-setups-are-supported)
 - [What options do I have if I'm not happy?](#what-options-do-i-have-if-im-not-happy)
@@ -302,6 +302,10 @@ In fact there are five simple steps to take:
 
 5. Restart your lightning implementation
 
+**Verify the switch to de3.tunnelsats.com**  
+To verify that the switch worked, you can run `lncli getinfo | jq '.uris'`. The public IP should start with 159.x.x.x 
+
+**Where do I find the config files?**  
 If you can not locate a file (e.g., the `tunnelsatsv2.conf` or your lightning config) you can allways use the `find` command.
 
 - Locate tunnelsatsv2.conf: `sudo find / -name "tunnelsatsv2.conf"`
