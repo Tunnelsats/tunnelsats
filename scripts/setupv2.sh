@@ -327,11 +327,11 @@ sleep 2
 # Fetch all local networks and exclude them from kill switch
 localNetworks=$(ip route | awk '{print $1}' | grep -v default | sed -z 's/\n/, /g')
 
-if [ killswitchRaspi -eq 1 ]; then
+if [ $killswitchRaspi -eq 1 ]; then
 
   killswitchNonDocker="PostUp = nft insert rule ip %i nat skuid bitcoin fib  daddr type != local ip daddr != {$localNetworks}  meta oifname != %i  meta l4proto { tcp, udp } th dport != { 51820 } counter drop\n"
 else
-  # only implememtned for Raspiblitz
+  # only implemented for RaspiBlitz
   killswitchNonDocker=""
 
 fi
