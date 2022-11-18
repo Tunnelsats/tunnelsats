@@ -729,6 +729,7 @@ function App() {
             ) : (
               <>
                 <hr />
+                <p className="price">Select your continent:</p>
                 {/* WorldMap */}
                 <WorldMap
                   selected={country}
