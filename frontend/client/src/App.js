@@ -9,6 +9,7 @@ import {
   Collapse,
   Form,
   InputGroup,
+  Toast,
 } from "react-bootstrap";
 import io from "socket.io-client";
 import { useState } from "react";
@@ -111,6 +112,10 @@ function App() {
 
   // github last commit hash
   const [commitHash, setCommitHash] = useState("");
+
+  // toast
+  const [showA, setShowA] = useState(true);
+  const toggleShowA = () => setShowA(!showA);
 
   //Successful payment alert
   const renderAlert = (show) => {
@@ -476,217 +481,395 @@ function App() {
     });
 
   return (
-    <div>
-      <Container>
-        {/* Navigation Bar */}
-        <Navbar variant="dark" expanded="true">
-          <Navbar.Brand>Tunnel⚡️Sats</Navbar.Brand>
-          <Nav className="mr-auto">
-            {!isRenewSub ? (
-              <Nav.Link
-                href="#"
-                onClick={() => {
-                  showRenew();
-                  updatePrice(REACT_APP_THREE_MONTHS);
-                }}
-              >
-                Renew Subscription
-              </Nav.Link>
-            ) : (
-              <Nav.Link
-                href="#"
-                onClick={() => {
-                  hideRenew();
-                  updatePrice(REACT_APP_THREE_MONTHS);
-                }}
-              >
-                Get Subscription
-              </Nav.Link>
-            )}
-            <Nav.Link
-              href="https://blckbx.github.io/tunnelsats"
+    <>
+      <div>
+        <Toast
+          show={showA}
+          onClose={toggleShowA}
+          animation={true}
+          style={{
+            position: "absolute",
+            top: 100,
+            right: 0,
+          }}
+        >
+          <Toast.Header style={{ textAlign: "center" }}>
+            <strong className="mr-auto">⚠️ Important Information ⚠️</strong>
+          </Toast.Header>
+          <Toast.Body
+            style={{
+              textAlign: "left",
+            }}
+          >
+            <b className="warning">
+              Server switch required for EU users on de2.tunnelsats.com!
+            </b>
+            <br></br>
+            <br></br>If you are connected to this VPN, please switch from
+            de2.tunnelsats.com to de3.tunnelsats.com. Here is how to easily get
+            there:{" "}
+            <a
+              href="https://blckbx.github.io/tunnelsats/FAQ.html#phasing-out-de2tunnelsatscom---how-to-switch-to-de3tunnelsatscom"
               target="_blank"
               rel="noreferrer"
             >
-              Guide
-            </Nav.Link>
-            <Nav.Link
-              href="https://blckbx.github.io/tunnelsats/FAQ.html"
-              target="_blank"
-              rel="noreferrer"
-            >
-              FAQ
-            </Nav.Link>
+              migration guide
+            </a>
+          </Toast.Body>
+        </Toast>
+      </div>
+      <div>
+        <Container>
+          {/* Navigation Bar */}
+          <Navbar variant="dark" expanded="true">
+            <Navbar.Brand>Tunnel⚡️Sats</Navbar.Brand>
+            <Nav className="mr-auto">
+              {!isRenewSub ? (
+                <Nav.Link
+                  href="#"
+                  onClick={() => {
+                    showRenew();
+                    updatePrice(REACT_APP_THREE_MONTHS);
+                  }}
+                >
+                  Renew Subscription
+                </Nav.Link>
+              ) : (
+                <Nav.Link
+                  href="#"
+                  onClick={() => {
+                    hideRenew();
+                    updatePrice(REACT_APP_THREE_MONTHS);
+                  }}
+                >
+                  Get Subscription
+                </Nav.Link>
+              )}
+              <Nav.Link
+                href="https://blckbx.github.io/tunnelsats"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Guide
+              </Nav.Link>
+              <Nav.Link
+                href="https://blckbx.github.io/tunnelsats/FAQ.html"
+                target="_blank"
+                rel="noreferrer"
+              >
+                FAQ
+              </Nav.Link>
 
-            {/*}
-            <Nav>
-              <Button onClick={() => renderLoginModal()} variant="outline-info">Login</Button>
-              <LoginModal show={isLoginModal} handleClose={hideLoginModal} />
+              {/*}
+    <Nav>
+      <Button onClick={() => renderLoginModal()} variant="outline-info">Login</Button>
+      <LoginModal show={isLoginModal} handleClose={hideLoginModal} />
+    </Nav>
+    */}
             </Nav>
-            */}
-          </Nav>
-          <Nav className="mr-right">
-            <Nav.Link
-              href={`https://github.com/blckbx/tunnelsats/commit/${commitHash}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              latest commit: {commitHash?.substring(0, 7)}
-            </Nav.Link>
-          </Nav>
-        </Navbar>
-      </Container>
+            <Nav className="mr-right">
+              <Nav.Link
+                href={`https://github.com/blckbx/tunnelsats/commit/${commitHash}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                latest commit: {commitHash?.substring(0, 7)}
+              </Nav.Link>
+            </Nav>
+          </Navbar>
+        </Container>
 
-      <Popup />
+        <Popup />
 
-      <Container className="main-middle">
-        <Row>
-          <Col>
-            {/* Logo */}
-            <img src={logo} alt="" className="logo" />
+        <Container className="main-middle">
+          <Row>
+            <Col>
+              {/* Logo */}
+              <img src={logo} alt="" className="logo" />
 
-            {/* Intro Text */}
-            <HeaderInfo stats={nodeStats} />
+              {/* Intro Text */}
+              <HeaderInfo stats={nodeStats} />
 
-            {isRenewSub ? (
-              <>
-                <hr />
-                {/* WorldMap */}
-                <WorldMap
-                  selected={country}
-                  pointerEvents={"none"}
-                  Cursor={"not-allowed"}
-                />
+              {isRenewSub ? (
+                <>
+                  <hr />
+                  {/* WorldMap */}
+                  <WorldMap
+                    selected={country}
+                    pointerEvents={"none"}
+                    Cursor={"not-allowed"}
+                  />
 
-                <hr />
+                  <hr />
 
-                <Form onSubmit={(e) => handleSubmit(e)}>
-                  {" "}
-                  {/* Renew Subscription */}
-                  <Form.Group className="updateSubFrom">
-                    <InputGroup>
-                      <InputGroup.Text>Server</InputGroup.Text>
-                      <Form.Control
-                        disabled
-                        value={server}
-                        placeholder="Tunnel⚡️Sats Server"
-                        onChange={handleChangeServer}
-                        type="text"
-                      />
-                    </InputGroup>
-                    <InputGroup>
-                      <InputGroup.Text>WG Pubkey</InputGroup.Text>
-                      <Form.Control
-                        enabled
-                        value={pubkey}
-                        placeholder="WireGuard public key (base64 encoded)"
-                        isValid={valid}
-                        onChange={handleChangePubkey}
-                      />
-                      <Button
-                        variant="secondary"
-                        href="https://blckbx.github.io/tunnelsats/FAQ.html#how-can-i-extend-my-subscription"
-                        target="_blank"
-                      >
-                        <IoIosInformationCircleOutline
-                          color="white"
-                          size={20}
-                          title="how to find out your wg pubkey"
+                  <Form onSubmit={(e) => handleSubmit(e)}>
+                    {" "}
+                    {/* Renew Subscription */}
+                    <Form.Group className="updateSubFrom">
+                      <InputGroup>
+                        <InputGroup.Text>Server</InputGroup.Text>
+                        <Form.Control
+                          disabled
+                          value={server}
+                          placeholder="Tunnel⚡️Sats Server"
+                          onChange={handleChangeServer}
+                          type="text"
                         />
-                      </Button>
-                    </InputGroup>
-                    <Collapse in={valid}>
-                      <div id="example-collapse-text">
-                        {
-                          <div>
-                            <InputGroup>
-                              <InputGroup.Text>Valid Until:</InputGroup.Text>
-                              <Form.Control
-                                disabled
-                                value={timeSubscription}
-                                isValid={timeValidOld}
-                              />
-                            </InputGroup>
-                          </div>
-                        }
-                      </div>
-                    </Collapse>
+                      </InputGroup>
+                      <InputGroup>
+                        <InputGroup.Text>WG Pubkey</InputGroup.Text>
+                        <Form.Control
+                          enabled
+                          value={pubkey}
+                          placeholder="WireGuard public key (base64 encoded)"
+                          isValid={valid}
+                          onChange={handleChangePubkey}
+                        />
+                        <Button
+                          variant="secondary"
+                          href="https://blckbx.github.io/tunnelsats/FAQ.html#how-can-i-extend-my-subscription"
+                          target="_blank"
+                        >
+                          <IoIosInformationCircleOutline
+                            color="white"
+                            size={20}
+                            title="how to find out your wg pubkey"
+                          />
+                        </Button>
+                      </InputGroup>
+                      <Collapse in={valid}>
+                        <div id="example-collapse-text">
+                          {
+                            <div>
+                              <InputGroup>
+                                <InputGroup.Text>Valid Until:</InputGroup.Text>
+                                <Form.Control
+                                  disabled
+                                  value={timeSubscription}
+                                  isValid={timeValidOld}
+                                />
+                              </InputGroup>
+                            </div>
+                          }
+                        </div>
+                      </Collapse>
 
-                    <Collapse in={valid}>
+                      <Collapse in={valid}>
+                        <div id="example-collapse-text">
+                          {
+                            <div>
+                              <InputGroup>
+                                <InputGroup.Text>
+                                  NEW Valid Until:
+                                </InputGroup.Text>
+                                <Form.Control
+                                  disabled
+                                  value={newTimeSubscription}
+                                  isValid={timeValid}
+                                />
+                              </InputGroup>
+                            </div>
+                          }
+                        </div>
+                      </Collapse>
+                    </Form.Group>
+                    {showSpinnerQuery ? (
+                      <Spinner animation="border" variant="warning" />
+                    ) : (
+                      <div className="main-buttons">
+                        <Button
+                          variant="secondary"
+                          onClick={handleKeyLookUp}
+                          type="submit"
+                          disabled={!valid}
+                        >
+                          Query Key Info
+                        </Button>
+                      </div>
+                    )}
+                    <Collapse in={true}>
                       <div id="example-collapse-text">
                         {
                           <div>
-                            <InputGroup>
-                              <InputGroup.Text>
-                                NEW Valid Until:
-                              </InputGroup.Text>
-                              <Form.Control
-                                disabled
-                                value={newTimeSubscription}
-                                isValid={timeValid}
-                              />
-                            </InputGroup>
+                            <RuntimeSelector onClick={runtimeSelect} />
+                            {showSpinner ? (
+                              <Spinner animation="border" variant="warning" />
+                            ) : (
+                              <div className="price">
+                                <h3>
+                                  {discount != 1.0
+                                    ? Math.trunc(
+                                        Math.round(
+                                          priceDollar * satsPerDollar -
+                                            priceDollar *
+                                              satsPerDollar *
+                                              discount
+                                        )
+                                      )
+                                    : Math.trunc(
+                                        Math.round(priceDollar * satsPerDollar)
+                                      ).toLocaleString()}{" "}
+                                  <i class="fak fa-satoshisymbol-solidcirtilt" />
+                                </h3>
+                              </div>
+                            )}
                           </div>
                         }
                       </div>
                     </Collapse>
-                  </Form.Group>
-                  {showSpinnerQuery ? (
-                    <Spinner animation="border" variant="warning" />
-                  ) : (
+                    {/* renew update button */}
                     <div className="main-buttons">
                       <Button
-                        variant="secondary"
-                        onClick={handleKeyLookUp}
+                        variant="outline-warning"
+                        onClick={() => {
+                          getInvoiceRenew(
+                            discount != 1.0
+                              ? priceDollar * satsPerDollar -
+                                  priceDollar * satsPerDollar * discount
+                              : priceDollar * satsPerDollar,
+                            pubkey,
+                            keyID,
+                            country,
+                            priceDollar
+                          );
+                          showInvoiceModal();
+                          hideConfigModal();
+                          updatePaymentrequest();
+                          setSpinner(true);
+                          isPaid = false;
+                        }}
                         type="submit"
-                        disabled={!valid}
+                        disabled={!timeValid}
                       >
-                        Query Key Info
+                        Update Subscription
                       </Button>
                     </div>
-                  )}
-                  <Collapse in={true}>
-                    <div id="example-collapse-text">
-                      {
-                        <div>
-                          <RuntimeSelector onClick={runtimeSelect} />
-                          {showSpinner ? (
-                            <Spinner animation="border" variant="warning" />
-                          ) : (
-                            <div className="price">
-                              <h3>
-                                {discount != 1.0
-                                  ? Math.trunc(
-                                      Math.round(
-                                        priceDollar * satsPerDollar -
-                                          priceDollar * satsPerDollar * discount
-                                      )
-                                    )
-                                  : Math.trunc(
-                                      Math.round(priceDollar * satsPerDollar)
-                                    ).toLocaleString()}{" "}
-                                <i class="fak fa-satoshisymbol-solidcirtilt" />
-                              </h3>
-                            </div>
-                          )}
+                  </Form>
+
+                  {/* renew invoice modal */}
+                  <RenewInvoiceModal
+                    show={visibleInvoiceModal}
+                    showSpinner={showSpinner}
+                    isConfigModal={isConfigModal}
+                    value={payment_request}
+                    showNewInvoice={() => {
+                      getInvoiceRenew(
+                        discount != 1.0
+                          ? priceDollar * satsPerDollar -
+                              priceDollar * satsPerDollar * discount
+                          : priceDollar * satsPerDollar,
+                        pubkey,
+                        keyID,
+                        country,
+                        priceDollar
+                      );
+                      setSpinner(true);
+                    }}
+                    handleClose={closeInvoiceModal}
+                    expiryDate={getTimeStamp(priceDollar, timeSubscription)}
+                    showPaymentAlert={showPaymentSuccessfull}
+                  />
+                </>
+              ) : (
+                <>
+                  <hr />
+                  <p className="price">Select your continent:</p>
+                  {/* WorldMap */}
+                  <WorldMap
+                    selected={country}
+                    onSelect={updateCountry}
+                    pointerEvents={"all"}
+                  />
+                  <hr />
+
+                  <Form>
+                    {/* else default: WG keys for first subscription */}
+                    <Form.Group className="mb-2">
+                      <InputGroup>
+                        <InputGroup.Text>Private Key</InputGroup.Text>
+                        <Form.Control
+                          disabled
+                          key={keyPair.privateKey}
+                          defaultValue={keyPair.privateKey}
+                          onChange={(event) => {
+                            keyPair.privateKey = event.target.value;
+                          }}
+                        />
+                        <Button
+                          onClick={() => {
+                            displayNewPair(window.wireguard.generateKeypair);
+                          }}
+                          variant="secondary"
+                        >
+                          <IoIosRefresh
+                            color="white"
+                            size={20}
+                            title="renew keys"
+                          />
+                        </Button>
+                      </InputGroup>
+                      <InputGroup>
+                        <InputGroup.Text>Public Key</InputGroup.Text>
+                        <Form.Control
+                          disabled
+                          key={keyPair.publicKey}
+                          defaultValue={keyPair.publicKey}
+                          onChange={(event) => {
+                            keyPair.publicKey = event.target.value;
+                          }}
+                        />
+                      </InputGroup>
+                      <InputGroup>
+                        <InputGroup.Text>Preshared Key</InputGroup.Text>
+                        <Form.Control
+                          disabled
+                          key={keyPair.presharedKey}
+                          defaultValue={keyPair.presharedKey}
+                          onChange={(event) => {
+                            keyPair.presharedKey = event.target.value;
+                          }}
+                        />
+                      </InputGroup>
+                    </Form.Group>
+                  </Form>
+                  {
+                    <div>
+                      <RuntimeSelector onClick={runtimeSelect} />
+                      {showSpinner ? (
+                        <Spinner animation="border" variant="warning" />
+                      ) : (
+                        <div className="price">
+                          <h3>
+                            {discount != 1.0
+                              ? Math.trunc(
+                                  Math.round(
+                                    priceDollar * satsPerDollar -
+                                      priceDollar * satsPerDollar * discount
+                                  )
+                                )
+                              : Math.trunc(
+                                  Math.round(priceDollar * satsPerDollar)
+                                ).toLocaleString()}{" "}
+                            <i class="fak fa-satoshisymbol-solidcirtilt" />
+                          </h3>
                         </div>
-                      }
+                      )}
                     </div>
-                  </Collapse>
-                  {/* renew update button */}
+                  }
+
+                  {/* Button Generate Invoice */}
                   <div className="main-buttons">
                     <Button
-                      variant="outline-warning"
                       onClick={() => {
-                        getInvoiceRenew(
+                        getInvoice(
                           discount != 1.0
                             ? priceDollar * satsPerDollar -
                                 priceDollar * satsPerDollar * discount
                             : priceDollar * satsPerDollar,
-                          pubkey,
-                          keyID,
-                          country,
-                          priceDollar
+                          keyPair.publicKey,
+                          keyPair.presharedKey,
+                          priceDollar,
+                          country
                         );
                         showInvoiceModal();
                         hideConfigModal();
@@ -694,129 +877,22 @@ function App() {
                         setSpinner(true);
                         isPaid = false;
                       }}
-                      type="submit"
-                      disabled={!timeValid}
+                      variant="outline-warning"
                     >
-                      Update Subscription
+                      Generate Invoice
                     </Button>
                   </div>
-                </Form>
 
-                {/* renew invoice modal */}
-                <RenewInvoiceModal
-                  show={visibleInvoiceModal}
-                  showSpinner={showSpinner}
-                  isConfigModal={isConfigModal}
-                  value={payment_request}
-                  showNewInvoice={() => {
-                    getInvoiceRenew(
-                      discount != 1.0
-                        ? priceDollar * satsPerDollar -
-                            priceDollar * satsPerDollar * discount
-                        : priceDollar * satsPerDollar,
-                      pubkey,
-                      keyID,
-                      country,
-                      priceDollar
-                    );
-                    setSpinner(true);
-                  }}
-                  handleClose={closeInvoiceModal}
-                  expiryDate={getTimeStamp(priceDollar, timeSubscription)}
-                  showPaymentAlert={showPaymentSuccessfull}
-                />
-              </>
-            ) : (
-              <>
-                <hr />
-                <p className="price">Select your continent:</p>
-                {/* WorldMap */}
-                <WorldMap
-                  selected={country}
-                  onSelect={updateCountry}
-                  pointerEvents={"all"}
-                />
-                <hr />
-
-                <Form>
-                  {/* else default: WG keys for first subscription */}
-                  <Form.Group className="mb-2">
-                    <InputGroup>
-                      <InputGroup.Text>Private Key</InputGroup.Text>
-                      <Form.Control
-                        disabled
-                        key={keyPair.privateKey}
-                        defaultValue={keyPair.privateKey}
-                        onChange={(event) => {
-                          keyPair.privateKey = event.target.value;
-                        }}
-                      />
-                      <Button
-                        onClick={() => {
-                          displayNewPair(window.wireguard.generateKeypair);
-                        }}
-                        variant="secondary"
-                      >
-                        <IoIosRefresh
-                          color="white"
-                          size={20}
-                          title="renew keys"
-                        />
-                      </Button>
-                    </InputGroup>
-                    <InputGroup>
-                      <InputGroup.Text>Public Key</InputGroup.Text>
-                      <Form.Control
-                        disabled
-                        key={keyPair.publicKey}
-                        defaultValue={keyPair.publicKey}
-                        onChange={(event) => {
-                          keyPair.publicKey = event.target.value;
-                        }}
-                      />
-                    </InputGroup>
-                    <InputGroup>
-                      <InputGroup.Text>Preshared Key</InputGroup.Text>
-                      <Form.Control
-                        disabled
-                        key={keyPair.presharedKey}
-                        defaultValue={keyPair.presharedKey}
-                        onChange={(event) => {
-                          keyPair.presharedKey = event.target.value;
-                        }}
-                      />
-                    </InputGroup>
-                  </Form.Group>
-                </Form>
-                {
-                  <div>
-                    <RuntimeSelector onClick={runtimeSelect} />
-                    {showSpinner ? (
-                      <Spinner animation="border" variant="warning" />
-                    ) : (
-                      <div className="price">
-                        <h3>
-                          {discount != 1.0
-                            ? Math.trunc(
-                                Math.round(
-                                  priceDollar * satsPerDollar -
-                                    priceDollar * satsPerDollar * discount
-                                )
-                              )
-                            : Math.trunc(
-                                Math.round(priceDollar * satsPerDollar)
-                              ).toLocaleString()}{" "}
-                          <i class="fak fa-satoshisymbol-solidcirtilt" />
-                        </h3>
-                      </div>
-                    )}
-                  </div>
-                }
-
-                {/* Button Generate Invoice */}
-                <div className="main-buttons">
-                  <Button
-                    onClick={() => {
+                  {/* Open InvoiceModal */}
+                  <InvoiceModal
+                    show={visibleInvoiceModal}
+                    showSpinner={showSpinner}
+                    isConfigModal={isConfigModal}
+                    value={payment_request}
+                    download={() => {
+                      download("tunnelsatsv2.conf", payment_request);
+                    }}
+                    showNewInvoice={() => {
                       getInvoice(
                         discount != 1.0
                           ? priceDollar * satsPerDollar -
@@ -827,106 +903,79 @@ function App() {
                         priceDollar,
                         country
                       );
-                      showInvoiceModal();
-                      hideConfigModal();
-                      updatePaymentrequest();
                       setSpinner(true);
-                      isPaid = false;
                     }}
-                    variant="outline-warning"
-                  >
-                    Generate Invoice
-                  </Button>
-                </div>
+                    handleClose={closeInvoiceModal}
+                    emailAddress={emailAddress}
+                    expiryDate={getTimeStamp(priceDollar)}
+                    sendEmail={(data) =>
+                      sendEmail(
+                        data,
+                        payment_request,
+                        getTimeStamp(priceDollar)
+                      )
+                    }
+                    showPaymentAlert={showPaymentSuccessfull}
+                  />
+                </>
+              )}
 
-                {/* Open InvoiceModal */}
-                <InvoiceModal
-                  show={visibleInvoiceModal}
-                  showSpinner={showSpinner}
-                  isConfigModal={isConfigModal}
-                  value={payment_request}
-                  download={() => {
-                    download("tunnelsatsv2.conf", payment_request);
-                  }}
-                  showNewInvoice={() => {
-                    getInvoice(
-                      discount != 1.0
-                        ? priceDollar * satsPerDollar -
-                            priceDollar * satsPerDollar * discount
-                        : priceDollar * satsPerDollar,
-                      keyPair.publicKey,
-                      keyPair.presharedKey,
-                      priceDollar,
-                      country
-                    );
-                    setSpinner(true);
-                  }}
-                  handleClose={closeInvoiceModal}
-                  emailAddress={emailAddress}
-                  expiryDate={getTimeStamp(priceDollar)}
-                  sendEmail={(data) =>
-                    sendEmail(data, payment_request, getTimeStamp(priceDollar))
-                  }
-                  showPaymentAlert={showPaymentSuccessfull}
+              {/* Popup Error Message */}
+              {isPopupModal ? (
+                <Popup
+                  show={isPopupModal}
+                  title={"⚠️ Error"}
+                  errorMessage={popupMessage}
+                  handleClose={hidePopupModal}
                 />
-              </>
-            )}
+              ) : null}
 
-            {/* Popup Error Message */}
-            {isPopupModal ? (
-              <Popup
-                show={isPopupModal}
-                title={"⚠️ Error"}
-                errorMessage={popupMessage}
-                handleClose={hidePopupModal}
-              />
-            ) : null}
-
-            {/* Footer */}
-            <div className="footer-text">
-              <Row>
-                <Col>
-                  <a
-                    href="https://twitter.com/TunnelSats"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <span class="icon icon-twitter"></span>
-                  </a>
-                </Col>
-                <Col>
-                  <a
-                    href="https://github.com/blckbx/tunnelsats"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <span class="icon icon-github"></span>
-                  </a>
-                </Col>
-                <Col>
-                  <a
-                    href={REACT_APP_LNBITS_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <span class="icon icon-heart"></span>
-                  </a>
-                </Col>
-                <Col>
-                  <a
-                    href="https://t.me/+NJylaUom-rxjYjU6"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <span class="icon icon-telegram"></span>
-                  </a>
-                </Col>
-              </Row>
-            </div>
-          </Col>
-        </Row>
-      </Container>
-    </div>
+              {/* Footer */}
+              <div className="footer-text">
+                <Row>
+                  <Col>
+                    <a
+                      href="https://twitter.com/TunnelSats"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span class="icon icon-twitter"></span>
+                    </a>
+                  </Col>
+                  <Col>
+                    <a
+                      href="https://github.com/blckbx/tunnelsats"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span class="icon icon-github"></span>
+                    </a>
+                  </Col>
+                  <Col>
+                    <a
+                      href={REACT_APP_LNBITS_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span class="icon icon-heart"></span>
+                    </a>
+                  </Col>
+                  <Col>
+                    <a
+                      href="https://t.me/+NJylaUom-rxjYjU6"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span class="icon icon-telegram"></span>
+                    </a>
+                  </Col>
+                </Row>
+              </div>
+            </Col>
+          </Row>
+        </Container>
+      </div>
+    </>
   );
 }
 

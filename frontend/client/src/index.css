@@ -67,7 +67,6 @@ h1 {
   border-width: 1px;
 }
 
-
 a:link {
   color: #ffc700;
   text-decoration: none;
@@ -187,7 +186,6 @@ title {
 }
 */
 
-
 #runtimeselector {
   width: 100%;
   margin: 10px 0 10px 0;
@@ -206,7 +204,6 @@ title {
   color: black;
 }
 
-
 #invoicestring {
   text-align: left;
   margin-top: 10px;
@@ -223,7 +220,6 @@ title {
   white-space: -o-pre-wrap; /* Opera 7 */
   word-wrap: break-word; /* IE */
 }
-
 
 #main_modal {
   min-width: 50%;
@@ -332,7 +328,6 @@ button.close {
   list-style: none;
 }
 
-
 img {
   padding: 5px;
   width: 100%;
@@ -340,7 +335,7 @@ img {
 }
 
 .logo {
-  padding: 5px;  
+  padding: 5px;
   width: 100%;
   height: auto;
 }
@@ -382,3 +377,4 @@ img {
 .titleSub {
   margin: 0;
 }
+

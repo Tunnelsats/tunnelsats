@@ -39,6 +39,7 @@ const HeaderInfo = (props) => {
           </a>{" "}
           pages.
         </p>
+        {/*
         <p>
           <b className="warning">
             ⚠️ Server switch required for EU users on de2.tunnelsats.com! ⚠️
@@ -54,6 +55,7 @@ const HeaderInfo = (props) => {
             </a>
           </b>
         </p>
+        */}
         <hr />
         <p className="price">
           <strong>Lightning Node Statistics</strong>
