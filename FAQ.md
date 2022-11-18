@@ -313,7 +313,7 @@ The public IP should start with 159.x.x.x
 **Where do I find the config files?**  
 If you can not locate a file (e.g., the `tunnelsatsv2.conf` or your lightning config) you can always use the `find` command.
 
-- Locate tunnelsatsv2.conf: `sudo find / -maxdepth 5 \( -path /etc/wireguard -prune -o -path /sd-root -prune \) -o -type f -name "tunnelsatsv2.conf"`
+- Locate tunnelsatsv2.conf: `sudo find / -maxdepth 5 -type d \( -path /etc/wireguard -o -path /sd-root \) -prune -o -type f -name "tunnelsatsv2.conf" -print`
   - Tunnelsats installs two independent config files both called `tunnelsatsv2.conf` (a user config, and a config for the vpn client wireguard).
   - For the switch to `de3.tunnelsats.com` you want to edit the user config (default in `~/tunnelsats/tunnelsatsv2.conf`)
 - Locate LND config: `sudo find / -name "lnd.conf"`
