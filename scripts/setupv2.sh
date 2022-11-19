@@ -1040,14 +1040,15 @@ else
 fi
 
 # Create dns-resolver of the wg interface
-
-wget -O /etc/wireguard/tunnelsats-resolve-dns-wg.sh https://raw.githubusercontent.com/blckbx/tunnelsats/main/scripts/resolve-dns-wg.sh
+echo "Fetching DNS resolver script for WireGuard..."
+wget -O /etc/wireguard/tunnelsats-resolve-dns-wg.sh -q https://raw.githubusercontent.com/blckbx/tunnelsats/main/scripts/resolve-dns-wg.sh
 chmod u+x /etc/wireguard/tunnelsats-resolve-dns-wg.sh
 if [ $? -ne 0 ]; then
   echo "> ERR: could not fetch tunnelsats-resolve-dns-wg.sh (check source: https://raw.githubusercontent.com/blckbx/tunnelsats/main/scripts/resolve-dns-wg.sh)"
   echo
   exit 1
 fi
+echo "> DNS resolver script successfully fetched and installed"
 # Create systemd service
 if [ ! -f /etc/systemd/system/tunnelsats-resolve-dns-wg.sh ]; then
   echo "[Unit]
