@@ -313,7 +313,7 @@ if [ $isDocker -eq 1 ]; then
   dockersubnet="10.9.9.0/25"
 
   if [ $checkdockernetwork -eq 0 ]; then
-    docker network create "a-docker-tunnelsats" --subnet $dockersubnet -o "com.docker.network.driver.mtu"="1420" &>/dev/null
+    docker network create $dockerNetwork --subnet $dockersubnet -o "com.docker.network.driver.mtu"="1420" &>/dev/null
     if [ $? -eq 0 ]; then
       echo "> $dockerNetwork created successfully"
       echo
