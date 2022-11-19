@@ -235,7 +235,7 @@ while true; do
                         echo "> Hybrid Mode successfully deactivated"
                         echo
                     fi
-                fi                
+                fi
             fi
         fi
 
@@ -347,7 +347,7 @@ while true; do
                     echo
                 fi
             fi
-            
+
             # Umbrel | Citadel CLN: restore assigned port
             if [ "$path" == "${dockerMainDir}/app-data/core-lightning/exports.sh" ]; then
                 getPort=$(grep -n "export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"" | cut -d ':' -f1)
@@ -668,13 +668,17 @@ echo
 if [ $isDocker -eq 1 ]; then
     echo "
     Restart ${dockerScriptPrefix^} with
-    sudo ${dockerMainDir}/scripts/stop (${dockerScriptPrefix^}-OS)
-    sudo ${dockerMainDir}/scripts/start (${dockerScriptPrefix^}-OS)"
+    sudo ${dockerMainDir}/scripts/stop
+    sudo ${dockerMainDir}/scripts/start"
     echo
 else
+    serviceName="${lnImplementation}"
+    if [ "${lnImplementation}" == "cln" ]; then
+        serviceName="lightningd"
+    fi
     echo "
     Restart lightning service with
-    sudo systemctl restart lnd.service | lightningd.service"
+    sudo systemctl restart ${serviceName}.service"
     echo
 fi
 
