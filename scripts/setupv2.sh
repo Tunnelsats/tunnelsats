@@ -1241,7 +1241,7 @@ if [ $isDocker -eq 0 ]; then
     sudo systemctl restart ${serviceName}.service"
   echo
 else
-  echo "Restart ${lnImplementation} on Umbrel | Citadel afterwards via the command:
+  echo "Restart ${lnImplementation^^} on ${dockerScriptPrefix^} afterwards via the command:
     sudo ${dockerMainDir}/scripts/stop
     sudo ${dockerMainDir}/scripts/start"
   echo
