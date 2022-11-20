@@ -1,5 +1,7 @@
 import React from "react";
 import { OverlayTrigger, Popover } from "react-bootstrap";
+import { IoLocation, IoPulseSharp } from "react-icons/io5";
+import { FaServer } from "react-icons/fa";
 
 const WorldMap = (props) => {
   function onMapClick(area) {
@@ -67,9 +69,22 @@ const WorldMap = (props) => {
             <Popover id="popover-basic" className="customPopover">
               <Popover.Title as="h3">South America</Popover.Title>
               <Popover.Content>
-                <strong>Location:</strong> São Paolo
+                <IoLocation color="#ffc700" size={20} />{" "}
+                <strong>Server Location: </strong>São Paolo
                 <br />
-                <strong>Status:</strong> 🟢 online
+                <FaServer color="#ffc700" size={20} />{" "}
+                <strong>Current Uptime:</strong>
+                <img
+                  className="serverLabel"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fbr1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                />
+                <br />
+                <IoPulseSharp color="#ffc700" size={20} />{" "}
+                <strong>Current Ping:</strong>
+                <img
+                  className="serverLabel"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fbr1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                />
               </Popover.Content>
             </Popover>
           }
@@ -134,9 +149,22 @@ const WorldMap = (props) => {
             <Popover id="popover-basic" className="customPopover">
               <Popover.Title as="h3">Europe</Popover.Title>
               <Popover.Content>
-                <strong>Location:</strong> Germany / Nuremberg
+                <IoLocation color="#ffc700" size={20} />{" "}
+                <strong>Server Location: </strong>GER / Nuremberg
                 <br />
-                <strong>Status:</strong> 🟢 online
+                <FaServer color="#ffc700" size={20} />{" "}
+                <strong>Current Uptime:</strong>
+                <img
+                  className="serverLabel"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fde3-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                />
+                <br />
+                <IoPulseSharp color="#ffc700" size={20} />{" "}
+                <strong>Current Ping:</strong>
+                <img
+                  className="serverLabel"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fde3-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                />
               </Popover.Content>
             </Popover>
           }
@@ -189,7 +217,7 @@ const WorldMap = (props) => {
           </g>
         </OverlayTrigger>
 
-        {/* circle FFM */}
+        {/* circle NBG */}
         <circle cx="305" cy="72" r="3" fill="#cc0000" />
         <circle cx="305" cy="72" r="1" fill="#cc0000">
           <animate
@@ -229,9 +257,22 @@ const WorldMap = (props) => {
             <Popover id="popover-basic" className="customPopover">
               <Popover.Title as="h3">Asia</Popover.Title>
               <Popover.Content>
-                <strong>Location:</strong> Singapore
+                <IoLocation color="#ffc700" size={20} />{" "}
+                <strong>Server Location: </strong>Singapore
                 <br />
-                <strong>Status:</strong> 🟢 online
+                <FaServer color="#ffc700" size={20} />{" "}
+                <strong>Current Uptime:</strong>
+                <img
+                  className="serverLabel"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fsg1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                />
+                <br />
+                <IoPulseSharp color="#ffc700" size={20} />{" "}
+                <strong>Current Ping:</strong>
+                <img
+                  className="serverLabel"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fsg1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                />
               </Popover.Content>
             </Popover>
           }
@@ -380,9 +421,22 @@ const WorldMap = (props) => {
             <Popover id="popover-basic" className="customPopover">
               <Popover.Title as="h3">North America</Popover.Title>
               <Popover.Content>
-                <strong>Location:</strong> New York City
+                <IoLocation color="#ffc700" size={20} />{" "}
+                <strong>Server Location: </strong>New York City
                 <br />
-                <strong>Status:</strong> 🟢 online
+                <FaServer color="#ffc700" size={20} />{" "}
+                <strong>Current Uptime:</strong>
+                <img
+                  className="serverLabel"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fus1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                />
+                <br />
+                <IoPulseSharp color="#ffc700" size={20} />{" "}
+                <strong>Current Ping:</strong>
+                <img
+                  className="serverLabel"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fus1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                />
               </Popover.Content>
             </Popover>
           }

@@ -559,6 +559,13 @@ function App() {
               >
                 FAQ
               </Nav.Link>
+              <Nav.Link
+                href="https://status.tunnelsats.com"
+                target="_blank"
+                rel="noreferrer"
+              >
+                VPN Server Status
+              </Nav.Link>              
 
               {/*}
     <Nav>

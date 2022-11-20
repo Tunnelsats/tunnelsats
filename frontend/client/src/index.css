@@ -378,3 +378,8 @@ img {
   margin: 0;
 }
 
+.serverLabel {
+  width: 75px;
+  height: 33px;
+}
+
