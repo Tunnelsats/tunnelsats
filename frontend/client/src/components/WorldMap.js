@@ -71,7 +71,7 @@ const WorldMap = (props) => {
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
                 <strong>Server Location: </strong>São Paolo
-                <br />
+                <br /><br />
                 <FaServer color="#ffc700" size={20} />{" "}
                 <strong>Current Uptime:</strong>
                 <img
@@ -151,7 +151,7 @@ const WorldMap = (props) => {
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
                 <strong>Server Location: </strong>GER / Nuremberg
-                <br />
+                <br /><br />
                 <FaServer color="#ffc700" size={20} />{" "}
                 <strong>Current Uptime:</strong>
                 <img
@@ -259,7 +259,7 @@ const WorldMap = (props) => {
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
                 <strong>Server Location: </strong>Singapore
-                <br />
+                <br /><br />
                 <FaServer color="#ffc700" size={20} />{" "}
                 <strong>Current Uptime:</strong>
                 <img
@@ -423,7 +423,7 @@ const WorldMap = (props) => {
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
                 <strong>Server Location: </strong>New York City
-                <br />
+                <br /><br />
                 <FaServer color="#ffc700" size={20} />{" "}
                 <strong>Current Uptime:</strong>
                 <img
