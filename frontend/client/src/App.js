@@ -482,6 +482,7 @@ function App() {
 
   return (
     <>
+      {/*
       <div>
         <Toast
           show={showA}
@@ -493,6 +494,7 @@ function App() {
             right: 0,
           }}
         >
+           
           <Toast.Header style={{ textAlign: "center" }}>
             <strong className="mr-auto">⚠️ Important Information ⚠️</strong>
           </Toast.Header>
@@ -518,6 +520,7 @@ function App() {
           </Toast.Body>
         </Toast>
       </div>
+          */}
       <div>
         <Container>
           {/* Navigation Bar */}
@@ -564,8 +567,8 @@ function App() {
                 target="_blank"
                 rel="noreferrer"
               >
-                VPN Server Status
-              </Nav.Link>              
+                Server Status 🚨
+              </Nav.Link>
 
               {/*}
     <Nav>
