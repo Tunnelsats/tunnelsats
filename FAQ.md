@@ -65,7 +65,7 @@ We use premium VPS Services with tight SLAs and proven, recorded high uptime (99
 ### What services are used?
 
 As payment backend we use <a href="https://legend.lnbits.com/" target="_blank" rel="noreferrer">LNbits</a> for lightning payments, for sending WireGuard config files via email we use our own mailserver and this frontend uses React and WebSockets.
-As for the VPN endpoints, we make use of our own rented virtual servers from Digital Ocean (EU, Asia and NorthAmerica), Hetzner (EU) and Vultr (LatAM) with <a href="https://github.com/Mawthuq-Software/wireguard-manager-and-api" target="_blank" rel="noreferrer">WireGuard Manager and API</a> managing the WireGuard setup and accounts safely.
+As for the VPN endpoints, we make use of our own rented virtual servers from Digital Ocean (EU, Asia and NorthAmerica), Hetzner (EU) and Vultr (LatAM) with <a href="https://github.com/Mawthuq-Software/wireguard-manager-and-api" target="_blank" rel="noreferrer">WireGuard Manager and API</a> managing the WireGuard setup and accounts safely. For collecting uptime and response times of our servers, we forked <a href="https://github.com/Tunnelsats/upptime" target="_blank" rel="noreferrer">upptime</a> which is running from our own repository. Response times are gathered by github based in the US.
 
 <br />
 
