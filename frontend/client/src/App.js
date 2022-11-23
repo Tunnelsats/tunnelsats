@@ -603,6 +603,7 @@ function App() {
               {isRenewSub ? (
                 <>
                   <hr />
+                  <p className="price">Connected to continent:</p>
                   {/* WorldMap */}
                   <WorldMap
                     selected={country}
