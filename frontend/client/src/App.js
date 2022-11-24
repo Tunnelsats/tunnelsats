@@ -19,6 +19,7 @@ import RenewInvoiceModal from "./components/RenewInvoiceModal";
 import Popup from "./components/Popup";
 import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
+//import logo from "./media/tunnelsats_headerlogo5.png";
 import logo from "./media/tunnelsats_headerlogo5_BF.png";
 import WorldMap from "./components/WorldMap";
 import { IoIosRefresh, IoIosInformationCircleOutline } from "react-icons/io";
@@ -105,7 +106,7 @@ function App() {
   const [popupMessage, setPopupMessage] = useState("");
 
   // special discounts
-  const [discount, setDiscount] = useState(1.0);
+  const [discount, setDiscount] = useState(0.2);
 
   // node stats from mempool.space
   const [nodeStats, setNodeStats] = useState([0, 0, 0, 0]);
@@ -184,7 +185,9 @@ function App() {
     const queryParams = new URLSearchParams(window.location.search);
     const param = queryParams.get("ref");
     // set discount per ref
-    if (param == REACT_APP_REF) setDiscount(REACT_APP_DISCOUNT);
+    if (param == REACT_APP_REF) {
+      setDiscount(REACT_APP_DISCOUNT);
+    }
   };
 
   /*
@@ -569,8 +572,8 @@ function App() {
               >
                 Server Status 🚨
               </Nav.Link>
-              <Nav.Link href="/?ref=blackfriday">
-                <strong>- Black Friday Special 20% Off -</strong>
+              <Nav.Link>
+                <strong>⚡️ Black Friday Special 20% Off ⚡️</strong>
               </Nav.Link>
 
               {/*}
@@ -598,7 +601,11 @@ function App() {
           <Row>
             <Col>
               {/* Logo */}
-              <img src={logo} alt="" className="logo" />
+              <img
+                src={logo}
+                alt=""
+                className="logo"
+              />
 
               {/* Intro Text */}
               <HeaderInfo stats={nodeStats} />
