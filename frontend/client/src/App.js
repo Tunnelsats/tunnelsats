@@ -569,8 +569,8 @@ function App() {
               >
                 Server Status 🚨
               </Nav.Link>
-              <Nav.Link href="/blackfriday">
-                - Black Friday Special 20% Off -
+              <Nav.Link href="/?ref=blackfriday">
+                <strong>- Black Friday Special 20% Off -</strong>
               </Nav.Link>
 
               {/*}
