@@ -19,7 +19,7 @@ function InvoiceModal(props) {
   const showEmailModal = () => setShowEmailModal(true);
 
   const [showTooltip, setShowTooltip] = useState(false);
-  const [openCollapse, setOpen] = useState(true);
+  //const [openCollapse, setOpen] = useState(true);
   const target = useRef(null);
 
   //const [paymentHash, setPaymentHash] = useState(props.value);
@@ -148,7 +148,7 @@ function InvoiceModal(props) {
               .
             </p>
           )}
-          <Collapse in={openCollapse}>
+          <Collapse in={true}>
             <div id="example-collapse-text">
               {props.showSpinner ? null : (
                 <div id="invoicestring" className="container">

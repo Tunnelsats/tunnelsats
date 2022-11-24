@@ -77,6 +77,7 @@ const WorldMap = (props) => {
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fbr1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  alt=""
                 />
                 <br />
                 <IoPulseSharp color="#ffc700" size={20} />{" "}
@@ -84,6 +85,7 @@ const WorldMap = (props) => {
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fbr1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  alt=""
                 />
               </Popover.Content>
             </Popover>
@@ -157,6 +159,7 @@ const WorldMap = (props) => {
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fde3-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  alt=""
                 />
                 <br />
                 <IoPulseSharp color="#ffc700" size={20} />{" "}
@@ -164,6 +167,7 @@ const WorldMap = (props) => {
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fde3-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  alt=""
                 />
               </Popover.Content>
             </Popover>
@@ -265,6 +269,7 @@ const WorldMap = (props) => {
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fsg1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  alt=""
                 />
                 <br />
                 <IoPulseSharp color="#ffc700" size={20} />{" "}
@@ -272,6 +277,7 @@ const WorldMap = (props) => {
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fsg1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  alt=""
                 />
               </Popover.Content>
             </Popover>
@@ -429,6 +435,7 @@ const WorldMap = (props) => {
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fus1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  alt=""
                 />
                 <br />
                 <IoPulseSharp color="#ffc700" size={20} />{" "}
@@ -436,6 +443,7 @@ const WorldMap = (props) => {
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fus1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  alt=""
                 />
               </Popover.Content>
             </Popover>

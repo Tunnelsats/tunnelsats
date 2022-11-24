@@ -14,7 +14,7 @@ import success from "../media/ok-128.png";
 
 function RenewInvoiceModal(props) {
   const [showTooltip, setShowTooltip] = useState(false);
-  const [openCollapse, setOpen] = useState(true);
+  //const [openCollapse, setOpen] = useState(true);
   const target = useRef(null);
 
   const renderTooltip = (show) => {
@@ -135,7 +135,7 @@ function RenewInvoiceModal(props) {
               .
             </p>
           )}
-          <Collapse in={openCollapse}>
+          <Collapse in={true}>
             <div id="example-collapse-text">
               {props.showSpinner ? null : (
                 <div id="invoicestring" className="container">
