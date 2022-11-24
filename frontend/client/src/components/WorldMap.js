@@ -152,7 +152,10 @@ const WorldMap = (props) => {
               <Popover.Title as="h3">Europe</Popover.Title>
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
-                <strong>Server Location: </strong>GER / Nuremberg
+                <strong>Server Location #1: </strong>Nuremberg
+                <br />
+                <IoLocation color="#ffc700" size={20} />{" "}
+                <strong>Server Location #2: </strong>Frankfurt
                 <br /><br />
                 <FaServer color="#ffc700" size={20} />{" "}
                 <strong>Current Uptime:</strong>
