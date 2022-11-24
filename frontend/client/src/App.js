@@ -114,8 +114,8 @@ function App() {
   const [commitHash, setCommitHash] = useState("");
 
   // toast
-  const [showA, setShowA] = useState(true);
-  const toggleShowA = () => setShowA(!showA);
+  //const [showA, setShowA] = useState(true);
+  //const toggleShowA = () => setShowA(!showA);
 
   //Successful payment alert
   const renderAlert = (show) => {
@@ -568,6 +568,9 @@ function App() {
                 rel="noreferrer"
               >
                 Server Status 🚨
+              </Nav.Link>
+              <Nav.Link href="/blackfriday">
+                - Black Friday Special 20% Off -
               </Nav.Link>
 
               {/*}
