@@ -19,7 +19,7 @@ import RenewInvoiceModal from "./components/RenewInvoiceModal";
 import Popup from "./components/Popup";
 import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
-import logo from "./media/tunnelsats_headerlogo5.png";
+import logo from "./media/tunnelsats_headerlogo5_BF.png";
 import WorldMap from "./components/WorldMap";
 import { IoIosRefresh, IoIosInformationCircleOutline } from "react-icons/io";
 import "./wireguard.js";
