@@ -19,8 +19,8 @@ import RenewInvoiceModal from "./components/RenewInvoiceModal";
 import Popup from "./components/Popup";
 import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
-//import logo from "./media/tunnelsats_headerlogo5.png";
-import logo from "./media/tunnelsats_headerlogo5_BF.png";
+import logo from "./media/tunnelsats_headerlogo5.png";
+//import logo from "./media/tunnelsats_headerlogo5_BF.png";
 import WorldMap from "./components/WorldMap";
 import { IoIosRefresh, IoIosInformationCircleOutline } from "react-icons/io";
 import "./wireguard.js";
@@ -106,7 +106,7 @@ function App() {
   const [popupMessage, setPopupMessage] = useState("");
 
   // special discounts
-  const [discount, setDiscount] = useState(0.2);
+  const [discount, setDiscount] = useState(1.0);
 
   // node stats from mempool.space
   const [nodeStats, setNodeStats] = useState([0, 0, 0, 0]);
@@ -328,9 +328,6 @@ function App() {
 
   const handleChangeServer = (event) => {
     setServer({ server: event.target.value });
-    //setNewTime("");
-    //setTime("");
-    //setTimeValid(false);
   };
 
   const handleChangePubkey = (event) => {
@@ -360,7 +357,7 @@ function App() {
       DEBUG &&
         console.log(`${getDate()} App.js: got msg receiveUpdateSubscription`);
       setSpinner(false);
-      //In case the user renewed the subscription and wants to renew it in the same window again
+      // in case the user renewed the subscription and wants to renew it in the same window again
       setTimeValid(false);
       setTimeValidOld(false);
 
@@ -457,8 +454,8 @@ function App() {
     // console.log("Submit Worked", server, pubkey);
   };
 
-  //Get the renewal invoice
-  //   { amount, publicKey, keyID, country, priceDollar }
+  // get renewal invoice
+  // { amount, publicKey, keyID, country, priceDollar }
   const getInvoiceRenew = (amount, publicKey, keyID, country, priceDollar) => {
     DEBUG &&
       console.log(
@@ -496,8 +493,7 @@ function App() {
             top: 100,
             right: 0,
           }}
-        >
-           
+        >           
           <Toast.Header style={{ textAlign: "center" }}>
             <strong className="mr-auto">⚠️ Important Information ⚠️</strong>
           </Toast.Header>
@@ -572,16 +568,18 @@ function App() {
               >
                 Server Status 🚨
               </Nav.Link>
-              <Nav.Link>
+              {/*
+                <Nav.Link>
                 <strong>⚡️ Black Friday Special 20% Off ⚡️</strong>
-              </Nav.Link>
+                </Nav.Link>
+              */}
 
               {/*}
-    <Nav>
-      <Button onClick={() => renderLoginModal()} variant="outline-info">Login</Button>
-      <LoginModal show={isLoginModal} handleClose={hideLoginModal} />
-    </Nav>
-    */}
+                <Nav>
+                <Button onClick={() => renderLoginModal()} variant="outline-info">Login</Button>
+                <LoginModal show={isLoginModal} handleClose={hideLoginModal} />
+                </Nav>
+              */}
             </Nav>
             <Nav className="mr-right">
               <Nav.Link
@@ -601,11 +599,7 @@ function App() {
           <Row>
             <Col>
               {/* Logo */}
-              <img
-                src={logo}
-                alt=""
-                className="logo"
-              />
+              <img src={logo} alt="" className="logo" />
 
               {/* Intro Text */}
               <HeaderInfo stats={nodeStats} />
