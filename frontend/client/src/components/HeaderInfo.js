@@ -23,7 +23,7 @@ const HeaderInfo = (props) => {
           lightning to receive a WireGuard configuration file. Please follow the
           detailed installation instructions described on the TunnelSats{" "}
           <a
-            href="https://Tunnelsats.github.io/tunnelsats/"
+            href="https://tunnelsats.github.io/tunnelsats/"
             target="_blank"
             rel="noreferrer"
           >
@@ -31,7 +31,7 @@ const HeaderInfo = (props) => {
           </a>{" "}
           and{" "}
           <a
-            href="https://Tunnelsats.github.io/tunnelsats/FAQ.html"
+            href="https://tunnelsats.github.io/tunnelsats/FAQ.html"
             target="_blank"
             rel="noreferrer"
           >
@@ -47,7 +47,7 @@ const HeaderInfo = (props) => {
             de2.tunnelsats.com to de3.tunnelsats.com. Here is how to easily get
             there:{" "}
             <a
-              href="https://Tunnelsats.github.io/tunnelsats/FAQ.html#phasing-out-de2tunnelsatscom---how-to-switch-to-de3tunnelsatscom"
+              href="https://tunnelsats.github.io/tunnelsats/FAQ.html#phasing-out-de2tunnelsatscom---how-to-switch-to-de3tunnelsatscom"
               target="_blank"
               rel="noreferrer"
             >

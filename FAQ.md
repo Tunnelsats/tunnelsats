@@ -65,8 +65,8 @@ We use premium VPS Services with tight SLAs and proven, recorded high uptime (99
 
 ### What services are used?
 
-As payment backend we use <a href="https://legend.lnbits.com/" target="_blank" rel="noreferrer">LNbits</a> for lightning payments, for sending WireGuard config files via email we use our own mailserver and this frontend uses React and WebSockets.
-As for the VPN endpoints, we make use of our own rented virtual servers from Digital Ocean (EU, Asia and NorthAmerica), Hetzner (EU) and Vultr (LatAM) with <a href="https://github.com/Mawthuq-Software/wireguard-manager-and-api" target="_blank" rel="noreferrer">WireGuard Manager and API</a> managing the WireGuard setup and accounts safely. For collecting uptime and response times of our servers, we forked <a href="https://github.com/Tunnelsats/upptime" target="_blank" rel="noreferrer">upptime</a> which is running from our own repository. Response times are gathered by github based in the US.
+As payment backend we use <a href="https://lnbits.com/" target="_blank" rel="noreferrer">LNbits</a> for lightning payments, for sending WireGuard config files via email we use our own mailserver and this frontend uses React and WebSockets.
+As for the VPN endpoints, we make use of our own rented virtual servers from Digital Ocean (EU, Asia and NorthAmerica), Hetzner (EU) and Vultr (LatAM) with <a href="https://github.com/Mawthuq-Software/wireguard-manager-and-api" target="_blank" rel="noreferrer">WireGuard Manager and API</a> managing the WireGuard setup and accounts safely. For collecting uptime and response times of our servers, we forked <a href="https://github.com/tunnelsats/upptime" target="_blank" rel="noreferrer">upptime</a> which is running from our own repository. Response times are gathered by github based in the US.
 
 <br />
 
@@ -147,7 +147,7 @@ Please approach us on Telegram, via Email, Twitter or open an issue here. We'll 
 
 ### I'm stuck with the setup process, can you help?
 
-Please raise an [issue](https://github.com/blckbx/tunnelsats/issues) in Github or simply join our [Telegram](https://t.me/+NJylaUom-rxjYjU6) group, explaining where you are stuck, but leave out any personal or sensitive information. Especially handle your configuration file with care!
+Please raise an [issue](https://github.com/tunnelsats/tunnelsats/issues) in Github or simply join our [Telegram](https://t.me/+NJylaUom-rxjYjU6) group, explaining where you are stuck, but leave out any personal or sensitive information. Especially handle your configuration file with care!
 
 <br/>
 
@@ -281,7 +281,7 @@ Replace the ip_of_tunnelsats_vpn with the ip of the related tunnelsats vpn serve
 
 ### Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?
 
-As of commit [24f0f3c](https://github.com/blckbx/tunnelsats/commit/24f0f3c969cac04059aa8b8bfe1be3add08ae4bb) gRPC and Rest interfaces (ports 10009 and 8080) are no longer tunneled by TunnelSats. This means you can access these ports and tunnel them via ZeroTier or Tailscale additionally. This solution works for Docker (e.g. Umbrel) and non-Docker (e.g. RaspiBlitz) setups. In case you got a subscription before this change was introduced, just get and run the latest setup script again. Installation steps are any different than setting it up without TunnelSats.
+As of commit [24f0f3c](https://github.com/tunnelsats/tunnelsats/commit/24f0f3c969cac04059aa8b8bfe1be3add08ae4bb) gRPC and Rest interfaces (ports 10009 and 8080) are no longer tunneled by TunnelSats. This means you can access these ports and tunnel them via ZeroTier or Tailscale additionally. This solution works for Docker (e.g. Umbrel) and non-Docker (e.g. RaspiBlitz) setups. In case you got a subscription before this change was introduced, just get and run the latest setup script again. Installation steps are any different than setting it up without TunnelSats.
 
 <br />
 
@@ -315,7 +315,7 @@ Problems with one of our providers forced us to switch to a new one, so we phasi
 In fact there are five simple steps to take:
 
 1. Edit your `tunnelsatsv2.conf` and change `Endpoint` entry to `Endpoint = de3.tunnelsats.com:51820`
-2. Fetch latest version of setup script: `wget -O setupv2.sh https://github.com/blckbx/tunnelsats/raw/main/scripts/setupv2.sh`
+2. Fetch latest version of setup script: `wget -O setupv2.sh https://github.com/tunnelsats/tunnelsats/raw/main/scripts/setupv2.sh`
 3. Run it: `sudo bash setupv2.sh`
 4. Edit your lightning config file and change the DNS entry accordingly:
 
@@ -339,7 +339,7 @@ The public IP should start with 159.x.x.x
 If you can not locate a file (e.g., the `tunnelsatsv2.conf` or your lightning config) you can always use the `find` command.
 
 - Locate tunnelsatsv2.conf: `sudo find / -maxdepth 5 -type d \( -path /etc/wireguard -o -path /sd-root \) -prune -o -type f -name "tunnelsatsv2.conf" -print`
-  - Tunnelsats installs two independent config files both called `tunnelsatsv2.conf` (a user config, and a config for the vpn client wireguard).
+  - TunnelSats installs two independent config files both called `tunnelsatsv2.conf` (a user config, and a config for the vpn client wireguard).
   - For the switch to `de3.tunnelsats.com` you want to edit the user config (default in `~/tunnelsats/tunnelsatsv2.conf`)
 - Locate LND config: `sudo find / -name "lnd.conf"`
 - Locate CLN config: `sudo find / -name "conf"`

@@ -510,7 +510,7 @@ function App() {
             de2.tunnelsats.com to de3.tunnelsats.com. Here is how to easily get
             there:{" "}
             <a
-              href="https://Tunnelsats.github.io/tunnelsats/FAQ.html#phasing-out-de2tunnelsatscom---how-to-switch-to-de3tunnelsatscom"
+              href="https://tunnelsats.github.io/tunnelsats/FAQ.html#phasing-out-de2tunnelsatscom---how-to-switch-to-de3tunnelsatscom"
               target="_blank"
               rel="noreferrer"
             >
@@ -548,14 +548,14 @@ function App() {
                 </Nav.Link>
               )}
               <Nav.Link
-                href="https://Tunnelsats.github.io/tunnelsats"
+                href="https://tunnelsats.github.io/tunnelsats"
                 target="_blank"
                 rel="noreferrer"
               >
                 Guide
               </Nav.Link>
               <Nav.Link
-                href="https://Tunnelsats.github.io/tunnelsats/FAQ.html"
+                href="https://tunnelsats.github.io/tunnelsats/FAQ.html"
                 target="_blank"
                 rel="noreferrer"
               >
@@ -583,7 +583,7 @@ function App() {
             </Nav>
             <Nav className="mr-right">
               <Nav.Link
-                href={`https://github.com/Tunnelsats/tunnelsats/commit/${commitHash}`}
+                href={`https://github.com/tunnelsats/tunnelsats/commit/${commitHash}`}
                 target="_blank"
                 rel="noreferrer"
               >
@@ -642,7 +642,7 @@ function App() {
                         />
                         <Button
                           variant="secondary"
-                          href="https://Tunnelsats.github.io/tunnelsats/FAQ.html#how-can-i-extend-my-subscription"
+                          href="https://tunnelsats.github.io/tunnelsats/FAQ.html#how-can-i-extend-my-subscription"
                           target="_blank"
                         >
                           <IoIosInformationCircleOutline
@@ -959,7 +959,7 @@ function App() {
                   </Col>
                   <Col>
                     <a
-                      href="https://github.com/Tunnelsats/tunnelsats"
+                      href="https://github.com/tunnelsats/tunnelsats"
                       target="_blank"
                       rel="noreferrer"
                     >
