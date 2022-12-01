@@ -83,7 +83,7 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
   Download setup script:
   
   ```sh
-  $ wget -O setupv2.sh https://github.com/blckbx/tunnelsats/raw/main/scripts/setupv2.sh
+  $ wget -O setupv2.sh https://github.com/Tunnelsats/tunnelsats/raw/main/scripts/setupv2.sh
   ```
 
   Copy your WireGuard config file (`tunnelsatsv2.conf`) to the same directory where `setupv2.sh` is located. If you need to transfer it to your node, use `scp` like so:
@@ -131,7 +131,7 @@ Before applying any changes to your config files, please __always__ create a bac
 
 ### LND
 
-Running LND only requires a few parameters to be checked and set to activate hybrid mode. Locate `lnd.conf` depending on your node setup. See the [FAQ](https://blckbx.github.io/tunnelsats/FAQ.html#where-do-i-find-my-lndconf-file) for some default path examples. Please edit the file and put the settings shown below into their corresponding sections. If any of these settings are already present, comment them out and add the new ones below. We need to add or modify the following settings:
+Running LND only requires a few parameters to be checked and set to activate hybrid mode. Locate `lnd.conf` depending on your node setup. See the [FAQ](https://Tunnelsats.github.io/tunnelsats/FAQ.html#where-do-i-find-my-lndconf-file) for some default path examples. Please edit the file and put the settings shown below into their corresponding sections. If any of these settings are already present, comment them out and add the new ones below. We need to add or modify the following settings:
 
   ```ini
   [Application Options]
@@ -247,7 +247,7 @@ Renewal of existing subscriptions has been reworked. Now it is possible to prolo
 To restore all applied changes made to your node setup, download and run the uninstallv2 script. Furthermore remove entries from configuration files.
 
   ```sh
-  $ wget -O uninstallv2.sh https://github.com/blckbx/tunnelsats/raw/main/scripts/uninstallv2.sh
+  $ wget -O uninstallv2.sh https://github.com/Tunnelsats/tunnelsats/raw/main/scripts/uninstallv2.sh
   $ sudo bash uninstallv2.sh
   ```
 Restore your configuration from with the backup file you (hopefully) created on setting up hybrid mode. The uninstall script will take care of the most important part to prevent real IP leaks by disabling/removing hybrid settings in respective configuration files.
