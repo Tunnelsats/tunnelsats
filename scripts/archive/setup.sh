@@ -374,7 +374,7 @@ announce-addr=${vpnExternalIP}:${vpnExternalPort}
 always-use-proxy=false
 #########################################
 Please save them in a file or write them down for later use.
-A more detailed guide is available at: https://blckbx.github.io/tunnelsats/ 
+A more detailed guide is available at: https://Tunnelsats.github.io/tunnelsats/ 
 Afterwards please restart LND / CLN for changes to take effect.
 VPN setup completed!";echo
 

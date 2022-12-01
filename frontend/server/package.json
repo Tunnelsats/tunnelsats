@@ -9,12 +9,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/blckbx/tunnelsats.git"
+    "url": "git+https://github.com/Tunnelsats/tunnelsats.git"
   },
   "author": "LightRider",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/blckbx/tunnelsats/issues"
+    "url": "https://github.com/Tunnelsats/tunnelsats/issues"
   },
   "homepage": "https://tunnelsats.com",
   "dependencies": {
