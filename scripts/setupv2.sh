@@ -214,7 +214,17 @@ fi
 
 sleep 2
 
-# check wireguard
+#Check if system is virtualized
+virtualized=0
+#Only modprobe in unvirtualized system
+modprobe=""
+systemd-detect-virt -v --quiet
+if [ $? -eq 0 ]; then
+  echo "> Virtualized setup"
+  virtualized=1
+  echo
+fi
+
 echo "Checking wireguard installation..."
 checkwg=$(wg -v 2>/dev/null | grep -c "wireguard-tools")
 if [ $checkwg -eq 0 ]; then
@@ -240,6 +250,40 @@ if [ $checkwg -eq 0 ]; then
 else
   echo "> wireguard found"
   echo
+fi
+
+# Install wireguard-go because we need a wireguard which runs in userspace
+# because we are virtualized
+# Check for a go installation first
+
+if [ $virtualized -eq 1 ]; then
+  echo "> Your system is virtualized, you need to download userspace wireguard implementation"
+  echo "> wireguard-go is such a userspace wireguard implementation, therefore we check in the"
+  echo "> following whether its installed on your system."
+  echo
+  goinstalled=$(go version 2>/dev/null | grep -c "go version")
+  if [ $goinstalled -eq 0 ]; then
+    echo "> failed to find golang on your system (go version)"
+    echo
+    exit 1
+  fi
+
+  wireguard-go --version 2>/dev/null
+  if [ $? -ne 0 ]; then
+    echo "> failed to find wireguard-go on your system (wireguard-go --version)"
+    echo "> make sure you install wireguard-go on your system"
+    echo "> see https://github.com/WireGuard/wireguard-go"
+    echo "> make sure you edit the following line after installing wireguard-go"
+    echo "> in /lib/systemd/system/wg-quick@.service edit"
+    echo "> Environment=WG_I_PREFER_BUGGY_USERSPACE_TO_POLISHED_KMOD=1 below the entry"
+    echo "> Environment=WG_ENDPOINT_RESOLUTION_RETRIES=infinity"
+    echo
+    exit 1
+  fi
+
+else
+  modprobe="modprobe cls_cgroup"
+
 fi
 
 sleep 2
@@ -308,13 +352,13 @@ else
   #Delete Rules for non-docker setup
   #Clean Routing Tables from prior failed wg-quick starts
   delrule1=$(ip rule | grep -c "from all lookup main suppress_prefixlength 0")
-  delrule2=$(ip rule | grep -c "from all fwmark 0xdeadbeef lookup 51820")
+  delrule2=$(ip rule | grep -c "from all fwmark 0x1000000/0xff000000 lookup 51820")
   for i in $(seq 1 $delrule1); do
     ip rule del from all table main suppress_prefixlength 0
   done
 
   for i in $(seq 1 $delrule2); do
-    ip rule del from all fwmark 0xdeadbeef table 51820
+    ip rule del from all fwmark 0x1000000/0xff000000 table 51820
   done
 
   #Flush any rules which are still present from failed interface starts
@@ -326,6 +370,11 @@ sleep 2
 
 # Fetch all local networks and exclude them from kill switch
 localNetworks=$(ip route | awk '{print $1}' | grep -v default | sed -z 's/\n/, /g')
+
+if [ -z $localNetworks ]; then
+  # add default networks according to RFC 1918
+  localNetworks="10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"
+fi
 
 if [ $killswitchRaspi -eq 1 ]; then
 
@@ -342,12 +391,10 @@ echo "Copy wireguard conf file to /etc/wireguard and apply network rules..."
 inputDocker="\n
 [Interface]\n
 DNS = 8.8.8.8\n
-FwMark = 0x3333\n
 Table = off\n
 \n
 PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
 PostUp = ip rule add from all table main suppress_prefixlength 0\n
-PostUp = ip rule add from all fwmark 0x1111 table main \n
 PostUp = ip route add blackhole default metric 3 table 51820\n
 PostUp = ip route add default dev %i metric 2 table 51820\n
 PostUp = ip route add  10.9.0.0/24 dev %i  proto kernel scope link; ping -c1 10.9.0.1\n
@@ -358,16 +405,15 @@ PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
 \n
 PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
 PostDown = ip rule del from all table  main suppress_prefixlength 0\n
-PostDown = ip rule del from all fwmark 0x1111 table main \n
 PostDown = ip route flush table 51820\n
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
 "
 inputNonDocker="\n
 [Interface]\n
-FwMark = 0x3333\n
+FwMark = 0x2000000\n
 Table = off\n
 \n
-PostUp = ip rule add from all fwmark 0xdeadbeef table 51820;ip rule add from all table main suppress_prefixlength 0\n
+PostUp = ip rule add from all fwmark 0x1000000/0xff000000 table 51820;ip rule add from all table main suppress_prefixlength 0\n
 PostUp = ip route add default dev %i table 51820;\n
 PostUp = ip route add  10.9.0.0/24 dev %i  proto kernel scope link; ping -c1 10.9.0.1\n
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0\n
@@ -376,15 +422,15 @@ PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1\n
 \n
 PostUp = nft add table ip %i\n
 PostUp = nft add chain ip %i prerouting '{type filter hook prerouting priority mangle -1; policy accept;}'; nft add rule ip %i prerouting meta mark set ct mark\n
-PostUp = nft add chain ip %i mangle '{type route hook output priority mangle -1; policy accept;}'; nft add rule ip %i mangle tcp sport != { 8080, 10009 } meta mark != 0x3333 meta cgroup 1118498 meta mark set 0xdeadbeef\n
-PostUp = nft add chain ip %i nat'{type nat hook postrouting priority srcnat -1; policy accept;}'; nft insert rule ip %i nat  fib daddr type != local ip daddr != {$localNetworks} oifname != %i ct mark 0xdeadbeef drop;nft add rule ip %i nat oifname %i ct mark 0xdeadbeef masquerade\n
+PostUp = nft add chain ip %i mangle '{type route hook output priority mangle -1; policy accept;}'; nft add rule ip %i mangle tcp sport != { 8080, 10009 } meta mark and 0xff000000 != 0x2000000 meta cgroup 1118498 meta mark set mark and 0x00ffffff xor 0x1000000\n
+PostUp = nft add chain ip %i nat'{type nat hook postrouting priority srcnat -1; policy accept;}'; nft insert rule ip %i nat  fib daddr type != local  ip daddr != {$localNetworks} oifname != %i ct mark and 0xff000000 == 0x1000000 drop;nft add rule ip %i nat oifname %i ct mark and 0xff000000 == 0x1000000 masquerade\n
 $killswitchNonDocker
-PostUp = nft add chain ip %i postroutingmangle'{type filter hook postrouting priority mangle -1; policy accept;}'; nft add rule ip %i postroutingmangle meta mark 0xdeadbeef ct mark set meta mark\n
+PostUp = nft add chain ip %i postroutingmangle'{type filter hook postrouting priority mangle -1; policy accept;}'; nft add rule ip %i postroutingmangle meta mark and 0xff000000 == 0x1000000 ct mark set meta mark and 0x00ffffff xor 0x1000000 \n
 PostUp = nft add chain ip %i input'{type filter hook input priority filter -1; policy accept;}'; nft add rule ip %i input iifname %i  ct state established,related counter accept; nft add rule ip %i input iifname %i tcp dport != 9735 counter drop; nft add rule ip %i input iifname %i udp dport != 9735 counter drop\n
 
 \n
 PostDown = nft delete table ip %i\n
-PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del from all fwmark 0xdeadbeef table 51820\n
+PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del from all fwmark 0x1000000/0xff000000 table 51820\n
 PostDown = ip route flush table 51820\n
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
 "
@@ -427,7 +473,7 @@ if [ $isDocker -eq 0 ]; then
 set -e
 dir_netcls=\"/sys/fs/cgroup/net_cls\"
 splitted_processes=\"/sys/fs/cgroup/net_cls/splitted_processes\"
-modprobe cls_cgroup
+$modprobe
 if [ ! -d \"\$dir_netcls\" ]; then
   mkdir \$dir_netcls
   mount -t cgroup -o net_cls none \$dir_netcls
@@ -457,7 +503,7 @@ fi
   if [ -f /etc/wireguard/tunnelsats-create-cgroup.sh ]; then
     echo "> tunnelsats-create-cgroup.sh created, executing..."
     # run
-    if bash /etc/wireguard/tunnelsats-create-cgroup.sh; then
+    if /etc/wireguard/tunnelsats-create-cgroup.sh; then
       echo "> Created tunnelsats cgroup successfully"
       echo
     else
@@ -477,7 +523,7 @@ StartLimitBurst=5
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/bash /etc/wireguard/tunnelsats-create-cgroup.sh
+ExecStart=/etc/wireguard/tunnelsats-create-cgroup.sh
 [Install]
 WantedBy=multi-user.target
 " >/etc/systemd/system/tunnelsats-create-cgroup.service
@@ -1136,6 +1182,7 @@ and duplicated lines could lead to errors.
 
 #########################################
 [Application Options]
+listen=0.0.0.0:9735
 externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 [Tor]
 tor.streamisolation=false
