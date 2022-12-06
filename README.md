@@ -183,7 +183,7 @@ On docker-based systems this might look very different. The following shows how 
 
 - Apps installed: Bitcoin, CLN (LND may NOT be installed at the same time)
 - Working Directory: `~/umbrel/app-data/core-lightning/`
-- File to look for: `export.sh`
+- Files to look for: `export.sh` and `docker-compose.yml`
 - Changes to be made: 
 
 __export.sh__: change port number from 9736 to 9735
@@ -195,7 +195,20 @@ change to
   export APP_CORE_LIGHTNING_DAEMON_PORT="9735"
   ```
 
-⚠️ __Important Notice:__ On updates of CLN app `export.sh` is getting reset. So this change has to be done after every update procedure of CLN!  
+__docker-compose.yml__:comment out `bind-addr` parameter in service `lightningd`:
+  ```ini
+    command:
+     ...
+     - --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735
+  ```
+change to
+  ```ini
+    command:
+     ...
+     #- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735  
+  ```
+
+⚠️ __Important Notice:__ On updates of CLN app all files are getting reset. So this change has to be done after every update procedure of CLN!  
 
 Additionally we create a persistent CLN config file (if not already provided. Umbrel 0.5+ does not initially.):
 
@@ -205,7 +218,7 @@ Additionally we create a persistent CLN config file (if not already provided. Um
 and enter the following settings:
 
   ```ini
-  bind-addr=10.9.9.9:9735
+  bind-addr=0.0.0.0:9735
   always-use-proxy=false
   announce-addr={vpnDNS}:{vpnPort}
   ```
