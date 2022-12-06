@@ -371,7 +371,7 @@ sleep 2
 # Fetch all local networks and exclude them from kill switch
 localNetworks=$(ip route | awk '{print $1}' | grep -v default | sed -z 's/\n/, /g')
 
-if [ -z $localNetworks ]; then
+if [ -z "$localNetworks" ]; then
   # add default networks according to RFC 1918
   localNetworks="10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"
 fi

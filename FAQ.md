@@ -284,6 +284,29 @@ As of commit [24f0f3c](https://github.com/blckbx/tunnelsats/commit/24f0f3c969cac
 
 <br />
 
+### Is it possible to run another Wireguard Tunnel besides Tunnelsats?
+
+In case you also want to run another tunnel besides the tunnelsats network, that works!
+Just create another wireguad configfile with new private and public keys of the respective servers.
+
+```
+[Interface]
+PrivateKey = XXX
+Address = XXX (Don't use 10.9.0.0/24 because this is the tunnelsats network)
+Table = off
+[Peer]
+PublicKey = XXX
+Endpoint =  XXX
+AllowedIPs = 0.0.0.0/0
+```
+
+Replace the XXX-values with your own!
+
+Then just bring the interface up with `wg-quick up NAMEOFCONFIGFILE.conf`
+Now you are connected to your second wireguard network.
+
+<br />
+
 ### Phasing out de2.tunnelsats.com - How to switch to de3.tunnelsats.com
 
 Problems with one of our providers forced us to switch to a new one, so we phasing out `de2.tunnelsats.com` slowly. If you are running your node on this VPN (EU continent), please take a minute to read how to switch your connection to the new vpn: `de3.tunnelsats.com`
@@ -294,6 +317,7 @@ In fact there are five simple steps to take:
 2. Fetch latest version of setup script: `wget -O setupv2.sh https://github.com/blckbx/tunnelsats/raw/main/scripts/setupv2.sh`
 3. Run it: `sudo bash setupv2.sh`
 4. Edit your lightning config file and change the DNS entry accordingly:
+
    - LND: `externalhosts=de3.tunnelsats.com:<yourVPNport>`
    - CLN: `announce-addr=de3.tunnelsats.com:<yourVPNport>`
    - As always before changing the config, it is good practice to backup your config.
