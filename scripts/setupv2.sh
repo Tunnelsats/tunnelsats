@@ -109,7 +109,7 @@ while true; do
     isDocker=1
     dockerNetwork="a-docker-tunnelsats"
     dockerScriptPrefix="citadel"
-    dockerMainDir=$(find / -maxdepth 5 \( -path /mnt -prune -o -path /sd-root -prune \) -o -type f -name "karen" -print 2>/dev/null | awk -F '/karen' '{print $1}')
+    dockerMainDir=$(find / -maxdepth 5 \( -path /mnt -prune -o -path /sd-root -prune -o -path /tmp -prune \) -o -type f -name "karen" -print 2>/dev/null | awk -F '/karen' '{print $1}')
     if [[ $dockerMainDir =~ [[:space:]] ]]; then
       echo "> citadel main path is ambiguous"
       echo "> error: $dockerMainDir (contains more than one)"
