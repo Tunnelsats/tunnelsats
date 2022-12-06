@@ -389,6 +389,7 @@ fi
 # and copy to destination folder
 echo "Copy wireguard conf file to /etc/wireguard and apply network rules..."
 inputDocker="\n
+#Tunnelsats-Setupv2-Docker\n
 [Interface]\n
 DNS = 8.8.8.8\n
 Table = off\n
@@ -409,6 +410,7 @@ PostDown = ip route flush table 51820\n
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1\n
 "
 inputNonDocker="\n
+#Tunnelsats-Setupv2-Non-Docker\n
 [Interface]\n
 FwMark = 0x2000000\n
 Table = off\n
@@ -452,13 +454,14 @@ if [ -f "$directory"/tunnelsatsv2.conf ]; then
   fi
 
   # check
-  check=$(grep -c "FwMark" /etc/wireguard/tunnelsatsv2.conf)
+  check=$(grep -c "Tunnelsats-Setupv2" /etc/wireguard/tunnelsatsv2.conf)
   if [ $check -gt 0 ]; then
     echo "> network rules applied"
     echo
   else
     echo "> ERR: network rules not applied"
     echo
+    exit 1
   fi
 fi
 
