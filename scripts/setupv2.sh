@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=27
+patch=28
 
 #Helper
 function valid_ipv4() {
@@ -218,7 +218,7 @@ sleep 2
 virtualized=0
 #Only modprobe in unvirtualized system
 modprobe=""
-systemd-detect-virt -v --quiet
+systemd-detect-virt -c --quiet
 if [ $? -eq 0 ]; then
   echo "> Virtualized setup"
   virtualized=1
