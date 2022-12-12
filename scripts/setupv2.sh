@@ -457,15 +457,18 @@ if [ -f "$directory"/tunnelsatsv2.conf ]; then
     echo
   fi
 
-  if [ $isDocker -eq 1 ]; then
+  #  Don't paste content if user already has something in there
+  check=$(grep -c "Tunnelsats-Setupv2" /etc/wireguard/tunnelsatsv2.conf)
+
+  if [ $isDocker -eq 1 ] && [ $check -eq 0 ]; then
     echo -e $inputDocker 2>/dev/null >>/etc/wireguard/tunnelsatsv2.conf
-  else
+  elif [ $isDocker -eq 0 ] && [ $check -eq 0 ]; then
     echo -e $inputNonDocker 2>/dev/null >>/etc/wireguard/tunnelsatsv2.conf
   fi
 
-  # check
+  # check after pasting in the content
   check=$(grep -c "Tunnelsats-Setupv2" /etc/wireguard/tunnelsatsv2.conf)
-  if [ $check -gt 0 ]; then
+  if [ $check -eq 1 ]; then
     echo "> network rules applied"
     echo
   else
