@@ -394,6 +394,12 @@ inputDocker="\n
 DNS = 8.8.8.8\n
 Table = off\n
 \n
+
+PostUp = while [ $(ip rule | grep -c suppress_prefixlength) -gt 0 ]; do ip rule del from all table  main suppress_prefixlength 0;done
+PostUp = while [ $(ip rule | grep -c 0x1000000) -gt 0 ]; do ip rule del from all fwmark 0x1000000/0xff000000 table  51820;done
+PostUp = if [ $(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt  0 ] ;then echo $?; ip rule flush table 51820 ;fi
+
+
 PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
 PostUp = ip rule add from all table main suppress_prefixlength 0\n
 PostUp = ip route add blackhole default metric 3 table 51820\n
@@ -415,6 +421,10 @@ inputNonDocker="\n
 FwMark = 0x2000000\n
 Table = off\n
 \n
+
+PostUp = while [ $(ip rule | grep -c suppress_prefixlength) -gt 0 ]; do ip rule del from all table  main suppress_prefixlength 0;done
+PostUp = while [ $(ip rule | grep -c 0x1000000) -gt 0 ]; do ip rule del from all fwmark 0x1000000/0xff000000 table  51820;done
+
 PostUp = ip rule add from all fwmark 0x1000000/0xff000000 table 51820;ip rule add from all table main suppress_prefixlength 0\n
 PostUp = ip route add default dev %i table 51820;\n
 PostUp = ip route add  10.9.0.0/24 dev %i  proto kernel scope link; ping -c1 10.9.0.1\n
