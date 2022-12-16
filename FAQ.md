@@ -364,7 +364,7 @@ This makes an outbound request to the api.ipify.org website through the tunnel a
 
 **Non-Docker Setup**
 
-For non-docker setups you have to run the command in the specific cgroup. The equivalent command to umbrel is
+For non-docker setups you have to run the command in the specific cgroup. The equivalent command to docker setup is
 
 `cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org`
 
