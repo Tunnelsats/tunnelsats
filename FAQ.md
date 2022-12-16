@@ -374,7 +374,7 @@ For this you have to check whether a service runs on your VPN port and answers s
 
 `nc -zv  de3.tunnelsats.com 32320`
 
-This makes a tcp request to the de3 tunnelsats server Port 32320
+This makes a tcp request to the de3 tunnelsats server port 32320 (replace with your own VPN port)
 
 If its successful you should see something like
 `Connection to de3.tunnelsats.com port 32320 [tcp/*] succeeded!`
