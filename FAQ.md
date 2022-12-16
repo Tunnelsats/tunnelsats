@@ -360,7 +360,7 @@ First you can check if outbound connection go through the tunnel therefore you c
 
 `docker run -ti --rm --net=docker-tunnelsats curlimages/curl https://api.ipify.org `
 
-This makes an outbound request to the api.ipify.org website through the tunnel and should show the tunnel ip.
+This makes an outbound request to the api.ipify.org website through the tunnel and should show the VPN IP.
 
 **Non-Docker Setup**
 
