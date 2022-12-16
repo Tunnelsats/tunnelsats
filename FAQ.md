@@ -368,7 +368,7 @@ For non-docker setups you have to run the command in the specific cgroup. The eq
 
 `cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org`
 
-Having verified outbound connection you have to make sure inbound connection reach your lightning node.
+Having verified outbound connection you have to make sure inbound connections are able to reach your lightning node.
 
 For this you have to check whether a service runs on your VPN port and answers successfully. You can use netcat for this.
 
