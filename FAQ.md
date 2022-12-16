@@ -32,6 +32,7 @@
 - [Do you offer full-service VPNs too?](#do-you-offer-full-service-vpns-too)
 - [Who built this?](#who-built-this)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
+- [How do I verify the tunnel is working?](#how-do-i-verify-the-tunnel-is-working)
 
 <br/>
 
@@ -348,6 +349,38 @@ of the configuration files, see:
 
 - [Where do I find my lightning configuration file?](#where-do-i-find-my-lightning-configuration-file)
 - If you run into any trouble please reach out ([Where to get help?](#im-stuck-with-the-setup-process-can-you-help))
+
+<br />
+
+### How do I verify the tunnel is working?
+
+First you can check if outbound connection go through the tunnel therefore you can use the following:
+
+**Docker Setup**
+
+`docker run -ti --rm --net=docker-tunnelsats curlimages/curl https://api.ipify.org `
+
+This makes an outbound request to the api.ipify.org website through the tunnel and should show the tunnel ip.
+
+**Non-Docker Setup**
+
+For non-docker setups you have to run the command in the specific cgroup. The equivalent command to umbrel is
+
+`cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org`
+
+Having verified outbound connection you have to make sure inbound connection reach your lightning node.
+
+For this you have to check whether a service runs on your VPN port and answers successfully. You can use netcat for this.
+
+`nc -zv  de3.tunnelsats.com 32320`
+
+This makes a tcp request to the de3 tunnelsats server Port 32320
+
+If its successful you should see something like
+`Connection to de3.tunnelsats.com port 32320 [tcp/*] succeeded!`
+
+In addition you can use the telegram ping bot https://t.me/LNPingBot and connect to your new clearnet address and see whether the lightning
+connection works too.
 
 <br />
 
