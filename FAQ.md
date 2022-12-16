@@ -376,7 +376,7 @@ For this you have to check whether a service runs on your VPN port and answers s
 
 This makes a tcp request to the de3 tunnelsats server port 32320 (replace with your own VPN port)
 
-If its successful you should see something like
+If it's successful you should see something like
 `Connection to de3.tunnelsats.com port 32320 [tcp/*] succeeded!`
 
 In addition you can use the telegram ping bot https://t.me/LNPingBot and connect to your new clearnet address and see whether the lightning
