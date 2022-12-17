@@ -379,7 +379,7 @@ This makes a tcp request to the de3 tunnelsats server port 32320 (replace with y
 If it's successful you should see something like
 `Connection to de3.tunnelsats.com port 32320 [tcp/*] succeeded!`
 
-In addition you can use the telegram ping bot [LnPingBot](https://t.me/LNPingBot) and connect to your new clearnet address and see whether the lightning
+In addition you can use the telegram ping bot [LnPingbot](https://t.me/LNPingBot) and connect to your new clearnet address and see whether the lightning
 connection works too.
 
 <br />

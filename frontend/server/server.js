@@ -746,7 +746,9 @@ async function getWireguardConfig(publicKey, presharedKey, timestamp, server) {
   };
 
   const response1 = await axios(request1).catch((error) => {
-    throw new Error(`Error - wgAPI createKey\n ${error.message}`);
+    throw new Error(
+      `Error - wgAPI createKey\n ${error.message}: ${error?.response?.data}`
+    );
   });
 
   if (!isEmpty(response1.data)) {
@@ -765,7 +767,9 @@ async function getWireguardConfig(publicKey, presharedKey, timestamp, server) {
     };
 
     const response2 = await axios(request2).catch((error) => {
-      throw new Error(`Error - wgAPI portFwd\n ${error.message}`);
+      throw new Error(
+        `Error - wgAPI portFwd\n ${error.message}: ${error?.response?.data}`
+      );
     });
 
     if (!isEmpty(response2.data)) {
