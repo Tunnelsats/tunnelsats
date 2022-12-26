@@ -11,9 +11,9 @@ const WorldMap = (props) => {
   }
 
   function getClassname(area) {
-    if (area.indexOf("oc") !== -1) {
-      return "map-unavailable";
-    }
+    //if (area.indexOf("oc") !== -1) {
+    //  return "map-unavailable";
+    //}
 
     if (props.selected !== null) {
       return area.indexOf(props.selected) === -1
@@ -55,14 +55,14 @@ const WorldMap = (props) => {
               <Popover.Title as="h3">Africa</Popover.Title>
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
-                <strong>Server Location: </strong>Cape Town
+                <strong>Server Location: </strong>Johannesburg
                 <br />
                 <br />
                 <FaServer color="#ffc700" size={20} />{" "}
                 <strong>Current Uptime:</strong>
                 <img
                   className="serverLabel"
-                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fct1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fjo1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
                   alt=""
                 />
                 <br />
@@ -70,7 +70,7 @@ const WorldMap = (props) => {
                 <strong>Current Ping:</strong>
                 <img
                   className="serverLabel"
-                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fct1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fjo1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
                   alt=""
                 />
               </Popover.Content>
@@ -93,9 +93,9 @@ const WorldMap = (props) => {
           </g>
         </OverlayTrigger>
 
-        {/* circle Cape Town */}
-        <circle cx="327" cy="265" r="3" fill="#cc0000" />
-        <circle cx="327" cy="265" r="1" fill="#cc0000">
+        {/* circle Johannesburg */}
+        <circle cx="345" cy="248" r="3" fill="#cc0000" />
+        <circle cx="345" cy="248" r="1" fill="#cc0000">
           <animate
             attributeType="SVG"
             attributeName="r"
@@ -628,10 +628,41 @@ const WorldMap = (props) => {
           />
         </circle>
 
+        <OverlayTrigger
+          trigger="hover"
+          key="top"
+          placement="left"
+          overlay={
+            <Popover id="popover-basic" className="customPopover">
+              <Popover.Title as="h3">Oceania</Popover.Title>
+              <Popover.Content>
+                <IoLocation color="#ffc700" size={20} />{" "}
+                <strong>Server Location: </strong>Sydney
+                <br />
+                <br />
+                <FaServer color="#ffc700" size={20} />{" "}
+                <strong>Current Uptime:</strong>
+                <img
+                  className="serverLabel"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fsy1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  alt=""
+                />
+                <br />
+                <IoPulseSharp color="#ffc700" size={20} />{" "}
+                <strong>Current Ping:</strong>
+                <img
+                  className="serverLabel"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fsy1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  alt=""
+                />
+              </Popover.Content>
+            </Popover>
+          }
+        >
         <g
           id="OC"
           className={getClassname(["oc"])}
-          //onClick={onMapClick.bind(this, "oc")}
+          onClick={onMapClick.bind(this, "oc")}
         >
           <path
             id="path5922"
@@ -678,6 +709,40 @@ const WorldMap = (props) => {
             d="M568.205 268.9c.088-.32.183-.597.225-.88.008-.057-.18-.14-.28-.214-.145.276-.297.552-.426.837-.003.01.227.12.48.257z"
           />
         </g>
+        </OverlayTrigger>
+
+        {/* circle Sydney */}
+        <circle cx="594" cy="265" r="3" fill="#cc0000" />
+        <circle cx="594" cy="265" r="1" fill="#cc0000">
+          <animate
+            attributeType="SVG"
+            attributeName="r"
+            begin="0s"
+            dur="2.5s"
+            repeatCount="indefinite"
+            from="1%"
+            to="3%"
+          />
+          <animate
+            attributeType="CSS"
+            attributeName="stroke-width"
+            begin="0s"
+            dur="2.5s"
+            repeatCount="indefinite"
+            from="3%"
+            to="0%"
+          />
+          <animate
+            attributeType="CSS"
+            attributeName="opacity"
+            begin="0s"
+            dur="2.5s"
+            repeatCount="indefinite"
+            from="0.75"
+            to="0"
+          />
+        </circle>
+
       </svg>
     </div>
   );
