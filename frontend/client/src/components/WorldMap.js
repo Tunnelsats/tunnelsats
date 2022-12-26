@@ -11,7 +11,7 @@ const WorldMap = (props) => {
   }
 
   function getClassname(area) {
-    if (area.indexOf("af") !== -1 || area.indexOf("oc") !== -1) {
+    if (area.indexOf("oc") !== -1) {
       return "map-unavailable";
     }
 
@@ -46,10 +46,40 @@ const WorldMap = (props) => {
           </linearGradient>
         </defs>
 
+        <OverlayTrigger
+          trigger="hover"
+          key="top"
+          placement="top"
+          overlay={
+            <Popover id="popover-basic" className="customPopover">
+              <Popover.Title as="h3">Africa</Popover.Title>
+              <Popover.Content>
+                <IoLocation color="#ffc700" size={20} />{" "}
+                <strong>Server Location: </strong>Cape Town
+                <br /><br />
+                <FaServer color="#ffc700" size={20} />{" "}
+                <strong>Current Uptime:</strong>
+                <img
+                  className="serverLabel"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fct1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  alt=""
+                />
+                <br />
+                <IoPulseSharp color="#ffc700" size={20} />{" "}
+                <strong>Current Ping:</strong>
+                <img
+                  className="serverLabel"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fct1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  alt=""
+                />
+              </Popover.Content>
+            </Popover>
+          }
+        >
         <g
           id="AF"
           className={getClassname(["af"])}
-          //onClick={onMapClick.bind(this, "af")}
+          onClick={onMapClick.bind(this, "af")}
         >
           <path
             id="path4307"
@@ -60,6 +90,7 @@ const WorldMap = (props) => {
             d="M390.758 215.407c-1.126 4.07-4.206 6.355-7.395 8.04-3.08 1.623-4.565 3.03-3.67 6.426.538 2.044.475 3.746-.954 5.293-2.31 2.5-1.826 5.44-1.14 8.27.46 1.886 2.024 2.625 4.012 2.35 2.547-.35 4.203-1.945 4.528-4.27.878-6.33 3.857-11.94 5.758-17.912.96-3.024.438-5.497-1.14-8.197z"
           />
         </g>
+        </OverlayTrigger>        
 
         <OverlayTrigger
           trigger="hover"

@@ -401,6 +401,7 @@ io.on("connection", (socket) => {
       { domain: "us1.tunnelsats.com", country: "na" },
       { domain: "sg1.tunnelsats.com", country: "as" },
       { domain: "br1.tunnelsats.com", country: "sa" },
+      { domain: "ct1.tunnelsats.com", country: "af" },
     ];
 
     for (const serverURL of servers) {
