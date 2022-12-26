@@ -62,7 +62,7 @@ const WorldMap = (props) => {
                 <strong>Current Uptime:</strong>
                 <img
                   className="serverLabel"
-                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fjo1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fza1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
                   alt=""
                 />
                 <br />
@@ -70,7 +70,7 @@ const WorldMap = (props) => {
                 <strong>Current Ping:</strong>
                 <img
                   className="serverLabel"
-                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fjo1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fza1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
                   alt=""
                 />
               </Popover.Content>
@@ -644,7 +644,7 @@ const WorldMap = (props) => {
                 <strong>Current Uptime:</strong>
                 <img
                   className="serverLabel"
-                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fsy1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fau1-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
                   alt=""
                 />
                 <br />
@@ -652,7 +652,7 @@ const WorldMap = (props) => {
                 <strong>Current Ping:</strong>
                 <img
                   className="serverLabel"
-                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fsy1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fau1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
                   alt=""
                 />
               </Popover.Content>
