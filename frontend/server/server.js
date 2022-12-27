@@ -728,14 +728,14 @@ async function getWireguardConfig(publicKey, presharedKey, timestamp, server) {
     .replace(/^https?:\/\//, "")
     .replace(/\/manager\/$/, "");
 
+  const auth = getAuth(serverURL);
+
   const request1 = {
     method: "post",
     url: server + "key",
     headers: {
       "Content-Type": "application/json",
-      Authorization: serverURL.includes("br1")
-        ? process.env.AUTH_VULTR
-        : process.env.AUTH,
+      Authorization: auth,
     },
     data: {
       publicKey: publicKey,
@@ -758,9 +758,7 @@ async function getWireguardConfig(publicKey, presharedKey, timestamp, server) {
       url: server + "portFwd",
       headers: {
         "Content-Type": "application/json",
-        Authorization: serverURL.includes("br1")
-          ? process.env.AUTH_VULTR
-          : process.env.AUTH,
+        Authorization: auth,
       },
       data: {
         keyID: response1.data.keyID,
@@ -850,9 +848,7 @@ async function getKey({ publicKey, serverURL }) {
     url: `https://${serverURL}/manager/key`,
     headers: {
       "Content-Type": "application/json",
-      Authorization: serverURL.includes("br1")
-        ? process.env.AUTH_VULTR
-        : process.env.AUTH,
+      Authorization: getAuth(serverURL),
     },
   })
     .then(function (response) {
@@ -887,14 +883,15 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
       publicKey,
       parseDate(subExpiry)
     );
+
+  const auth = getAuth(serverURL);
+  
   const request1 = {
     method: "post",
     url: `https://${serverURL}/manager/subscription/edit`,
     headers: {
       "Content-Type": "application/json",
-      Authorization: serverURL.includes("br1")
-        ? process.env.AUTH_VULTR
-        : process.env.AUTH,
+      Authorization: auth,
     },
     data: {
       keyID: `${keyID}`,
@@ -926,9 +923,7 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
         url: `https://${serverURL}/manager/key/enable`,
         headers: {
           "Content-Type": "application/json",
-          Authorization: serverURL.includes("br1")
-            ? process.env.AUTH_VULTR
-            : process.env.AUTH,
+          Authorization: auth,
         },
         data: {
           keyID: `${keyID}`,
@@ -958,9 +953,7 @@ async function getSubscription({ keyID, serverURL }) {
     url: `https://${serverURL}/manager/subscription`,
     headers: {
       "Content-Type": "application/json",
-      Authorization: serverURL.includes("br1")
-        ? process.env.AUTH_VULTR
-        : process.env.AUTH,
+      Authorization: getAuth(serverURL),
     },
     data: {
       keyID: `${keyID}`,
@@ -975,3 +968,14 @@ async function getSubscription({ keyID, serverURL }) {
       return null;
     });
 }
+
+const getAuth = (serverURL) => {
+  if (
+    serverURL.includes("br1") ||
+    serverURL.includes("au1") ||
+    serverURL.includes("za1")
+  )
+    return process.env.AUTH_VULTR;
+
+  return process.env.AUTH;
+};
