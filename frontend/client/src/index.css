@@ -283,6 +283,14 @@ button.close {
   background-image: url("./media/sats-orange.png");
 }
 */
+.icon-nostr {
+  background-image: url("./media/nostr-128.png");
+  opacity: 0.5;
+}
+.icon-nostr:hover {
+  background-image: url("./media/nostr-128c.png");
+  opacity: 1;
+}
 .icon-twitter {
   background-image: url("./media/twitter-128.png");
   opacity: 0.5;

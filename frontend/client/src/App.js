@@ -968,6 +968,15 @@ function App() {
                   </Col>
                   <Col>
                     <a
+                      href="https://nostr.rocks/pubkey"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span class="icon icon-nostr"></span>
+                    </a>
+                  </Col>
+                  <Col>
+                    <a
                       href={REACT_APP_LNBITS_URL}
                       target="_blank"
                       rel="noreferrer"
