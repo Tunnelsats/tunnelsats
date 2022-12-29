@@ -968,7 +968,7 @@ function App() {
                   </Col>
                   <Col>
                     <a
-                      href="https://nostr.rocks/pubkey"
+                      href="https://astral.ninja/npub1n9z4y3xjramqes8fp9rl96x5e4nl0hff57ynw7vqnjpq370tq78sljsp8y"
                       target="_blank"
                       rel="noreferrer"
                     >
