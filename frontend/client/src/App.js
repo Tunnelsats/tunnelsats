@@ -31,9 +31,10 @@ const getDate = (timestamp) =>
 const base64regex =
   /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
 
-// Env Variables to have the same code base main and dev
+// env variables to have the same code base main and dev
 const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 8.5;
 const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || "";
+const REACT_APP_NOSTR_URL = process.env.REACT_APP_NOSTR_URL || "";
 const REACT_APP_SOCKETIO = process.env.REACT_APP_SOCKETIO || "/";
 
 const REACT_APP_REF = process.env.REACT_APP_REF || "";
@@ -968,7 +969,7 @@ function App() {
                   </Col>
                   <Col>
                     <a
-                      href="https://astral.ninja/npub1n9z4y3xjramqes8fp9rl96x5e4nl0hff57ynw7vqnjpq370tq78sljsp8y"
+                      href={REACT_APP_NOSTR_URL}
                       target="_blank"
                       rel="noreferrer"
                     >
