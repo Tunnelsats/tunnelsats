@@ -5,6 +5,7 @@ import {
   Button,
   Nav,
   Navbar,
+  NavDropdown,
   Spinner,
   Collapse,
   Form,
@@ -13,6 +14,7 @@ import {
 } from "react-bootstrap";
 import io from "socket.io-client";
 import { useState } from "react";
+import useWindowDimensions from "./components/WindowSize";
 import RuntimeSelector from "./components/RuntimeSelector";
 import InvoiceModal from "./components/InvoiceModal";
 import RenewInvoiceModal from "./components/RenewInvoiceModal";
@@ -22,7 +24,10 @@ import HeaderInfo from "./components/HeaderInfo";
 import logo from "./media/tunnelsats_headerlogo5.png";
 //import logo from "./media/tunnelsats_headerlogo5_BF.png";
 import WorldMap from "./components/WorldMap";
-import { IoIosRefresh, IoIosInformationCircleOutline } from "react-icons/io";
+import {
+  IoIosRefresh,
+  IoIosInformationCircleOutline,
+} from "react-icons/io";
 import "./wireguard.js";
 
 // helper
@@ -118,6 +123,9 @@ function App() {
   // toast
   //const [showA, setShowA] = useState(true);
   //const toggleShowA = () => setShowA(!showA);
+
+  // get window size
+  const { height, width } = useWindowDimensions();
 
   //Successful payment alert
   const renderAlert = (show) => {
@@ -526,62 +534,119 @@ function App() {
           {/* Navigation Bar */}
           <Navbar variant="dark" expanded="true">
             <Navbar.Brand>Tunnel⚡️Sats</Navbar.Brand>
-            <Nav className="mr-auto">
-              {!isRenewSub ? (
-                <Nav.Link
-                  href="#"
-                  onClick={() => {
-                    showRenew();
-                    updatePrice(REACT_APP_THREE_MONTHS);
-                  }}
-                >
-                  Renew Subscription
-                </Nav.Link>
-              ) : (
-                <Nav.Link
-                  href="#"
-                  onClick={() => {
-                    hideRenew();
-                    updatePrice(REACT_APP_THREE_MONTHS);
-                  }}
-                >
-                  Get Subscription
-                </Nav.Link>
-              )}
-              <Nav.Link
-                href="https://tunnelsats.github.io/tunnelsats"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Guide
-              </Nav.Link>
-              <Nav.Link
-                href="https://tunnelsats.github.io/tunnelsats/FAQ.html"
-                target="_blank"
-                rel="noreferrer"
-              >
-                FAQ
-              </Nav.Link>
-              <Nav.Link
-                href="https://status.tunnelsats.com"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Server Status 🚨
-              </Nav.Link>
-              {/*
-                <Nav.Link>
-                <strong>⚡️ Black Friday Special 20% Off ⚡️</strong>
-                </Nav.Link>
-              */}
 
-              {/*}
-                <Nav>
-                <Button onClick={() => renderLoginModal()} variant="outline-info">Login</Button>
-                <LoginModal show={isLoginModal} handleClose={hideLoginModal} />
+            {/* non-mobile view */}
+            {width > 1000 ? (
+              <>
+                <Nav className="mr-auto">
+                  {!isRenewSub ? (
+                    <Nav.Link
+                      href="#"
+                      onClick={() => {
+                        showRenew();
+                        updatePrice(REACT_APP_THREE_MONTHS);
+                      }}
+                    >
+                      Renew Subscription
+                    </Nav.Link>
+                  ) : (
+                    <Nav.Link
+                      href="#"
+                      onClick={() => {
+                        hideRenew();
+                        updatePrice(REACT_APP_THREE_MONTHS);
+                      }}
+                    >
+                      Get Subscription
+                    </Nav.Link>
+                  )}
+                  <Nav.Link
+                    href="https://tunnelsats.github.io/tunnelsats"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Guide
+                  </Nav.Link>
+                  <Nav.Link
+                    href="https://tunnelsats.github.io/tunnelsats/FAQ.html"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    FAQ
+                  </Nav.Link>
+                  <Nav.Link
+                    href="https://status.tunnelsats.com"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Server Status 🚨
+                  </Nav.Link>
+                  {/*
+      <Nav.Link>
+      <strong>⚡️ Black Friday Special 20% Off ⚡️</strong>
+      </Nav.Link>
+    */}
+
+                  {/*}
+      <Nav>
+      <Button onClick={() => renderLoginModal()} variant="outline-info">Login</Button>
+      <LoginModal show={isLoginModal} handleClose={hideLoginModal} />
+      </Nav>
+    */}
                 </Nav>
-              */}
-            </Nav>
+              </>
+            ) : (
+              <Nav className="mr-auto">
+                <NavDropdown
+                  title="Menu"
+                  id="basic-nav-dropdown"
+                >
+                  {!isRenewSub ? (
+                    <NavDropdown.Item
+                      href="#"
+                      onClick={() => {
+                        showRenew();
+                        updatePrice(REACT_APP_THREE_MONTHS);
+                      }}
+                    >
+                      Renew Subscription
+                    </NavDropdown.Item>
+                  ) : (
+                    <NavDropdown.Item
+                      href="#"
+                      onClick={() => {
+                        hideRenew();
+                        updatePrice(REACT_APP_THREE_MONTHS);
+                      }}
+                    >
+                      Get Subscription
+                    </NavDropdown.Item>
+                  )}
+                  <NavDropdown.Item
+                    href="https://tunnelsats.github.io/tunnelsats"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Guide
+                  </NavDropdown.Item>
+                  <NavDropdown.Item
+                    href="https://tunnelsats.github.io/tunnelsats/FAQ.html"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    FAQ
+                  </NavDropdown.Item>
+                  <NavDropdown.Divider />
+                  <NavDropdown.Item
+                    href="https://status.tunnelsats.com"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Server Status 🚨
+                  </NavDropdown.Item>
+                </NavDropdown>
+              </Nav>
+            )}
             <Nav className="mr-right">
               <Nav.Link
                 href={`https://github.com/tunnelsats/tunnelsats/commit/${commitHash}`}
