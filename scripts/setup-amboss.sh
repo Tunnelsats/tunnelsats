@@ -2,7 +2,7 @@
 
 function helpmessage() {
     echo "Setting up Amboss Health - Make sure you have registered your node prior to setting this up"
-    echo "setup-amboss.sh on docker|non-docker|citadel|clearnet-ip"
+    echo "setup-amboss.sh on docker|non-docker|citadel|clearnet-ip|tor"
     echo "setup-amboss.sh status"
     echo "setup-amboss.sh off"
 }
@@ -42,6 +42,9 @@ if [ "$1" = "1" ] || [ "$1" = "on" ] && [ $# -eq 2 ]; then
         wget -q -O - "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-docker.sh" | sed 's/docker-tunnelsats/a-docker-tunnelsats/g' >$HOME/amboss-health.sh
     elif [ "$system" = "clearnet-ip" ]; then
         wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-plain.sh"
+        user="bitcoin"
+    elif [ "$system" = "tor" ]; then
+        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-plain-tor.sh"
         user="bitcoin"
     else
         helpmessage
