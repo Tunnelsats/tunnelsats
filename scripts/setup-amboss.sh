@@ -25,22 +25,30 @@ fi
 
 if [ "$1" = "1" ] || [ "$1" = "on" ] && [ $# -eq 2 ]; then
 
+    user="root"
+    scriptPath="/root"
+
     echo "Creating Amboss Health Service"
 
     system=$(echo "$2" | awk '{print tolower($0)}')
 
     if [ "$system" = "docker" ]; then
-        wget -q -O $HOME/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-docker.sh"
+        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-docker.sh"
     elif [ "$system" = "non-docker" ]; then
-        wget -q -O $HOME/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-non-docker.sh"
+        scriptPath="/home/bitcoin"
+        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-non-docker.sh"
+        user="bitcoin"
     elif [ "$system" = "citadel" ]; then
         wget -q -O - "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-docker.sh" | sed 's/docker-tunnelsats/a-docker-tunnelsats/g' >$HOME/amboss-health.sh
+    elif [ "$system" = "clearnet-ip" ]; then
+        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-plain.sh"
+        user="bitcoin"
     else
         helpmessage
         exit 1
     fi
 
-    chmod +x $HOME/amboss-health.sh
+    chmod +x $scriptPath/amboss-health.sh
 
     # Create systemd service
 
@@ -51,7 +59,8 @@ StartLimitBurst=5
 [Service]
 Type=simple
 RestartSec=60
-ExecStart=$HOME/amboss-health.sh
+User=$user
+ExecStart=$scriptPath/amboss-health.sh
 [Install]
 WantedBy=multi-user.target
 " >/etc/systemd/system/tunnelsats-amboss-health.service
@@ -127,8 +136,12 @@ fi
 
 if [ "$1" = "3" ] || [ "$1" = "off" ] && [ $# -eq 1 ]; then
 
-    sudo systemctl disable tunnelsats-amboss-health.service 2>/dev/null
-    sudo systemctl disable tunnelsats-amboss-health.service 2>/dev/null
+    scriptPath="/root"
+    rm $scriptPath/amboss-health.sh 2>/dev/null
+    scriptPath="/home/bitcoin"
+    rm $scriptPath/amboss-health.sh 2>/dev/null
+    systemctl disable tunnelsats-amboss-health.service 2>/dev/null
+    systemctl disable tunnelsats-amboss-health.service 2>/dev/null
     rm /etc/systemd/system/tunnelsats-amboss-health.service 2>/dev/null
     rm /etc/systemd/system/tunnelsats-amboss-health.timer 2>/dev/null
 
