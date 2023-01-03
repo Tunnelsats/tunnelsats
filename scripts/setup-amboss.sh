@@ -34,7 +34,7 @@ if [ "$1" = "1" ] || [ "$1" = "on" ] && [ $# -eq 2 ]; then
     elif [ "$system" = "non-docker" ]; then
         wget -q -O $HOME/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-non-docker.sh"
     elif [ "$system" = "citadel" ]; then
-        wget wget -q -O - "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-docker.sh" | sed 's/docker-tunnelsats/a-docker-tunnelsats/g' >$HOME/amboss-health.sh
+        wget -q -O - "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-docker.sh" | sed 's/docker-tunnelsats/a-docker-tunnelsats/g' >$HOME/amboss-health.sh
     else
         helpmessage
         exit 1
