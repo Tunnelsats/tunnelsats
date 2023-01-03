@@ -15,7 +15,7 @@ clearnetPost=$(docker run --rm --net=docker-tunnelsats curlimages/curl -s -X POS
   }
 }' $URL)
 
-if [[ $clearnetPost =~ "error" ]]; then
+if ! [[ $clearnetPost =~ "true" ]]; then
   torPost=$(torify curl -s -X POST -H "Content-Type: application/json" -d '{
                  "query": "mutation healthCheck($signature: String!, $timestamp: String!) { healthCheck(signature: $signature, timestamp: $timestamp) }",
                           "variables": {
@@ -23,7 +23,7 @@ if [[ $clearnetPost =~ "error" ]]; then
                                  "timestamp": "'"$NOW"'"
                           }
                 }' $URL)
-  if [[ $torPost =~ "error" ]]; then
+  if ! [[ $torPost =~ "true" ]]; then
     echo "> Amboss Health Ping failed"
     exit 1
   fi
