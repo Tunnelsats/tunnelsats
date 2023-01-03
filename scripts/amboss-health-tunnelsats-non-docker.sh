@@ -14,7 +14,7 @@ clearnetPost=$(/usr/bin/cgexec -g net_cls:splitted_processes curl -s -X POST -H 
   }
 }' $URL)
 
-if [[ $clearnetPost =~ "error" ]]; then
+if ! [[ $clearnetPost =~ "true" ]]; then
   torPost=$(torify curl -s -X POST -H "Content-Type: application/json" -d '{
                  "query": "mutation healthCheck($signature: String!, $timestamp: String!) { healthCheck(signature: $signature, timestamp: $timestamp) }",
                           "variables": {
