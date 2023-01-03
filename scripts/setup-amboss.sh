@@ -2,7 +2,7 @@
 
 function helpmessage() {
     echo "Setting up Amboss Health - Make sure you have registered your node prior to setting this up"
-    echo "setup-amboss.sh on docker|non-docker|citadel|clearnet-ip|tor"
+    echo "setup-amboss.sh on docker-ts|non-docker-ts|citadel-ts|clearnet|tor|docker-tor|docker-clearnet"
     echo "setup-amboss.sh status"
     echo "setup-amboss.sh off"
 }
@@ -32,20 +32,24 @@ if [ "$1" = "1" ] || [ "$1" = "on" ] && [ $# -eq 2 ]; then
 
     system=$(echo "$2" | awk '{print tolower($0)}')
 
-    if [ "$system" = "docker" ]; then
-        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-docker.sh"
-    elif [ "$system" = "non-docker" ]; then
+    if [ "$system" = "docker-ts" ]; then
+        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-tunnelsats-docker.sh"
+    elif [ "$system" = "non-docker-ts" ]; then
         scriptPath="/home/bitcoin"
-        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-non-docker.sh"
+        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-tunnelsats-non-docker.sh"
         user="bitcoin"
-    elif [ "$system" = "citadel" ]; then
+    elif [ "$system" = "citadel-ts" ]; then
         wget -q -O - "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-docker.sh" | sed 's/docker-tunnelsats/a-docker-tunnelsats/g' >$HOME/amboss-health.sh
-    elif [ "$system" = "clearnet-ip" ]; then
-        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-plain.sh"
+    elif [ "$system" = "clearnet" ]; then
+        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-clearnet.sh"
         user="bitcoin"
     elif [ "$system" = "tor" ]; then
-        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-plain-tor.sh"
+        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-tor.sh"
         user="bitcoin"
+    elif [ "$system" = "docker-tor" ]; then
+        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-docker-tor.sh"
+    elif [ "$system" = "docker-clearnet" ]; then
+        wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-docker-clearnet.sh"
     else
         helpmessage
         exit 1
