@@ -536,7 +536,7 @@ function App() {
             <Navbar.Brand>Tunnel⚡️Sats</Navbar.Brand>
 
             {/* non-mobile view */}
-            {width > 900 ? (
+            {width > 1000 ? (
               <>
                 <Nav className="mr-auto">
                   {!isRenewSub ? (
