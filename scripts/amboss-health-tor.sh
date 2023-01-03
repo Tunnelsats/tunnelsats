@@ -13,7 +13,7 @@ torPost=$(torify curl -s -X POST -H "Content-Type: application/json" -d '{
                                  "timestamp": "'"$NOW"'"
                           }
                 }' $URL)
-if [[ $torPost =~ "error" ]]; then
+if ! [[ $torPost =~ "true" ]]; then
     echo "> Amboss Health Ping failed"
     exit 1
 fi
