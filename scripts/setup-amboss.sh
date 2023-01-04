@@ -39,7 +39,7 @@ if [ "$1" = "1" ] || [ "$1" = "on" ] && [ $# -eq 2 ]; then
         wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-tunnelsats-non-docker.sh"
         user="bitcoin"
     elif [ "$system" = "citadel-ts" ]; then
-        wget -q -O - "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-docker.sh" | sed 's/docker-tunnelsats/a-docker-tunnelsats/g' >$HOME/amboss-health.sh
+        wget -q -O - "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-tunnelsats-docker.sh" | sed 's/docker-tunnelsats/a-docker-tunnelsats/g' >$HOME/amboss-health.sh
     elif [ "$system" = "clearnet" ]; then
         wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-clearnet.sh"
         user="bitcoin"
