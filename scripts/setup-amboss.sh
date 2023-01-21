@@ -60,7 +60,7 @@ if [ "$1" = "1" ] || [ "$1" = "on" ] && [ $# -eq 2 ]; then
     # Create systemd service
 
     echo "[Unit]
-Description=Adding Amboss Health Servce
+Description=Adding Amboss Health Service
 StartLimitInterval=400
 StartLimitBurst=5
 [Service]
