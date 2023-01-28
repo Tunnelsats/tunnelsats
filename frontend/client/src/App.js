@@ -24,10 +24,7 @@ import HeaderInfo from "./components/HeaderInfo";
 import logo from "./media/tunnelsats_headerlogo5.png";
 //import logo from "./media/tunnelsats_headerlogo5_BF.png";
 import WorldMap from "./components/WorldMap";
-import {
-  IoIosRefresh,
-  IoIosInformationCircleOutline,
-} from "react-icons/io";
+import { IoIosRefresh, IoIosInformationCircleOutline } from "react-icons/io";
 import "./wireguard.js";
 
 // helper
@@ -49,7 +46,6 @@ const DEBUG = false;
 
 // WebSocket
 var socket = io.connect(REACT_APP_SOCKETIO);
-
 // Consts
 var emailAddress;
 var clientPaymentHash;
@@ -61,6 +57,7 @@ function App() {
     window.wireguard.generateKeypair()
   );
   const [priceDollar, updatePrice] = useState(REACT_APP_THREE_MONTHS);
+  const [subscriptionSelection, updateSelection] = useState("2");
   const [satsPerDollar, setSatsPerDollar] = useState(
     Math.round(100000000 / 20000)
   );
@@ -237,16 +234,26 @@ function App() {
   };
 
   //Get the invoice
-  const getInvoice = (price, publicKey, presharedKey, priceDollar, country) => {
-    DEBUG && console.log(`${getDate()} App.js: getInvoice(price): ${price}$`);
-    socket.emit(
-      "getInvoice",
-      price,
-      publicKey,
-      presharedKey,
-      priceDollar,
-      country
-    );
+  const getInvoice = (
+    subscriptionSelection,
+    publicKey,
+    presharedKey,
+    country,
+    discount,
+    renew = false,
+    keyID = 0
+  ) => {
+    const payload = {
+      selection: subscriptionSelection,
+      publicKey: publicKey,
+      presharedKey: presharedKey,
+      country: country,
+      isRenew: renew,
+      isDiscount: discount,
+      keyID: keyID,
+    };
+
+    socket.emit("getInvoice", payload);
   };
 
   socket.off("invoicePaid").on("invoicePaid", (paymentHash) => {
@@ -292,13 +299,19 @@ function App() {
     return configArray;
   };
 
-  //Change Runtime
+  //This Function changes the Price and Selection
+  //depending on the runtimeselector buttons
   const runtimeSelect = (e) => {
-    if (!isNaN(e.target.value)) {
-      updatePrice(e.target.value);
+    // It happens that the onclick method is triggered
+    // two times, we need to make sure we have an element
+    // otherwise the parsing method fails.
+    if (!!e.target.value) {
+      const value = JSON.parse(e.target.value);
+      updatePrice(value.priceDollar);
+      updateSelection(value.selection);
       if (timeSubscription) {
         setNewTime(
-          getTimeStamp(e.target.value, timeSubscription).toISOString()
+          getTimeStamp(value.priceDollar, timeSubscription).toISOString()
         );
       }
     }
@@ -463,32 +476,6 @@ function App() {
     // console.log("Submit Worked", server, pubkey);
   };
 
-  // get renewal invoice
-  // { amount, publicKey, keyID, country, priceDollar }
-  const getInvoiceRenew = (amount, publicKey, keyID, country, priceDollar) => {
-    DEBUG &&
-      console.log(
-        `${getDate()} App.js: getInvoice(price): ` + priceDollar + `$`
-      );
-    socket.emit("getInvoiceUpdateSub", {
-      amount: Math.round(amount),
-      publicKey,
-      keyID,
-      country,
-      priceDollar,
-    });
-  };
-
-  socket
-    .removeAllListeners("lnbitsInvoiceSubscription")
-    .on("lnbitsInvoiceSubscription", (invoiceData) => {
-      DEBUG && console.log(`${getDate()} App.js: got msg lnbitsInvoice`);
-      setPaymentrequest(invoiceData.payment_request);
-      clientPaymentHash = invoiceData.payment_hash;
-      DEBUG && console.log(clientPaymentHash);
-      setSpinner(false);
-    });
-
   return (
     <>
       {/*
@@ -597,10 +584,7 @@ function App() {
               </>
             ) : (
               <Nav className="mr-auto">
-                <NavDropdown
-                  title="Menu"
-                  id="basic-nav-dropdown"
-                >
+                <NavDropdown title="Menu" id="basic-nav-dropdown">
                   {!isRenewSub ? (
                     <NavDropdown.Item
                       href="#"
@@ -803,15 +787,15 @@ function App() {
                       <Button
                         variant="outline-warning"
                         onClick={() => {
-                          getInvoiceRenew(
-                            discount != 1.0
-                              ? priceDollar * satsPerDollar -
-                                  priceDollar * satsPerDollar * discount
-                              : priceDollar * satsPerDollar,
-                            pubkey,
-                            keyID,
+                          getInvoice(
+                            subscriptionSelection,
+                            keyPair.publicKey,
+                            keyPair.presharedKey,
                             country,
-                            priceDollar
+                            discount,
+                            // renewsubscription
+                            true,
+                            keyID
                           );
                           showInvoiceModal();
                           hideConfigModal();
@@ -834,15 +818,15 @@ function App() {
                     isConfigModal={isConfigModal}
                     value={payment_request}
                     showNewInvoice={() => {
-                      getInvoiceRenew(
-                        discount != 1.0
-                          ? priceDollar * satsPerDollar -
-                              priceDollar * satsPerDollar * discount
-                          : priceDollar * satsPerDollar,
-                        pubkey,
-                        keyID,
+                      getInvoice(
+                        subscriptionSelection,
+                        keyPair.publicKey,
+                        keyPair.presharedKey,
                         country,
-                        priceDollar
+                        discount,
+                        // renewsubscription
+                        true,
+                        keyID
                       );
                       setSpinner(true);
                     }}
@@ -943,14 +927,11 @@ function App() {
                     <Button
                       onClick={() => {
                         getInvoice(
-                          discount != 1.0
-                            ? priceDollar * satsPerDollar -
-                                priceDollar * satsPerDollar * discount
-                            : priceDollar * satsPerDollar,
+                          subscriptionSelection,
                           keyPair.publicKey,
                           keyPair.presharedKey,
-                          priceDollar,
-                          country
+                          country,
+                          discount
                         );
                         showInvoiceModal();
                         hideConfigModal();
@@ -975,14 +956,11 @@ function App() {
                     }}
                     showNewInvoice={() => {
                       getInvoice(
-                        discount != 1.0
-                          ? priceDollar * satsPerDollar -
-                              priceDollar * satsPerDollar * discount
-                          : priceDollar * satsPerDollar,
+                        subscriptionSelection,
                         keyPair.publicKey,
                         keyPair.presharedKey,
-                        priceDollar,
-                        country
+                        country,
+                        discount
                       );
                       setSpinner(true);
                     }}

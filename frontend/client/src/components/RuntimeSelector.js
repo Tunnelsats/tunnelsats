@@ -14,12 +14,18 @@ const RuntimeSelector = (props) => {
         type="radio"
         name="options"
         id="runtimeselector"
-        defaultValue={REACT_APP_THREE_MONTHS}
+        defaultValue={JSON.stringify({
+          priceDollar: REACT_APP_THREE_MONTHS,
+          selection: 2,
+        })}
       >
         <ToggleButton
           id="tbg-radio-1"
           variant="secondary"
-          value={REACT_APP_ONE_MONTH}
+          value={JSON.stringify({
+            priceDollar: REACT_APP_ONE_MONTH,
+            selection: 1,
+          })}
           onClick={props.onClick}
         >
           1 <br></br> month
@@ -27,7 +33,10 @@ const RuntimeSelector = (props) => {
         <ToggleButton
           id="tbg-radio-2"
           variant="secondary"
-          value={REACT_APP_THREE_MONTHS}
+          value={JSON.stringify({
+            priceDollar: REACT_APP_THREE_MONTHS,
+            selection: 2,
+          })}
           onClick={props.onClick}
         >
           3 <br></br> months
@@ -35,7 +44,10 @@ const RuntimeSelector = (props) => {
         <ToggleButton
           id="tbg-radio-3"
           variant="secondary"
-          value={REACT_APP_SIX_MONTHS}
+          value={JSON.stringify({
+            priceDollar: REACT_APP_SIX_MONTHS,
+            selection: 3,
+          })}
           onClick={props.onClick}
         >
           6 <br></br> months
@@ -43,7 +55,10 @@ const RuntimeSelector = (props) => {
         <ToggleButton
           id="tbg-radio-4"
           variant="secondary"
-          value={REACT_APP_ONE_YEAR}
+          value={JSON.stringify({
+            priceDollar: REACT_APP_ONE_YEAR,
+            selection: 4,
+          })}
           onClick={props.onClick}
         >
           12 <br></br> months

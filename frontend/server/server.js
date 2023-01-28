@@ -55,6 +55,21 @@ const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 28.5;
 // fetch latest git commit hash
 const URL_GIT_COMMIT_HASH = process.env.URL_GIT_COMMIT_HASH || "";
 
+// This map is needed to verify that the client does not cheat us
+// and sends us the wrong pricing
+// client sends us the selection and the price we verify and only
+// allow invoice creation if the client behaves corrently
+const PRICESUBSCRIBTIONMAP = [
+  REACT_APP_ONE_MONTH,
+  REACT_APP_THREE_MONTHS,
+  REACT_APP_SIX_MONTHS,
+  REACT_APP_ONE_YEAR,
+];
+
+// In case we have a discount period we need to account for it
+// on the server side
+const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT);
+
 // Cleaning Ram from old PaymentRequest data
 
 const intervalId = setInterval(function () {
@@ -343,48 +358,87 @@ io.on("connection", (socket) => {
   });
 
   // Getting the Invoice from lnbits and forwarding it to the frontend
-  socket.on(
-    "getInvoice",
-    (amount, publicKey, presharedKey, priceDollar, country) => {
-      DEBUG && logDim(`getInvoice() called id: ${socket.id}`);
+  socket.on("getInvoice", async (payload) => {
+    DEBUG &&
+      DEBUG &&
+      logDim(`getInvoice() called by socket id: ${socket.id} with payload
+      ${JSON.stringify(payload, null, 4)}`);
+    if (
+      // We need all of those from the client otherwise we do nothing
+      !!payload.selection &&
+      !!payload.publicKey &&
+      !!payload.presharedKey &&
+      !!payload.country
+    ) {
+      if (invoiceWGKeysMap.length <= MAXINVOICES) {
+        const satsPerDollar = await getPrice();
 
-      if (
-        !!amount &&
-        !!publicKey &&
-        !!presharedKey &&
-        !!priceDollar &&
-        !!country
-      ) {
-        if (invoiceWGKeysMap.length <= MAXINVOICES) {
-          getInvoice(amount, priceDollar, process.env.URL_WEBHOOK)
-            .then((result) => {
-              socket.emit("lnbitsInvoice", result);
+        try {
+          if (payload.selection > PRICESUBSCRIBTIONMAP.length) {
+            logDim(
+              `Error - potential malicous behaviour by the peer received selection is ${payload.selection}`
+            );
+            return;
+          }
+          const priceDollar = PRICESUBSCRIBTIONMAP[payload.selection - 1];
+          const priceSats = Math.round(satsPerDollar * priceDollar);
+          let paymentDetails;
 
-              // Safes the client request related to the socket id including
-              // the payment_hash to later send the config data only to the right client
-              invoiceWGKeysMap.push({
-                paymentDetails: result,
-                publicKey: publicKey,
-                presharedKey: presharedKey,
-                priceDollar: priceDollar,
-                country: country,
-                id: socket.id,
-                amountSats: amount,
-                timestamp: Date.now(),
-                isPaid: false,
-                tag: "New Subscription",
-              });
-              DEBUG && console.log(invoiceWGKeysMap);
-            })
-            .catch((error) => logDim(error.message));
-        } else {
-          logDim(
-            `restrict overall invoices to ${MAXINVOICES} to prevent mem overflow `
-          );
+          if (payload.isRenew) {
+            if (payload.keyID != 0) {
+              paymentDetails = await getInvoice(
+                priceSats,
+                priceDollar,
+                process.env.URL_WEBHOOK_UPDATE_SUB
+              );
+            } else {
+              logDim(`Error - keyID is not valid ${payload.keyID}`);
+              return;
+            }
+          } else {
+            paymentDetails = await getInvoice(
+              priceSats,
+              priceDollar,
+              process.env.URL_WEBHOOK
+            );
+          }
+
+          let serverURL = getServer(payload.country);
+          if (!!serverURL) {
+            serverURL = serverURL
+              .replace(/^https?:\/\//, "")
+              .replace(/\/manager\/$/, "");
+          }
+
+          socket.emit("lnbitsInvoice", paymentDetails);
+          // Safes the client request related to the socket id including
+          // the payment_hash to later send the config data only to the right client
+          invoiceWGKeysMap.push({
+            paymentDetails: paymentDetails,
+            publicKey: payload.publicKey,
+            presharedKey: payload.presharedKey,
+            priceDollar: PRICESUBSCRIBTIONMAP[payload.selection - 1],
+            country: payload.country,
+            keyID: payload.keyID,
+            serverURL: serverURL,
+            id: socket.id,
+            amountSats: priceSats,
+            timestamp: Date.now(),
+            isPaid: false,
+            tag: payload.isRenew ? "New Subscription" : "Update Subscription",
+          });
+
+          DEBUG && console.log(invoiceWGKeysMap);
+        } catch (error) {
+          logDim(error.message);
         }
+      } else {
+        logDim(
+          `restrict overall invoices to ${MAXINVOICES} to prevent mem overflow `
+        );
       }
     }
-  );
+  });
 
   // New Listening events for UpdateSubscription Request
 
@@ -459,44 +513,6 @@ io.on("connection", (socket) => {
       socket.emit("receiveKeyLookup", null);
     }
   });
-
-  socket.on(
-    "getInvoiceUpdateSub",
-    ({ amount, publicKey, keyID, country, priceDollar }) => {
-      DEBUG && logDim(`getInvoiceUpdateSub() called id: ${socket.id}`);
-
-      if (invoiceWGKeysMap.length <= MAXINVOICES) {
-        getInvoice(amount, priceDollar, process.env.URL_WEBHOOK_UPDATE_SUB)
-          .then((result) => {
-            socket.emit("lnbitsInvoiceSubscription", result);
-
-            const serverURL = getServer(country)
-              .replace(/^https?:\/\//, "")
-              .replace(/\/manager\/$/, "");
-
-            // Safes the client request related to the socket id including the payment_hash to later send the config data only to the right client
-            invoiceWGKeysMap.push({
-              paymentDetails: result,
-              publicKey: publicKey,
-              keyID: keyID,
-              priceDollar: priceDollar,
-              serverURL: serverURL,
-              id: socket.id,
-              amountSats: amount,
-              timestamp: Date.now(),
-              isPaid: false,
-              tag: "Update Subscription",
-            });
-            DEBUG && console.log(invoiceWGKeysMap);
-          })
-          .catch((error) => logDim(error.message));
-      } else {
-        logDim(
-          `restrict overall invoices to ${MAXINVOICES} to prevent mem overflow`
-        );
-      }
-    }
-  );
 
   /*
   socket.on("getServer", (country) => {
@@ -639,18 +655,15 @@ const parseDate = (date) => {
 
 // Get Invoice Function
 async function getInvoice(amount, priceDollar, webhook) {
-  // let satoshis = await getPrice()
-  //                       .then((result) => { return result })
-  //                       .catch(error => { return error });
   return axios({
     method: "post",
     url: process.env.URL_INVOICE_API,
     headers: { "X-Api-Key": process.env.INVOICE_KEY },
     data: {
       out: false,
-      amount: Math.round(amount),
+      amount: amount,
       memo: getTimeStamp(priceDollar),
-      webhook,
+      webhook: webhook,
     },
   })
     .then(function (response) {
@@ -885,7 +898,7 @@ async function newSubscriptionEnd({ keyID, subExpiry, serverURL, publicKey }) {
     );
 
   const auth = getAuth(serverURL);
-  
+
   const request1 = {
     method: "post",
     url: `https://${serverURL}/manager/subscription/edit`,
