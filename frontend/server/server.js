@@ -425,7 +425,7 @@ io.on("connection", (socket) => {
             amountSats: priceSats,
             timestamp: Date.now(),
             isPaid: false,
-            tag: payload.isRenew ? "New Subscription" : "Update Subscription",
+            tag: payload.isRenew ? "Update Subscription" : "New Subscription",
           });
 
           DEBUG && console.log(invoiceWGKeysMap);
