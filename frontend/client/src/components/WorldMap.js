@@ -20,7 +20,6 @@ const WorldMap = (props) => {
         ? "map-unselected"
         : "map-selected";
     } else {
-      console.log("unselected");
       return "map-unselected";
     }
   }
