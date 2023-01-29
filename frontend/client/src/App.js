@@ -80,6 +80,7 @@ function App() {
 
   // World Map
   const [country, updateCountry] = useState("eu2");
+  const [selectedRegionString, setSelectedRegionString] = useState(`🇩🇪  Nuremberg`);
 
   /* WorldMap Continent Codes
     AF = Africa
@@ -160,6 +161,38 @@ function App() {
     // get latest commit hash
     getCommitHash();
   });
+
+    // combine updateCountry and setSelectedRegionString
+    const handleSelectedCountry = (country) => {
+      updateCountry(country);
+      getSelectedRegionString(country);
+    };
+  
+    // get selected country infos
+    const getSelectedRegionString = (country) => {
+      switch (country) {
+        case "eu2":
+          setSelectedRegionString(`🇩🇪  Nuremberg`);
+          break;
+        case "af":
+          setSelectedRegionString(`🇿🇦  Johannesburg`);
+          break;
+        case "as":
+          setSelectedRegionString(`🇸🇬  Singapore`);
+          break;
+        case "oc":
+          setSelectedRegionString(`🇦🇺  Sydney`);
+          break;
+        case "na":
+          setSelectedRegionString(`🇺🇸  New York City`);
+          break;
+        case "sa":
+          setSelectedRegionString(`🇧🇷  São Paolo`);
+          break;
+        default:
+          setSelectedRegionString(``);
+      }
+    };
 
   // get node stats from mempool.space
   const getNodeStats = () => {
@@ -842,9 +875,10 @@ function App() {
                   {/* WorldMap */}
                   <WorldMap
                     selected={country}
-                    onSelect={updateCountry}
+                    onSelect={(e) => handleSelectedCountry(e)}
                     pointerEvents={"all"}
                   />
+                  <p className="price">{selectedRegionString}</p>
                   <hr />
 
                   <Form>

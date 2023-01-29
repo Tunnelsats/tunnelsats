@@ -55,7 +55,7 @@ const WorldMap = (props) => {
               <Popover.Title as="h3">Africa</Popover.Title>
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
-                <strong>Server Location: </strong>Johannesburg
+                <strong>Server Location: </strong>🇿🇦 Johannesburg
                 <br />
                 <br />
                 <FaServer color="#ffc700" size={20} />{" "}
@@ -67,7 +67,7 @@ const WorldMap = (props) => {
                 />
                 <br />
                 <IoPulseSharp color="#ffc700" size={20} />{" "}
-                <strong>Current Ping:</strong>
+                <strong>Ping</strong> (US based)<strong>:</strong>
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fza1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
@@ -134,7 +134,7 @@ const WorldMap = (props) => {
               <Popover.Title as="h3">South America</Popover.Title>
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
-                <strong>Server Location: </strong>São Paolo
+                <strong>Server Location: </strong>🇧🇷 São Paolo
                 <br />
                 <br />
                 <FaServer color="#ffc700" size={20} />{" "}
@@ -146,7 +146,7 @@ const WorldMap = (props) => {
                 />
                 <br />
                 <IoPulseSharp color="#ffc700" size={20} />{" "}
-                <strong>Current Ping:</strong>
+                <strong>Ping</strong> (US based)<strong>:</strong>
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fbr1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
@@ -217,10 +217,10 @@ const WorldMap = (props) => {
               <Popover.Title as="h3">Europe</Popover.Title>
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
-                <strong>Server Location #1: </strong>Nuremberg
+                <strong>Server Location #1: </strong>🇩🇪 Nuremberg
                 <br />
                 <IoLocation color="#ffc700" size={20} />{" "}
-                <strong>Server Location #2: </strong>Frankfurt
+                <strong>Server Location #2: </strong>🇩🇪 Frankfurt
                 <br />
                 <br />
                 <FaServer color="#ffc700" size={20} />{" "}
@@ -232,7 +232,7 @@ const WorldMap = (props) => {
                 />
                 <br />
                 <IoPulseSharp color="#ffc700" size={20} />{" "}
-                <strong>Current Ping:</strong>
+                <strong>Ping</strong> (US based)<strong>:</strong>
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fde3-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
@@ -331,7 +331,7 @@ const WorldMap = (props) => {
               <Popover.Title as="h3">Asia</Popover.Title>
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
-                <strong>Server Location: </strong>Singapore
+                <strong>Server Location: </strong>🇸🇬 Singapore
                 <br />
                 <br />
                 <FaServer color="#ffc700" size={20} />{" "}
@@ -343,7 +343,7 @@ const WorldMap = (props) => {
                 />
                 <br />
                 <IoPulseSharp color="#ffc700" size={20} />{" "}
-                <strong>Current Ping:</strong>
+                <strong>Ping</strong> (US based)<strong>:</strong>
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fsg1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
@@ -498,7 +498,7 @@ const WorldMap = (props) => {
               <Popover.Title as="h3">North America</Popover.Title>
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
-                <strong>Server Location: </strong>New York City
+                <strong>Server Location: </strong>🇺🇸 New York City
                 <br />
                 <br />
                 <FaServer color="#ffc700" size={20} />{" "}
@@ -510,7 +510,7 @@ const WorldMap = (props) => {
                 />
                 <br />
                 <IoPulseSharp color="#ffc700" size={20} />{" "}
-                <strong>Current Ping:</strong>
+                <strong>Ping</strong> (US based)<strong>:</strong>
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fus1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
@@ -637,7 +637,7 @@ const WorldMap = (props) => {
               <Popover.Title as="h3">Oceania</Popover.Title>
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
-                <strong>Server Location: </strong>Sydney
+                <strong>Server Location: </strong>🇦🇺 Sydney
                 <br />
                 <br />
                 <FaServer color="#ffc700" size={20} />{" "}
@@ -649,7 +649,7 @@ const WorldMap = (props) => {
                 />
                 <br />
                 <IoPulseSharp color="#ffc700" size={20} />{" "}
-                <strong>Current Ping:</strong>
+                <strong>Ping</strong> (US based)<strong>:</strong>
                 <img
                   className="serverLabel"
                   src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fau1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
