@@ -575,6 +575,7 @@ function App() {
                       onClick={() => {
                         hideRenew();
                         updatePrice(REACT_APP_THREE_MONTHS);
+                        handleSelectedCountry(eu2);
                       }}
                     >
                       Get Subscription
