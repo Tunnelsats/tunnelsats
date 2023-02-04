@@ -53,6 +53,7 @@ var isPaid = false;
 var keyID;
 
 function App() {
+  // This keypair is used for the normal keypair generation (non update subscription)
   const [keyPair, displayNewPair] = useState(
     window.wireguard.generateKeypair()
   );
@@ -80,7 +81,8 @@ function App() {
 
   // World Map
   const [country, updateCountry] = useState("eu2");
-  const [selectedRegionString, setSelectedRegionString] = useState(`🇩🇪  Nuremberg`);
+  const [selectedRegionString, setSelectedRegionString] =
+    useState(`🇩🇪  Nuremberg`);
 
   /* WorldMap Continent Codes
     AF = Africa
@@ -97,7 +99,7 @@ function App() {
   const hideRenew = () => setRenewSub(false);
 
   const [server, setServer] = useState("");
-  const [pubkey, setPubkey] = useState("");
+  const [pubkeyRenewSub, setPubkeyRenewSub] = useState("");
   const [valid, setValid] = useState(false);
   const [timeValid, setTimeValid] = useState(false);
   const [timeValidOld, setTimeValidOld] = useState(false);
@@ -162,37 +164,37 @@ function App() {
     getCommitHash();
   });
 
-    // combine updateCountry and setSelectedRegionString
-    const handleSelectedCountry = (country) => {
-      updateCountry(country);
-      getSelectedRegionString(country);
-    };
-  
-    // get selected country infos
-    const getSelectedRegionString = (country) => {
-      switch (country) {
-        case "eu2":
-          setSelectedRegionString(`🇩🇪  Nuremberg`);
-          break;
-        case "af":
-          setSelectedRegionString(`🇿🇦  Johannesburg`);
-          break;
-        case "as":
-          setSelectedRegionString(`🇸🇬  Singapore`);
-          break;
-        case "oc":
-          setSelectedRegionString(`🇦🇺  Sydney`);
-          break;
-        case "na":
-          setSelectedRegionString(`🇺🇸  New York City`);
-          break;
-        case "sa":
-          setSelectedRegionString(`🇧🇷  São Paolo`);
-          break;
-        default:
-          setSelectedRegionString(``);
-      }
-    };
+  // combine updateCountry and setSelectedRegionString
+  const handleSelectedCountry = (country) => {
+    updateCountry(country);
+    getSelectedRegionString(country);
+  };
+
+  // get selected country infos
+  const getSelectedRegionString = (country) => {
+    switch (country) {
+      case "eu2":
+        setSelectedRegionString(`🇩🇪  Nuremberg`);
+        break;
+      case "af":
+        setSelectedRegionString(`🇿🇦  Johannesburg`);
+        break;
+      case "as":
+        setSelectedRegionString(`🇸🇬  Singapore`);
+        break;
+      case "oc":
+        setSelectedRegionString(`🇦🇺  Sydney`);
+        break;
+      case "na":
+        setSelectedRegionString(`🇺🇸  New York City`);
+        break;
+      case "sa":
+        setSelectedRegionString(`🇧🇷  São Paolo`);
+        break;
+      default:
+        setSelectedRegionString(``);
+    }
+  };
 
   // get node stats from mempool.space
   const getNodeStats = () => {
@@ -391,12 +393,12 @@ function App() {
       event.target.value.length == 44 &&
       event.target.value.endsWith("=")
     ) {
-      setPubkey(event.target.value);
+      setPubkeyRenewSub(event.target.value);
       setValid(true);
       setNewTime("");
       setTime("");
     } else {
-      setPubkey(event.target.value);
+      setPubkeyRenewSub(event.target.value);
       setNewTime("");
       setTime("");
       setTimeValid(false);
@@ -498,15 +500,15 @@ function App() {
     // alert('You have submitted the form.')
     //DEBUG && console.log("checkKeyDB emitted", pubkey, server);
     //socket.emit("checkKeyDB", { publicKey: pubkey, serverURL: server });
-    DEBUG && console.log("checkKeyDB emitted", pubkey);
-    socket.emit("checkKeyDB", { publicKey: pubkey });
+    DEBUG && console.log("checkKeyDB emitted", pubkeyRenewSub);
+    socket.emit("checkKeyDB", { publicKey: pubkeyRenewSub });
     setSpinnerQuery(true);
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
     // alert('You have submitted the form.')
-    // console.log("Submit Worked", server, pubkey);
+    // console.log("Submit Worked", server, pubkeyRenewSub);
   };
 
   return (
@@ -719,7 +721,7 @@ function App() {
                         <InputGroup.Text>WG Pubkey</InputGroup.Text>
                         <Form.Control
                           enabled
-                          value={pubkey}
+                          value={pubkeyRenewSub}
                           placeholder="WireGuard public key (base64 encoded)"
                           isValid={valid}
                           onChange={handleChangePubkey}
@@ -823,8 +825,9 @@ function App() {
                         onClick={() => {
                           getInvoice(
                             subscriptionSelection,
-                            keyPair.publicKey,
-                            keyPair.presharedKey,
+                            pubkeyRenewSub,
+                            // preshared key is not set
+                            "-",
                             country,
                             discount,
                             // renewsubscription

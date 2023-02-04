@@ -367,14 +367,16 @@ io.on("connection", (socket) => {
       // We need all of those from the client otherwise we do nothing
       !!payload.selection &&
       !!payload.publicKey &&
-      !!payload.presharedKey &&
       !!payload.country
     ) {
       if (invoiceWGKeysMap.length <= MAXINVOICES) {
         const satsPerDollar = await getPrice();
 
         try {
-          if (payload.selection > PRICESUBSCRIBTIONMAP.length) {
+          if (
+            payload.selection > PRICESUBSCRIBTIONMAP.length ||
+            payload.selection < 0
+          ) {
             logDim(
               `Error - potential malicous behaviour by the peer received selection is ${payload.selection}`
             );
@@ -396,11 +398,14 @@ io.on("connection", (socket) => {
               return;
             }
           } else {
-            paymentDetails = await getInvoice(
-              priceSats,
-              priceDollar,
-              process.env.URL_WEBHOOK
-            );
+            // We check here because renew does not need a preshared key
+            if (!!payload.presharedKey) {
+              paymentDetails = await getInvoice(
+                priceSats,
+                priceDollar,
+                process.env.URL_WEBHOOK
+              );
+            }
           }
 
           let serverURL = getServer(payload.country);
@@ -417,7 +422,7 @@ io.on("connection", (socket) => {
             paymentDetails: paymentDetails,
             publicKey: payload.publicKey,
             presharedKey: payload.presharedKey,
-            priceDollar: PRICESUBSCRIBTIONMAP[payload.selection - 1],
+            priceDollar: priceDollar,
             country: payload.country,
             keyID: payload.keyID,
             serverURL: serverURL,
