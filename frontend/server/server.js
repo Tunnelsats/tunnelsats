@@ -459,7 +459,7 @@ io.on("connection", (socket) => {
       { domain: "us1.tunnelsats.com", country: "na" },
       { domain: "sg1.tunnelsats.com", country: "as" },
       { domain: "br1.tunnelsats.com", country: "sa" },
-      { domain: "za1.tunnelsats.com", country: "af" },
+      //{ domain: "za1.tunnelsats.com", country: "af" },
       { domain: "au1.tunnelsats.com", country: "oc" },
     ];
 
