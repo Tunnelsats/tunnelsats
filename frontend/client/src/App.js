@@ -176,9 +176,9 @@ function App() {
       case "eu2":
         setSelectedRegionString(`🇩🇪  Nuremberg`);
         break;
-      case "af":
-        setSelectedRegionString(`🇿🇦  Johannesburg`);
-        break;
+      //case "af":
+      //  setSelectedRegionString(`🇿🇦  Johannesburg`);
+      //  break;
       case "as":
         setSelectedRegionString(`🇸🇬  Singapore`);
         break;
