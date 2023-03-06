@@ -456,7 +456,7 @@ io.on("connection", (socket) => {
     const servers = [
       { domain: "de1.tunnelsats.com", country: "eu" },
       { domain: "de3.tunnelsats.com", country: "eu2" },
-      { domain: "de4.tunnelsats.com", country: "eu3" },
+      { domain: "de2.tunnelsats.com", country: "eu3" },
       { domain: "us1.tunnelsats.com", country: "na" },
       { domain: "sg1.tunnelsats.com", country: "as" },
       { domain: "br1.tunnelsats.com", country: "sa" },
