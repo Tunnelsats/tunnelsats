@@ -80,7 +80,7 @@ function App() {
   //const hideLoginModal = () => showLoginModal(false);
 
   // World Map
-  const [country, updateCountry] = useState("eu2");
+  const [country, updateCountry] = useState("eu3");
   const [selectedRegionString, setSelectedRegionString] =
     useState(`🇩🇪  Nuremberg`);
 
@@ -173,7 +173,7 @@ function App() {
   // get selected country infos
   const getSelectedRegionString = (country) => {
     switch (country) {
-      case "eu2":
+      case "eu3":
         setSelectedRegionString(`🇩🇪  Nuremberg`);
         break;
       //case "af":
@@ -577,7 +577,7 @@ function App() {
                       onClick={() => {
                         hideRenew();
                         updatePrice(REACT_APP_THREE_MONTHS);
-                        handleSelectedCountry("eu2");
+                        handleSelectedCountry("eu3");
                       }}
                     >
                       Get Subscription

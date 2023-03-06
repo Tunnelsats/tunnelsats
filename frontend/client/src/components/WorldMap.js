@@ -162,7 +162,7 @@ const WorldMap = (props) => {
                 <strong>Current Uptime:</strong>
                 <img
                   className="serverLabel"
-                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fde3-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fde4-tunnelsats-com%2Fuptime.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
                   alt=""
                 />
                 <br />
@@ -170,7 +170,7 @@ const WorldMap = (props) => {
                 (US based)<strong>:</strong>
                 <img
                   className="serverLabel"
-                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fde3-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fde4-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
                   alt=""
                 />
               </Popover.Content>
@@ -179,8 +179,8 @@ const WorldMap = (props) => {
         >
           <g
             id="EU"
-            className={getClassname(["eu", "eu2"])}
-            onClick={onMapClick.bind(this, "eu2")}
+            className={getClassname(["eu", "eu2", "eu3"])}
+            onClick={onMapClick.bind(this, "eu3")}
           >
             <path
               id="path5896"
