@@ -28,7 +28,6 @@
 - [Running tunnelsatsv2 and mullvad in parallel?](#running-tunnelsatsv2-and-mullvad-in-parallel)
 - [Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?](#am-i-still-able-to-connect-to-grpc-or-rest-via-tailscalezerotier)
 - [Is it possible to run another Wireguard Tunnel besides Tunnelsats?](#is-it-possible-to-run-another-wireguard-tunnel-besides-tunnelsats)
-- [Phasing out de2.tunnelsats.com - How to switch to de3.tunnelsats.com](#phasing-out-de2tunnelsatscom---how-to-switch-to-de3tunnelsatscom)
 - [Do you offer full-service VPNs too?](#do-you-offer-full-service-vpns-too)
 - [Who built this?](#who-built-this)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
@@ -305,50 +304,6 @@ Replace the XXX-values with your own!
 
 Then just bring the interface up with `wg-quick up NAMEOFCONFIGFILE.conf`
 Now you are connected to your second wireguard network.
-
-<br />
-
-### Phasing out de2.tunnelsats.com - How to switch to de3.tunnelsats.com
-
-Problems with one of our providers forced us to switch to a new one, so we phasing out `de2.tunnelsats.com` slowly. If you are running your node on this VPN (EU continent), please take a minute to read how to switch your connection to the new vpn: `de3.tunnelsats.com`
-
-In fact there are five simple steps to take:
-
-1. Edit your `tunnelsatsv2.conf` and change `Endpoint` entry to `Endpoint = de3.tunnelsats.com:51820`
-2. Fetch latest version of setup script: `wget -O setupv2.sh https://github.com/tunnelsats/tunnelsats/raw/main/scripts/setupv2.sh`
-3. Run it: `sudo bash setupv2.sh`
-4. Edit your lightning config file and change the DNS entry accordingly:
-
-   - LND: `externalhosts=de3.tunnelsats.com:<yourVPNport>`
-   - CLN: `announce-addr=de3.tunnelsats.com:<yourVPNport>`
-   - As always before changing the config, it is good practice to backup your config.
-     - To backup the conf use `sudo cp <path/to/conf> <path/where/tosafe/backup>`
-     - E.g., for raspiblitz and lnd: `sudo cp /mnt/hdd/lnd/lnd.conf ~/lnd_backup.conf`
-
-5. Restart your lightning implementation
-
-**Verify the switch to de3.tunnelsats.com**  
-To verify that the switch worked, you can run
-
-- LND: `lncli getinfo | jq '.uris'`
-- CLN: `lightning-cli getinfo | jq '.address'`
-
-The public IP should start with 159.x.x.x
-
-**Where do I find the config files?**  
-If you can not locate a file (e.g., the `tunnelsatsv2.conf` or your lightning config) you can always use the `find` command.
-
-- Locate tunnelsatsv2.conf: `sudo find / -maxdepth 5 -type d \( -path /etc/wireguard -o -path /sd-root \) -prune -o -type f -name "tunnelsatsv2.conf" -print`
-  - TunnelSats installs two independent config files both called `tunnelsatsv2.conf` (a user config, and a config for the vpn client wireguard).
-  - For the switch to `de3.tunnelsats.com` you want to edit the user config (default in `~/tunnelsats/tunnelsatsv2.conf`)
-- Locate LND config: `sudo find / -name "lnd.conf"`
-- Locate CLN config: `sudo find / -name "conf"`
-
-_Note:_ For the most common lightning node packages we documented the default location
-of the configuration files, see:
-
-- [Where do I find my lightning configuration file?](#where-do-i-find-my-lightning-configuration-file)
-- If you run into any trouble please reach out ([Where to get help?](#im-stuck-with-the-setup-process-can-you-help))
 
 <br />
 
