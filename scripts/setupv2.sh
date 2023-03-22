@@ -1073,7 +1073,7 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 # Create systemd service
-if [ ! -f /etc/systemd/system/tunnelsats-resolve-dns-wg.sh ]; then
+if [ ! -f /etc/systemd/system/tunnelsats-resolve-dns-wg.service ]; then
   echo "[Unit]
 Description= tunnelsats-resolve-dns-wg: Trigger Resolve DNS in case Handshake is older than 2 minutes
 # Disabling any rate limit
