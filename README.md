@@ -34,8 +34,8 @@ Although thinking this is a suitable way of providing a "hybrid service", we wan
 ## Preconditions ##
 
 - RaspiBlitz (LND / CLN) v1.8.0+
-- Umbrel-OS on raspberry Pi (LND) 0.5+ recommended
-- Umbrel-OS on raspberry Pi (CLN not yet recommended or be tech-savvy)
+- Umbrel-OS on Raspberry Pi (LND) 0.5+ recommended
+- Umbrel-OS on Raspberry Pi (CLN not yet recommended or be tech-savvy)
 - myNode (LND) v0.2.x 
 - RaspiBolt (LND / CLN)
 - For bare metal systems please check the following requirements:
