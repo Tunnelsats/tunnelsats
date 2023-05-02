@@ -43,7 +43,7 @@ Providing Lightning ⚡ Services is about privacy, reliability, connectivity, sp
 
 You also provide better user experience for customers actually using lightning as a payment system, which you could argue is the largest benefit.
 <br/>
-![Cost Speed Privacy Polarity](https://github.com/Tunnelsats/assets/blob/db45f1d6bca3360043e66b950c4bc0c3bb0f10fa/Connection%20Polarity.drawio.png)
+![Cost Speed Privacy Polarity](/docs/assets/Connection%20Polarity.png)
 <br/>
 
 ### Why choose Tunnel⚡Sats over other VPN providers?
@@ -212,7 +212,7 @@ Alternatively create a new file on your node and copy/paste the content of `tunn
 
 See the current network setup in a comparison between your Tor only setup vs the new setup as a flowchart
 
-![Flowchart Diagram](/docs/assets/Tunnelsats-Tor-scenario.png)
+![Flowchart Diagram](/docs/assets/Tunnelsats-Tor-scenario.drawio.png)
 
 <br/>
 
