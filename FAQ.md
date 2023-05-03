@@ -42,7 +42,8 @@
 Providing Lightning ⚡ Services is about privacy, reliability, connectivity, speed and liquidity. Relying your node connectivity to a single service **Tor** is a risk regarding connectivity and network stability, as anyone running a lightning node can testify. With Hybrid[^1] connectivity, you offer your payment and routing services to be [faster](https://blog.lnrouter.app/lightning-payment-speed-2022), more reliable, and yet, there is a privacy concern when you do it with your home-IP: you both expose your _rough_ location of your node, potentially your home and your node's system to attacks from the internet. With our solution **Tunnel⚡Sats**, you get the best of both worlds. Your node and home IP stays hidden, behind Tor and our VPS public IP address, which will be your node's face to the public internet, is shared with other peers. You may see higher reliability causing not only higher uptime, fewer offline peer nodes but also greater routing numbers. This isn't a promise, but an eventually expected outcome.
 
 You also provide better user experience for customers actually using lightning as a payment system, which you could argue is the largest benefit.
-
+<br/>
+![Cost Speed Privacy Polarity](/docs/assets/Connection%20Polarity.png)
 <br/>
 
 ### Why choose Tunnel⚡Sats over other VPN providers?
@@ -210,6 +211,7 @@ Alternatively create a new file on your node and copy/paste the content of `tunn
 ### How does it actually look like, how am I connected?
 
 See the current network setup in a comparison between your Tor only setup vs the new setup as a flowchart
+
 ![Flowchart Diagram](/docs/assets/Tunnelsats-Tor-scenario.drawio.png)
 
 <br/>
