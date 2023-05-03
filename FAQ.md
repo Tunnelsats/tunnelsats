@@ -95,10 +95,10 @@ Currently, 100GB per month are being offered. This should be enough traffic even
 
 At present we successfully tested the following setups:
 
-- RaspiBlitz (LND / CLN) v1.8.0
-- Umbrel-OS (LND)
-- Umbrel-OS (CLN not yet recommended or be tech-savvy)
-- myNode (LND) v0.2.x
+- RaspiBlitz (LND / CLN) v1.8.0+
+- Umbrel-OS (LND) on Raspberry Pi
+- Umbrel-OS (CLN not yet recommended or be tech-savvy) on Raspberry Pi
+- myNode (LND) v0.3+
 - RaspiBolt (LND / CLN) (please see [preconditions](README.md/#preconditions) if your system or architecture differs from RaspiBolt guide)
 
 For other setups please get back to us on Telegram to discuss if it's viable to go with TunnelSats.
