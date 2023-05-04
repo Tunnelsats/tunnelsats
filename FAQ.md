@@ -218,7 +218,9 @@ See the current network setup in a comparison between your Tor only setup vs the
 
 ### How can I verify that my VPN connection is online and active?
 
-On console, run the following WireGuard command to see some connection statistics, especially check latest handshake for an active VPN connection: `sudo wg show`
+On console, run the following WireGuard command to see some connection statistics, especially check latest handshake for an active VPN connection: `sudo wg show`.
+
+If you're on Telegram, you can chat to our hosted [Tunnel⚡Sats Bot](https://t.me/TunnelSatsBot) and send a `/ping [pubkey@tor.onion]` or `/ping [pubkey@tunnelsats-clearnetIP:port]` to check for a positive connection and speed-report.
 
 <br/>
 
@@ -336,8 +338,7 @@ This makes a tcp request to the de3 tunnelsats server port 32320 (replace with y
 If it's successful you should see something like
 `Connection to de3.tunnelsats.com port 32320 [tcp/*] succeeded!`
 
-In addition you can use the telegram ping bot [LnPingbot](https://t.me/LNPingBot) and connect to your new clearnet address and see whether the lightning
-connection works too.
+In addition you can chat to our hosted [Tunnel⚡Sats Bot](https://t.me/TunnelSatsBot) and connect to your new clearnet address and see whether the lightning connection works too.
 
 <br />
 
@@ -360,4 +361,4 @@ Great! Please do not hesitate to reach out via [Telegram](https://t.me/+NJylaUom
 <br/>
 <br/>
 
-[^1]: See hybrid options for [home-IP](https://github.com/blckbx/lnd-hybrid-mode) and [VPS](https://github.com/TrezorHannes/Dual-LND-Hybrid-VPS) for self-setup.
+[^1]: See hybrid options for [home-IP](https://github.com/blckbx/lnd-hybrid-mode) and [VPS](https://github.com/TrezorHannes/Dual-LND-Wireguard-VPS) for self-setup.
