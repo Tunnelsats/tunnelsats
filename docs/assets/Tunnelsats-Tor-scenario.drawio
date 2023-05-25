@@ -1,4 +1,4 @@
-<mxfile host="app.diagrams.net" modified="2023-05-25T15:03:30.647Z" agent="Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36" etag="c6uG4jTCm3rBbjLXf1px" version="21.2.4" type="github">
+<mxfile host="app.diagrams.net" modified="2023-05-25T15:05:01.124Z" agent="Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36" etag="4v6MOqyFoENoabHzRivH" version="21.2.4" type="github">
   <diagram name="Page-1" id="822b0af5-4adb-64df-f703-e8dfc1f81529">
     <mxGraphModel dx="1914" dy="1075" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" background="none" math="0" shadow="0">
       <root>
@@ -52,7 +52,7 @@
         <mxCell id="dzVO0lP-Pr6NHZDjBj-I-4" value="&lt;b&gt;&lt;font color=&quot;#4d4d4d&quot;&gt;Internet&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;/font&gt;&lt;/b&gt;" style="verticalLabelPosition=middle;aspect=fixed;html=1;verticalAlign=middle;strokeColor=#DDA15E;align=center;outlineConnect=0;shape=mxgraph.citrix.cloud;fillColor=#BC6C25;labelPosition=center;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
           <mxGeometry x="532.44" y="214.91" width="325.13" height="212.19" as="geometry" />
         </mxCell>
-        <mxCell id="f5En9RY3kI0PJLUmDjsn-67" value="" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#9933FF;strokeColor=#DDA15E;fontColor=#FEFAE0;" parent="1" vertex="1">
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-67" value="" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#9933FF;strokeColor=default;fontColor=#FEFAE0;" parent="1" vertex="1">
           <mxGeometry x="99.00999999999999" y="147" width="120" height="80" as="geometry" />
         </mxCell>
         <mxCell id="DgfKNXVbrJm1uEiCSvom-1" value="Home Router" style="verticalLabelPosition=top;aspect=fixed;html=1;verticalAlign=bottom;strokeColor=none;align=right;outlineConnect=0;shape=mxgraph.citrix.router;labelPosition=left;fillColor=#BC6C25;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
@@ -173,7 +173,7 @@
         <mxCell id="f5En9RY3kI0PJLUmDjsn-66" value="Tor Only&amp;nbsp;&lt;br&gt;Setup" style="text;strokeColor=none;fillColor=none;html=1;fontSize=24;fontStyle=1;verticalAlign=middle;align=center;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
           <mxGeometry x="109.00999999999999" y="167" width="100" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="f5En9RY3kI0PJLUmDjsn-68" value="" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#9933FF;strokeColor=#DDA15E;fontColor=#FEFAE0;" parent="1" vertex="1">
+        <mxCell id="f5En9RY3kI0PJLUmDjsn-68" value="" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#9933FF;strokeColor=default;fontColor=#FEFAE0;" parent="1" vertex="1">
           <mxGeometry x="457" y="141" width="476" height="80" as="geometry" />
         </mxCell>
         <mxCell id="f5En9RY3kI0PJLUmDjsn-69" value="Tunnel&amp;nbsp;&lt;img draggable=&quot;false&quot; class=&quot;emoji emoji-small&quot; src=&quot;https://webz.telegram.org/img-apple-64/26a1.png&quot; alt=&quot;⚡&quot; style=&quot;box-sizing: border-box ; vertical-align: 0px ; border-style: none ; background: 0% 0% / 1.25rem no-repeat rgb(33 , 33 , 33) ; color: rgba(0 , 0 , 0 , 0) ; display: inline-block ; width: 1.25rem ; height: 1.25rem ; overflow: hidden ; margin: 0px 1px -5px ; font-family: &amp;#34;roboto&amp;#34; , , &amp;#34;blinkmacsystemfont&amp;#34; , &amp;#34;apple color emoji&amp;#34; , &amp;#34;segoe ui&amp;#34; , &amp;#34;oxygen&amp;#34; , &amp;#34;ubuntu&amp;#34; , &amp;#34;cantarell&amp;#34; , &amp;#34;fira sans&amp;#34; , &amp;#34;droid sans&amp;#34; , &amp;#34;helvetica neue&amp;#34; , sans-serif ; font-size: 16px ; font-weight: 400&quot;&gt;&amp;nbsp;Sats Setup with &lt;br&gt;Clearnet Hybrid and Tor split Tunnel" style="text;strokeColor=none;fillColor=none;html=1;fontSize=24;fontStyle=1;verticalAlign=middle;align=center;fontColor=#FEFAE0;rounded=1;" parent="1" vertex="1">
