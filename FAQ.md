@@ -3,25 +3,21 @@
 
 ## Table of Contents
 
-<details>
 
-<summary>The problem Tunnel⚡Sats is solving for </summary>
+### The problem Tunnel⚡Sats is solving for 
 - [Why should I use this service?](#why-should-i-use-this-service)
 - [Why choose Tunnel⚡Sats over other VPN providers?](#why-choose-tunnelsats-over-other-vpn-providers)
 - [How do I know what value I got from subscribing to your service?](#how-do-i-know-what-value-i-got-from-subscribing-to-your-service)
 - [How does it actually look like, how am I connected?](#how-does-it-actually-look-like-how-am-i-connected)
-</details>
-<details>
 
-<summary>Trust & Safety measures </summary>
+
+### Trust & Safety measures 
 - [What services are used?](#what-services-are-used)
 - [What about data storage and privacy?](#what-about-data-storage-and-privacy)
 - [Is your service reliable?](#is-your-service-reliable)
 - [Do you store my data? If so, which one and how do you use it?](#do-you-store-my-data-if-so-which-one-and-how-do-you-use-it)
-</details>
-<details>
 
-<summary>Prerequisites and Installation</summary>
+### Prerequisites and Installation
 - [Which setups are supported?](#which-setups-are-supported)
 - [Is there a data transfer limit?](#is-there-a-data-transfer-limit)
 - [Where do I find my lightning configuration file?](#where-do-i-find-my-lightning-configuration-file)
@@ -30,36 +26,29 @@
 - [Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?](#am-i-still-able-to-connect-to-grpc-or-rest-via-tailscalezerotier)
 - [Running tunnelsatsv2 and mullvad in parallel?](#running-tunnelsatsv2-and-mullvad-in-parallel)
 - [Is it possible to run another Wireguard Tunnel besides Tunnelsats?](#is-it-possible-to-run-another-wireguard-tunnel-besides-tunnelsats)
-</details>
 
-<details>
 
-<summary>Troubleshooting & Verification</summary>
+### Troubleshooting & Verification
 - [I'm stuck with the setup process, can you help?](#im-stuck-with-the-setup-process-can-you-help)
 - [My payment did confirm on my wallet, but I didn't get my configuration files. What can I do?](#my-payment-did-confirm-on-my-wallet-but-i-didnt-get-my-configuration-files-what-can-i-do)
 - [How do I verify the tunnel is working?](#how-do-i-verify-the-tunnel-is-working)
 - [How can I verify that my VPN connection is online and active?](#how-can-i-verify-that-my-vpn-connection-is-online-and-active)
 - [What options do I have if I'm not happy?](#what-options-do-i-have-if-im-not-happy)
-</details>
 
-<details>
-  <summary>Payment & Costs</summary>
-  
-  - [Why are you charging fees?](#why-are-you-charging-fees)
-  - [Are you offering any discounts?](#are-you-offering-any-discounts)
-  - [Is there a referral program?](#is-there-a-referral-program)
-  - [Why shouldn't I just do it myself?](#why-shouldnt-i-just-do-it-myself)
-</details>
 
-<details>
-  
-<summary>Misc</summary>
+### Payment & Costs
+- [Why are you charging fees?](#why-are-you-charging-fees)
+- [Are you offering any discounts?](#are-you-offering-any-discounts)
+- [Is there a referral program?](#is-there-a-referral-program)
+- [Why shouldn't I just do it myself?](#why-shouldnt-i-just-do-it-myself)
+
+
+### Misc
 - [Tuning Tor](#tuning-tor)
 - [What does v2 stand for?](#what-does-v2-stand-for)
 - [Do you offer full-service VPNs too?](#do-you-offer-full-service-vpns-too)
 - [I have some ideas to make this better. Where can I provide feedback or offer help?](#i-have-some-ideas-to-make-this-better-where-can-i-provide-feedback-or-offer-help)
 - [Who built this?](#who-built-this)
-</details>
 
 <br/>
 
