@@ -75,9 +75,17 @@ Running a lightning nodes behind a VPN requires a range of features public VPN p
 
 <br/>
 
-### Is your service reliable?
+### How do I know what value I got from subscribing to your service?
 
-We use premium VPS Services with tight SLAs and proven, recorded high uptime (99,99%). We also setup servers across different service providers to allow for switching in case something out of our control happens. We also setup tight monitoring systems for our VMs, with alert mechanisms and coverage by 3 people in operations. That said, we're early in our offering and happily provide regular uptime metrics to provide more objective reliability data here.
+Keep an eye on your latency, uptime, routing amount week-over-week, and some subjective observations like nodes offline and such. Value is a quite subjective term, but we found those attributes provide value to a routing runner.
+
+<br/>
+
+### How does it actually look like, how am I connected?
+
+See the current network setup in a comparison between your Tor only setup vs the new setup as a flowchart
+
+![Flowchart Diagram](/docs/assets/Tunnelsats-Tor-scenario.drawio.png)
 
 <br/>
 
@@ -94,6 +102,12 @@ On the website, no cookies and only first half of IP addresses is stored in our 
 
 <br />
 
+### Is your service reliable?
+
+We use premium VPS Services with tight SLAs and proven, recorded high uptime (99,99%). We also setup servers across different service providers to allow for switching in case something out of our control happens. We also setup tight monitoring systems for our VMs, with alert mechanisms and coverage by 3 people in operations. That said, we're early in our offering and happily provide regular uptime metrics to provide more objective reliability data here.
+
+<br/>
+
 ### Do you store my data? If so, which one and how do you use it?
 
 We don't log IPs in our webserver access data. We also offer an .onion website to allow for even greater anonymity: [http://tunnelpasz3fpxhuw6obb5tpuqkxmcmvqh7asx5vkqfwe7ix74ry22ad.onion](http://tunnelpasz3fpxhuw6obb5tpuqkxmcmvqh7asx5vkqfwe7ix74ry22ad.onion)
@@ -101,12 +115,6 @@ We don't log IPs in our webserver access data. We also offer an .onion website t
 We don't store packets or logfiles from or to your node once the tunnel is established. What we do store: We store the payment hash as accounting confirmation in LNBits. We do have to keep your node's IP address in memory for the tunnel connection to stay alive, which will be discarded once you disconnect. Hence it's extremely important to save your WireGuard configuration file because there is no way for us to re-retrieve that information.
 
 <br/>
-
-### Is there a data transfer limit?
-
-Currently, 100GB per month are being offered. This should be enough traffic even for bigger nodes with lots of channels.
-
-<br />
 
 ### Which setups are supported?
 
@@ -122,69 +130,11 @@ For other setups please get back to us on Telegram to discuss if it's viable to 
 
 <br />
 
-### What options do I have if I'm not happy?
+### Is there a data transfer limit?
 
-If you experience issues, please contact us and let us know what issues you're encountering. We are approachable and can discuss whatever is bugging you and see how we can find a solution.
+Currently, 100GB per month are being offered. This should be enough traffic even for bigger nodes with lots of channels.
 
-<br/>
-
-### How can I extend my subscription?
-
-Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how:
-
-- go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
-- enter the WireGuard public key - find the key either
-  - commented out in your `tunnelsatsv2.conf`, look for `#myPubKey` line (new subscriptions only) or
-  - in your wireguard connection details extracted by running `sudo wg show | grep "public key"`
-- click "Query Key Info" to fetch your key's infos
-- select the desired term extension of your choice (it is appended to the current expiry date)
-- click "Update Subscription" and pay the lightning invoice
-
-⚠️ No new WireGuard file will be handed over to the user. The current lightning settings persist, and we just extend your subscription with the purchased time. So there is no further lightning configuration needed. Changing server locations on renewals is not supported for now.
-
-<br/>
-
-### Are you offering any discounts?
-
-Yes, as you can see, the longer the subscription, the more the discount. We offer 5% for 3 months, 10% for 6 months, and 20% for 12 months. You can also expect to buy cheaper today, since we do expect prices to rise further into launching.
-
-<br/>
-
-### Is there a referral program?
-
-No, not yet, but we'll be happy to look into it when people raise interest to such a program via feedback.
-
-<br/>
-
-### My payment did confirm on my wallet, but I didn't get my configuration files. What can I do?
-
-Please approach us on Telegram, via Email, Twitter or open an issue here. We'll ask you to confirm the timestamp of your payment, so we can check our accounting and provide a solution for you. Sorry for the inconvenience in advance.
-
-<br/>
-
-### I'm stuck with the setup process, can you help?
-
-Please raise an [issue](https://github.com/tunnelsats/tunnelsats/issues) in Github or simply join our [Telegram](https://t.me/+NJylaUom-rxjYjU6) group, explaining where you are stuck, but leave out any personal or sensitive information. Especially handle your configuration file with care!
-
-<br/>
-
-### How do I know what value I got from subscribing to your service?
-
-Keep an eye on your latency, uptime, routing amount week-over-week, and some subjective observations like nodes offline and such. Value is a quite subjective term, but we found those attributes provide value to a routing runner.
-
-<br/>
-
-### Why shouldn't I just do it myself?
-
-We offer a full-managed-service which takes a lot of the server, library, security and operational headache away from you. If you feel you prefer the personal learning experience, we can only encourage you to do so. It is a great adventure to learn more, so please check the footnotes in case you look for ways to dive in.
-
-<br/>
-
-### Why are you charging fees?
-
-We have invested significant amount of hours into building out the infrastructure, unique services, security and reliability feats, which come at a cost. We also chose a premium set of VPS providers, which come at a cost. And nodes, even without Tor traffic, are still using significant bandwidth every day, even small ones. So we need to cover both operational costs and compensate for further extending our services.
-
-<br/>
+<br />
 
 ### Where do I find my lightning configuration file?
 
@@ -225,43 +175,27 @@ Alternatively create a new file on your node and copy/paste the content of `tunn
 
 <br/>
 
-### How does it actually look like, how am I connected?
+### How can I extend my subscription?
 
-See the current network setup in a comparison between your Tor only setup vs the new setup as a flowchart
+Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how:
 
-![Flowchart Diagram](/docs/assets/Tunnelsats-Tor-scenario.drawio.png)
+- go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
+- enter the WireGuard public key - find the key either
+  - commented out in your `tunnelsatsv2.conf`, look for `#myPubKey` line (new subscriptions only) or
+  - in your wireguard connection details extracted by running `sudo wg show | grep "public key"`
+- click "Query Key Info" to fetch your key's infos
+- select the desired term extension of your choice (it is appended to the current expiry date)
+- click "Update Subscription" and pay the lightning invoice
 
-<br/>
-
-### How can I verify that my VPN connection is online and active?
-
-On console, run the following WireGuard command to see some connection statistics, especially check latest handshake for an active VPN connection: `sudo wg show`.
-
-If you're on Telegram, you can chat to our hosted [Tunnel⚡Sats Bot](https://t.me/TunnelSatsBot) and send a `/ping [pubkey@tor.onion]` or `/ping [pubkey@tunnelsats-clearnetIP:port]` to check for a positive connection and speed-report.
-
-<br/>
-
-### Tuning Tor
-
-Although we can speed up clearnet to clearnet connections, we still have to use the Tor network to reach out to Tor-only nodes. There have been some experiments going on to stabilize Tor connectivity and minimize its issues. Some of them might be worth trying out. These options are added at the very end of the `torrc` file:
-
-```ini
-LongLivedPorts 21,22,706,1863,5050,5190,5222,5223,6523,6667,6697,8300,9735,9736,9911
-UseEntryGuards 1
-NumEntryGuards 8
-```
+⚠️ No new WireGuard file will be handed over to the user. The current lightning settings persist, and we just extend your subscription with the purchased time. So there is no further lightning configuration needed. Changing server locations on renewals is not supported for now.
 
 <br/>
 
-### What does v2 stand for?
+### Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?
 
-In v2 we changed the network architecture compared to v1 where all traffic was directed via the VPN except Tor and ssh. This approach resulted in a lot of exceptions for different users. For example, if you were running ThunderHub on your node with v1, you were not able to access it via the external clearnet.
+As of commit [24f0f3c](https://github.com/tunnelsats/tunnelsats/commit/24f0f3c969cac04059aa8b8bfe1be3add08ae4bb) gRPC and Rest interfaces (ports 10009 and 8080) are no longer tunneled by TunnelSats. This means you can access these ports and tunnel them via ZeroTier or Tailscale additionally. This solution works for Docker (e.g. Umbrel) and non-Docker (e.g. RaspiBlitz) setups. In case you got a subscription before this change was introduced, just get and run the latest setup script again. Installation steps are any different than setting it up without TunnelSats.
 
-In v2 we are now isolating only lightning traffic via the VPN, all traffic not routed via your local proxy or not destined for your local network will be directed through the tunnel. The benefit is, apps like ThunderHub which run locally on your node are not tunneled and are accessible from the external clearnet. Nothing changes for your setup except for the lightning process. You will have no problems accessing your node from the external clearnet via ssh.
-
-In case you want to access the gRPC or REST interface form the external clearnet, it will not be possible. In this case services like ZeroTier or Tailscale are recommended, which let you access your node as if it would be in your local network. Normally accessing your nodes gRPC or REST API from the external clearnet shouldn't be a general use case, it's recommended to access the API via the local network or on the same computer resulting in better efficiency.
-
-<br/>
+<br />
 
 ### Running tunnelsatsv2 and mullvad in parallel?
 
@@ -299,12 +233,6 @@ Replace the ip_of_tunnelsats_vpn with the ip of the related tunnelsats vpn serve
 
 <br/>
 
-### Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?
-
-As of commit [24f0f3c](https://github.com/tunnelsats/tunnelsats/commit/24f0f3c969cac04059aa8b8bfe1be3add08ae4bb) gRPC and Rest interfaces (ports 10009 and 8080) are no longer tunneled by TunnelSats. This means you can access these ports and tunnel them via ZeroTier or Tailscale additionally. This solution works for Docker (e.g. Umbrel) and non-Docker (e.g. RaspiBlitz) setups. In case you got a subscription before this change was introduced, just get and run the latest setup script again. Installation steps are any different than setting it up without TunnelSats.
-
-<br />
-
 ### Is it possible to run another Wireguard Tunnel besides Tunnelsats?
 
 In case you also want to run another tunnel besides the tunnelsats network, that works!
@@ -327,6 +255,18 @@ Then just bring the interface up with `wg-quick up NAMEOFCONFIGFILE.conf`
 Now you are connected to your second wireguard network.
 
 <br />
+
+### I'm stuck with the setup process, can you help?
+
+Please raise an [issue](https://github.com/tunnelsats/tunnelsats/issues) in Github or simply join our [Telegram](https://t.me/+NJylaUom-rxjYjU6) group, explaining where you are stuck, but leave out any personal or sensitive information. Especially handle your configuration file with care!
+
+<br/>
+
+### My payment did confirm on my wallet, but I didn't get my configuration files. What can I do?
+
+Please approach us on Telegram, via Email, Twitter or open an issue here. We'll ask you to confirm the timestamp of your payment, so we can check our accounting and provide a solution for you. Sorry for the inconvenience in advance.
+
+<br/>
 
 ### How do I verify the tunnel is working?
 
@@ -359,15 +299,69 @@ In addition you can chat to our hosted [Tunnel⚡Sats Bot](https://t.me/TunnelSa
 
 <br />
 
+### How can I verify that my VPN connection is online and active?
+
+On console, run the following WireGuard command to see some connection statistics, especially check latest handshake for an active VPN connection: `sudo wg show`.
+
+If you're on Telegram, you can chat to our hosted [Tunnel⚡Sats Bot](https://t.me/TunnelSatsBot) and send a `/ping [pubkey@tor.onion]` or `/ping [pubkey@tunnelsats-clearnetIP:port]` to check for a positive connection and speed-report.
+
+<br/>
+
+### What options do I have if I'm not happy?
+
+If you experience issues, please contact us and let us know what issues you're encountering. We are approachable and can discuss whatever is bugging you and see how we can find a solution.
+
+<br/>
+
+### Why are you charging fees?
+
+We have invested significant amount of hours into building out the infrastructure, unique services, security and reliability feats, which come at a cost. We also chose a premium set of VPS providers, which come at a cost. And nodes, even without Tor traffic, are still using significant bandwidth every day, even small ones. So we need to cover both operational costs and compensate for further extending our services.
+
+<br/>
+
+### Are you offering any discounts?
+
+Yes, as you can see, the longer the subscription, the more the discount. We offer 5% for 3 months, 10% for 6 months, and 20% for 12 months. You can also expect to buy cheaper today, since we do expect prices to rise further into launching.
+
+<br/>
+
+### Is there a referral program?
+
+No, not yet, but we'll be happy to look into it when people raise interest to such a program via feedback.
+
+<br/>
+
+### Why shouldn't I just do it myself?
+
+We offer a full-managed-service which takes a lot of the server, library, security and operational headache away from you. If you feel you prefer the personal learning experience, we can only encourage you to do so. It is a great adventure to learn more, so please check the footnotes in case you look for ways to dive in.
+
+<br/>
+
+### Tuning Tor
+
+Although we can speed up clearnet to clearnet connections, we still have to use the Tor network to reach out to Tor-only nodes. There have been some experiments going on to stabilize Tor connectivity and minimize its issues. Some of them might be worth trying out. These options are added at the very end of the `torrc` file:
+
+```ini
+LongLivedPorts 21,22,706,1863,5050,5190,5222,5223,6523,6667,6697,8300,9735,9736,9911
+UseEntryGuards 1
+NumEntryGuards 8
+```
+
+<br/>
+
+### What does v2 stand for?
+
+In v2 we changed the network architecture compared to v1 where all traffic was directed via the VPN except Tor and ssh. This approach resulted in a lot of exceptions for different users. For example, if you were running ThunderHub on your node with v1, you were not able to access it via the external clearnet.
+
+In v2 we are now isolating only lightning traffic via the VPN, all traffic not routed via your local proxy or not destined for your local network will be directed through the tunnel. The benefit is, apps like ThunderHub which run locally on your node are not tunneled and are accessible from the external clearnet. Nothing changes for your setup except for the lightning process. You will have no problems accessing your node from the external clearnet via ssh.
+
+In case you want to access the gRPC or REST interface form the external clearnet, it will not be possible. In this case services like ZeroTier or Tailscale are recommended, which let you access your node as if it would be in your local network. Normally accessing your nodes gRPC or REST API from the external clearnet shouldn't be a general use case, it's recommended to access the API via the local network or on the same computer resulting in better efficiency.
+
+<br/>
+
 ### Do you offer full-service VPNs too?
 
 In short: No. Currently we are specializing VPN usage for the sole purpose of lightning node running. If you are looking for a privacy-preserving, lightning-payment enabled VPN provider, we recommend to take a look at [LNVPN.net](https://lnvpn.net).
-
-<br />
-
-### Who built this?
-
-From Node Runnners for Node Runners 🧡
 
 <br />
 
@@ -376,6 +370,11 @@ From Node Runnners for Node Runners 🧡
 Great! Please do not hesitate to reach out via [Telegram](https://t.me/+NJylaUom-rxjYjU6), [Twitter](https://twitter.com/tunnelsats), email (info @ tunnelsats.com) or log an issue here on github with your detailed ideas or feature requests. We always look forward to partner with great thinkers and doers.
 
 <br/>
-<br/>
+
+### Who built this?
+
+From Node Runnners for Node Runners 🧡
+
+<br />
 
 [^1]: See hybrid options for [home-IP](https://github.com/blckbx/lnd-hybrid-mode) and [VPS](https://github.com/TrezorHannes/Dual-LND-Wireguard-VPS) for self-setup.
