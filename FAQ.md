@@ -4,20 +4,20 @@
 ## Table of Contents
 
 
-### The problem Tunnel⚡Sats is solving for 
+### Tunnel⚡Sats - Introduction
 - [Why should I use this service?](#why-should-i-use-this-service)
 - [Why choose Tunnel⚡Sats over other VPN providers?](#why-choose-tunnelsats-over-other-vpn-providers)
 - [How do I know what value I got from subscribing to your service?](#how-do-i-know-what-value-i-got-from-subscribing-to-your-service)
 - [How does it actually look like, how am I connected?](#how-does-it-actually-look-like-how-am-i-connected)
 
 
-### Trust & Safety measures 
+### Trust & Safety Measures 
 - [What services are used?](#what-services-are-used)
 - [What about data storage and privacy?](#what-about-data-storage-and-privacy)
 - [Is your service reliable?](#is-your-service-reliable)
 - [Do you store my data? If so, which one and how do you use it?](#do-you-store-my-data-if-so-which-one-and-how-do-you-use-it)
 
-### Prerequisites and Installation
+### Prerequisites & Installation
 - [Which setups are supported?](#which-setups-are-supported)
 - [Is there a data transfer limit?](#is-there-a-data-transfer-limit)
 - [Where do I find my lightning configuration file?](#where-do-i-find-my-lightning-configuration-file)
