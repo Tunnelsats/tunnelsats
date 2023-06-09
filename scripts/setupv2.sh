@@ -1143,9 +1143,9 @@ if [ $isDocker -eq 0 ]; then
 
 else #Docker
 
-  if docker pull curlimages/curl >/dev/null; then
+  if docker pull curlimages/curl:8.1.1 >/dev/null; then
     ipHome=$(curl --silent https://api.ipify.org)
-    ipVPN=$(docker run -ti --rm --net=docker-tunnelsats curlimages/curl https://api.ipify.org 2>/dev/null)
+    ipVPN=$(docker run -ti --rm --net=docker-tunnelsats curlimages/curl:8.1.1 https://api.ipify.org 2>/dev/null)
     if [ "$ipHome" != "$ipVPN" ] && valid_ipv4 $ipHome && valid_ipv4 $ipVPN; then
       echo "> Tunnel is active ✅
       Your ISP external IP: ${ipHome} 
