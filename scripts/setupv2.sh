@@ -1200,7 +1200,7 @@ and duplicated lines could lead to errors.
 
 #########################################
 [Application Options]
-listen=0.0.0.0:9735
+#listen=0.0.0.0:9735
 externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 [Tor]
 tor.streamisolation=false
