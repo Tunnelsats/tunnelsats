@@ -604,6 +604,13 @@ function App() {
                   >
                     Server Status 🚨
                   </Nav.Link>
+                  <Nav.Link
+                    href="http://tunnelpasz3fpxhuw6obb5tpuqkxmcmvqh7asx5vkqfwe7ix74ry22ad.onion"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Onion 🧅
+                  </Nav.Link>                  
                   {/*
       <Nav.Link>
       <strong>⚡️ Black Friday Special 20% Off ⚡️</strong>
@@ -663,7 +670,7 @@ function App() {
                     rel="noreferrer"
                   >
                     Server Status 🚨
-                  </NavDropdown.Item>
+                  </NavDropdown.Item>                  
                 </NavDropdown>
               </Nav>
             )}
