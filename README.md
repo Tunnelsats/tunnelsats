@@ -278,7 +278,7 @@ or just want to have a chat with us, join our [Tunnel⚡Sats](https://t.me/+NJyl
 
 ____________________________________________________________
 
-This service is brought to you by [@ziggie1984](https://github.com/ziggie1984) (Ziggie), [@TrezorHannes](https://github.com/TrezorHannes) (Hakuna) and [@blckbx](https://github.com/blckbx) (osito).
+This service is brought to you by [@ziggie1984](https://github.com/ziggie1984) (Ziggie), [@TrezorHannes](https://github.com/TrezorHannes) (Hakuna) and [@blckbx](https://github.com/blckbx).
 
 Special thanks to [@LightRider5](https://github.com/LightRider5) ([lnvpn.net](https://lnvpn.net)) 
 for providing this amazing frontend framework and for help and support.
