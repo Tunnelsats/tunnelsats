@@ -4,6 +4,9 @@
   "description": "VPN for LN node runners",
   "main": "app.js",
   "private": true,
+  "devDependencies": {
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11"
+  },
   "dependencies": {
     "dotenv-webpack": "^8.0.1",
     "jquery": "^3.6.0",
@@ -19,7 +22,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "export NODE_OPTIONS='--max-old-space-size=768' && react-scripts build"
+    "build": "export NODE_OPTIONS='--max-old-space-size=4096' && react-scripts build"
   },
   "eslintConfig": {
     "extends": [
