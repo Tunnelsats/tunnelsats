@@ -26,8 +26,9 @@ let invoiceWGKeysMap = [];
 // Restrict entries to prevent an attack to fill the ram memory
 const MAXINVOICES = 100;
 
-// 15 minutes after the invoice is in memory it is purged after any user disconnects
-const TIMERCLEANINGINVOICEDATA = 10 * 60000;
+// 60 minutes after the invoice is in memory it is purged after any user disconnects
+// unit is milliseconds
+const TIMERCLEANINGINVOICEDATA = 60 * 60000;
 const app = express();
 
 // helper
