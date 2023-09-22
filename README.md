@@ -154,6 +154,8 @@ Running LND only requires a few parameters to be checked and set to activate hyb
 
 With CLN it's a bit trickier. Most node setups like Umbrel, RaspiBolt, RaspiBlitz etc. default CLN's daemon port to `9736`. So in order to route CLN clearnet over VPN, we need to change CLN's default port to `9735`. Locate data directory of your CLN installation. By default CLN's configuration is stored in a file named `config`. Edit the file and look out for network settings section.
 
+⚠️ CLN v23.08: Due to changes in DNS handling, please resolve VPN DNS {vpnDNS} to its original IP address {vpnIP} and enter as described below.
+
 #### RaspiBolt Setup
 
   ```ini
