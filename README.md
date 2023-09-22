@@ -135,7 +135,7 @@ Running LND only requires a few parameters to be checked and set to activate hyb
 
   ```ini
   [Application Options]
-  # omit the folloowing listen setting for Umbrel v5+
+  # omit the listen setting for Umbrel v5+
   listen=0.0.0.0:9735
   # the following placeholders {vpnDNS} and {vpnPort}
   # are provided at the end of the setupv2.sh script
