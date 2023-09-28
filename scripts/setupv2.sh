@@ -397,7 +397,7 @@ Table = off\n
 
 PostUp = while [ \$(ip rule | grep -c suppress_prefixlength) -gt 0 ]; do ip rule del from all table  main suppress_prefixlength 0;done\n
 PostUp = while [ \$(ip rule | grep -c 0x1000000) -gt 0 ]; do ip rule del from all fwmark 0x1000000/0xff000000 table  51820;done\n
-PostUp = if [ \$(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt  0 ] ;then echo $?; ip rule flush table 51820 ;fi\n
+PostUp = if [ \$(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt  0 ]; then echo $?; ip route del blackhole default metric 3 table 51820; ip rule flush table 51820 ;fi\n
 
 
 PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
