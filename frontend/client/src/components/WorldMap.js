@@ -584,7 +584,7 @@ const WorldMap = (props) => {
         </OverlayTrigger>
 
         {/* Background Animation Los Angeles */}
-        <circle cx="43" cy="103" r="1" fill="#cccccc">
+        <circle cx="47" cy="85" r="1" fill="#cccccc">
           <animate
             attributeType="SVG"
             attributeName="r"
@@ -623,7 +623,7 @@ const WorldMap = (props) => {
               <Popover.Title as="h3">North America</Popover.Title>
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
-                <strong>Server Location: </strong>🇺🇸 Los Angeles
+                <strong>Server Location: </strong>🇺🇸 Hillsboro, Oregon
                 <br />
                 <br />
                 <FaServer color="#ffc700" size={20} />{" "}
@@ -647,8 +647,8 @@ const WorldMap = (props) => {
         >
           {/* circle NYC */}
           <circle
-            cx="43"
-            cy="103"
+            cx="47"
+            cy="85"
             r="5"
             fill="#cc0000"
             id="NA2"

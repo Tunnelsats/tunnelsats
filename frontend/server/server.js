@@ -596,7 +596,7 @@ const getServer = (country) => {
       server = process.env.IP_EU3;
       break;
     case "na":
-      server = process.env.IP.USA;
+      server = process.env.IP_USA;
       break;
     case "na2":
       server = process.env.IP_USA2;
