@@ -87,7 +87,7 @@ function App() {
   /* WorldMap City Codes
     AF = Africa (currently none)
     NA = North America (US East, NYC)
-    NA2 = North America (US West, LA)
+    NA2 = North America (US West, Hillsboro Oregon)
     SA = South America (LatAm, Sao Paolo)
     EU = Europe (FFM, NRB)
     AS = Asia (Singapore)
@@ -190,7 +190,7 @@ function App() {
         setSelectedRegionString(`🇺🇸  New York City`);
         break;
       case "na2":
-        setSelectedRegionString(`🇺🇸  Los Angeles`);
+        setSelectedRegionString(`🇺🇸  Hillsboro, Oregon`);
         break;
       case "sa":
         setSelectedRegionString(`🇧🇷  São Paolo`);
