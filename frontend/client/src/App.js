@@ -80,17 +80,18 @@ function App() {
   //const hideLoginModal = () => showLoginModal(false);
 
   // World Map
-  const [country, updateCountry] = useState("eu3");
+  const [country, updateCountry] = useState("na");
   const [selectedRegionString, setSelectedRegionString] =
-    useState(`🇩🇪  Nuremberg`);
+    useState(`🇺🇸  New York City`);
 
-  /* WorldMap Continent Codes
-    AF = Africa
-    NA = North America (US+CAD)
-    SA = South America (LatAm)
-    EU = Europe
-    AS = Asia
-    OC = Oceania (AUS+NZ)
+  /* WorldMap City Codes
+    AF = Africa (currently none)
+    NA = North America (US East, NYC)
+    NA2 = North America (US West, LA)
+    SA = South America (LatAm, Sao Paolo)
+    EU = Europe (FFM, NRB)
+    AS = Asia (Singapore)
+    OC = Oceania (AUS+NZ, Sydney)
   */
 
   // switch first <-> renew subscription
@@ -187,6 +188,9 @@ function App() {
         break;
       case "na":
         setSelectedRegionString(`🇺🇸  New York City`);
+        break;
+      case "na2":
+        setSelectedRegionString(`🇺🇸  Los Angeles`);
         break;
       case "sa":
         setSelectedRegionString(`🇧🇷  São Paolo`);
@@ -577,7 +581,7 @@ function App() {
                       onClick={() => {
                         hideRenew();
                         updatePrice(REACT_APP_THREE_MONTHS);
-                        handleSelectedCountry("eu3");
+                        handleSelectedCountry("na");
                       }}
                     >
                       Get Subscription
@@ -700,7 +704,7 @@ function App() {
               {isRenewSub ? (
                 <>
                   <hr />
-                  <p className="price">Connected to continent:</p>
+                  <p className="price">connected to city:</p>
                   {/* WorldMap */}
                   <WorldMap
                     selected={country}
@@ -882,7 +886,7 @@ function App() {
               ) : (
                 <>
                   <hr />
-                  <p className="price">Select your continent:</p>
+                  <p className="price">select your closest city:</p>
                   {/* WorldMap */}
                   <WorldMap
                     selected={country}

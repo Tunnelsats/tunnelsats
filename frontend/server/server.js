@@ -459,6 +459,7 @@ io.on("connection", (socket) => {
       { domain: "de3.tunnelsats.com", country: "eu2" },
       { domain: "de2.tunnelsats.com", country: "eu3" },
       { domain: "us1.tunnelsats.com", country: "na" },
+      { domain: "us2.tunnelsats.com", country: "na2" },
       { domain: "sg1.tunnelsats.com", country: "as" },
       { domain: "br1.tunnelsats.com", country: "sa" },
       //{ domain: "za1.tunnelsats.com", country: "af" },
@@ -580,34 +581,39 @@ io.on("connection", (socket) => {
   });
 });
 
-//Transforms country into server
+// Transforms country into server
 const getServer = (country) => {
   let server;
 
-  if (country == "eu") {
-    server = process.env.IP_EU;
+  switch(country) {
+    case "eu":
+      server = process.env.IP_EU;
+      break;
+    case "eu2":
+      server = process.env.IP_EU2;
+      break;
+    case "eu3":
+      server = process.env.IP_EU3;
+      break;
+    case "na":
+      server = process.env.IP.USA;
+      break;
+    case "na2":
+      server = process.env.IP_USA2;
+      break;
+    case "sa":
+      server = process.env.IP_LATAM;
+      break;
+    case "af":
+      server = process.env.IP_AFRICA;
+      break;
+    case "oc":
+      server = process.env.IP_OCEANIA;
+      break;
+    default:
+      server = "";
   }
-  if (country == "eu2") {
-    server = process.env.IP_EU_2;
-  }
-  if (country == "eu3") {
-    server = process.env.IP_EU_3;
-  }
-  if (country == "na") {
-    server = process.env.IP_USA;
-  }
-  if (country == "sa") {
-    server = process.env.IP_LATAM;
-  }
-  if (country == "af") {
-    server = process.env.IP_AFRICA;
-  }
-  if (country == "as") {
-    server = process.env.IP_ASIA;
-  }
-  if (country == "oc") {
-    server = process.env.IP_OCEANIA;
-  }
+
   return server;
 };
 
