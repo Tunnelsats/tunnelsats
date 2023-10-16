@@ -134,7 +134,7 @@ const WorldMap = (props) => {
           <circle
             cx="186"
             cy="240"
-            r="5"
+            r="7"
             fill="#00cc00"
             id="SA"
             className={getClassname(["sa"])}
@@ -255,7 +255,7 @@ const WorldMap = (props) => {
           <circle
             cx="305"
             cy="72"
-            r="5"
+            r="7"
             fill="#cc0000"
             id="EU"
             className={getClassname(["eu", "eu2", "eu3"])}
@@ -429,7 +429,7 @@ const WorldMap = (props) => {
           <circle
             cx="508"
             cy="180"
-            r="5"
+            r="7"
             fill="#cc0000"
             id="AS"
             className={getClassname(["as"])}
@@ -575,7 +575,7 @@ const WorldMap = (props) => {
           <circle
             cx="134"
             cy="90"
-            r="5"
+            r="7"
             fill="#cc0000"
             id="NA"
             className={getClassname(["na"])}
@@ -649,7 +649,7 @@ const WorldMap = (props) => {
           <circle
             cx="47"
             cy="85"
-            r="5"
+            r="7"
             fill="#cc0000"
             id="NA2"
             className={getClassname(["na2"])}
@@ -771,7 +771,7 @@ const WorldMap = (props) => {
           <circle
             cx="594"
             cy="265"
-            r="5"
+            r="7"
             fill="#cc0000"
             id="OC"
             className={getClassname(["oc"])}
