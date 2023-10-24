@@ -415,11 +415,15 @@ io.on("connection", (socket) => {
               .replace(/^https?:\/\//, "")
               .replace(/\/manager\/$/, "");
           } else {
+            // report to system
             logDim(`Error - no valid serverURL for ${payload.country}`);
             sayWithTelegram({
               message: `❗️ Failed to generate invoice: no valid server url for
               country: ${payload.country}, url: ${serverURL}`,
             });
+
+            //also report to frontend
+            socket.emit("error", "Error fetching server details!");
 
             return;
           }
