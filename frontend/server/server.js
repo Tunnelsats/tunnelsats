@@ -604,8 +604,8 @@ const getServer = (country) => {
     case "sa":
       server = process.env.IP_LATAM;
       break;
-    case "af":
-      server = process.env.IP_AFRICA;
+    case "as":
+      server = process.env.IP_ASIA;
       break;
     case "oc":
       server = process.env.IP_OCEANIA;
