@@ -238,6 +238,8 @@ function App() {
   // display error reported by backend
   socket.off("error").on("error", (message) => {
     DEBUG && console.log(`${getDate()} App.js: received error message: ${message}`);
+    setSpinner(false);
+    closeInvoiceModal();
     setPopupMessage(message);
     renderPopupModal();
   });
