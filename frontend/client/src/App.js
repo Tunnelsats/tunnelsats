@@ -235,6 +235,13 @@ function App() {
     }
   };
 
+  // display error reported by backend
+  socket.off("error").on("error", (message) => {
+    DEBUG && console.log(`${getDate()} App.js: received error message: ${message}`);
+    setPopupMessage(message);
+    renderPopupModal();
+  });
+
   /*
   socket.removeAllListeners("receiveServer").on("receiveServer", (server) => {
     DEBUG && console.log(`${getDate()} App.js: received server: `, server);

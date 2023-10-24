@@ -361,9 +361,9 @@ io.on("connection", (socket) => {
   // Getting the Invoice from lnbits and forwarding it to the frontend
   socket.on("getInvoice", async (payload) => {
     DEBUG &&
-      DEBUG &&
       logDim(`getInvoice() called by socket id: ${socket.id} with payload
       ${JSON.stringify(payload, null, 4)}`);
+
     if (
       // We need all of those from the client otherwise we do nothing
       !!payload.selection &&
