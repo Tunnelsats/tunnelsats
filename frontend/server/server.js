@@ -414,6 +414,14 @@ io.on("connection", (socket) => {
             serverURL = serverURL
               .replace(/^https?:\/\//, "")
               .replace(/\/manager\/$/, "");
+          } else {
+            logDim(`Error - no valid serverURL for ${payload.country}`);
+            sayWithTelegram({
+              message: `❗️ Failed to generate invoice: no valid server url for
+              country: ${payload.country}, url: ${serverURL}`,
+            });
+
+            return;
           }
 
           socket.emit("lnbitsInvoice", paymentDetails);
@@ -585,7 +593,7 @@ io.on("connection", (socket) => {
 const getServer = (country) => {
   let server;
 
-  switch(country) {
+  switch (country) {
     case "eu":
       server = process.env.IP_EU;
       break;
