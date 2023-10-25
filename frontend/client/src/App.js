@@ -728,16 +728,6 @@ function App() {
                     {/* Renew Subscription */}
                     <Form.Group className="updateSubFrom">
                       <InputGroup>
-                        <InputGroup.Text>Server</InputGroup.Text>
-                        <Form.Control
-                          disabled
-                          value={server}
-                          placeholder="Tunnel⚡️Sats Server"
-                          onChange={handleChangeServer}
-                          type="text"
-                        />
-                      </InputGroup>
-                      <InputGroup>
                         <InputGroup.Text>WG Pubkey</InputGroup.Text>
                         <Form.Control
                           enabled
@@ -745,6 +735,7 @@ function App() {
                           placeholder="WireGuard public key (base64 encoded)"
                           isValid={valid}
                           onChange={handleChangePubkey}
+                          autoFocus={true}
                         />
                         <Button
                           variant="secondary"
@@ -758,6 +749,16 @@ function App() {
                           />
                         </Button>
                       </InputGroup>
+                      <InputGroup>
+                        <InputGroup.Text>Server</InputGroup.Text>
+                        <Form.Control
+                          disabled
+                          value={server}
+                          placeholder="Tunnel⚡️Sats Server"
+                          onChange={handleChangeServer}
+                          type="text"
+                        />
+                      </InputGroup>                      
                       <Collapse in={valid}>
                         <div id="example-collapse-text">
                           {
