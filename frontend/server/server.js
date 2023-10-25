@@ -197,9 +197,8 @@ app.post(process.env.WEBHOOK, (req, res) => {
               .replace(/^https?:\/\//, "")
               .replace(/\/manager\/$/, "");
             sayWithTelegram({
-              message: `🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(
-                amountSats
-              )}💰`,
+              // prettier-ignore
+              message: `🟢 New Subscription: 🍾\n Price: ${priceDollar}\$\n ServerLocation: ${serverDNS}\n Sats: ${Math.round(amountSats)}💰`,
             })
               .then((result) => {
                 DEBUG &&
@@ -280,9 +279,8 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
                 invoiceWGKeysMap[index].resultBackend = result;
 
                 sayWithTelegram({
-                  message: `🟢 Renewed Subscription: 🍾\n Price: ${priceDollar}\$\n PubKey: ${publicKey} \n ServerLocation: ${serverURL}\n Sats: ${Math.round(
-                    amountSats
-                  )}💰`,
+                  // prettier-ignore
+                  message: `🟢 Renewed Subscription: 🍾\n Price: ${priceDollar}\$\n PubKey: ${publicKey} \n ServerLocation: ${serverURL}\n Sats: ${Math.round(amountSats)}💰`,
                 })
                   .then((result) => {
                     DEBUG &&
@@ -418,8 +416,8 @@ io.on("connection", (socket) => {
             // report to system
             logDim(`Error - no valid serverURL for ${payload.country}`);
             sayWithTelegram({
-              message: `❗️ Failed to generate invoice: no valid server url for
-              country: ${payload.country}, url: ${serverURL}`,
+              // prettier-ignore
+              message: `❗️ Failed to generate invoice: no valid server url for country: ${payload.country}, url: ${serverURL}`,
             });
 
             //also report to frontend
