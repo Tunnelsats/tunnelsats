@@ -237,7 +237,8 @@ function App() {
 
   // display error reported by backend
   socket.off("error").on("error", (message) => {
-    DEBUG && console.log(`${getDate()} App.js: received error message: ${message}`);
+    DEBUG &&
+      console.log(`${getDate()} App.js: received error message: ${message}`);
     setSpinner(false);
     closeInvoiceModal();
     setPopupMessage(message);
@@ -623,7 +624,7 @@ function App() {
                     rel="noreferrer"
                   >
                     Onion 🧅
-                  </Nav.Link>                  
+                  </Nav.Link>
                   {/*
       <Nav.Link>
       <strong>⚡️ Black Friday Special 20% Off ⚡️</strong>
@@ -683,7 +684,7 @@ function App() {
                     rel="noreferrer"
                   >
                     Server Status 🚨
-                  </NavDropdown.Item>                  
+                  </NavDropdown.Item>
                 </NavDropdown>
               </Nav>
             )}
@@ -720,7 +721,7 @@ function App() {
                     pointerEvents={"none"}
                     Cursor={"not-allowed"}
                   />
-
+                  <p className="price">{server}</p>
                   <hr />
 
                   <Form onSubmit={(e) => handleSubmit(e)}>
@@ -749,16 +750,17 @@ function App() {
                           />
                         </Button>
                       </InputGroup>
+                      {/*
                       <InputGroup>
                         <InputGroup.Text>Server</InputGroup.Text>
                         <Form.Control
                           disabled
-                          value={server}
+                          defaultValue={server}
                           placeholder="Tunnel⚡️Sats Server"
                           onChange={handleChangeServer}
-                          type="text"
                         />
-                      </InputGroup>                      
+                      </InputGroup>
+                      */}
                       <Collapse in={valid}>
                         <div id="example-collapse-text">
                           {
