@@ -714,7 +714,7 @@ function App() {
               {isRenewSub ? (
                 <>
                   <hr />
-                  <p className="price">connected to city:</p>
+                  <p className="price">connected to server:</p>
                   {/* WorldMap */}
                   <WorldMap
                     selected={country}
