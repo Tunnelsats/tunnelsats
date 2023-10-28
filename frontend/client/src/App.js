@@ -750,17 +750,6 @@ function App() {
                           />
                         </Button>
                       </InputGroup>
-                      {/*
-                      <InputGroup>
-                        <InputGroup.Text>Server</InputGroup.Text>
-                        <Form.Control
-                          disabled
-                          defaultValue={server}
-                          placeholder="Tunnel⚡️Sats Server"
-                          onChange={handleChangeServer}
-                        />
-                      </InputGroup>
-                      */}
                       <Collapse in={valid}>
                         <div id="example-collapse-text">
                           {
