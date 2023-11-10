@@ -22,7 +22,7 @@ import Popup from "./components/Popup";
 import { getTimeStamp } from "./timefunction.js";
 import HeaderInfo from "./components/HeaderInfo";
 import logo from "./media/tunnelsats_headerlogo5.png";
-//import logo from "./media/tunnelsats_headerlogo5_BF.png";
+import logo_bf from "./media/tunnelsats_headerlogo5_BF.png";
 import WorldMap from "./components/WorldMap";
 import { IoIosRefresh, IoIosInformationCircleOutline } from "react-icons/io";
 import "./wireguard.js";
@@ -713,7 +713,7 @@ function App() {
           <Row>
             <Col>
               {/* Logo */}
-              <img src={logo} alt="" className="logo" />
+              <img src={discount != 1.0 ? logo_bf : logo} alt="" className="logo" />
 
               {/* Intro Text */}
               <HeaderInfo stats={nodeStats} />
