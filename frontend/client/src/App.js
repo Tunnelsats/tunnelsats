@@ -849,7 +849,14 @@ function App() {
                             // preshared key is not set
                             "-",
                             country,
-                            discount,
+                            discount != 1.0
+                            ? Math.trunc(
+                                Math.round(
+                                  priceDollar * satsPerDollar -
+                                    priceDollar * satsPerDollar * discount
+                                )
+                              )
+                            : Math.trunc(Math.round(priceDollar * satsPerDollar)),
                             // renewsubscription
                             true,
                             keyID
@@ -1033,7 +1040,14 @@ function App() {
                         keyPair.publicKey,
                         keyPair.presharedKey,
                         country,
-                        discount
+                        discount != 1.0
+                        ? Math.trunc(
+                            Math.round(
+                              priceDollar * satsPerDollar -
+                                priceDollar * satsPerDollar * discount
+                            )
+                          )
+                        : Math.trunc(Math.round(priceDollar * satsPerDollar))
                       );
                       setSpinner(true);
                     }}
