@@ -783,7 +783,9 @@ async function getInvoice(amount, priceDollar, webhook) {
     headers: { "X-Api-Key": process.env.INVOICE_KEY },
     data: {
       out: false,
-      amount: amount,
+      // BF hardcoded
+      amount: Math.trunc(Math.round(priceDollar * amount -
+            priceDollar * amount * 0.2)),
       memo: getTimeStamp(priceDollar),
       webhook: webhook,
     },
