@@ -784,8 +784,7 @@ async function getInvoice(amount, priceDollar, webhook) {
     data: {
       out: false,
       // BF hardcoded
-      amount: Math.trunc(Math.round(priceDollar * amount -
-            priceDollar * amount * 0.2)),
+      amount: amount,
       memo: getTimeStamp(priceDollar),
       webhook: webhook,
     },
