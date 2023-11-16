@@ -382,7 +382,9 @@ io.on("connection", (socket) => {
             return;
           }
           const priceDollar = PRICESUBSCRIBTIONMAP[payload.selection - 1];
-          const priceSats = Math.round(satsPerDollar * priceDollar);
+          //const priceSats = Math.round(satsPerDollar * priceDollar);
+          //BF hardcoded
+          const priceSats = Math.trunc(Math.round(priceDollar * satsPerDollar - priceDollar * satsPerDollar * 0.2));
           let paymentDetails;
 
           if (payload.isRenew) {
@@ -783,7 +785,6 @@ async function getInvoice(amount, priceDollar, webhook) {
     headers: { "X-Api-Key": process.env.INVOICE_KEY },
     data: {
       out: false,
-      // BF hardcoded
       amount: amount,
       memo: getTimeStamp(priceDollar),
       webhook: webhook,
