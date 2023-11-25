@@ -8,7 +8,7 @@
 #Update if your make a significant change
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
-minor=0
+minor=2
 patch=29
 
 #Helper
@@ -69,6 +69,7 @@ while true; do
     echo "> Umbrel"
     echo
     isDocker=1
+    isUmbrel=1
     break
     ;;
 
@@ -177,7 +178,7 @@ if [ $isDocker -eq 0 ]; then
     checkcgroup=$(cgcreate -h 2>/dev/null | grep -c "Usage")
     if [ $checkcgroup -eq 0 ]; then
       echo "Installing cgroup-tools..."
-      if apt install -y cgroup-tools >/dev/null; then
+      if apt-get install -y cgroup-tools >/dev/null; then
         echo "> cgroup-tools installed"
         echo
       else
@@ -199,7 +200,7 @@ echo "Checking nftables installation..."
 checknft=$(nft -v 2>/dev/null | grep -c "nftables")
 if [ $checknft -eq 0 ]; then
   echo "Installing nftables..."
-  if apt install -y nftables >/dev/null; then
+  if apt-get install -y nftables >/dev/null; then
     echo "> nftables installed"
     echo
   else
@@ -230,14 +231,14 @@ checkwg=$(wg -v 2>/dev/null | grep -c "wireguard-tools")
 if [ $checkwg -eq 0 ]; then
   echo "Installing wireguard..."
 
-  if apt install -y wireguard >/dev/null; then
+  if apt-get install -y wireguard >/dev/null; then
     echo "> wireguard installed"
     echo
   else
     # try Debian 10 Buster workaround / myNode
     codename=$(lsb_release -c 2>/dev/null | awk '{print $2}')
     if [ "$codename" == "buster" ] && [ "$(hostname)" != "umbrel" ]; then
-      if apt install -y -t buster-backports wireguard >/dev/null; then
+      if apt-get install -y -t buster-backports wireguard >/dev/null; then
         echo "> wireguard installed"
         echo
       else
@@ -294,7 +295,7 @@ if [ $isDocker -eq 1 ]; then
   checkResolv=$(resolvconf 2>/dev/null | grep -c "^Usage")
   if [ $checkResolv -eq 0 ]; then
     echo "Installing resolvconf..."
-    if apt install -y resolvconf >/dev/null; then
+    if apt-get install -y resolvconf >/dev/null; then
       echo "> resolvconf installed"
       echo
     else
@@ -1190,6 +1191,7 @@ echo
 # Only the process which listens on 9735 will be reachable via the tunnel";echo
 
 if [ "$lnImplementation" == "lnd" ]; then
+  if [ "$isUmbrel" != "1" ]; then
 
   echo "LND:
 
@@ -1207,7 +1209,32 @@ tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
 #########################################"
   echo
+    else
+  echo "LND on Umbrel 0.5+:
 
+Make a backup and then edit /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf 
+to add or modify the below lines.
+
+Important
+There are a few hybrid settings Umbrel's bringing to the UI, please do the following steps:
+- in the Umbrel GUI, navigate to the LND advanced settings
+- validate which of the below settings are activated already
+- leave those activated as they are
+- don't add those settings in your custom lnd.conf again to avoid duplication
+
+Example: in case tor.streamisolation and tor.skip-proxy-for-clearnet-targets is already 
+activated in the UI, skip the [Tor] section completely and only add externalhosts. 
+
+#########################################
+[Application Options]
+#listen=0.0.0.0:9735
+externalhosts=${vpnExternalDNS}:${vpnExternalPort}
+[Tor]
+tor.streamisolation=false
+tor.skip-proxy-for-clearnet-targets=true
+#########################################"
+  echo
+  fi
 fi
 
 if [ "$lnImplementation" == "cln" ]; then
@@ -1251,7 +1278,7 @@ fi
 
 echo "Please save these infos in a file or write them down for later use.
 
-A more detailed guide is available at: https://tunnelsats.github.io/tunnelsats/
+A more detailed guide is available at: https://guide.tunnelsats.com/
 Afterwards please restart LND / CLN for changes to take effect.
 VPN setup completed!
 
