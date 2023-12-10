@@ -1278,7 +1278,7 @@ fi
 
 echo "Please save these infos in a file or write them down for later use.
 
-A more detailed guide is available at: https://guide.tunnelsats.com/
+A more detailed guide is available at: https://guide.tunnelsats.com
 Afterwards please restart LND / CLN for changes to take effect.
 VPN setup completed!
 
