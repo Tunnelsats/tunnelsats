@@ -8,7 +8,7 @@
 #Update if your make a significant change
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
-minor=2
+minor=1
 patch=29
 
 #Helper
@@ -1227,7 +1227,6 @@ activated in the UI, skip the [Tor] section completely and only add externalhost
 
 #########################################
 [Application Options]
-#listen=0.0.0.0:9735
 externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 [Tor]
 tor.streamisolation=false
