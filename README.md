@@ -206,7 +206,7 @@ change to
 Additionally we create a persistent CLN config file (if not already provided. Umbrel 0.5+ does not initially.):
 
   ```sh
-  $ nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config
+  $ sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config
   ``` 
 and enter the following settings:
 
