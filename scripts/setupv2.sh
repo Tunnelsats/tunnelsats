@@ -1248,14 +1248,14 @@ and duplicated lines could lead to errors.
 ###############################################################################
 Umbrel 0.5+:
 create CLN config file 'config':
-  $ nano ${HOME}/umbrel/app-data/core-lightning/data/lightningd/config 
+  $ sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config 
 insert:
   bind-addr=10.9.9.9:9735
   announce-addr=${vpnExternalDNS}:${vpnExternalPort}
   always-use-proxy=false
 
 edit 'exports.sh':
-  $ nano ${HOME}/umbrel/app-data/core-lightning/exports.sh
+  $ nano ~/umbrel/app-data/core-lightning/exports.sh
 change assigned port of APP_CORE_LIGHTNING_DAEMON_PORT from 9736 to 9735:
   export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"
 
