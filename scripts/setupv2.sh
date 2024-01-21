@@ -1190,10 +1190,10 @@ echo
 # Meaning that running lnd and cln simultaneously via the tunnel will not work.
 # Only the process which listens on 9735 will be reachable via the tunnel";echo
 
-if [ "$lnImplementation" == "lnd" ]; then
-  if [ "$isUmbrel" != "1" ]; then
+if [ "${lnImplementation}" == "lnd" ]; then
+  if [ $isUmbrel -ne 1 ]; then
 
-  echo "LND:
+    echo "LND:
 
 Before editing, please create a backup of your current LND config file.
 Then edit and add or modify the following lines. Please note that
@@ -1208,9 +1208,11 @@ externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
 #########################################"
-  echo
-    else
-  echo "LND on Umbrel 0.5+:
+    echo
+
+  else
+
+    echo "LND on Umbrel 0.5+:
 
 Make a backup and then edit /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf 
 to add or modify the below lines.
@@ -1232,13 +1234,15 @@ externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
 #########################################"
-  echo
+    echo
+
   fi
 fi
 
-if [ "$lnImplementation" == "cln" ]; then
+if [ "${lnImplementation}" == "cln" ]; then
+  if [ $isUmbrel -eq 1 ]; then
 
-  echo "CLN:
+    echo "CLN:
 
 Before editing, please create a backup of your current CLN config file.
 Then edit and add or modify the following lines. Please note that
@@ -1247,10 +1251,11 @@ and duplicated lines could lead to errors.
 
 ###############################################################################
 Umbrel 0.5+:
+
 create CLN config file 'config':
   $ sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config 
 insert:
-  bind-addr=10.9.9.9:9735
+  bind-addr=0.0.0.0:9735
   announce-addr=${vpnExternalDNS}:${vpnExternalPort}
   always-use-proxy=false
 
@@ -1259,9 +1264,22 @@ edit 'exports.sh':
 change assigned port of APP_CORE_LIGHTNING_DAEMON_PORT from 9736 to 9735:
   export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"
 
-###############################################################################
+edit 'docker-compose.yml':
+comment out 'bind-addr' parameter like so
+   command:
+   ...
+   #- --bind-addr=${APP_CORE_LIGHTNING_DAEMON_IP}:9735
 
+###############################################################################"
+    echo
+
+  else
+
+    echo "CLN:
+
+###############################################################################
 Native CLN installation (config file):
+
   # Tor
   addr=statictor:127.0.0.1:9051/torport=9735
   proxy=127.0.0.1:9050
@@ -1271,18 +1289,20 @@ Native CLN installation (config file):
   bind-addr=0.0.0.0:9735
   announce-addr=${vpnExternalDNS}:${vpnExternalPort}
 ###############################################################################"
-  echo
+    echo
 
+  fi
 fi
 
-echo "Please save these infos in a file or write them down for later use.
+echo "Please save this info in a file or write them down for later use.
 
 A more detailed guide is available at: https://guide.tunnelsats.com
 Afterwards please restart LND / CLN for changes to take effect.
 VPN setup completed!
 
 Welcome to Tunnel⚡Sats.
-Feel free to join the Amboss Community here: https://amboss.space/community/29db5f25-24bb-407e-b752-be69f9431071"
+Feel free to join the Amboss community here: https://amboss.space/community/29db5f25-24bb-407e-b752-be69f9431071
+and the Telegram group: https://t.me/tunnelsats"
 echo
 
 if [ $isDocker -eq 0 ]; then
@@ -1290,11 +1310,11 @@ if [ $isDocker -eq 0 ]; then
   if [ "${lnImplementation}" == "cln" ]; then
     serviceName="lightningd"
   fi
-  echo "Restart ${lnImplementation} afterwards via the command:
+  echo "Restart ${lnImplementation}:
     sudo systemctl restart ${serviceName}.service"
   echo
 else
-  echo "Restart ${lnImplementation} on Umbrel afterwards via the command:
+  echo "Restart ${lnImplementation}:
     sudo ~/umbrel/scripts/stop
     sudo ~/umbrel/scripts/start"
   echo
