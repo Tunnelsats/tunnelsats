@@ -121,7 +121,7 @@ while true; do
     break
     ;;
 
-  *) echo "Please enter a number either 1 or 2." ;;
+  *) echo "Please chose by entering a number either 1 or 2." ;;
   esac
 done
 
@@ -161,13 +161,13 @@ fi
 if [ "$lnImplementation" == "lnd" ]; then
   if [ -f /home/admin/config.scripts/lnd.check.sh ]; then
     mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak
-    echo "lnd conf safety check removed"
+    echo "RaspiBlitz detected, lnd conf safety check removed"
     echo
   fi
 elif [ "$lnImplementation" == "cln" ]; then
   if [ -f /home/admin/config.scripts/cl.check.sh ]; then
     mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak
-    echo "cln conf safety check removed"
+    echo "RaspiBlitz detected, cln conf safety check removed"
     echo
   fi
 fi
