@@ -176,7 +176,7 @@ fi
 # check requirements and update repos
 echo "Checking and installing requirements..."
 echo "Updating the package repositories..."
-apt update >/dev/null
+apt-get update >/dev/null
 echo
 
 # only non-docker
