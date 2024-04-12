@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=1
-patch=29
+patch=30
 
 #Helper
 function valid_ipv4() {
@@ -95,27 +95,36 @@ done
 # Check which implementation the user wants to tunnel
 lnImplementation=""
 
+# ... (first while loop remains the same)
+
+# Check which implementation the user wants to tunnel
+lnImplementation=""
+
 while true; do
-  read -p "Which lightning implementation do you want to tunnel? Supported are LND and CLN for now ⚡️: " answer
+  read -p "Which lightning implementation do you want to tunnel?:
+    1) LND
+    2) CLN
+    > " answer
 
   case $answer in
-  lnd | LND*)
-    echo "> Setting up Tunneling for LND on port 9735 "
+  1)
+    echo "> Setting up Tunneling for LND on port 9735"
     echo
     lnImplementation="lnd"
     break
     ;;
 
-  cln | CLN*)
-    echo "> Setting up Tunneling for CLN on port 9735 "
+  2)
+    echo "> Setting up Tunneling for CLN on port 9735"
     echo
     lnImplementation="cln"
     break
     ;;
 
-  *) echo "Enter LND or CLN, please." ;;
+  *) echo "Please enter a number either 1 or 2." ;;
   esac
 done
+
 
 # check for downloaded tunnelsatsv2.conf, exit if not available
 # get current directory
