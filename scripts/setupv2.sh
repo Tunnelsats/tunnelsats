@@ -158,19 +158,20 @@ if [ $isDocker -eq 0 ]; then
 fi
 
 # RaspiBlitz: deactivate config checks
-if [ "$(hostname)" == "raspberrypi" ] && [ "$lnImplementation" == "lnd" ]; then
+if [ "$lnImplementation" == "lnd" ]; then
   if [ -f /home/admin/config.scripts/lnd.check.sh ]; then
     mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak
-    echo "RaspiBlitz detected, lnd conf safety check removed"
+    echo "lnd conf safety check removed"
     echo
   fi
-elif [ "$(hostname)" == "raspberrypi" ] && [ "$lnImplementation" == "cln" ]; then
+elif [ "$lnImplementation" == "cln" ]; then
   if [ -f /home/admin/config.scripts/cl.check.sh ]; then
     mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak
-    echo "RaspiBlitz detected, cln conf safety check removed"
+    echo "cln conf safety check removed"
     echo
   fi
 fi
+
 
 # check requirements and update repos
 echo "Checking and installing requirements..."
