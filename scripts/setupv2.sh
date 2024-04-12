@@ -95,11 +95,6 @@ done
 # Check which implementation the user wants to tunnel
 lnImplementation=""
 
-# ... (first while loop remains the same)
-
-# Check which implementation the user wants to tunnel
-lnImplementation=""
-
 while true; do
   read -p "Which lightning implementation do you want to tunnel?:
     1) LND
