@@ -1292,7 +1292,11 @@ Afterwards please restart LND / CLN for changes to take effect.
 VPN setup completed!
 
 Welcome to Tunnel⚡Sats.
-Feel free to join the Amboss Community here: https://amboss.space/community/29db5f25-24bb-407e-b752-be69f9431071"
+- Feel free to join the Amboss Community: https://amboss.space/community/29db5f25-24bb-407e-b752-be69f9431071"
+- Check your clearnet connection functionality and speed: https://t.me/TunnelSatsBot
+- Join our Telegram Group: https://t.me/tunnelsats
+- Add a reminder on your subscription expiration date: https://t.me/TunnelSatsReminderBot
+
 echo
 
 if [ $isDocker -eq 0 ]; then
