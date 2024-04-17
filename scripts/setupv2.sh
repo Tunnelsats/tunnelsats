@@ -116,7 +116,7 @@ while true; do
     break
     ;;
 
-  *) echo "Please chose by entering a number either 1 or 2." ;;
+  *) echo "Please choose by entering a number either 1 or 2." ;;
   esac
 done
 
