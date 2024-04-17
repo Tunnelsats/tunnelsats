@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=1
-patch=29
+patch=30
 
 #Helper
 function valid_ipv4() {
@@ -96,26 +96,30 @@ done
 lnImplementation=""
 
 while true; do
-  read -p "Which lightning implementation do you want to tunnel? Supported are LND and CLN for now ⚡️: " answer
+  read -p "Which lightning implementation do you want to tunnel?:
+    1) LND
+    2) CLN
+    > " answer
 
   case $answer in
-  lnd | LND*)
-    echo "> Setting up Tunneling for LND on port 9735 "
+  1)
+    echo "> Setting up Tunneling for LND on port 9735"
     echo
     lnImplementation="lnd"
     break
     ;;
 
-  cln | CLN*)
-    echo "> Setting up Tunneling for CLN on port 9735 "
+  2)
+    echo "> Setting up Tunneling for CLN on port 9735"
     echo
     lnImplementation="cln"
     break
     ;;
 
-  *) echo "Enter LND or CLN, please." ;;
+  *) echo "Please choose by entering a number either 1 or 2." ;;
   esac
 done
+
 
 # check for downloaded tunnelsatsv2.conf, exit if not available
 # get current directory
@@ -149,13 +153,13 @@ if [ $isDocker -eq 0 ]; then
 fi
 
 # RaspiBlitz: deactivate config checks
-if [ "$(hostname)" == "raspberrypi" ] && [ "$lnImplementation" == "lnd" ]; then
+if [ "$lnImplementation" == "lnd" ]; then
   if [ -f /home/admin/config.scripts/lnd.check.sh ]; then
     mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak
     echo "RaspiBlitz detected, lnd conf safety check removed"
     echo
   fi
-elif [ "$(hostname)" == "raspberrypi" ] && [ "$lnImplementation" == "cln" ]; then
+elif [ "$lnImplementation" == "cln" ]; then
   if [ -f /home/admin/config.scripts/cl.check.sh ]; then
     mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak
     echo "RaspiBlitz detected, cln conf safety check removed"
@@ -163,10 +167,11 @@ elif [ "$(hostname)" == "raspberrypi" ] && [ "$lnImplementation" == "cln" ]; the
   fi
 fi
 
+
 # check requirements and update repos
 echo "Checking and installing requirements..."
 echo "Updating the package repositories..."
-apt update >/dev/null
+apt-get update >/dev/null
 echo
 
 # only non-docker
@@ -1282,7 +1287,11 @@ Afterwards please restart LND / CLN for changes to take effect.
 VPN setup completed!
 
 Welcome to Tunnel⚡Sats.
-Feel free to join the Amboss Community here: https://amboss.space/community/29db5f25-24bb-407e-b752-be69f9431071"
+- Feel free to join the Amboss Community: https://amboss.space/community/29db5f25-24bb-407e-b752-be69f9431071"
+- Check your clearnet connection functionality and speed: https://t.me/TunnelSatsBot
+- Join our Telegram Group: https://t.me/tunnelsats
+- Add a reminder on your subscription expiration date: https://t.me/TunnelSatsReminderBot
+
 echo
 
 if [ $isDocker -eq 0 ]; then
