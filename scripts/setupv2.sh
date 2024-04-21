@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=1
-patch=30
+patch=31
 
 #Helper
 function valid_ipv4() {
@@ -315,7 +315,7 @@ if [ $isDocker -eq 1 ]; then
   sleep 2
 fi
 
-#Create Docker Tunnelsat Network which stays persistent over restarts
+#Create Docker Tunnelsat Network
 if [ $isDocker -eq 1 ]; then
 
   echo "Creating TunnelSats Docker Network..."
@@ -876,16 +876,32 @@ table ip tunnelsatsv2 {
   systemctl daemon-reload >/dev/null
   if systemctl enable nftables >/dev/null && systemctl start nftables >/dev/null; then
 
-    if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
-      mkdir /etc/systemd/system/umbrel-startup.service.d >/dev/null
+    if [ -f /etc/systemd/system/umbrel.service ]; then
+      if [ ! -d /etc/systemd/system/umbrel.service.d ]; then
+        mkdir /etc/systemd/system/umbrel.service.d >/dev/null
+      fi
+    
+      echo "[Unit]
+Description=Forcing wg-quick to start after umbrel startup scripts
+# Make sure kill switch is in place before starting umbrel containers
+Requires=nftables.service
+After=nftables.service
+" >/etc/systemd/system/umbrel.service.d/tunnelsats_killswitch.conf
     fi
 
-    echo "[Unit]
+    if [ -f /etc/systemd/system/umbrel-startup.service ]; then
+      if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
+        mkdir /etc/systemd/system/umbrel-startup.service.d >/dev/null
+      fi
+    
+      echo "[Unit]
 Description=Forcing wg-quick to start after umbrel startup scripts
 # Make sure kill switch is in place before starting umbrel containers
 Requires=nftables.service
 After=nftables.service
 " >/etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf
+    fi
+
 
     #Start nftables service
     systemctl daemon-reload >/dev/null
@@ -924,14 +940,21 @@ if [ $isDocker -eq 1 ]; then
   # create file
   echo "Creating tunnelsats-docker-network.sh file in /etc/wireguard/..."
   echo "#!/bin/sh
-set -e
+#set -e
 lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 0.0.0.0:9735 | awk '{print \$2}')
 checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
-if [ \$checkdockernetwork -ne 0 ] && [ ! -z \$lightningcontainer ]; then
-  if ! docker inspect \$lightningcontainer | grep -c \"tunnelsats\" > /dev/null; then
-  docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  > /dev/null
+if [ \$checkdockernetwork -eq 0 ]; then
+  if ! docker network create \"docker-tunnelsats\" --subnet \"10.9.9.0/25\" -o \"com.docker.network.driver.mtu\"=\"1420\"; then
+    exit 1
   fi
-fi" >/etc/wireguard/tunnelsats-docker-network.sh
+fi
+if [ ! -z \$lightningcontainer ]; then
+  inspectlncontainer=\$(docker inspect \$lightningcontainer | grep -c \"tunnelsats\")
+  if [ \$inspectlncontainer -eq 0 ]; then
+    docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  >/dev/null
+  fi
+fi
+exit 0" >/etc/wireguard/tunnelsats-docker-network.sh
 
   if [ -f /etc/wireguard/tunnelsats-docker-network.sh ]; then
     echo "> /etc/wireguard/tunnelsats-docker-network.sh created"
@@ -953,6 +976,7 @@ fi" >/etc/wireguard/tunnelsats-docker-network.sh
     echo
     exit 1
   fi
+
 
   # enable systemd service
   # create systemd file
@@ -1036,16 +1060,29 @@ echo "Initializing the service..."
 systemctl daemon-reload >/dev/null
 if systemctl enable wg-quick@tunnelsatsv2 >/dev/null; then
 
-  if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service ]; then
-    if [ ! -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d ]; then
-      mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d >/dev/null
-    fi
-    echo "[Unit]
+  if [ $isDocker -eq 1 ]; then 
+    if [ -f /etc/systemd/system/umbrel.service ]; then
+      if [ ! -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d ]; then
+        mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d >/dev/null
+      fi
+      echo "[Unit]
 Description=Forcing wg-quick to start after umbrel startup scripts
-# Make sure to start vpn after umbrel start up to have lnd containers available
+# Make sure to start vpn after umbrel start up to have ln containers available
+Requires=umbrel.service
+After=umbrel.service
+" >/etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf
+    fi
+    if [ -f /etc/systemd/system/umbrel-startup.service ]; then
+      if [ ! -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d ]; then
+        mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d >/dev/null
+      fi
+      echo "[Unit]
+Description=Forcing wg-quick to start after umbrel startup scripts
+# Make sure to start vpn after umbrel start up to have ln containers available
 Requires=umbrel-startup.service
 After=umbrel-startup.service
 " >/etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf
+    fi
   fi
 
   systemctl daemon-reload >/dev/null
@@ -1207,7 +1244,7 @@ and duplicated lines could lead to errors.
 
 #########################################
 [Application Options]
-#listen=0.0.0.0:9735
+listen=0.0.0.0:9735
 externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 [Tor]
 tor.streamisolation=false
@@ -1291,6 +1328,7 @@ Welcome to Tunnel⚡Sats.
 - Check your clearnet connection functionality and speed: https://t.me/TunnelSatsBot
 - Join our Telegram Group: https://t.me/tunnelsats
 - Add a reminder on your subscription expiration date: https://t.me/TunnelSatsReminderBot"
+echo
 
 if [ $isDocker -eq 0 ]; then
   serviceName="${lnImplementation}"
@@ -1301,10 +1339,17 @@ if [ $isDocker -eq 0 ]; then
     sudo systemctl restart ${serviceName}.service"
   echo
 else
-  echo "Restart ${lnImplementation} on Umbrel afterwards via the command:
-    sudo ~/umbrel/scripts/stop
-    sudo ~/umbrel/scripts/start"
-  echo
+  if [ -f /etc/systemd/system/umbrel-startup.service ]; then
+    echo "Restart Umbrel afterwards via the command:
+      sudo ~/umbrel/scripts/stop
+      sudo ~/umbrel/scripts/start"
+    echo
+  fi
+  if [ -f /etc/systemd/system/umbrel.service ]; then
+    echo "Restart Umbrel afterwards via the command:
+      sudo systemctl restart umbrel.service"
+    echo
+  fi
 fi
 
 # the end
