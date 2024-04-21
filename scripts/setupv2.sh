@@ -120,7 +120,6 @@ while true; do
   esac
 done
 
-
 # check for downloaded tunnelsatsv2.conf, exit if not available
 # get current directory
 directory=$(dirname -- "$(readlink -fn -- "$0")")
@@ -166,7 +165,6 @@ elif [ "$lnImplementation" == "cln" ]; then
     echo
   fi
 fi
-
 
 # check requirements and update repos
 echo "Checking and installing requirements..."
@@ -403,7 +401,7 @@ Table = off\n
 
 PostUp = while [ \$(ip rule | grep -c suppress_prefixlength) -gt 0 ]; do ip rule del from all table  main suppress_prefixlength 0;done\n
 PostUp = while [ \$(ip rule | grep -c 0x1000000) -gt 0 ]; do ip rule del from all fwmark 0x1000000/0xff000000 table  51820;done\n
-PostUp = if [ \$(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt  0 ]; then echo $?; ip route del blackhole default metric 3 table 51820; ip rule flush table 51820 ;fi\n
+PostUp = if [ \$(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt  0 ]; then echo \$?; ip route del blackhole default metric 3 table 51820; ip rule flush table 51820 ;fi\n
 
 
 PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
@@ -880,7 +878,7 @@ table ip tunnelsatsv2 {
       if [ ! -d /etc/systemd/system/umbrel.service.d ]; then
         mkdir /etc/systemd/system/umbrel.service.d >/dev/null
       fi
-    
+
       echo "[Unit]
 Description=Forcing wg-quick to start after umbrel startup scripts
 # Make sure kill switch is in place before starting umbrel containers
@@ -893,7 +891,7 @@ After=nftables.service
       if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
         mkdir /etc/systemd/system/umbrel-startup.service.d >/dev/null
       fi
-    
+
       echo "[Unit]
 Description=Forcing wg-quick to start after umbrel startup scripts
 # Make sure kill switch is in place before starting umbrel containers
@@ -901,7 +899,6 @@ Requires=nftables.service
 After=nftables.service
 " >/etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf
     fi
-
 
     #Start nftables service
     systemctl daemon-reload >/dev/null
@@ -976,7 +973,6 @@ exit 0" >/etc/wireguard/tunnelsats-docker-network.sh
     echo
     exit 1
   fi
-
 
   # enable systemd service
   # create systemd file
@@ -1060,7 +1056,7 @@ echo "Initializing the service..."
 systemctl daemon-reload >/dev/null
 if systemctl enable wg-quick@tunnelsatsv2 >/dev/null; then
 
-  if [ $isDocker -eq 1 ]; then 
+  if [ $isDocker -eq 1 ]; then
     if [ -f /etc/systemd/system/umbrel.service ]; then
       if [ ! -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d ]; then
         mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d >/dev/null
@@ -1233,9 +1229,9 @@ echo
 # Only the process which listens on 9735 will be reachable via the tunnel";echo
 
 if [ "$lnImplementation" == "lnd" ]; then
-  if [ "$isUmbrel" != "1" ]; then
+  if [ $isDocker -eq 0 ]; then
 
-  echo "LND:
+    echo "LND:
 
 Before editing, please create a backup of your current LND config file.
 Then edit and add or modify the following lines. Please note that
@@ -1250,11 +1246,11 @@ externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
 #########################################"
-  echo
-    else
-  echo "LND on Umbrel 0.5+:
+    echo
+  else
+    echo "LND on Umbrel 0.5+:
 
-Make a backup and then edit /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf 
+Make a backup and then edit ~/umbrel/app-data/lightning/data/lnd/lnd.conf 
 to add or modify the below lines.
 
 Important
@@ -1274,13 +1270,13 @@ externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
 #########################################"
-  echo
+    echo
   fi
 fi
 
 if [ "$lnImplementation" == "cln" ]; then
-
-  echo "CLN:
+  if [ $isUmbrel -eq 1 ]; then
+    echo "CLN:
 
 Before editing, please create a backup of your current CLN config file.
 Then edit and add or modify the following lines. Please note that
@@ -1290,20 +1286,34 @@ and duplicated lines could lead to errors.
 ###############################################################################
 Umbrel 0.5+:
 create CLN config file 'config':
-  $ nano ${HOME}/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config 
+  $ sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config 
 insert:
-  bind-addr=10.9.9.9:9735
+  bind-addr=0.0.0.0:9735
   announce-addr=${vpnExternalDNS}:${vpnExternalPort}
   always-use-proxy=false
 
 edit 'export.sh':
-  $ nano ${HOME}/umbrel/app-data/core-lightning/export.sh
+  $ nano ~/umbrel/app-data/core-lightning/export.sh
 change assigned port of APP_CORE_LIGHTNING_DAEMON_PORT from 9736 to 9735:
   export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"
 
-###############################################################################
+edit 'docker-compose.yml':
+comment out 'bind-addr' parameter like so
+   command:
+   ...
+   #- --bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735  
 
+###############################################################################"
+
+    echo
+
+  else
+
+    echo "CLN:
+
+###############################################################################
 Native CLN installation (config file):
+
   # Tor
   addr=statictor:127.0.0.1:9051/torport=9735
   proxy=127.0.0.1:9050
@@ -1313,11 +1323,12 @@ Native CLN installation (config file):
   bind-addr=0.0.0.0:9735
   announce-addr=${vpnExternalDNS}:${vpnExternalPort}
 ###############################################################################"
-  echo
+    echo
 
+  fi
 fi
 
-echo "Please save these infos in a file or write them down for later use.
+echo "Please save this info in a file or write them down for later use.
 
 A more detailed guide is available at: https://guide.tunnelsats.com
 Afterwards please restart LND / CLN for changes to take effect.
