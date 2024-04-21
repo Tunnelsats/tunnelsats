@@ -1348,6 +1348,7 @@ else
     echo "Restart Umbrel afterwards via the command:
       sudo systemctl restart umbrel.service"
     echo
+  fi
 fi
 
 # the end
