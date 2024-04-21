@@ -1327,6 +1327,7 @@ Welcome to Tunnel⚡Sats.
 - Check your clearnet connection functionality and speed: https://t.me/TunnelSatsBot
 - Join our Telegram Group: https://t.me/tunnelsats
 - Add a reminder on your subscription expiration date: https://t.me/TunnelSatsReminderBot"
+echo
 
 if [ $isDocker -eq 0 ]; then
   serviceName="${lnImplementation}"
