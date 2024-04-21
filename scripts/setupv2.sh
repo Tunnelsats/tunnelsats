@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=1
-patch=30
+patch=31
 
 #Helper
 function valid_ipv4() {
@@ -315,7 +315,7 @@ if [ $isDocker -eq 1 ]; then
   sleep 2
 fi
 
-#Create Docker Tunnelsat Network which stays persistent over restarts
+#Create Docker Tunnelsat Network
 if [ $isDocker -eq 1 ]; then
 
   echo "Creating TunnelSats Docker Network..."
@@ -876,8 +876,8 @@ table ip tunnelsatsv2 {
   systemctl daemon-reload >/dev/null
   if systemctl enable nftables >/dev/null && systemctl start nftables >/dev/null; then
 
-    if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
-      mkdir /etc/systemd/system/umbrel-startup.service.d >/dev/null
+    if [ ! -d /etc/systemd/system/umbrel.service.d ]; then
+      mkdir /etc/systemd/system/umbrel.service.d >/dev/null
     fi
 
     echo "[Unit]
@@ -885,7 +885,7 @@ Description=Forcing wg-quick to start after umbrel startup scripts
 # Make sure kill switch is in place before starting umbrel containers
 Requires=nftables.service
 After=nftables.service
-" >/etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf
+" >/etc/systemd/system/umbrel.service.d/tunnelsats_killswitch.conf
 
     #Start nftables service
     systemctl daemon-reload >/dev/null
@@ -927,9 +927,12 @@ if [ $isDocker -eq 1 ]; then
 set -e
 lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 0.0.0.0:9735 | awk '{print \$2}')
 checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
-if [ \$checkdockernetwork -ne 0 ] && [ ! -z \$lightningcontainer ]; then
-  if ! docker inspect \$lightningcontainer | grep -c \"tunnelsats\" > /dev/null; then
-  docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  > /dev/null
+if [ \$checkdockernetwork -eq 0 ]; then
+  docker network create "docker-tunnelsats" --subnet "10.9.9.0/25" -o "com.docker.network.driver.mtu"="1420" >/dev/null
+  if [ ! -z \$lightningcontainer ]; then
+    if [ \$(docker inspect \$lightningcontainer | grep -c \"tunnelsats\" >/dev/null) -eq 0 ]; then
+      docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  >/dev/null
+    fi
   fi
 fi" >/etc/wireguard/tunnelsats-docker-network.sh
 
@@ -953,6 +956,7 @@ fi" >/etc/wireguard/tunnelsats-docker-network.sh
     echo
     exit 1
   fi
+
 
   # enable systemd service
   # create systemd file
@@ -1036,15 +1040,15 @@ echo "Initializing the service..."
 systemctl daemon-reload >/dev/null
 if systemctl enable wg-quick@tunnelsatsv2 >/dev/null; then
 
-  if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service ]; then
+  if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel.service ]; then
     if [ ! -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d ]; then
       mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d >/dev/null
     fi
     echo "[Unit]
 Description=Forcing wg-quick to start after umbrel startup scripts
 # Make sure to start vpn after umbrel start up to have lnd containers available
-Requires=umbrel-startup.service
-After=umbrel-startup.service
+Requires=umbrel.service
+After=umbrel.service
 " >/etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf
   fi
 
@@ -1207,7 +1211,7 @@ and duplicated lines could lead to errors.
 
 #########################################
 [Application Options]
-#listen=0.0.0.0:9735
+listen=0.0.0.0:9735
 externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 [Tor]
 tor.streamisolation=false
@@ -1301,9 +1305,8 @@ if [ $isDocker -eq 0 ]; then
     sudo systemctl restart ${serviceName}.service"
   echo
 else
-  echo "Restart ${lnImplementation} on Umbrel afterwards via the command:
-    sudo ~/umbrel/scripts/stop
-    sudo ~/umbrel/scripts/start"
+  echo "Restart Umbrel afterwards via the command:
+    sudo systemctl restart umbrel.service"
   echo
 fi
 
