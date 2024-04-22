@@ -941,14 +941,16 @@ if [ $isDocker -eq 1 ]; then
 lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 0.0.0.0:9735 | awk '{print \$2}')
 checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
 if [ \$checkdockernetwork -eq 0 ]; then
-  if ! docker network create \"docker-tunnelsats\" --subnet \"10.9.9.0/25\" -o \"com.docker.network.driver.mtu\"=\"1420\"; then
+  if ! docker network create \"docker-tunnelsats\" --subnet \"10.9.9.0/25\" -o \"com.docker.network.driver.mtu\"=\"1420\" >/dev/null; then
     exit 1
   fi
 fi
 if [ ! -z \$lightningcontainer ]; then
   inspectlncontainer=\$(docker inspect \$lightningcontainer | grep -c \"tunnelsats\")
   if [ \$inspectlncontainer -eq 0 ]; then
-    docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  >/dev/null
+    if ! docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer >/dev/null; then
+      exit 1
+    fi
   fi
 fi
 exit 0" >/etc/wireguard/tunnelsats-docker-network.sh
