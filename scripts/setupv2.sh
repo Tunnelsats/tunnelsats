@@ -99,14 +99,14 @@ lnImplementation=""
 
 while true; do
   echo "Which lightning implementation do you want to tunnel?"
-  echo "1) LND"
-  echo "2) CLN (Core Lightning)"
+  echo "    1) LND"
+  echo "    2) CLN (Core Lightning)"
   if [ $litpossible -eq 1 ]; then
-    echo "3) LIT"
-    echo "4) Exit"
+    echo "    3) LIT"
+    echo "    4) Exit"
     prompt_range="1-4"
   else
-    echo "3) Exit"
+    echo "    3) Exit"
     prompt_range="1-3"
   fi
   read -p "Enter your choice [${prompt_range}]: " choice
