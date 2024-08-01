@@ -47,6 +47,7 @@ echo
 # Check if docker / non-docker
 isDocker=0
 killswitchRaspi=0
+litpossible=0  # Set this to 1 earlier in your script if LIT is possible
 
 while true; do
   read -p "What lightning node package are you running?: 
@@ -84,6 +85,7 @@ while true; do
     echo "> RaspiBolt / Bare Metal"
     echo
     isDocker=0
+    litpossible=1
 
     break
     ;;
@@ -96,31 +98,54 @@ done
 lnImplementation=""
 
 while true; do
-  read -p "Which lightning implementation do you want to tunnel?" answer
+  echo "Which lightning implementation do you want to tunnel?"
+  echo "1) LND"
+  echo "2) CLN (Core Lightning)"
+  if [ $litpossible -eq 1 ]; then
+    echo "3) LIT"
+    echo "4) Exit"
+    prompt_range="1-4"
+  else
+    echo "3) Exit"
+    prompt_range="1-3"
+  fi
+  read -p "Enter your choice [${prompt_range}]: " choice
 
-  case $answer in
-  lnd | LND*)
-    echo "> Setting up Tunneling for LND on port 9735 "
-    echo
-    lnImplementation="lnd"
-    break
-    ;;
-
-  cln | CLN*)
-    echo "> Setting up Tunneling for CLN on port 9735 "
-    echo
-    lnImplementation="cln"
-    break
-    ;;
-
-  lit | LIT*)
-    echo "> Setting up Tunneling for integrated LND in LIT on port 9735 "
-    echo
-    lnImplementation="lit"
-    break
-    ;;
-
-  *) echo "Enter LND, CLN or LIT please." ;;
+  case $choice in
+    1)
+      echo "> Setting up Tunneling for LND on port 9735 "
+      echo
+      lnImplementation="lnd"
+      break
+      ;;
+    2)
+      echo "> Setting up Tunneling for CLN on port 9735 "
+      echo
+      lnImplementation="cln"
+      break
+      ;;
+    3)
+      if [ $litpossible -eq 1 ]; then
+        echo "> Setting up Tunneling for integrated LND in LIT on port 9735 "
+        echo
+        lnImplementation="lit"
+        break
+      else
+        echo "Exiting..."
+        exit 0
+      fi
+      ;;
+    4)
+      if [ $litpossible -eq 1 ]; then
+        echo "Exiting..."
+        exit 0
+      else
+        echo "Invalid option. Please enter a valid number."
+      fi
+      ;;
+    *)
+      echo "Invalid option. Please enter a valid number."
+      ;;
   esac
 done
 
