@@ -102,7 +102,7 @@ while true; do
   echo "    1) LND"
   echo "    2) CLN (Core Lightning)"
   if [ $litpossible -eq 1 ]; then
-    echo "    3) LIT"
+    echo "    3) LIT (integrated mode)"
     echo "    4) Exit"
     prompt_range="1-4"
   else
