@@ -1349,7 +1349,6 @@ tor.skip-proxy-for-clearnet-targets=true
 fi
 
 if [ "$lnImplementation" == "lit" ]; then
-  if [ $isUmbrel -eq 1 ]; then
   echo "LIT:
 
 Before editing, please create a backup of your current lit.conf config file.
