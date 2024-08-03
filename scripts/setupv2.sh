@@ -136,12 +136,8 @@ while true; do
       fi
       ;;
     4)
-      if [ $litpossible -eq 1 ]; then
-        echo "Exiting..."
-        exit 0
-      else
-        echo "Invalid option. Please enter a valid number."
-      fi
+      echo "Exiting..."
+      exit 0
       ;;
     *)
       echo "Invalid option. Please enter a valid number."
@@ -1353,7 +1349,7 @@ tor.skip-proxy-for-clearnet-targets=true
 fi
 
 if [ "$lnImplementation" == "lit" ]; then
-
+  if [ $isUmbrel -eq 1 ]; then
   echo "LIT:
 
 Before editing, please create a backup of your current lit.conf config file.
@@ -1374,7 +1370,7 @@ tor.skip-proxy-for-clearnet-targets=true
 fi
 
 if [ "$lnImplementation" == "cln" ]; then
-
+  if [ $isUmbrel -eq 1 ]; then
   echo "CLN:
 
 Before editing, please create a backup of your current CLN config file.
