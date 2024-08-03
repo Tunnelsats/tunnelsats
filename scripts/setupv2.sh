@@ -8,8 +8,8 @@
 #Update if you make a significant change
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
-minor=2
-patch=29
+minor=1
+patch=32
 
 #Helper
 function valid_ipv4() {
@@ -187,14 +187,13 @@ if [ $isDocker -eq 0 ]; then
 fi
 
 # RaspiBlitz: deactivate config checks
-
-if [ "$(hostname)" == "raspberrypi" ] && [ "$lnImplementation" == "lnd" ]; then
+if [ "$lnImplementation" == "lnd" ]; then
   if [ -f /home/admin/config.scripts/lnd.check.sh ]; then
     mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak
     echo "RaspiBlitz detected, lnd conf safety check removed"
     echo
   fi
-elif [ "$(hostname)" == "raspberrypi" ] && [ "$lnImplementation" == "cln" ]; then
+elif [ "$lnImplementation" == "cln" ]; then
   if [ -f /home/admin/config.scripts/cl.check.sh ]; then
     mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak
     echo "RaspiBlitz detected, cln conf safety check removed"
@@ -350,7 +349,7 @@ if [ $isDocker -eq 1 ]; then
   sleep 2
 fi
 
-#Create Docker Tunnelsat Network which stays persistent over restarts
+#Create Docker Tunnelsat Network
 if [ $isDocker -eq 1 ]; then
 
   echo "Creating TunnelSats Docker Network..."
@@ -438,7 +437,7 @@ Table = off\n
 
 PostUp = while [ \$(ip rule | grep -c suppress_prefixlength) -gt 0 ]; do ip rule del from all table  main suppress_prefixlength 0;done\n
 PostUp = while [ \$(ip rule | grep -c 0x1000000) -gt 0 ]; do ip rule del from all fwmark 0x1000000/0xff000000 table  51820;done\n
-PostUp = if [ \$(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt  0 ]; then echo $?; ip route del blackhole default metric 3 table 51820; ip rule flush table 51820 ;fi\n
+PostUp = if [ \$(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt  0 ]; then echo \$?; ip route del blackhole default metric 3 table 51820; ip rule flush table 51820 ;fi\n
 
 
 PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820\n
@@ -951,16 +950,31 @@ table ip tunnelsatsv2 {
   systemctl daemon-reload >/dev/null
   if systemctl enable nftables >/dev/null && systemctl start nftables >/dev/null; then
 
-    if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
-      mkdir /etc/systemd/system/umbrel-startup.service.d >/dev/null
+    if [ -f /etc/systemd/system/umbrel.service ]; then
+      if [ ! -d /etc/systemd/system/umbrel.service.d ]; then
+        mkdir /etc/systemd/system/umbrel.service.d >/dev/null
+      fi
+
+      echo "[Unit]
+Description=Forcing wg-quick to start after umbrel startup scripts
+# Make sure kill switch is in place before starting umbrel containers
+Requires=nftables.service
+After=nftables.service
+" >/etc/systemd/system/umbrel.service.d/tunnelsats_killswitch.conf
     fi
 
-    echo "[Unit]
+    if [ -f /etc/systemd/system/umbrel-startup.service ]; then
+      if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
+        mkdir /etc/systemd/system/umbrel-startup.service.d >/dev/null
+      fi
+
+      echo "[Unit]
 Description=Forcing wg-quick to start after umbrel startup scripts
 # Make sure kill switch is in place before starting umbrel containers
 Requires=nftables.service
 After=nftables.service
 " >/etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf
+    fi
 
     #Start nftables service
     systemctl daemon-reload >/dev/null
@@ -999,14 +1013,23 @@ if [ $isDocker -eq 1 ]; then
   # create file
   echo "Creating tunnelsats-docker-network.sh file in /etc/wireguard/..."
   echo "#!/bin/sh
-set -e
+#set -e
 lightningcontainer=\$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 0.0.0.0:9735 | awk '{print \$2}')
 checkdockernetwork=\$(docker network ls  2> /dev/null | grep -c \"docker-tunnelsats\")
-if [ \$checkdockernetwork -ne 0 ] && [ ! -z \$lightningcontainer ]; then
-  if ! docker inspect \$lightningcontainer | grep -c \"tunnelsats\" > /dev/null; then
-  docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer  > /dev/null
+if [ \$checkdockernetwork -eq 0 ]; then
+  if ! docker network create \"docker-tunnelsats\" --subnet \"10.9.9.0/25\" -o \"com.docker.network.driver.mtu\"=\"1420\" >/dev/null; then
+    exit 1
   fi
-fi" >/etc/wireguard/tunnelsats-docker-network.sh
+fi
+if [ ! -z \$lightningcontainer ]; then
+  inspectlncontainer=\$(docker inspect \$lightningcontainer | grep -c \"tunnelsats\")
+  if [ \$inspectlncontainer -eq 0 ]; then
+    if ! docker network connect --ip 10.9.9.9 docker-tunnelsats \$lightningcontainer >/dev/null; then
+      exit 1
+    fi
+  fi
+fi
+exit 0" >/etc/wireguard/tunnelsats-docker-network.sh
 
   if [ -f /etc/wireguard/tunnelsats-docker-network.sh ]; then
     echo "> /etc/wireguard/tunnelsats-docker-network.sh created"
@@ -1111,16 +1134,29 @@ echo "Initializing the service..."
 systemctl daemon-reload >/dev/null
 if systemctl enable wg-quick@tunnelsatsv2 >/dev/null; then
 
-  if [ $isDocker -eq 1 ] && [ -f /etc/systemd/system/umbrel-startup.service ]; then
-    if [ ! -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d ]; then
-      mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d >/dev/null
-    fi
-    echo "[Unit]
+  if [ $isDocker -eq 1 ]; then
+    if [ -f /etc/systemd/system/umbrel.service ]; then
+      if [ ! -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d ]; then
+        mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d >/dev/null
+      fi
+      echo "[Unit]
 Description=Forcing wg-quick to start after umbrel startup scripts
-# Make sure to start vpn after umbrel start up to have lnd containers available
+# Make sure to start vpn after umbrel start up to have ln containers available
+Requires=umbrel.service
+After=umbrel.service
+" >/etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf
+    fi
+    if [ -f /etc/systemd/system/umbrel-startup.service ]; then
+      if [ ! -d /etc/systemd/system/wg-quick@tunnelsatsv2.service.d ]; then
+        mkdir /etc/systemd/system/wg-quick@tunnelsatsv2.service.d >/dev/null
+      fi
+      echo "[Unit]
+Description=Forcing wg-quick to start after umbrel startup scripts
+# Make sure to start vpn after umbrel start up to have ln containers available
 Requires=umbrel-startup.service
 After=umbrel-startup.service
 " >/etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsatsv2.conf
+    fi
   fi
 
   systemctl daemon-reload >/dev/null
@@ -1271,9 +1307,9 @@ echo
 # Only the process which listens on 9735 will be reachable via the tunnel";echo
 
 if [ "$lnImplementation" == "lnd" ]; then
-  if [ "$isUmbrel" != "1" ]; then
+  if [ $isDocker -eq 0 ]; then
 
-  echo "LND:
+    echo "LND:
 
 Before editing, please create a backup of your current LND config file.
 Then edit and add or modify the following lines. Please note that
@@ -1282,17 +1318,17 @@ and duplicated lines could lead to errors.
 
 #########################################
 [Application Options]
-#listen=0.0.0.0:9735
+listen=0.0.0.0:9735
 externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 [Tor]
 tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
 #########################################"
-  echo
-    else
-  echo "LND on Umbrel 0.5+:
+    echo
+  else
+    echo "LND on Umbrel 0.5+:
 
-Make a backup and then edit /home/umbrel/umbrel/app-data/lightning/data/lnd/lnd.conf 
+Make a backup and then edit ~/umbrel/app-data/lightning/data/lnd/lnd.conf 
 to add or modify the below lines.
 
 Important
@@ -1312,7 +1348,7 @@ externalhosts=${vpnExternalDNS}:${vpnExternalPort}
 tor.streamisolation=false
 tor.skip-proxy-for-clearnet-targets=true
 #########################################"
-  echo
+    echo
   fi
 fi
 
@@ -1349,20 +1385,34 @@ and duplicated lines could lead to errors.
 ###############################################################################
 Umbrel 0.5+:
 create CLN config file 'config':
-  $ nano ${HOME}/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config 
+  $ sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config 
 insert:
-  bind-addr=10.9.9.9:9735
+  bind-addr=0.0.0.0:9735
   announce-addr=${vpnExternalDNS}:${vpnExternalPort}
   always-use-proxy=false
 
 edit 'export.sh':
-  $ nano ${HOME}/umbrel/app-data/core-lightning/export.sh
+  $ nano ~/umbrel/app-data/core-lightning/export.sh
 change assigned port of APP_CORE_LIGHTNING_DAEMON_PORT from 9736 to 9735:
   export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"
 
-###############################################################################
+edit 'docker-compose.yml':
+comment out 'bind-addr' parameter like so
+   command:
+   ...
+   #- --bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735  
 
+###############################################################################"
+
+    echo
+
+  else
+
+    echo "CLN:
+
+###############################################################################
 Native CLN installation (config file):
+
   # Tor
   addr=statictor:127.0.0.1:9051/torport=9735
   proxy=127.0.0.1:9050
@@ -1372,18 +1422,22 @@ Native CLN installation (config file):
   bind-addr=0.0.0.0:9735
   announce-addr=${vpnExternalDNS}:${vpnExternalPort}
 ###############################################################################"
-  echo
+    echo
 
+  fi
 fi
 
-echo "Please save these infos in a file or write them down for later use.
+echo "Please save this info in a file or write them down for later use.
 
 A more detailed guide is available at: https://guide.tunnelsats.com
 Afterwards please restart LND / CLN / LIT for changes to take effect.
 VPN setup completed!
 
 Welcome to Tunnel⚡Sats.
-Feel free to join the Amboss Community here: https://amboss.space/community/29db5f25-24bb-407e-b752-be69f9431071"
+- Feel free to join the Amboss Community: https://amboss.space/community/29db5f25-24bb-407e-b752-be69f9431071
+- Check your clearnet connection functionality and speed: https://t.me/TunnelSatsBot
+- Join our Telegram Group: https://t.me/tunnelsats
+- Add a reminder on your subscription expiration date: https://t.me/TunnelSatsReminderBot"
 echo
 
 if [ $isDocker -eq 0 ]; then
@@ -1397,10 +1451,17 @@ if [ $isDocker -eq 0 ]; then
     sudo systemctl restart ${serviceName}.service"
   echo
 else
-  echo "Restart ${lnImplementation} on Umbrel afterwards via the command:
-    sudo ~/umbrel/scripts/stop
-    sudo ~/umbrel/scripts/start"
-  echo
+  if [ -f /etc/systemd/system/umbrel-startup.service ]; then
+    echo "Restart Umbrel afterwards via the command:
+      sudo ~/umbrel/scripts/stop
+      sudo ~/umbrel/scripts/start"
+    echo
+  fi
+  if [ -f /etc/systemd/system/umbrel.service ]; then
+    echo "Restart Umbrel afterwards via the command:
+      sudo systemctl restart umbrel.service"
+    echo
+  fi
 fi
 
 # the end
