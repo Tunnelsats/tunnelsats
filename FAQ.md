@@ -302,6 +302,11 @@ In addition you can chat to our hosted [Tunnel⚡Sats Bot](https://t.me/TunnelSa
 ### How can I verify that my VPN connection is online and active?
 
 On console, run the following WireGuard command to see some connection statistics, especially check latest handshake for an active VPN connection: `sudo wg show`.
+You can also download a helper script to check your configuration:
+```
+$ wget -O tunnelsats-sub-details.sh https://github.com/tunnelsats/tunnelsats/raw/main/scripts/tunnelsats-sub-details.sh
+$ sudo bash tunnelsats-sub-details.sh
+```
 
 If you're on Telegram, you can chat to our hosted [Tunnel⚡Sats Bot](https://t.me/TunnelSatsBot) and send a `/ping [pubkey@tor.onion]` or `/ping [pubkey@tunnelsats-clearnetIP:port]` to check for a positive connection and speed-report.
 
