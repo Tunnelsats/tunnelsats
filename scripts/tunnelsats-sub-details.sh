@@ -14,25 +14,27 @@ if [[ "$1" == "-h" ]]; then
   exit 0
 fi
 
-# Parse Wireguard pubkey from config file
-config_file="/etc/wireguard/tunnelsatsv2.conf"
-if [ ! -f "$config_file" ]; then
-  echo "Config file not found: $config_file. Confirm with sudo ls -la /etc/wireguard/"
-  exit 1
-fi
+# Function to check Wireguard status and config file
+check_wireguard_status() {
+  wg_output=$(sudo wg show)
+  if ! echo "$wg_output" | grep -q "interface: tunnelsatsv2"; then
+    config_file="/etc/wireguard/tunnelsatsv2.conf"
+    if [ ! -f "$config_file" ]; then
+      echo "The wireguard tunnel seems to be offline, and no tunnelsatsv2.conf could be found in the wireguard directory."
+      echo "Please try a reinstall per https://guide.tunnelsats.com"
+      echo "Alternatively, visit the Tunnel⚡️Sats Telegram Chat: https://t.me/tunnelsats"
+      return 1
+    else
+      echo "The wireguard tunnel seems to be offline. Please try restarting your node."
+      return 1
+    fi
+  fi
+  return 0
+}
 
-myPubKey=$(sudo grep '#myPubKey' "$config_file" | awk -F' = ' '{print $2}')
-if [ -z "$myPubKey" ]; then
-  echo "Public key not found in config file. Confirm with sudo etc /etc/wireguard/tunnelsatsv2.conf"
-  exit 1
-fi
-
-# Parse Wireguard status
-wg_output=$(sudo wg show)
-if [ -z "$wg_output" ]; then
-  echo "The tunnel seems to be offline. Try a node restart."
-  echo "Please check our FAQ at https://guide.tunnelsats.com/FAQ.html#how-do-i-verify-the-tunnel-is-working"
-  echo "Alternatively, visit the Tunnel⚡️Sats Telegram Chat for help: https://t.me/tunnelsats"
+# Call the function to check Wireguard status
+check_wireguard_status
+if [ $? -ne 0 ]; then
   exit 1
 fi
 
@@ -45,7 +47,7 @@ public_key=$(echo "$wg_output" | grep -A 5 "interface: $interface" | grep 'publi
 echo -e "\e[1;32m=================================\e[0m"
 echo -e "\e[1;32mTunnel⚡️Sats Subscription Summary\e[0m"
 echo -e "\e[1;32m=================================\e[0m"
-echo -e "My Wireguard Tunnel Public Key: \e[1;34m$myPubKey\e[0m"
+echo -e "My Wireguard Tunnel Public Key: \e[1;34m$public_key\e[0m"
 echo -e "My transfer since last tunnel restart: \e[1;34m$transfer\e[0m"
 echo -e "Latest handshake with the Tunnel Server: \e[1;34m$latest_handshake\e[0m"
 echo ""
