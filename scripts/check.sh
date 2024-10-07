@@ -7,7 +7,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=0
-patch=4
+patch=5
 
 # check if sudo
 if [ "$EUID" -ne 0 ]; then
@@ -39,8 +39,12 @@ echo "Checking kernel version..."
 #echo
 
 # requirement kernel version 5.10.102+
-if [[ $kernelMajor -ge 5 ]] &&
-    ( ([[ $kernelMinor -ge 10 ]] && [[ $kernelPatch -ge 102 ]]) ||
+if [[ $kernelMajor -gt 5 ]]; then
+    echo "> ✅ kernel version ok"
+    echo
+    ((rating++))
+elif [[ $kernelMajor -ge 5 ]] && 
+       ( ([[ $kernelMinor -ge 10 ]] && [[ $kernelPatch -ge 102 ]]) ||
         [[ $kernelMinor -ge 11 ]]); then
     echo "> ✅ kernel version ok"
     echo
