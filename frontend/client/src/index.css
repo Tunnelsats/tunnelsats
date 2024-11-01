@@ -292,11 +292,11 @@ button.close {
   opacity: 1;
 }
 .icon-twitter {
-  background-image: url("./media/twitter-128.png");
+  background-image: url("./media/x-128.png");
   opacity: 0.5;
 }
 .icon-twitter:hover {
-  background-image: url("./media/twitter-128c.png");
+  background-image: url("./media/x-128c.png");
   opacity: 1;
 }
 .icon-github {
