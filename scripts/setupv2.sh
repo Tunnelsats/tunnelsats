@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=1
-patch=32
+patch=33
 
 #Helper
 function valid_ipv4() {
@@ -46,6 +46,7 @@ echo
 
 # Check if docker / non-docker
 isDocker=0
+isUmbrel=0
 killswitchRaspi=0
 litpossible=0  # Set this to 1 earlier in your script if LIT is possible
 
@@ -324,10 +325,10 @@ fi
 
 sleep 2
 
-# add resolvconf package to docker systems for DNS resolving
-if [ $isDocker -eq 1 ]; then
+# check for resolvconf installation
+if [ $isUmbrel -eq 0 ]; then
   echo "Checking resolvconf installation..."
-  checkResolv=$(resolvconf 2>/dev/null | grep -c "^Usage")
+  checkResolv=$(resolvconf --help 2>/dev/null | grep -c "^Register")
   if [ $checkResolv -eq 0 ]; then
     echo "Installing resolvconf..."
     if apt-get install -y resolvconf >/dev/null; then
