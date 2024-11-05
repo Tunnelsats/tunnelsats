@@ -1080,7 +1080,7 @@ function App() {
                   </Col>
                   <Col>
                     <a
-                      href="https://t.me/tunnelsats"
+                      href="https://t.me/+YfVVF9Q0X-A3YWIy"
                       target="_blank"
                       rel="noreferrer"
                     >
