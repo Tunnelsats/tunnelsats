@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=1
-patch=33
+patch=34
 
 #Helper
 function valid_ipv4() {
@@ -326,25 +326,23 @@ fi
 sleep 2
 
 # check for resolvconf installation
-if [ $isUmbrel -eq 0 ]; then
-  echo "Checking resolvconf installation..."
-  checkResolv=$(resolvconf --help 2>/dev/null | grep -c "^Register")
-  if [ $checkResolv -eq 0 ]; then
-    echo "Installing resolvconf..."
-    if apt-get install -y resolvconf >/dev/null; then
-      echo "> resolvconf installed"
-      echo
-    else
-      echo "> failed to install resolvconf"
-      echo
-      exit 1
-    fi
-  else
-    echo "> resolvconf found"
+echo "Checking resolvconf installation..."
+checkResolv=$(resolvconf --help 2>/dev/null | grep -c "^Register")
+if [ $checkResolv -eq 0 ]; then
+  echo "Installing resolvconf..."
+  if apt-get install -y resolvconf >/dev/null; then
+    echo "> resolvconf installed"
     echo
+  else
+    echo "> failed to install resolvconf"
+    echo
+    exit 1
   fi
-  sleep 2
+else
+  echo "> resolvconf found"
+  echo
 fi
+sleep 2
 
 #Create Docker Tunnelsat Network
 if [ $isDocker -eq 1 ]; then
