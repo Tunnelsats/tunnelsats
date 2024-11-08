@@ -9,7 +9,7 @@
 ##########UPDATE IF YOU MAKE A NEW RELEASE#############
 major=0
 minor=1
-patch=33
+patch=34
 
 #Helper
 function valid_ipv4() {
