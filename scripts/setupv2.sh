@@ -44,9 +44,11 @@ echo -e "
 ###############################"
 echo
 
-# Check if docker / non-docker
+# Check if docker / non-docker / podman
 isDocker=0
+isPodman=0
 isUmbrel=0
+isStart9=0
 killswitchRaspi=0
 litpossible=0  # Set this to 1 earlier in your script if LIT is possible
 
@@ -56,6 +58,7 @@ while true; do
     2) Umbrel
     3) myNode
     4) RaspiBolt / Bare Metal
+    5) Start9
     > " answer
 
   case $answer in
@@ -64,6 +67,7 @@ while true; do
     echo
     killswitchRaspi=1
     isDocker=0
+    isPodman=0
     break
     ;;
 
@@ -71,6 +75,7 @@ while true; do
     echo "> Umbrel"
     echo
     isDocker=1
+    isPodman=0
     isUmbrel=1
     break
     ;;
@@ -79,6 +84,7 @@ while true; do
     echo "> myNode"
     echo
     isDocker=0
+    isPodman=0
     break
     ;;
 
@@ -86,12 +92,21 @@ while true; do
     echo "> RaspiBolt / Bare Metal"
     echo
     isDocker=0
+    isPodman=0
     litpossible=1
-
     break
     ;;
 
-  *) echo "Please enter a number from 1 to 4." ;;
+  5)
+    echo "> Start9"
+    echo
+    isDocker=0
+    isPodman=1
+    isStart9=1
+    break
+    ;;
+
+  *) echo "Please enter a number from 1 to 5." ;;
   esac
 done
 
