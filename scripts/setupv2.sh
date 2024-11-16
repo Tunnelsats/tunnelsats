@@ -44,9 +44,11 @@ echo -e "
 ###############################"
 echo
 
-# Check if docker / non-docker
+# Check if docker / non-docker / podman
 isDocker=0
+isPodman=0
 isUmbrel=0
+isStart9=0
 killswitchRaspi=0
 litpossible=0  # Set this to 1 earlier in your script if LIT is possible
 
@@ -56,6 +58,7 @@ while true; do
     2) Umbrel
     3) myNode
     4) RaspiBolt / Bare Metal
+    5) Start9
     > " answer
 
   case $answer in
@@ -64,6 +67,7 @@ while true; do
     echo
     killswitchRaspi=1
     isDocker=0
+    isPodman=0
     break
     ;;
 
@@ -71,6 +75,7 @@ while true; do
     echo "> Umbrel"
     echo
     isDocker=1
+    isPodman=0
     isUmbrel=1
     break
     ;;
@@ -79,6 +84,7 @@ while true; do
     echo "> myNode"
     echo
     isDocker=0
+    isPodman=0
     break
     ;;
 
@@ -86,12 +92,21 @@ while true; do
     echo "> RaspiBolt / Bare Metal"
     echo
     isDocker=0
+    isPodman=0
     litpossible=1
-
     break
     ;;
 
-  *) echo "Please enter a number from 1 to 4." ;;
+  5)
+    echo "> Start9"
+    echo
+    isDocker=0
+    isPodman=1
+    isStart9=1
+    break
+    ;;
+
+  *) echo "Please enter a number from 1 to 5." ;;
   esac
 done
 
@@ -344,7 +359,7 @@ else
 fi
 sleep 2
 
-#Create Docker Tunnelsat Network
+# Create Docker/Podman Tunnelsat Network
 if [ $isDocker -eq 1 ]; then
 
   echo "Creating TunnelSats Docker Network..."
@@ -382,9 +397,42 @@ if [ $isDocker -eq 1 ]; then
   #Flush any rules which are still present from failed interface starts
   ip route flush table 51820 &>/dev/null
 
-else
+elif [ $isPodman -eq 1 ]; then
+  echo "Creating TunnelSats Podman Network..."
+  checkpodmannetwork=$(podman network ls 2>/dev/null | grep -c "podman-tunnelsats")
+  podmansubnet="10.9.9.0/25"
 
-  #Delete Rules for non-docker setup
+  if [ $checkpodmannetwork -eq 0 ]; then
+    podman network create "podman-tunnelsats" --subnet $podmansubnet --opt "mtu=1420" &>/dev/null
+    if [ $? -eq 0 ]; then
+      echo "> podman-tunnelsats created successfully"
+      echo
+    else
+      echo "> failed to create podman-tunnelsats network"
+      echo
+      exit 1
+    fi
+  else
+    echo "> podman-tunnelsats already created"
+    echo
+  fi
+
+  #Clean Routing Tables from prior failed wg-quick starts
+  delrule1=$(ip rule | grep -c "from all lookup main suppress_prefixlength 0")
+  delrule2=$(ip rule | grep -c "from $podmansubnet lookup 51820")
+  for i in $(seq 1 $delrule1); do
+    ip rule del from all table main suppress_prefixlength 0
+  done
+
+  for i in $(seq 1 $delrule2); do
+    ip rule del from $podmansubnet table 51820
+  done
+
+  #Flush any rules which are still present from failed interface starts
+  ip route flush table 51820 &>/dev/null
+
+else
+  #Delete Rules for non-docker/non-podman setup
   #Clean Routing Tables from prior failed wg-quick starts
   delrule1=$(ip rule | grep -c "from all lookup main suppress_prefixlength 0")
   delrule2=$(ip rule | grep -c "from all fwmark 0x1000000/0xff000000 lookup 51820")
@@ -1001,6 +1049,148 @@ After=nftables.service
   fi
 fi
 
+#Creating Killswitch to prevent any leakage
+if [ $isPodman -eq 1 ]; then
+  echo "Applying KillSwitch to Podman setup..."
+  #Get main interface
+  mainif=$(ip route | grep default | cut -d' ' -f5)
+  localsubnet="$(hostname -I | awk '{print $1}' | cut -d"." -f1-3)".0/24
+
+  #Get podman umbrel lnd/cln ip address
+  # Podman typically uses different network ranges, often 10.88.0.0/16
+  podmanlndip=$(podman inspect -f '{{.NetworkSettings.IPAddress}}' umbrel-lnd 2>/dev/null)
+  podmanlndip=${podmanlndip:-"10.88.0.9"}
+
+  if [ -d "$HOME"/umbrel/app-data/core-lightning ]; then
+    podmanclnip=$(podman inspect -f '{{.NetworkSettings.IPAddress}}' umbrel-core-lightning 2>/dev/null)
+  else
+    podmanclnip=""
+  fi
+
+  result=""
+  podmantunnelsatsip="10.9.9.9"
+  if [ -z "$podmanclnip" ]; then
+    result="$podmanlndip"
+  else
+    result="${podmanlndip}, ${podmanclnip}"
+  fi
+
+  if [ -n "$mainif" ]; then
+
+    if [ -f /etc/nftables.conf ] && [ ! -f /etc/nftablespriortunnelsats.backup ]; then
+      echo "> Info: tunnelsats replaces the whole /etc/nftables.conf, backup was saved to /etc/nftablespriortunnelsats.backup"
+      mv /etc/nftables.conf /etc/nftablespriortunnelsats.backup
+    fi
+
+    #Flush table if exist to avoid redundant rules
+    if nft list table ip tunnelsatsv2 &>/dev/null; then
+      nft flush table ip tunnelsatsv2
+    fi
+
+    echo "#!/sbin/nft -f
+table ip tunnelsatsv2 {
+  set killswitch_tunnelsats {
+    type ipv4_addr
+    elements = { ${podmantunnelsatsip}, ${result} }
+  }
+  #block traffic from lighting containers
+  chain forward {
+    type filter hook forward priority filter -1; policy accept;
+    oifname ${mainif} ip daddr != ${localsubnet} ip saddr @killswitch_tunnelsats meta mark != 0x00001111 counter drop
+  }
+  #restrict traffic from the tunnelsats network other than the lightning traffic
+  chain input {
+    type filter hook input priority filter - 1; policy accept;
+    iifname tunnelsatsv2 ct state established,related counter accept
+    iifname tunnelsatsv2 tcp dport != 9735 counter drop 
+    iifname tunnelsatsv2 udp dport != 9735 counter drop 
+  }
+
+  #Allow Access via tailscale/zerotier
+  chain prerouting { 
+    type filter hook prerouting priority dstnat - 10; policy accept;
+    ip saddr ${podmantunnelsatsip} tcp sport { 8080, 10009 } fib daddr type != local meta mark set 0x00001111 counter
+  }
+}" >/etc/nftables.conf
+
+    # check application
+    check=$(grep -c "tunnelsatsv2" /etc/nftables.conf)
+    if [ $check -ne 0 ]; then
+      echo "> KillSwitch applied"
+      echo
+    else
+      echo "> ERR: KillSwitch not applied. Please check /etc/nftables.conf"
+      echo
+      exit 1
+    fi
+
+  else
+    echo "> ERR: not able to get default routing interface. Please check for errors."
+    echo
+    exit 1
+  fi
+
+  ## create and enable nftables service
+  echo "Initializing nftables..."
+  systemctl daemon-reload >/dev/null
+  if systemctl enable nftables >/dev/null && systemctl start nftables >/dev/null; then
+
+    if [ -f /etc/systemd/system/umbrel.service ]; then
+      if [ ! -d /etc/systemd/system/umbrel.service.d ]; then
+        mkdir /etc/systemd/system/umbrel.service.d >/dev/null
+      fi
+
+      echo "[Unit]
+Description=Forcing wg-quick to start after umbrel startup scripts
+# Make sure kill switch is in place before starting podman containers
+Requires=nftables.service
+After=nftables.service
+" >/etc/systemd/system/umbrel.service.d/tunnelsats_killswitch.conf
+    fi
+
+    if [ -f /etc/systemd/system/umbrel-startup.service ]; then
+      if [ ! -d /etc/systemd/system/umbrel-startup.service.d ]; then
+        mkdir /etc/systemd/system/umbrel-startup.service.d >/dev/null
+      fi
+
+      echo "[Unit]
+Description=Forcing wg-quick to start after umbrel startup scripts
+# Make sure kill switch is in place before starting podman containers
+Requires=nftables.service
+After=nftables.service
+" >/etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf
+    fi
+
+    #Start nftables service
+    systemctl daemon-reload >/dev/null
+    systemctl reload nftables >/dev/null
+    if [ $? -eq 0 ]; then
+      echo "> nftables systemd service started"
+    else
+      echo "> ERR: nftables service could not be started. Please check for errors."
+      echo
+      #We exit here to prevent potential ip leakage
+      exit 1
+    fi
+
+  else
+    echo "> ERR: nftables service could not be enabled. Please check for errors."
+    echo
+    exit 1
+  fi
+
+  #Check if kill switch is in place
+  checkKillSwitch=$(nft list chain ip tunnelsatsv2 forward | grep -c "oifname")
+  if [ $checkKillSwitch -eq 0 ]; then
+    echo "> ERR: Killswitch failed to activate. Please check for errors."
+    echo
+    exit 1
+  else
+    echo "> Killswitch successfully activated"
+    echo
+  fi
+fi
+
 sleep 2
 
 #Add Monitor which connects the docker-tunnelsats network to the lightning container
@@ -1116,6 +1306,127 @@ WantedBy=timers.target
 
   else
     echo "> ERR: tunnelsats-docker-network.service was not created. Please check for errors."
+    echo
+    exit 1
+  fi
+
+fi
+
+#Add Monitor which connects the podman-tunnelsats network to the lightning container
+if [ $isPodman -eq 1 ]; then
+  # create file
+  echo "Creating tunnelsats-podman-network.sh file in /etc/wireguard/..."
+  echo "#!/bin/sh
+#set -e
+lightningcontainer=\$(podman ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 0.0.0.0:9735 | awk '{print \$2}')
+checkpodmannetwork=\$(podman network ls 2> /dev/null | grep -c \"podman-tunnelsats\")
+if [ \$checkpodmannetwork -eq 0 ]; then
+  if ! podman network create \"podman-tunnelsats\" --subnet \"10.9.9.0/25\" --opt mtu=1420 >/dev/null; then
+    exit 1
+  fi
+fi
+if [ ! -z \$lightningcontainer ]; then
+  inspectlncontainer=\$(podman inspect \$lightningcontainer | grep -c \"tunnelsats\")
+  if [ \$inspectlncontainer -eq 0 ]; then
+    if ! podman network connect --ip 10.9.9.9 podman-tunnelsats \$lightningcontainer >/dev/null; then
+      exit 1
+    fi
+  fi
+fi
+exit 0" >/etc/wireguard/tunnelsats-podman-network.sh
+
+  if [ -f /etc/wireguard/tunnelsats-podman-network.sh ]; then
+    echo "> /etc/wireguard/tunnelsats-podman-network.sh created"
+    chmod +x /etc/wireguard/tunnelsats-podman-network.sh
+  else
+    echo "> ERR: /etc/wireguard/tunnelsats-podman-network.sh was not created. Please check for errors."
+    exit 1
+  fi
+
+  # run it once
+  if [ -f /etc/wireguard/tunnelsats-podman-network.sh ]; then
+    echo "> tunnelsats-podman-network.sh created, executing..."
+    # run
+    bash /etc/wireguard/tunnelsats-podman-network.sh
+    echo "> tunnelsats-podman-network.sh successfully executed"
+    echo
+  else
+    echo "> ERR: tunnelsats-podman-network.sh execution failed"
+    echo
+    exit 1
+  fi
+
+  # enable systemd service
+  # create systemd file
+  echo "Creating tunnelsats-podman-network.sh systemd service..."
+  if [ ! -f /etc/systemd/system/tunnelsats-podman-network.sh ]; then
+    echo "[Unit]
+Description=Adding Lightning Container to the tunnel
+StartLimitInterval=200
+StartLimitBurst=5
+After=podman.service
+Requires=podman.service
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /etc/wireguard/tunnelsats-podman-network.sh
+[Install]
+WantedBy=multi-user.target
+" >/etc/systemd/system/tunnelsats-podman-network.service
+
+    echo "[Unit]
+Description=1min timer for tunnelsats-podman-network.service
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+Persistent=true
+[Install]
+WantedBy=timers.target
+" >/etc/systemd/system/tunnelsats-podman-network.timer
+
+    if [ -f /etc/systemd/system/tunnelsats-podman-network.service ]; then
+      echo "> tunnelsats-podman-network.service created"
+    else
+      echo "> ERR: tunnelsats-podman-network.service not created. Please check for errors."
+      echo
+      exit 1
+    fi
+
+    if [ -f /etc/systemd/system/tunnelsats-podman-network.timer ]; then
+      echo "> tunnelsats-podman-network.timer created"
+    else
+      echo "> ERR: tunnelsats-podman-network.timer not created. Please check for errors."
+      echo
+      exit 1
+    fi
+
+  fi
+
+  # enable and start tunnelsats-podman-network.service
+  if [ -f /etc/systemd/system/tunnelsats-podman-network.service ]; then
+    systemctl daemon-reload >/dev/null
+    if systemctl enable tunnelsats-podman-network.service >/dev/null &&
+      systemctl start tunnelsats-podman-network.service >/dev/null; then
+      echo "> tunnelsats-podman-network.service: systemd service enabled and started"
+    else
+      echo "> ERR: tunnelsats-podman-network.service could not be enabled or started. Please check for errors."
+      echo
+      exit 1
+    fi
+    # Podman: enable timer
+    if [ -f /etc/systemd/system/tunnelsats-podman-network.timer ]; then
+      if systemctl enable tunnelsats-podman-network.timer >/dev/null &&
+        systemctl start tunnelsats-podman-network.timer >/dev/null; then
+        echo "> tunnelsats-podman-network.timer: systemd timer enabled and started"
+        echo
+      else
+        echo "> ERR: tunnelsats-podman-network.timer: systemd timer could not be enabled or started. Please check for errors."
+        echo
+        exit 1
+      fi
+    fi
+
+  else
+    echo "> ERR: tunnelsats-podman-network.service was not created. Please check for errors."
     echo
     exit 1
   fi
