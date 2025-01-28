@@ -21,6 +21,7 @@
 - [Which setups are supported?](#which-setups-are-supported)
 - [Is there a data transfer limit?](#is-there-a-data-transfer-limit)
 - [Where do I find my lightning configuration file?](#where-do-i-find-my-lightning-configuration-file)
+- [How do I finalise the configuration for my ☂️ umbrel 0.5+ node?](#how-do-i-finalise-the-configuration-for-my-umbrel-05-node)
 - [How to transfer `tunnelsatsv2.conf` to my node?](#how-to-transfer-tunnelsatsv2conf-to-my-node)
 - [How can I extend my subscription?](#how-can-i-extend-my-subscription)
 - [Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?](#am-i-still-able-to-connect-to-grpc-or-rest-via-tailscalezerotier)
@@ -132,13 +133,13 @@ For other setups please get back to us on Telegram to discuss if it's viable to 
 
 ### Is there a data transfer limit?
 
-Currently, 100GB per month are being offered. This should be enough traffic even for bigger nodes with lots of channels.
+Currently, 100GB per month are being offered. This should be enough traffic even for bigger nodes with lots of channels. If you run LND below version 18.3, there might be a bug affecting your node to send more than 100GB every two weeks. Please ensure to update as soon as possible
 
 <br />
 
 ### Where do I find my lightning configuration file?
 
-Every node software (RaspiBlitz, RaspiBolt, Umbrel, Start9, myNode, etc.) has its own directory where it keeps data of the underlying lightning implementation. As far as we know, the current (07/2022) directories are:
+Every node software (RaspiBlitz, RaspiBolt, Umbrel, Start9, myNode, etc.) has its own directory where it keeps data of the underlying lightning implementation. As far as we know, the current (01/2025) directories are:
 
 LND:
 
@@ -160,6 +161,26 @@ Umbrel 0.5+: /home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin
 ```
 
 <br/>
+
+### How do I finalise the configuration for my ☂️ umbrel 0.5+ node?
+
+Since umbrel brings more and more LND configuration settings into the UI, you need to do some settings there, and complement the others in your own `lnd.conf`. This is how you set it up properly:
+- complete the setup guide as usual until successful completion. Make a note of **externalhost** and **externalVPNPort**
+- backup and edit your custom `lnd.conf` file to add the settings you see prompted:
+```sh
+$ cp ~/umbrel/app-data/lightning/data/lnd/lnd.conf ~/umbrel/app-data/lightning/data/lnd/lnd.bak
+$ nano ~/umbrel/app-data/lightning/data/lnd/lnd.conf
+```
+  - add the following two lines, then save and exit
+```
+[Application Options]
+externalhosts=${vpnExternalDNS}:${vpnExternalPort}
+```
+- open your Umbrel User Interface, navigate to LND > Settings > Advanced and ensure: 
+  - **Hybrid Mode** (tor.skip-proxy-for-clearnet-targets) is _activated_
+  - **Separate Tor Connections** (tor.streamisolation) is _deactivated_
+- finally, restart your node
+
 
 ### How to transfer `tunnelsatsv2.conf` to my node?
 
@@ -258,7 +279,7 @@ Now you are connected to your second wireguard network.
 
 ### I'm stuck with the setup process, can you help?
 
-Please raise an [issue](https://github.com/tunnelsats/tunnelsats/issues) in Github or simply join our [Telegram](https://t.me/+NJylaUom-rxjYjU6) group, explaining where you are stuck, but leave out any personal or sensitive information. Especially handle your configuration file with care!
+Please raise an [issue](https://github.com/tunnelsats/tunnelsats/issues) in Github or simply join our [Telegram](https://t.me/+py_KS9wv6hdjMWMy) group, explaining where you are stuck, but leave out any personal or sensitive information. Especially handle your configuration file with care!
 
 <br/>
 
@@ -372,7 +393,7 @@ In short: No. Currently we are specializing VPN usage for the sole purpose of li
 
 ### I have some ideas to make this better. Where can I provide feedback or offer help?
 
-Great! Please do not hesitate to reach out via [Telegram](https://t.me/+NJylaUom-rxjYjU6), [Twitter](https://twitter.com/tunnelsats), email (info @ tunnelsats.com) or log an issue here on github with your detailed ideas or feature requests. We always look forward to partner with great thinkers and doers.
+Great! Please do not hesitate to reach out via [Telegram](https://t.me/+py_KS9wv6hdjMWMy), [Nostr](https://snort.social/p/npub1n9z4y3xjramqes8fp9rl96x5e4nl0hff57ynw7vqnjpq370tq78sljsp8y), [X](https://x.com/tunnelsats), email (info @ tunnelsats.com) or log an issue here on github with your detailed ideas or feature requests. We always look forward to partner with great thinkers and doers.
 
 <br/>
 
