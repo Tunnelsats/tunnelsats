@@ -21,7 +21,7 @@
 - [Which setups are supported?](#which-setups-are-supported)
 - [Is there a data transfer limit?](#is-there-a-data-transfer-limit)
 - [Where do I find my lightning configuration file?](#where-do-i-find-my-lightning-configuration-file)
-- [How do I finalise the configuration for my ☂️ umbrel 0.5+ node?](#how-do-i-finalise-the-configuration-for-my-umbrel-05-node)
+- [How do I finalize the configuration for my ☂️ umbrel 0.5+ node?](#how-do-i-finalize-the-configuration-for-my-umbrel-05-node)
 - [How to transfer `tunnelsatsv2.conf` to my node?](#how-to-transfer-tunnelsatsv2conf-to-my-node)
 - [How can I extend my subscription?](#how-can-i-extend-my-subscription)
 - [Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?](#am-i-still-able-to-connect-to-grpc-or-rest-via-tailscalezerotier)
@@ -133,7 +133,7 @@ For other setups please get back to us on Telegram to discuss if it's viable to 
 
 ### Is there a data transfer limit?
 
-Currently, 100GB per month are being offered. This should be enough traffic even for bigger nodes with lots of channels. If you run LND below version 18.3, there might be a bug affecting your node to send more than 100GB every two weeks. Please ensure to update as soon as possible
+Currently, 100GB per month are being offered. This should be enough traffic even for bigger nodes with lots of channels. If you run LND below version 18.4, there might be a bug affecting your node to send more than 100GB every two weeks. Please ensure to update as soon as possible.
 
 <br />
 
@@ -162,7 +162,7 @@ Umbrel 0.5+: /home/umbrel/umbrel/app-data/core-lightning/data/lightningd/bitcoin
 
 <br/>
 
-### How do I finalise the configuration for my ☂️ umbrel 0.5+ node?
+### How do I finalize the configuration for my ☂️ umbrel 0.5+ node?
 
 Since umbrel brings more and more LND configuration settings into the UI, you need to do some settings there, and complement the others in your own `lnd.conf`. This is how you set it up properly:
 - complete the setup guide as usual until successful completion. Make a note of **externalhost** and **externalVPNPort**
