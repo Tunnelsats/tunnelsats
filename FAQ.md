@@ -21,7 +21,7 @@
 - [Which setups are supported?](#which-setups-are-supported)
 - [Is there a data transfer limit?](#is-there-a-data-transfer-limit)
 - [Where do I find my lightning configuration file?](#where-do-i-find-my-lightning-configuration-file)
-- [How do I finalize the configuration for my ☂️ umbrel 0.5+ node?](#how-do-i-finalize-the-configuration-for-my-umbrel-05-node)
+- [How do I finalize the configuration for my ☂️ umbrel 0.5+ node?](#how-do-i-finalize-the-configuration-for-my-%EF%B8%8F-umbrel-05-node)
 - [How to transfer `tunnelsatsv2.conf` to my node?](#how-to-transfer-tunnelsatsv2conf-to-my-node)
 - [How can I extend my subscription?](#how-can-i-extend-my-subscription)
 - [Am I still able to connect to gRPC or Rest via Tailscale/Zerotier?](#am-i-still-able-to-connect-to-grpc-or-rest-via-tailscalezerotier)
