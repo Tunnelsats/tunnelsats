@@ -42,11 +42,11 @@ fi
 check_docker_setup() {
   if systemctl is-active --quiet docker; then
     if docker ps --filter name=cln -q | grep -q . || docker ps --filter name=lnd -q | grep -q .; then
-      echo "docker" # Docker is running with cln or lnd container
+      echo -e "\e[1;31mdocker\e[0m" # Docker is running with cln or lnd container
       return 0
     fi
   fi
-  echo "manual" # Docker not running or no cln/lnd container found
+  echo -e "\e[1;31mmanual\e[0m" # Docker not running or no cln/lnd container found
   return 1
 }
 
@@ -98,36 +98,31 @@ perform_outbound_check() {
   fi
 }
 
-# Function to perform inbound connectivity check
 perform_inbound_check() {
   local target_endpoint=$1
   local target_port=$2
   local result_ip=""
-  local status="failed" # Assume failed initially
+  local status="failed"
 
-  echo "Performing inbound check for $target_endpoint:$target_port..." >&2 # Redirect to stderr
-  # Use timeout for nc command
-  nc_output=$(timeout 10s nc -zv "$target_endpoint" "$target_port" 2>&1)
-  nc_exit_code=$?
-
-  if [ $nc_exit_code -eq 0 ]; then
-    # Success, try to parse IP
-    result_ip=$(echo "$nc_output" | grep -oP '\(\K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(?=\))')
+  echo "Performing inbound check for $target_endpoint:$target_port..." >&2
+  
+  # Use timeout and head to capture just the connection attempt
+  curl_output=$(timeout 3s curl -sv telnet://"$target_endpoint":"$target_port" 2>&1 | head -n 2)
+  curl_exit_code=${PIPESTATUS[0]}
+  
+  if [[ "$curl_output" == *"Connected to"* ]]; then
+    result_ip=$(echo "$curl_output" | grep "Connected to" | grep -oP 'Connected to [^ ]+ \(\K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
     if [[ -n "$result_ip" ]]; then
-        echo "Inbound check successful. Server IP: $result_ip" >&2 # Redirect to stderr
-        status="success"
+      echo "Inbound check successful. Server IP: $result_ip" >&2
+      status="success"
     else
-        # Succeeded but couldn't parse IP (unlikely with -zv)
-        echo "Warning: Inbound check succeeded but could not parse server IP from output." >&2 # Redirect to stderr
-        echo "Output: $nc_output" >&2 # Redirect to stderr
-        result_ip="Unknown (Success)" # Mark as success but unknown IP
-        status="success_no_ip"
+      echo "Warning: Inbound check succeeded but could not parse server IP from output." >&2
+      result_ip="Unknown (Success)"
+      status="success_no_ip"
     fi
   else
-    # Failed
-    echo "Inbound check failed." >&2 # Redirect to stderr
-    echo "Output: $nc_output" >&2 # Redirect to stderr
-    result_ip="Error: Failed ($nc_exit_code)"
+    echo "Inbound check failed." >&2
+    result_ip="Error: Connection failed"
   fi
 
   # Return status and IP on a single line to stdout, space-separated
