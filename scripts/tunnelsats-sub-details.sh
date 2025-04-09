@@ -42,11 +42,18 @@ fi
 check_docker_setup() {
   if systemctl is-active --quiet docker; then
     if docker ps --filter name=cln -q | grep -q . || docker ps --filter name=lnd -q | grep -q .; then
-      echo -e "\e[1;31mdocker\e[0m" # Docker is running with cln or lnd container
+      # Store the plain text result
+      local result="docker"
+      # Echo the colored version for display
+      echo -e "\e[1;31m${result}\e[0m" >&2
+      # Return the plain text version for processing
+      echo "${result}"
       return 0
     fi
   fi
-  echo -e "\e[1;31mmanual\e[0m" # Docker not running or no cln/lnd container found
+  local result="manual"
+  echo -e "\e[1;31m${result}\e[0m" >&2
+  echo "${result}"
   return 1
 }
 
