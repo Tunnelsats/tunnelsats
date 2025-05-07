@@ -185,7 +185,7 @@ if [[ "$endpoint" != "N/A" && "$VPNPort" != "N/A" ]]; then
         connectivity_ok=true
     elif $outbound_ok && $inbound_ok && [[ "$inbound_status" == "success_no_ip" ]]; then
         # Handle case where inbound succeeded but IP couldn't be parsed - assume OK if outbound IP looks valid
-         echo "Warning: Inbound IP could not be parsed from nc output, but check succeeded. Assuming OK based on outbound check."
+         echo "Warning: Inbound IP could not be parsed from our output parser, but check succeeded. Assuming OK based on outbound check."
          connectivity_ok=true # Consider it OK for the summary message
     fi
 else
