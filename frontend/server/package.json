@@ -19,13 +19,13 @@
   "homepage": "https://tunnelsats.com",
   "dependencies": {
     "axios": "^1.1.2",
-    "body-parser": "^1.20.0",
+    "body-parser": "^2.2.0",
     "bolt11": "^1.4.0",
     "dayjs": "^1.11.1",
     "dotenv": "^16.0.0",
-    "express": "^4.17.3",
+    "express": "^5.1.0",
     "node-fetch-commonjs": "^3.1.1",
-    "nodemailer": "^6.7.5",
+    "nodemailer": "^7.0.2",
     "socket.io": "^4.4.1",
     "socks-proxy-agent": "^8.0.1"
   },
