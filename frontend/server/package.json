@@ -19,7 +19,7 @@
   "homepage": "https://tunnelsats.com",
   "dependencies": {
     "axios": "^1.1.2",
-    "body-parser": "^1.20.0",
+    "body-parser": "^2.2.0",
     "bolt11": "^1.4.0",
     "dayjs": "^1.11.1",
     "dotenv": "^16.0.0",
