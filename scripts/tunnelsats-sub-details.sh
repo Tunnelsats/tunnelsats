@@ -61,47 +61,62 @@ check_docker_setup() {
 perform_outbound_check() {
   local setup_type=$1
   local ip_address=""
+  local cmd_exit_code=0 # For Docker or manual commands
 
-  echo "Performing outbound check..." >&2 # Redirect to stderr
+  echo "Performing outbound check..." >&2
   if [[ "$setup_type" == "docker" ]]; then
-    # Check if docker-tunnelsats network exists
     if ! docker network inspect docker-tunnelsats > /dev/null 2>&1; then
-        echo "Warning: Docker network 'docker-tunnelsats' not found. Cannot perform Docker outbound check." >&2 # Redirect to stderr
+        echo "Warning: Docker network 'docker-tunnelsats' not found. Cannot perform Docker outbound check." >&2
         ip_address="Error: Docker network missing"
     else
-        # Use timeout to prevent hanging indefinitely
-        ip_address=$(timeout 10s docker run --rm --net=docker-tunnelsats curlimages/curl -s https://api.ipify.org)
-        if [ $? -ne 0 ]; then
-             echo "Warning: Docker outbound check failed or timed out." >&2 # Redirect to stderr
-             ip_address="Error: Docker check failed"
+        ip_address=$(timeout 20s docker run --rm --net=docker-tunnelsats curlimages/curl -s https://api.ipify.org)
+        cmd_exit_code=$?
+
+        if [ $cmd_exit_code -ne 0 ]; then
+             echo "Warning: Docker outbound check command failed or timed out (exit code: $cmd_exit_code)." >&2
+             if [[ "$ip_address" == "" ]]; then # Check if ip_address is empty string
+                ip_address="Error: Docker check timed out or command failed with no output"
+             else
+                ip_address="Error: Docker check failed (command error)"
+             fi
+        elif [[ "$ip_address" == "" ]]; then # Check if ip_address is empty string
+            echo "Warning: Docker outbound check command succeeded but returned empty output." >&2
+            ip_address="Error: Empty response from server via Docker"
         fi
     fi
   else
     # Manual setup check
     if command -v cgexec &> /dev/null; then
-      # Use timeout to prevent hanging indefinitely
-      ip_address=$(timeout 10s cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
-       if [ $? -ne 0 ]; then
-             echo "Warning: cgexec outbound check failed or timed out." >&2 # Redirect to stderr
+      ip_address=$(timeout 20s cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
+      cmd_exit_code=$?
+       if [ $cmd_exit_code -ne 0 ]; then
+             echo "Warning: cgexec outbound check failed or timed out (exit code: $cmd_exit_code)." >&2
              ip_address="Error: cgexec check failed"
+        elif [[ "$ip_address" == "" ]]; then
+             echo "Warning: cgexec outbound check succeeded but returned empty." >&2
+             ip_address="Error: Empty response from server via cgexec"
         fi
     else
-      echo "Warning: 'cgexec' command not found. Falling back to standard curl. Outbound check might use the wrong interface." >&2 # Redirect to stderr
-      # Use timeout to prevent hanging indefinitely
-      ip_address=$(timeout 10s curl --silent https://api.ipify.org)
-       if [ $? -ne 0 ]; then
-             echo "Warning: Standard curl outbound check failed or timed out." >&2 # Redirect to stderr
+      echo "Warning: 'cgexec' command not found. Falling back to standard curl. Outbound check might use the wrong interface." >&2
+      ip_address=$(timeout 20s curl --silent https://api.ipify.org)
+      cmd_exit_code=$?
+       if [ $cmd_exit_code -ne 0 ]; then
+             echo "Warning: Standard curl outbound check failed or timed out (exit code: $cmd_exit_code)." >&2
              ip_address="Error: curl check failed"
-        fi
+       elif [[ "$ip_address" == "" ]]; then
+             echo "Warning: Standard curl outbound check succeeded but returned empty." >&2
+             ip_address="Error: Empty response from server via curl"
+       fi
     fi
   fi
+
   # Basic validation if it looks like an IP
   if [[ "$ip_address" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      echo "Outbound check completed." >&2 # Redirect to stderr
+      echo "Outbound check completed. IP: $ip_address" >&2
       echo "$ip_address" # Print final IP to stdout
   else
-      echo "Outbound check could not retrieve a valid IP." >&2 # Redirect to stderr
-      echo "$ip_address" # Print error message to stdout
+      echo "Outbound check could not retrieve a valid IP. Value was: [$ip_address]" >&2
+      echo "$ip_address" # Print error message or invalid IP to stdout
   fi
 }
 
