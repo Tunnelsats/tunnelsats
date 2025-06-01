@@ -22,7 +22,7 @@ check_wireguard_status() {
     if [ ! -f "$config_file" ]; then
       echo "The wireguard tunnel seems to be offline, and no tunnelsatsv2.conf could be found in the wireguard directory."
       echo "Please try a reinstall per https://guide.tunnelsats.com"
-      echo "Alternatively, visit the Tunnel⚡️Sats Telegram Chat: https://t.me/tunnelsats"
+      echo "Alternatively, visit the Tunnel⚡️Sats Telegram Chat: https://t.me/+xvjQdEObZ1Y4MjQy"
       return 1
     else
       echo "The wireguard tunnel seems to be offline. Please try restarting your node."
@@ -158,8 +158,8 @@ public_key=$(echo "$wg_output" | grep -A 5 "interface: $interface" | grep 'publi
 
 # Parse endpoint and VPN port from config file
 config_file="/etc/wireguard/tunnelsatsv2.conf"
-endpoint=$(sudo grep '^Endpoint =' "$config_file" | awk '{print $3}' | cut -d ':' -f 1)
-VPNPort=$(sudo grep '^#VPNPort =' "$config_file" | awk '{print $3}')
+endpoint=$(grep '^Endpoint =' "$config_file" | awk '{print $3}' | cut -d ':' -f 1)
+VPNPort=$(grep '^#VPNPort =' "$config_file" | awk '{print $3}')
 
 # Check if parsing was successful
 if [ -z "$endpoint" ]; then
