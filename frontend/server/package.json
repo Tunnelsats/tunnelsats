@@ -22,7 +22,7 @@
     "body-parser": "^1.20.0",
     "bolt11": "^1.4.0",
     "dayjs": "^1.11.1",
-    "dotenv": "^16.0.0",
+    "dotenv": "^17.0.0",
     "express": "^4.17.3",
     "node-fetch-commonjs": "^3.1.1",
     "nodemailer": "^6.7.5",
