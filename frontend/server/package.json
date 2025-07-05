@@ -25,7 +25,7 @@
     "dotenv": "^17.0.0",
     "express": "^5.1.0",
     "node-fetch-commonjs": "^3.1.1",
-    "nodemailer": "^6.7.5",
+    "nodemailer": "^7.0.4",
     "socket.io": "^4.4.1",
     "socks-proxy-agent": "^8.0.1"
   },
