@@ -280,7 +280,7 @@ What is the `setupv2.sh` script doing in detail?
 
 Please review the [FAQ](FAQ.md) for further help.
 If you need help setting up hybrid mode over VPN
-or just want to have a chat with us, join our [Tunnel⚡Sats](https://t.me/+NJylaUom-rxjYjU6) Telegram group.
+or just want to have a chat with us, join our [Tunnel⚡Sats](https://t.me/+Ew0Avjz0GG84OTRi) Telegram group.
 
 ____________________________________________________________
 
