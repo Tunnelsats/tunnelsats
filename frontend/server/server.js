@@ -1009,12 +1009,10 @@ async function getSubscription({ keyID, serverURL }) {
 }
 
 const getAuth = (serverURL) => {
-  if (
-    serverURL.includes("br1") ||
-    serverURL.includes("au1") ||
-    serverURL.includes("za1")
-  )
+  const vultrServers = ["br1", "au1", "za1"];
+  if (serverURL.includes(...vultrServers)) {
     return process.env.AUTH_VULTR;
+  }
 
   return process.env.AUTH;
 };
