@@ -578,8 +578,8 @@ const WorldMap = (props) => {
             r="7"
             fill="#cc0000"
             id="NA"
-            className={getClassname(["na"])}
-            onClick={onMapClick.bind(this, "na")}
+            className={getClassname(["na", "na3"])}
+            onClick={onMapClick.bind(this, "na3")}
           />
         </OverlayTrigger>
 

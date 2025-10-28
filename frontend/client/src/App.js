@@ -192,6 +192,9 @@ function App() {
       case "na2":
         setSelectedRegionString(`🇺🇸  Hillsboro, Oregon`);
         break;
+      case "na3":
+        setSelectedRegionString(`🇺🇸  New York City 2`);
+        break;
       case "sa":
         setSelectedRegionString(`🇧🇷  São Paolo`);
         break;
