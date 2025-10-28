@@ -80,7 +80,7 @@ function App() {
   //const hideLoginModal = () => showLoginModal(false);
 
   // World Map
-  const [country, updateCountry] = useState("na");
+  const [country, updateCountry] = useState("na3");
   const [selectedRegionString, setSelectedRegionString] =
     useState(`🇺🇸  New York City`);
 
@@ -88,6 +88,7 @@ function App() {
     AF = Africa (currently none)
     NA = North America (US East, NYC)
     NA2 = North America (US West, Hillsboro Oregon)
+    NA3 = North America (US East, NYC2)
     SA = South America (LatAm, Sao Paolo)
     EU = Europe (FFM, NRB)
     AS = Asia (Singapore)
