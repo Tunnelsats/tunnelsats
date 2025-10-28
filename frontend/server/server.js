@@ -1009,7 +1009,7 @@ async function getSubscription({ keyID, serverURL }) {
 }
 
 const getAuth = (serverURL) => {
-  const vultrServers = ["br1", "au1", "za1"];
+  const vultrServers = ["br1", "au1"/*, "za1"*/];
   if (serverURL.includes(...vultrServers)) {
     return process.env.AUTH_VULTR;
   }
