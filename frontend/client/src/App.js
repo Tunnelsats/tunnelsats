@@ -481,7 +481,7 @@ function App() {
         setSpinnerQuery(false);
       } else if (result == "not-allowed") {
         setPopupMessage(
-          "This server is going to be phased out. Please switch to de3.tunnelsats.com and restart your node (see FAQ page for instructions). Your subscription has already been moved to the new server."
+          "This VPN server is going to be phased out. Please switch to us3.tunnelsats.com / 'Ashburn' (see FAQ page for instructions) or get a new subscription for US east on current subscription end."
         );
         setTime("");
         setNewTime("");
