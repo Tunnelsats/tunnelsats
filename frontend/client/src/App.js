@@ -88,7 +88,7 @@ function App() {
     AF = Africa (currently none)
     NA = North America (US East, NYC)
     NA2 = North America (US West, Hillsboro Oregon)
-    NA3 = North America (US East, NYC2)
+    NA3 = North America (US East, Ashburn)
     SA = South America (LatAm, Sao Paolo)
     EU = Europe (FFM, NRB)
     AS = Asia (Singapore)
