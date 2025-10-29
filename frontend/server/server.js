@@ -499,12 +499,16 @@ io.on("connection", (socket) => {
                 logDim("SubscriptionEnd: ", date.toISOString());
                 subscriptionEnd = date;
 
-                socket.emit("receiveKeyLookup", {
-                  keyID,
-                  subscriptionEnd,
-                  domain,
-                  country,
-                });
+                if (domain.includes("us1")) {
+                  socket.emit("receiveKeyLookup", "not-allowed");
+                } else {
+                  socket.emit("receiveKeyLookup", {
+                    keyID,
+                    subscriptionEnd,
+                    domain,
+                    country,
+                  });
+                };
 
                 return true;
               })
