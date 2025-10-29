@@ -813,10 +813,7 @@ function App() {
                                   {discount != 1.0
                                     ? Math.trunc(
                                         Math.round(
-                                          priceDollar * satsPerDollar -
-                                            priceDollar *
-                                              satsPerDollar *
-                                              discount
+                                          priceDollar * satsPerDollar * (1 - discount)
                                         )
                                       )
                                     : Math.trunc(
@@ -958,8 +955,7 @@ function App() {
                             {discount != 1.0
                               ? Math.trunc(
                                   Math.round(
-                                    priceDollar * satsPerDollar -
-                                      priceDollar * satsPerDollar * discount
+                                    priceDollar * satsPerDollar * (1 - discount)
                                   )
                                 )
                               : Math.trunc(
