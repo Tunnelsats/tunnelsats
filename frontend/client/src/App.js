@@ -481,7 +481,7 @@ function App() {
         setSpinnerQuery(false);
       } else if (result == "not-allowed") {
         setPopupMessage(
-          "This VPN server is going to be phased out. Please switch to us3.tunnelsats.com / 'Ashburn' (see FAQ page for instructions) or get a new subscription for US east on current subscription end."
+          "This VPN server is going to be phased out. Please switch to us3.tunnelsats.com / 'Ashburn' (see FAQ page for instructions) or get a new subscription for US east at the end of your current subscription."
         );
         setTime("");
         setNewTime("");
@@ -1033,7 +1033,7 @@ function App() {
               {isPopupModal ? (
                 <Popup
                   show={isPopupModal}
-                  title={"⚠️ Error"}
+                  title={"⚠️ Info"}
                   errorMessage={popupMessage}
                   handleClose={hidePopupModal}
                 />
