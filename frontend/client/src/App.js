@@ -80,14 +80,15 @@ function App() {
   //const hideLoginModal = () => showLoginModal(false);
 
   // World Map
-  const [country, updateCountry] = useState("na");
+  const [country, updateCountry] = useState("na3");
   const [selectedRegionString, setSelectedRegionString] =
-    useState(`🇺🇸  New York City`);
+    useState(`🇺🇸  Ashburn`);
 
   /* WorldMap City Codes
     AF = Africa (currently none)
     NA = North America (US East, NYC)
     NA2 = North America (US West, Hillsboro Oregon)
+    NA3 = North America (US East, Ashburn)
     SA = South America (LatAm, Sao Paolo)
     EU = Europe (FFM, NRB)
     AS = Asia (Singapore)
@@ -191,6 +192,9 @@ function App() {
         break;
       case "na2":
         setSelectedRegionString(`🇺🇸  Hillsboro, Oregon`);
+        break;
+      case "na3":
+        setSelectedRegionString(`🇺🇸  Ashburn`);
         break;
       case "sa":
         setSelectedRegionString(`🇧🇷  São Paolo`);
@@ -477,7 +481,7 @@ function App() {
         setSpinnerQuery(false);
       } else if (result == "not-allowed") {
         setPopupMessage(
-          "This server is going to be phased out. Please switch to de3.tunnelsats.com and restart your node (see FAQ page for instructions). Your subscription has already been moved to the new server."
+          "This VPN server is going to be phased out. Please switch to us3.tunnelsats.com / 'Ashburn' (see FAQ page for instructions) or get a new subscription for US east at the end of your current subscription."
         );
         setTime("");
         setNewTime("");
@@ -591,7 +595,7 @@ function App() {
                       onClick={() => {
                         hideRenew();
                         updatePrice(REACT_APP_THREE_MONTHS);
-                        handleSelectedCountry("na");
+                        handleSelectedCountry("na3");
                       }}
                     >
                       Get Subscription
@@ -1029,7 +1033,7 @@ function App() {
               {isPopupModal ? (
                 <Popup
                   show={isPopupModal}
-                  title={"⚠️ Error"}
+                  title={"⚠️ Info"}
                   errorMessage={popupMessage}
                   handleClose={hidePopupModal}
                 />

@@ -468,8 +468,9 @@ io.on("connection", (socket) => {
       { domain: "de1.tunnelsats.com", country: "eu" },
       { domain: "de3.tunnelsats.com", country: "eu2" },
       { domain: "de2.tunnelsats.com", country: "eu3" },
-      { domain: "us1.tunnelsats.com", country: "na" },
-      { domain: "us2.tunnelsats.com", country: "na2" },
+      { domain: "us1.tunnelsats.com", country: "na" }, // us east
+      { domain: "us2.tunnelsats.com", country: "na2" }, // us west
+      { domain: "us3.tunnelsats.com", country: "na3" }, // us east
       { domain: "sg1.tunnelsats.com", country: "as" },
       { domain: "br1.tunnelsats.com", country: "sa" },
       //{ domain: "za1.tunnelsats.com", country: "af" },
@@ -498,12 +499,16 @@ io.on("connection", (socket) => {
                 logDim("SubscriptionEnd: ", date.toISOString());
                 subscriptionEnd = date;
 
-                socket.emit("receiveKeyLookup", {
-                  keyID,
-                  subscriptionEnd,
-                  domain,
-                  country,
-                });
+                if (domain.includes("us1")) {
+                  socket.emit("receiveKeyLookup", "not-allowed");
+                } else {
+                  socket.emit("receiveKeyLookup", {
+                    keyID,
+                    subscriptionEnd,
+                    domain,
+                    country,
+                  });
+                };
 
                 return true;
               })
@@ -610,6 +615,9 @@ const getServer = (country) => {
       break;
     case "na2":
       server = process.env.IP_USA2;
+      break;
+    case "na3":
+      server = process.env.IP_USA3;
       break;
     case "sa":
       server = process.env.IP_LATAM;
@@ -1005,12 +1013,10 @@ async function getSubscription({ keyID, serverURL }) {
 }
 
 const getAuth = (serverURL) => {
-  if (
-    serverURL.includes("br1") ||
-    serverURL.includes("au1") ||
-    serverURL.includes("za1")
-  )
+  const vultrServers = ["br1", "au1"/*, "za1"*/];
+  if (serverURL.includes(...vultrServers)) {
     return process.env.AUTH_VULTR;
+  }
 
   return process.env.AUTH;
 };
