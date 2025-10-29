@@ -82,7 +82,7 @@ function App() {
   // World Map
   const [country, updateCountry] = useState("na3");
   const [selectedRegionString, setSelectedRegionString] =
-    useState(`🇺🇸  New York City II`);
+    useState(`🇺🇸  Ashburn`);
 
   /* WorldMap City Codes
     AF = Africa (currently none)
@@ -194,7 +194,7 @@ function App() {
         setSelectedRegionString(`🇺🇸  Hillsboro, Oregon`);
         break;
       case "na3":
-        setSelectedRegionString(`🇺🇸  New York City II`);
+        setSelectedRegionString(`🇺🇸  Ashburn`);
         break;
       case "sa":
         setSelectedRegionString(`🇧🇷  São Paolo`);
