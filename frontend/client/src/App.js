@@ -245,7 +245,7 @@ function App() {
       console.log(`${getDate()} App.js: received error message: ${message}`);
     setSpinner(false);
     closeInvoiceModal();
-    setPopupMessage(message);
+    setPopupMessage(<span>{message}</span>);
     renderPopupModal();
   });
 
@@ -469,9 +469,7 @@ function App() {
       DEBUG && console.log("%o", result);
 
       if (result == null) {
-        setPopupMessage(
-          "The provided WireGuard pubkey was not found on any server!"
-        );
+        setPopupMessage(<span>The provided WireGuard pubkey was not found on any server!</span>);
         setTime("");
         setNewTime("");
         setTimeValid(false);
@@ -480,9 +478,15 @@ function App() {
         DEBUG && console.log(result);
         setSpinnerQuery(false);
       } else if (result == "not-allowed") {
-        setPopupMessage(
-          "This VPN server is going to be phased out. Please switch to us3.tunnelsats.com / 'Ashburn' (see FAQ page for instructions) or get a new subscription for US east at the end of your current subscription."
-        );
+        setPopupMessage(<span>This VPN server is going to be phased out. Please switch to us3.tunnelsats.com / 'Ashburn' (see{" "}
+      <a
+        href="https://guide.tunnelsats.com/FAQ.html#phasing-out-us1tunnelsatscom---how-to-switch-to-us3tunnelsatscom"
+        target="_blank"
+        rel="noreferrer"
+      >
+        FAQ page
+      </a>{" "}
+      for instructions) or get a new subscription for US east at the end of your current subscription.</span>);
         setTime("");
         setNewTime("");
         setTimeValid(false);
