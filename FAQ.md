@@ -366,7 +366,7 @@ We offer a full-managed-service which takes a lot of the server, library, securi
 
 ### Phasing out us1.tunnelsats.com - How to switch to us3.tunnelsats.com
 
-Problems with one of our providers forced us to switch to a new one, so we phasing out `us1.tunnelsats.com` slowly. If you are running your node on this VPN (EU continent), please take a minute to read how to switch your connection to the new vpn: `us3.tunnelsats.com`
+We're increasing capacity and elasticity for our US-East Coast Server, and as a result we are phasing out `us1.tunnelsats.com` slowly. If you are running your node on this VPN (AMER continent), please take a minute to read how to switch your connection to the new vpn: `us3.tunnelsats.com`
 
 In fact there are five simple steps to take:
 
