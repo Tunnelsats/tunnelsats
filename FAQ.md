@@ -45,6 +45,7 @@
 
 
 ### Misc
+- [Phasing out us1.tunnelsats.com - How to switch to us3.tunnelsats.com](#phasing-out-us1tunnelsatscom---how-to-switch-to-us3tunnelsatscom)
 - [Tuning Tor](#tuning-tor)
 - [What does v2 stand for?](#what-does-v2-stand-for)
 - [Do you offer full-service VPNs too?](#do-you-offer-full-service-vpns-too)
@@ -362,6 +363,50 @@ No, not yet, but we'll be happy to look into it when people raise interest to su
 We offer a full-managed-service which takes a lot of the server, library, security and operational headache away from you. If you feel you prefer the personal learning experience, we can only encourage you to do so. It is a great adventure to learn more, so please check the footnotes in case you look for ways to dive in.
 
 <br/>
+
+### Phasing out us1.tunnelsats.com - How to switch to us3.tunnelsats.com
+
+We're increasing capacity and elasticity for our US-East Coast Server, and as a result we are phasing out `us1.tunnelsats.com` slowly. If you are running your node on this VPN (AMER continent), please take a minute to read how to switch your connection to the new vpn: `us3.tunnelsats.com`
+
+In fact there are five simple steps to take:
+
+1. Edit your `tunnelsatsv2.conf` and change `Endpoint` entry to `Endpoint = us3.tunnelsats.com:51820`
+2. Fetch latest version of setup script: `wget -O setupv2.sh https://github.com/tunnelsats/tunnelsats/raw/main/scripts/setupv2.sh`
+3. Run it: `sudo bash setupv2.sh`
+4. Edit your lightning config file and change the DNS entry accordingly:
+
+   - LND: `externalhosts=us3.tunnelsats.com:<yourVPNport>`
+   - CLN: `announce-addr=us3.tunnelsats.com:<yourVPNport>`
+   - As always before changing the config, it is good practice to backup your config.
+     - To backup the conf use `sudo cp <path/to/conf> <path/where/tosafe/backup>`
+     - E.g., for raspiblitz and lnd: `sudo cp /mnt/hdd/lnd/lnd.conf ~/lnd_backup.conf`
+
+5. Restart your lightning implementation
+
+**Verify the switch to us3.tunnelsats.com**  
+To verify that the switch worked, you can run
+
+- LND: `lncli getinfo | jq '.uris'`
+- CLN: `lightning-cli getinfo | jq '.address'`
+
+The public IP should start with 178.156.x.x
+
+**Where do I find the config files?**  
+If you can not locate a file (e.g., the `tunnelsatsv2.conf` or your lightning config) you can always use the `find` command.
+
+- Locate tunnelsatsv2.conf: `sudo find / -maxdepth 5 -type d \( -path /etc/wireguard -o -path /sd-root \) -prune -o -type f -name "tunnelsatsv2.conf" -print`
+  - TunnelSats installs two independent config files both called `tunnelsatsv2.conf` (a user config, and a config for the vpn client wireguard).
+  - For the switch to `us3.tunnelsats.com` you want to edit the user config (default in `~/tunnelsats/tunnelsatsv2.conf`)
+- Locate LND config: `sudo find / -name "lnd.conf"`
+- Locate CLN config: `sudo find / -name "conf"`
+
+_Note:_ For the most common lightning node packages we documented the default location
+of the configuration files, see:
+
+- [Where do I find my lightning configuration file?](#where-do-i-find-my-lightning-configuration-file)
+- If you run into any trouble please reach out ([Where to get help?](#im-stuck-with-the-setup-process-can-you-help))
+
+<br />
 
 ### Tuning Tor
 
