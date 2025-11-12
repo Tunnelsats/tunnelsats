@@ -39,23 +39,27 @@ if [ $? -ne 0 ]; then
 fi
 
 # Function to check if Docker is running and relevant containers exist
-check_docker_setup() {
-  if systemctl is-active --quiet docker; then
-    if docker ps --filter name=cln -q | grep -q . || docker ps --filter name=lnd -q | grep -q .; then
-      # Store the plain text result
-      local result="docker"
-      # Echo the colored version for display
-      echo -e "\e[1;31m${result}\e[0m" >&2
-      # Return the plain text version for processing
-      echo "${result}"
-      return 0
-    fi
-  fi
-  local result="manual"
-  echo -e "\e[1;31m${result}\e[0m" >&2
-  echo "${result}"
-  return 1
-}
+ check_docker_setup() {
+   if systemctl is-active --quiet docker; then
+     if docker ps --filter name=core-lightning -q | grep -q . || docker ps --filter name=lnd -q | grep -q .; then
+      if docker ps --filter name=core-lightning -q | grep -q .; then # Check for core-lightning container
+        local result="docker-core-lightning"
+        echo -e "\e[1;31m${result}\e[0m" >&2
+        echo "${result}"
+        return 0
+      elif docker ps --filter name=lnd -q | grep -q .; then # Check for lnd container
+        local result="docker-lnd"
+        echo -e "\e[1;31m${result}\e[0m" >&2
+        echo "${result}"
+        return 0
+      fi
+     fi
+   fi
+   local result="manual" # Neither Docker container found explicitly
+   echo -e "\e[1;31m${result}\e[0m" >&2
+   echo "${result}"
+   return 1
+ }
 
 # Function to perform outbound connectivity check
 perform_outbound_check() {
@@ -64,7 +68,7 @@ perform_outbound_check() {
   local cmd_exit_code=0 # For Docker or manual commands
 
   echo "Performing outbound check..." >&2
-  if [[ "$setup_type" == "docker" ]]; then
+  if [[ "$setup_type" == "docker-lnd" || "$setup_type" == "docker-core-lightning" ]]; then
     if ! docker network inspect docker-tunnelsats > /dev/null 2>&1; then
         echo "Warning: Docker network 'docker-tunnelsats' not found. Cannot perform Docker outbound check." >&2
         ip_address="Error: Docker network missing"
@@ -207,8 +211,161 @@ else
     echo "Skipping connectivity checks because Endpoint or VPNPort could not be determined."
 fi
 
-# Construct external address placeholder
-external_address="Pubkey@${endpoint}:${VPNPort}"
+# Function to get the node's external address (PUBKEY@IP:PORT) based on setup type
+get_node_external_address() {
+  local setup_type=$1
+  local external_address="N/A"
+  local getinfo_cmd=""
+  local docker_container_name=""
+  local node_type=""
+
+  echo "Attempting to get pubkey for setup type: $setup_type" >&2
+
+  case "$setup_type" in
+    "docker-lnd")
+      docker_container_name="lightning_lnd_1"
+      getinfo_cmd="lncli getinfo"
+      node_type="LND"
+      if ! command -v jq &> /dev/null; then 
+        echo "Error: jq not found. Please install jq to parse LND info." >&2
+        echo "$node_type"
+        echo "N/A"
+        return 1
+      else
+        # For Docker, assume lncli is available and try to execute directly
+        local LND_INFO
+        LND_INFO=$(docker exec "$docker_container_name" $getinfo_cmd 2>&1)
+        local docker_exit_code=$?
+        if [[ $docker_exit_code -ne 0 ]]; then
+          echo "Error: Failed to execute lncli getinfo in Docker container $docker_container_name." >&2
+          echo "Command output: $LND_INFO" >&2
+        else
+          # Find first IPv4 URI (not tor)
+          external_address=$(echo "$LND_INFO" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+          if [[ -z "$external_address" || "$external_address" == "null" ]]; then
+            external_address="N/A"
+          fi
+        fi
+      fi
+      ;;
+    "docker-core-lightning")
+      docker_container_name="core-lightning_lightningd_1"
+      getinfo_cmd="lightning-cli getinfo"
+      node_type="CLN"
+      if ! command -v jq &> /dev/null; then 
+        echo "Error: jq not found. Please install jq to parse Core-Lightning info." >&2
+        echo "$node_type"
+        echo "N/A"
+        return 1
+      else
+        # For Docker, assume lightning-cli is available and try to execute directly
+        local CLN_INFO
+        CLN_INFO=$(docker exec "$docker_container_name" $getinfo_cmd 2>&1)
+        local docker_exit_code=$?
+        if [[ $docker_exit_code -ne 0 ]]; then
+          echo "Error: Failed to execute lightning-cli getinfo in Docker container $docker_container_name." >&2
+          echo "Command output: $CLN_INFO" >&2
+        else
+          # Get pubkey and IPv4 address
+          local pubkey=$(echo "$CLN_INFO" | jq -r '.id')
+          local ipv4_address=$(echo "$CLN_INFO" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
+          local ipv4_port=$(echo "$CLN_INFO" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
+          if [[ -n "$pubkey" && "$pubkey" != "null" && -n "$ipv4_address" && "$ipv4_address" != "null" && -n "$ipv4_port" && "$ipv4_port" != "null" ]]; then
+            external_address="${pubkey}@${ipv4_address}:${ipv4_port}"
+          else
+            external_address="N/A"
+          fi
+        fi
+      fi
+      ;;
+    "manual")
+      # Check for globally available commands
+      local original_user="${SUDO_USER:-$(whoami)}" # Get the original user who invoked sudo
+      local lnd_base_dir="/home/$original_user/.lnd"
+      local lnd_tls_cert="/home/$original_user/.lnd/tls.cert"
+      local cln_lightning_dir="/home/$original_user/.lightning" # Assuming this path for CLN
+
+      if command -v lncli &> /dev/null; then
+        echo "Detected manual LND setup. Fetching pubkey..." >&2
+        node_type="LND"
+        if ! command -v jq &> /dev/null; then 
+          echo "Error: jq not found. Please install jq to parse LND info." >&2
+          echo "$node_type"
+          echo "N/A"
+          # Return 1 is handled by the overall function, no explicit return needed here for just the jq check
+        else
+          local LND_INFO
+          # Try running lncli as the original user with explicit paths
+          LND_INFO=$(sudo -u "$original_user" lncli --lnddir="$lnd_base_dir" --tlscertpath="$lnd_tls_cert" getinfo 2>/dev/null)
+          local lncli_exit_code=$?
+
+          if [[ $lncli_exit_code -ne 0 ]] || [[ -z "$LND_INFO" ]]; then
+            echo "Error: Failed to get LND info for user $original_user. Command output: $LND_INFO" >&2
+            echo "$node_type"
+            echo "N/A"
+          else
+            # Extract first IPv4 URI (skip .onion addresses)
+            external_address=$(echo "$LND_INFO" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+            if [[ -z "$external_address" || "$external_address" == "null" ]]; then
+              external_address="N/A"
+            fi
+          fi
+        fi
+      elif command -v lightning-cli &> /dev/null; then
+        echo "Detected manual Core-Lightning setup. Fetching pubkey..." >&2
+        node_type="CLN"
+        if ! command -v jq &> /dev/null; then 
+          echo "Error: jq not found. Please install jq to parse Core-Lightning info." >&2
+          echo "$node_type"
+          echo "N/A"
+          # Return 1 is handled by the overall function, no explicit return needed here for just the jq check if command is not found
+        else
+          local CLN_INFO
+          # Try running lightning-cli as the original user with explicit paths
+          CLN_INFO=$(sudo -u "$original_user" lightning-cli --lightning-dir="$cln_lightning_dir" getinfo 2>/dev/null)
+          local cln_exit_code=$?
+
+          if [[ $cln_exit_code -ne 0 ]] || [[ -z "$CLN_INFO" ]]; then
+            echo "Error: Failed to get Core-Lightning info for user $original_user. Command output: $CLN_INFO" >&2
+            echo "$node_type"
+            echo "N/A"
+            # Get pubkey and IPv4 address
+            local pubkey=$(echo "$CLN_INFO" | jq -r '.id')
+            local ipv4_address=$(echo "$CLN_INFO" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
+            local ipv4_port=$(echo "$CLN_INFO" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
+            if [[ -n "$pubkey" && "$pubkey" != "null" && -n "$ipv4_address" && "$ipv4_address" != "null" && -n "$ipv4_port" && "$ipv4_port" != "null" ]]; then
+              external_address="${pubkey}@${ipv4_address}:${ipv4_port}"
+            else
+              external_address="N/A"
+            fi
+          fi
+        fi
+      else
+        echo "Could not find 'lncli' or 'lightning-cli' commands globally for manual setup." >&2
+        echo "$node_type"
+        echo "N/A"
+        # Return 1 is handled by the overall function, no explicit return needed here for just the command check
+      fi
+      ;;
+    *)
+      echo "Unknown setup type: $setup_type" >&2
+      echo "$node_type"
+      echo "N/A"
+      # Return 1 is handled by the overall function, no explicit return needed here for just the unknown type check
+      ;;
+  esac
+
+  # Output node type and external address on separate lines (always output, even on error)
+  # The calling script will read these two lines.
+  echo "$node_type"
+  echo "$external_address"
+}
+
+# Determine setup type and get external address
+lightning_implementation=$(check_docker_setup) # e.g., "docker-lnd", "docker-core-lightning", or "manual"
+ node_info=$(get_node_external_address "$lightning_implementation") # Capture both lines of output_implementation")
+ node_type=$(echo "$node_info" | head -n 1)
+ external_address=$(echo "$node_info" | tail -n 1)
 
 # Display summary
 echo -e "\e[1;32m=================================\e[0m"
@@ -218,8 +375,15 @@ echo -e "My Wireguard Tunnel Public Key: \e[1;34m$public_key\e[0m"
 echo -e "My transfer since last tunnel restart: \e[1;34m$transfer\e[0m"
 echo -e "Latest handshake with the Tunnel Server: \e[1;34m$latest_handshake\e[0m"
 echo ""
+echo -e "\e[1;33m--- VPN Details (Wireguard Tunnel Config) ---\e[0m"
 echo -e "Your VPN Server: \e[1;34m$endpoint\e[0m"
 echo -e "Your VPN Public Port: \e[1;34m$VPNPort\e[0m"
+echo ""
+if [[ -n "$node_type" ]]; then
+  echo -e "\e[1;33m--- {$node_type} Node Configuration Details ---\e[0m"
+else
+  echo -e "\e[1;33m--- Node Configuration Details ---\e[0m"
+fi
 echo -e "Your external Address: \e[1;34m$external_address\e[0m"
 echo ""
 echo -e "\e[1;32m--- Connectivity Check ---\e[0m"
