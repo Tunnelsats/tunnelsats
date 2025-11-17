@@ -518,9 +518,9 @@ io.on("connection", (socket) => {
   });
 
   // New Listening events for UpdateSubscription Request
-
-  socket.on("checkKeyDB", async ({ publicKey /*, serverURL */ }) => {
-    console.log(publicKey /*, serverURL*/);
+/*
+  socket.on("checkKeyDB", async ({ publicKey }) => {
+    console.log(publicKey);
 
     let keyID;
     let subscriptionEnd;
@@ -529,12 +529,13 @@ io.on("connection", (socket) => {
       { domain: "de1.tunnelsats.com", country: "eu" },
       { domain: "de3.tunnelsats.com", country: "eu2" },
       { domain: "de2.tunnelsats.com", country: "eu3" },
-      { domain: "us1.tunnelsats.com", country: "na" },
-      { domain: "us2.tunnelsats.com", country: "na2" },
+      { domain: "us2.tunnelsats.com", country: "na2" }, // us west
+      { domain: "us3.tunnelsats.com", country: "na3" }, // us east
+      { domain: "us1.tunnelsats.com", country: "na" }, // us east
       { domain: "sg1.tunnelsats.com", country: "as" },
       { domain: "br1.tunnelsats.com", country: "sa" },
-      //{ domain: "za1.tunnelsats.com", country: "af" },
       { domain: "au1.tunnelsats.com", country: "oc" },
+      //{ domain: "za1.tunnelsats.com", country: "af" },      
     ];
 
     for (const serverURL of servers) {
@@ -559,12 +560,16 @@ io.on("connection", (socket) => {
                 logDim("SubscriptionEnd: ", date.toISOString());
                 subscriptionEnd = date;
 
-                socket.emit("receiveKeyLookup", {
-                  keyID,
-                  subscriptionEnd,
-                  domain,
-                  country,
-                });
+                if (domain.includes("us1")) {
+                  socket.emit("receiveKeyLookup", "not-allowed");
+                } else {
+                  socket.emit("receiveKeyLookup", {
+                    keyID,
+                    subscriptionEnd,
+                    domain,
+                    country,
+                  });
+                };
 
                 return true;
               })
@@ -588,6 +593,98 @@ io.on("connection", (socket) => {
       socket.emit("receiveKeyLookup", null);
     }
   });
+*/
+
+socket.on("checkKeyDB", async ({ publicKey }) => {
+  console.log(`server: checkKeyDB with key ${publicKey}`);
+
+  let keyID;
+  let subscriptionEnd;
+  let success = false;
+  const servers = [
+    { domain: "de1.tunnelsats.com", country: "eu" },
+    { domain: "de3.tunnelsats.com", country: "eu2" },
+    { domain: "de2.tunnelsats.com", country: "eu3" },
+    { domain: "us2.tunnelsats.com", country: "na2" }, // us west
+    { domain: "us3.tunnelsats.com", country: "na3" }, // us east
+    { domain: "us1.tunnelsats.com", country: "na" }, // us east
+    { domain: "sg1.tunnelsats.com", country: "as" },
+    { domain: "br1.tunnelsats.com", country: "sa" },
+    { domain: "au1.tunnelsats.com", country: "oc" },
+    //{ domain: "za1.tunnelsats.com", country: "af" },      
+  ];
+
+  for (const serverURL of servers) {
+    if (success) break;
+
+    console.log(`server: CheckKeyDB server: ${serverURL.domain}`);
+    let country = serverURL.country;
+    let domain = serverURL.domain;
+
+    try {
+      const keyResult = await getKey({ publicKey, serverURL: domain });
+      keyID = keyResult.KeyID;
+
+      const subResult = await getSubscription({
+        keyID: keyResult.KeyID,
+        serverURL: domain,
+      });
+
+      console.log(subResult);
+      let unixTimestamp = parseBackendDate(subResult.subscriptionEnd);
+      let date = new Date(unixTimestamp);
+      logDim("SubscriptionEnd: ", date.toISOString());
+      subscriptionEnd = date;
+
+      // Special handling for us3: check us1 too
+      if (domain.includes("us3")) {
+        const us1Domain = "us1.tunnelsats.com";
+
+        try {
+          const us1KeyResult = await getKey({ publicKey, serverURL: us1Domain });
+
+          // If key in us3 and not in us1, renew us3
+          if (!us1KeyResult) {
+            socket.emit("receiveKeyLookup", {
+              keyID,
+              subscriptionEnd,
+              domain,
+              country,
+            });
+            success = true;
+          } else {
+            // Key in us3 and in us1, display popup "phase out"
+            socket.emit("receiveKeyLookup", "not-allowed");
+            success = true;
+          }
+        } catch (us1Error) {
+          logDim(`us1 check failed: ${us1Error.message}`);
+          // Us1 check failed: emit error
+          socket.emit("error", "Error checking servers. Please try again later.");
+          success = true;
+        }
+      } else {
+        // Non-us3 servers: emit normally
+        socket.emit("receiveKeyLookup", {
+          keyID,
+          subscriptionEnd,
+          domain,
+          country,
+        });
+        success = true;
+      }
+    } catch (error) {
+      logDim(`getKey or getSubscription: ${error.message}`);
+      // Continue to next server
+    }
+  }
+
+  if (!success) {
+    console.log(`emitting 'receiveKeyLookup': no key found`);
+    socket.emit("receiveKeyLookup", null);
+  }
+});
+
 
   /*
   socket.on("getServer", (country) => {
@@ -671,6 +768,9 @@ const getServer = (country) => {
       break;
     case "na2":
       server = process.env.IP_USA2;
+      break;
+    case "na3":
+      server = process.env.IP_USA3;
       break;
     case "sa":
       server = process.env.IP_LATAM;
@@ -1066,12 +1166,10 @@ async function getSubscription({ keyID, serverURL }) {
 }
 
 const getAuth = (serverURL) => {
-  if (
-    serverURL.includes("br1") ||
-    serverURL.includes("au1") ||
-    serverURL.includes("za1")
-  )
+  const vultrServers = ["br1", "au1"/*, "za1"*/];
+  if (serverURL.includes(...vultrServers)) {
     return process.env.AUTH_VULTR;
+  }
 
   return process.env.AUTH;
 };

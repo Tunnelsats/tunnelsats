@@ -1,4 +1,4 @@
-import React from "react";
+//import React from "react";
 import { Modal, Button } from "react-bootstrap";
 
 const Popup = (props) => {
@@ -20,7 +20,7 @@ const Popup = (props) => {
 
         <Modal.Body>
           <div>
-            <p>{props.errorMessage}</p>
+            <div>{props.errorMessage}</div>
           </div>
         </Modal.Body>
         <Modal.Footer>
