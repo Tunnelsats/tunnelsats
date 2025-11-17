@@ -13,7 +13,10 @@ const fetch = require("node-fetch-commonjs");
 const { logDim } = require("./logger");
 require("dotenv").config();
 
-DEBUG = true;
+const DEBUG = process.env.DEBUG === 'true';
+if(DEBUG) {
+  console.log('Debug mode on');
+}
 
 // This array saves all invoices and wg keys (received by the client connection)
 // As soon as the invoice is paid the server sends the config information to the related client
