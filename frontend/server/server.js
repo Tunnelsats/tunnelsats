@@ -146,6 +146,8 @@ const io = require("socket.io")(httpServer, {
 
 // Set up the Webserver
 app.use(express.static(path.join(__dirname, "../client/build")));
+app.use(express.json());
+app.use(express.urlencoded({ extended:true }));
 
 // Serving the index site
 app.get("/", function (req, res) {
