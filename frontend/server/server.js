@@ -1,6 +1,5 @@
 const express = require("express");
 const path = require("path");
-const bodyParser = require("body-parser");
 const axios = require("axios");
 const nodemailer = require("nodemailer");
 const dayjs = require("dayjs");
@@ -147,18 +146,53 @@ const io = require("socket.io")(httpServer, {
 
 // Set up the Webserver
 app.use(express.static(path.join(__dirname, "../client/build")));
-app.use(bodyParser.json());
+app.use(express.json());
+app.use(express.urlencoded({ extended:true }));
 
 // Serving the index site
 app.get("/", function (req, res) {
   res.sendFile(path.join(__dirname, "../client/build", "index.html"));
 });
 
+// New Middleware: Capture Raw Body
+app.use(function (req, res, next) {
+  var data = '';
+  req.setEncoding('utf8');
+  req.on('data', function(chunk) {
+    data += chunk;
+  });
+  req.on('end', function() {
+    req.rawBodyString = data; // Payload is now stored as a string
+    next();
+  });
+});
+
+
 // Invoice Webhook for Lnbits
 // This API endpoint is called after an invoice is paid
 app.post(process.env.WEBHOOK, (req, res) => {
+
+  DEBUG && logDim("--- Webhook received! ---");
+  DEBUG && logDim("RAW Request Body:", req.rawBodyString);
+
+  let payload;
+  try {
+      payload = JSON.parse(JSON.parse(req.rawBodyString));
+  } catch (e) {
+      logDim("Webhook Manual Parsing Error:", e.message);
+      return res.status(400).end();
+  }
+  
+  // 🔍 NEW DIAGNOSTIC STEP: Check entire memory state before lookup
+  DEBUG && logDim("--- MEMORY DUMP BEFORE LOOKUP ---");
+  DEBUG && logDim("Expected Hash:", payload.payment_hash);
+  DEBUG && console.log(invoiceWGKeysMap);
+  DEBUG && logDim("--- END MEMORY DUMP ---");
+  
+  // Use the parsed 'payload' object for the lookup
   const index = invoiceWGKeysMap.findIndex((client) => {
-    return client.paymentDetails.payment_hash === req.body.payment_hash;
+      // Look for exact match between stored hash and webhook hash
+      return client.paymentDetails.payment_hash === payload.payment_hash;
   });
 
   if (index !== -1) {
@@ -172,7 +206,8 @@ app.post(process.env.WEBHOOK, (req, res) => {
       amountSats,
     } = invoiceWGKeysMap[index];
 
-    checkInvoice(paymentDetails.payment_hash).then((result) => {
+    // Ensure we use the payload hash for the final check against LNbits
+    checkInvoice(payload.payment_hash).then((result) => {
       if (!!result) {
         invoiceWGKeysMap[index].isPaid = true;
 
@@ -217,21 +252,46 @@ app.post(process.env.WEBHOOK, (req, res) => {
           });
       } else {
         logDim(`Invoice not Paid Invoice: ${paymentDetails.payment_hash}`);
+        res.status(500).end(); // Treat verification failure as server error
       }
-    });
+    })
+      .catch((error) => {
+        logDim(`Check Invoice API Error: ${error.message}`);
+        res.status(500).end(); // Handle API call failures
+      });
   } else {
-    logDim(`No Invoice and corresponding connection found in memory`);
-    logDim(`Probably Server crashed and lost invoice memory`);
-
-    res.status(500).end();
+      logDim(`No Invoice and corresponding connection found in memory`);
+      logDim(`Server state likely lost or invoice expired.`);
+      res.status(500).end(); // Return 500 so LNbits can eventually try again
   }
 });
+
 
 // Webhook for updating the Subcription
 // Invoice Webhook
 app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
+
+  DEBUG && logDim("--- Webhook received! ---");
+  DEBUG && logDim("RAW Request Body:", req.rawBodyString);
+
+  let payload;
+  try {
+      payload = JSON.parse(JSON.parse(req.rawBodyString));
+  } catch (e) {
+      logDim("Webhook Manual Parsing Error:", e.message);
+      return res.status(400).end();
+  }
+  
+  // 🔍 NEW DIAGNOSTIC STEP: Check entire memory state before lookup
+  DEBUG && logDim("--- MEMORY DUMP BEFORE LOOKUP ---");
+  DEBUG && logDim("Expected Hash:", payload.payment_hash);
+  DEBUG && console.log(invoiceWGKeysMap);
+  DEBUG && logDim("--- END MEMORY DUMP ---");
+  
+  // Use the parsed 'payload' object for the lookup
   const index = invoiceWGKeysMap.findIndex((client) => {
-    return client.paymentDetails.payment_hash === req.body.payment_hash;
+      // Look for exact match between stored hash and webhook hash
+      return client.paymentDetails.payment_hash === payload.payment_hash;
   });
 
   if (index !== -1) {
@@ -247,7 +307,7 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
 
     invoiceWGKeysMap[index].isPaid = true;
 
-    checkInvoice(paymentDetails.payment_hash).then((result) => {
+    checkInvoice(payload.payment_hash).then((result) => {
       if (!!result) {
         // Needed for now to notify the client to stop the spinner
         io.to(id).emit(
