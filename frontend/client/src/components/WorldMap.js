@@ -549,14 +549,14 @@ const WorldMap = (props) => {
               <Popover.Title as="h3">North America</Popover.Title>
               <Popover.Content>
                 <IoLocation color="#ffc700" size={20} />{" "}
-                <strong>Server Location: </strong>🇺🇸 New York City
+                <strong>Server Location: </strong>🇺🇸 Ashburn
                 <br />
                 <br />
                 <FaServer color="#ffc700" size={20} />{" "}
                 <strong>Current Uptime:</strong>
                 <img
                   className="serverLabel"
-                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fus1-tunnelsats-com%2Fuptime-week.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fus3-tunnelsats-com%2Fuptime-week.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
                   alt=""
                 />
                 <br />
@@ -564,7 +564,7 @@ const WorldMap = (props) => {
                 (US based)<strong>:</strong>
                 <img
                   className="serverLabel"
-                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fus1-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
+                  src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FTunnelsats%2Fupptime%2Fmaster%2Fapi%2Fus3-tunnelsats-com%2Fresponse-time.json&style=flat-square&label=&labelColor=rgba(0,0,0,0)&color=rgba(0,0,0,0)"
                   alt=""
                 />
               </Popover.Content>
@@ -578,8 +578,8 @@ const WorldMap = (props) => {
             r="7"
             fill="#cc0000"
             id="NA"
-            className={getClassname(["na"])}
-            onClick={onMapClick.bind(this, "na")}
+            className={getClassname(["na", "na3"])}
+            onClick={onMapClick.bind(this, "na3")}
           />
         </OverlayTrigger>
 
