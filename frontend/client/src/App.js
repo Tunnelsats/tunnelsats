@@ -478,7 +478,7 @@ function App() {
         DEBUG && console.log(result);
         setSpinnerQuery(false);
       } else if (result == "not-allowed") {
-        setPopupMessage(<span>This VPN server is going to be phased out. Please switch to us3.tunnelsats.com / 'Ashburn' (see{" "}
+        setPopupMessage(<span>This VPN server is going to be phased out. Please switch to us3.tunnelsats.com / Ashburn (see{" "}
       <a
         href="https://guide.tunnelsats.com/FAQ.html#phasing-out-us1tunnelsatscom---how-to-switch-to-us3tunnelsatscom"
         target="_blank"
