@@ -40,7 +40,7 @@ const REACT_APP_NOSTR_URL = process.env.REACT_APP_NOSTR_URL || "";
 const REACT_APP_SOCKETIO = process.env.REACT_APP_SOCKETIO || "/";
 
 const REACT_APP_REF = process.env.REACT_APP_REF;
-const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT);
+const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT) || 0;
 
 const DEBUG = false;
 
@@ -113,8 +113,8 @@ function App() {
   const hidePopupModal = () => showPopupModal(false);
   const [popupMessage, setPopupMessage] = useState("");
 
-  // special discounts
-  const [discount, setDiscount] = useState(1.0);
+  // enable / disable special discount
+  const [discount, setDiscount] = useState(false);
 
   // node stats from mempool.space
   const [nodeStats, setNodeStats] = useState([0, 0, 0, 0]);
@@ -235,7 +235,7 @@ function App() {
     const param = queryParams.get("ref");
     // set discount per ref
     if (param == REACT_APP_REF) {
-      setDiscount(REACT_APP_DISCOUNT);
+      setDiscount(true);
     }
   };
 
@@ -633,7 +633,7 @@ function App() {
                   >
                     Onion 🧅
                   </Nav.Link>
-                  {discount != 1.0 ? (
+                  {discount ? (
                     <Nav.Link>
                       <strong>⚡️ Black Friday Special 20% Off ⚡️</strong>
                     </Nav.Link>
@@ -714,7 +714,7 @@ function App() {
             <Col>
               {/* Logo */}
               <img
-                src={discount != 1.0 ? logo_bf : logo}
+                src={discount ? logo_bf : logo}
                 alt=""
                 className="logo"
               />
@@ -821,10 +821,10 @@ function App() {
                             ) : (
                               <div className="price">
                                 <h3>
-                                  {discount != 1.0
+                                  {discount 
                                     ? Math.trunc(
                                         Math.round(
-                                          priceDollar * satsPerDollar * (1 - discount)
+                                          priceDollar * satsPerDollar * (1 - REACT_APP_DISCOUNT)
                                         )
                                       ).toLocaleString()
                                     : Math.trunc(
@@ -849,10 +849,10 @@ function App() {
                             // preshared key is not set
                             "-",
                             country,
-                            discount != 1.0
+                            discount 
                             ? Math.trunc(
                                 Math.round(
-                                  priceDollar * satsPerDollar * (1 - discount)
+                                  priceDollar * satsPerDollar * (1 - REACT_APP_DISCOUNT)
                                 )
                               )
                             : Math.trunc(Math.round(priceDollar * satsPerDollar)),
@@ -886,10 +886,10 @@ function App() {
                         keyPair.publicKey,
                         keyPair.presharedKey,
                         country,
-                        discount != 1.0
+                        discount 
                           ? Math.trunc(
                               Math.round(
-                                priceDollar * satsPerDollar * (1 - discount)
+                                priceDollar * satsPerDollar * (1 - REACT_APP_DISCOUNT)
                               )
                             )
                           : Math.trunc(Math.round(priceDollar * satsPerDollar)),
@@ -975,10 +975,10 @@ function App() {
                       ) : (
                         <div className="price">
                           <h3>
-                            {discount != 1.0
+                            {discount 
                               ? Math.trunc(
                                   Math.round(
-                                    priceDollar * satsPerDollar * (1 - discount)
+                                    priceDollar * satsPerDollar * (1 - REACT_APP_DISCOUNT)
                                   )
                                 ).toLocaleString()
                               : Math.trunc(
@@ -1000,10 +1000,10 @@ function App() {
                           keyPair.publicKey,
                           keyPair.presharedKey,
                           country,
-                          discount != 1.0
+                          discount 
                             ? Math.trunc(
                                 Math.round(
-                                  priceDollar * satsPerDollar * (1 - discount)
+                                  priceDollar * satsPerDollar * (1 - REACT_APP_DISCOUNT)
                                 )
                               )
                             : Math.trunc(
@@ -1037,10 +1037,10 @@ function App() {
                         keyPair.publicKey,
                         keyPair.presharedKey,
                         country,
-                        discount != 1.0
+                        discount 
                         ? Math.trunc(
                             Math.round(
-                              priceDollar * satsPerDollar * (1 - discount)
+                              priceDollar * satsPerDollar * (1 - REACT_APP_DISCOUNT)
                             )
                           )
                         : Math.trunc(Math.round(priceDollar * satsPerDollar))
