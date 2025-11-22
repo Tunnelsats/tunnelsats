@@ -384,7 +384,7 @@ io.on("connection", (socket) => {
           const priceDollar = PRICESUBSCRIBTIONMAP[payload.selection - 1];
           //const priceSats = Math.round(satsPerDollar * priceDollar);
           //BF hardcoded
-          const priceSats = Math.trunc(Math.round(priceDollar * satsPerDollar * 0.8));
+          const priceSats = Math.trunc(Math.round(priceDollar * satsPerDollar * (1 - REACT_APP_DISCOUNT)));
           let paymentDetails;
 
           if (payload.isRenew) {
