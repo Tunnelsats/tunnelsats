@@ -69,7 +69,7 @@ const PRICESUBSCRIBTIONMAP = [
 
 // In case we have a discount period we need to account for it
 // on the server side
-const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT) || 1.0;
+const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT);
 
 // Cleaning Ram from old PaymentRequest data
 
@@ -382,13 +382,9 @@ io.on("connection", (socket) => {
             return;
           }
           const priceDollar = PRICESUBSCRIBTIONMAP[payload.selection - 1];
-          const priceSats = Math.round(satsPerDollar * priceDollar);
-
+          //const priceSats = Math.round(satsPerDollar * priceDollar);
           //BF hardcoded
-          if(payload.isDiscount) {
-            priceSats = Math.trunc(Math.round(priceDollar * satsPerDollar * (1 - REACT_APP_DISCOUNT)));
-          }
-
+          const priceSats = Math.trunc(Math.round(priceDollar * satsPerDollar * 0.8));
           let paymentDetails;
 
           if (payload.isRenew) {
