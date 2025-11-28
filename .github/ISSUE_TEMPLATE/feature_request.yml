@@ -1,0 +1,31 @@
+name: ✨ Feature Request
+description: Suggest a new feature, enhancement, or idea for Tunnelsats.
+title: "[FEATURE]: Clear, brief description of the idea"
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping Tunnelsats improve! Please fill out the fields below.
+  - type: textarea
+    id: problem-related
+    attributes:
+      label: Is your feature request related to a problem? (Optional)
+      description: Briefly describe what problem this new feature would solve.
+      placeholder: When I do X, Y is missing, which leads to an inefficient workflow.
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Describe the desired feature/idea.
+      description: Be as clear as possible about what exactly you envision.
+      placeholder: A new button/endpoint/client command for Z.
+    validations:
+      required: true
+  - type: textarea
+    id: benefit
+    attributes:
+      label: How will this benefit Tunnelsats users?
+      description: Why is this feature important?
+    validations:
+      required: true

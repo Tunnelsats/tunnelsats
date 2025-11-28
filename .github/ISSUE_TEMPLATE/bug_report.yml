@@ -1,0 +1,108 @@
+name: 🐛 Bug Report & Troubleshooting
+description: Report a bug, unexpected behavior, or troubleshooting needs after installation.
+title: "[BUG]: Brief description of the issue"
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping keep Tunnelsats stable! Please ensure you have reviewed the [Installation Guide](https://guide.tunnelsats.com/) and [FAQ](https://guide.tunnelsats.com/FAQ.html) before submitting.
+  - type: dropdown
+    id: node-setup
+    attributes:
+      label: Node Setup & Lightning Implementation
+      description: Which setup and lightning implementation are you using?
+      options:
+        - RaspiBlitz (LND)
+        - RaspiBlitz (CLN)
+        - Umbrel (LND)
+        - Umbrel (CLN)
+        - RaspiBolt (LND)
+        - RaspiBolt (CLN)
+        - MyNode (LND)
+        - Bare Metal / Other (specify in Context)
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Android
+        - iOS
+        - Other (specify in Context)
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce the Problem
+      description: Please describe the steps exactly, including the command and output where the error occurred.
+      placeholder: |
+        1. Ran command X
+        2. Expected Z, but received A
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      description: A brief description of the expected, correct behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+      description: A brief description of the unexpected, erroneous behavior.
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        ## 🔍 Troubleshooting Checks
+        *Please run these checks from the [FAQ > Troubleshooting & Verification](https://guide.tunnelsats.com/FAQ.html) section and paste the results below.*
+  - type: textarea
+    id: wg-check
+    attributes:
+      label: 1. WireGuard Status Check
+      description: What is the output of `sudo wg show` (especially the `latest handshake` line)?
+      render: shell
+  - type: textarea
+    id: outbound-check
+    attributes:
+      label: 2. Outbound Connection Check
+      description: What is the output of the relevant IP check command? (E.g., `docker run...` or `cgexec...`)
+      placeholder: Paste the IP address or error message here.
+      render: shell
+  - type: textarea
+    id: inbound-check
+    attributes:
+      label: 3. Inbound Connection Check (netcat)
+      description: What is the output of the `nc -zv <your-vpn-dns> <your-vpn-port>` command?
+      placeholder: "Example: Connection to de3.tunnelsats.com port 32320 [tcp/*] succeeded!"
+      render: shell
+  - type: textarea
+    id: config-snippet
+    attributes:
+      label: 4. Relevant Configuration Snippet (REMOVE SENSITIVE DATA)
+      description: |
+        **🚨 WARNING: Remove ALL private/sensitive keys (e.g., LND macaroons, PrivateKey, Payment Hash, Wallet Seed) before pasting.**
+
+        Paste the **exact** `[Application Options]` and `[Tor]` sections from your lightning configuration file (`lnd.conf` or `config`). Only include port numbers or IP addresses if explicitly relevant to the issue.
+      placeholder: |
+        [Application Options]
+        listen=0.0.0.0:9735
+        externalhosts={vpnDNS}:{vpnPort}
+        [Tor]
+        tor.streamisolation=false
+        tor.skip-proxy-for-clearnet-targets=true
+      render: code
+  - type: textarea
+    id: context
+    attributes:
+      label: 5. Logs and Additional Context (Optional)
+      description: Add any error messages from your lightning node logs (e.g., LND or CLN logs) or other context here.
+      render: shell
