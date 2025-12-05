@@ -1,4 +1,4 @@
-import { useState, React } from "react";
+import { useState } from "react";
 import { Modal, Button, InputGroup, FormControl } from "react-bootstrap";
 
 const EmailModal = (props) => {

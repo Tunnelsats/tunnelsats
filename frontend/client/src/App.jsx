@@ -14,18 +14,18 @@ import {
 } from "react-bootstrap";
 import io from "socket.io-client";
 import { useState } from "react";
-import useWindowDimensions from "./components/WindowSize";
-import RuntimeSelector from "./components/RuntimeSelector";
-import InvoiceModal from "./components/InvoiceModal";
-import RenewInvoiceModal from "./components/RenewInvoiceModal";
-import Popup from "./components/Popup";
-import { getTimeStamp } from "./timefunction.js";
-import HeaderInfo from "./components/HeaderInfo";
+import useWindowDimensions from "./components/WindowSize.jsx";
+import RuntimeSelector from "./components/RuntimeSelector.jsx";
+import InvoiceModal from "./components/InvoiceModal.jsx";
+import RenewInvoiceModal from "./components/RenewInvoiceModal.jsx";
+import Popup from "./components/Popup.jsx";
+import { getTimeStamp } from "./timefunction.jsx";
+import HeaderInfo from "./components/HeaderInfo.jsx";
 import logo from "./media/tunnelsats_headerlogo5.png";
 //import logo from "./media/tunnelsats_headerlogo5_BF.png";
-import WorldMap from "./components/WorldMap";
+import WorldMap from "./components/WorldMap.jsx";
 import { IoIosRefresh, IoIosInformationCircleOutline } from "react-icons/io";
-import "./wireguard.js";
+import "./wireguard.jsx";
 
 // helper
 const getDate = (timestamp) =>
