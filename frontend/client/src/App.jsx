@@ -249,13 +249,6 @@ function App() {
     renderPopupModal();
   });
 
-  /*
-  socket.removeAllListeners("receiveServer").on("receiveServer", (server) => {
-    DEBUG && console.log(`${getDate()} App.js: received server: `, server);
-    setServer(server);
-  });
-  */
-
   // get current btc per dollar
   const getPrice = () => {
     socket.removeAllListeners("getPrice").emit("getPrice");
@@ -391,15 +384,6 @@ function App() {
   };
 
   // renew subscription methods
-
-  /*
-  useEffect(() => {
-    setNewTime("");
-    setTime("");
-    setTimeValid(false);
-    socket.emit("getServer", country);
-  }, [country]);
-  */
 
   const handleChangeServer = (event) => {
     setServer({ server: event.target.value });
