@@ -1,4 +1,4 @@
-const express = require("express");
+import express from "express";
 const path = require("path");
 const bodyParser = require("body-parser");
 const axios = require("axios");
@@ -12,7 +12,6 @@ const lightningPayReq = require("bolt11");
 const { SocksProxyAgent } = require("socks-proxy-agent");
 const fetch = require("node-fetch-commonjs");
 const { logDim } = require("./logger");
-require("dotenv").config();
 
 DEBUG = true;
 
@@ -135,7 +134,7 @@ const sayWithTelegram = async ({ message, parse_mode = "HTML" }) => {
 
 // Server Settings
 const createServer = require("http");
-const { response } = require("express");
+//const { response } = require("express");
 // const { rootCertificates } = require('tls');
 const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {

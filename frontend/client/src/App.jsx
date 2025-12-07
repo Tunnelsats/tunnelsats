@@ -127,7 +127,7 @@ function App() {
   //const toggleShowA = () => setShowA(!showA);
 
   // get window size
-  const { height, width } = useWindowDimensions();
+  const { width } = useWindowDimensions();
 
   //Successful payment alert
   const renderAlert = (show) => {
