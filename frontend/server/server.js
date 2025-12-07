@@ -39,37 +39,37 @@ function isEmpty(obj) {
 }
 
 // Telegram Settings
-const TELEGRAM_CHATID = process.env.TELEGRAM_CHATID || "";
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || "";
-const TELEGRAM_PREFIX = process.env.TELEGRAM_PREFIX || "";
+const TELEGRAM_CHATID = import.meta.env.TELEGRAM_CHATID || "";
+const TELEGRAM_TOKEN = import.meta.env.TELEGRAM_TOKEN || "";
+const TELEGRAM_PREFIX = import.meta.env.TELEGRAM_PREFIX || "";
 
 // Tor Proxy for Telegram Bot
-const TELEGRAM_PROXY_HOST = process.env.TELEGRAM_PROXY_HOST || "";
-const TELEGRAM_PROXY_PORT = process.env.TELEGRAM_PROXY_PORT || "";
+const TELEGRAM_PROXY_HOST = import.meta.env.TELEGRAM_PROXY_HOST || "";
+const TELEGRAM_PROXY_PORT = import.meta.env.TELEGRAM_PROXY_PORT || "";
 
 // Env Variables to have the same code base main and dev
-const REACT_APP_ONE_MONTH = process.env.REACT_APP_ONE_MONTH || 3.0;
-const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 8.5;
-const REACT_APP_SIX_MONTHS = process.env.REACT_APP_SIX_MONTHS || 16.0;
-const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 28.5;
+const VITE_ONE_MONTH = import.meta.env.VITE_ONE_MONTH || 3.0;
+const VITE_THREE_MONTHS = import.meta.env.VITE_THREE_MONTHS || 8.5;
+const VITE_SIX_MONTHS = import.meta.env.VITE_SIX_MONTHS || 16.0;
+const VITE_ONE_YEAR = import.meta.env.VITE_ONE_YEAR || 28.5;
 
 // fetch latest git commit hash
-const URL_GIT_COMMIT_HASH = process.env.URL_GIT_COMMIT_HASH || "";
+const URL_GIT_COMMIT_HASH = import.meta.env.URL_GIT_COMMIT_HASH || "";
 
 // This map is needed to verify that the client does not cheat us
 // and sends us the wrong pricing
 // client sends us the selection and the price we verify and only
 // allow invoice creation if the client behaves corrently
 const PRICESUBSCRIBTIONMAP = [
-  REACT_APP_ONE_MONTH,
-  REACT_APP_THREE_MONTHS,
-  REACT_APP_SIX_MONTHS,
-  REACT_APP_ONE_YEAR,
+  VITE_ONE_MONTH,
+  VITE_THREE_MONTHS,
+  VITE_SIX_MONTHS,
+  VITE_ONE_YEAR,
 ];
 
 // In case we have a discount period we need to account for it
 // on the server side
-//const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT);
+//const VITE_DISCOUNT = parseFloat(import.meta.env.VITE_DISCOUNT);
 
 // Cleaning Ram from old PaymentRequest data
 
@@ -156,7 +156,7 @@ app.get("/", function (req, res) {
 
 // Invoice Webhook for Lnbits
 // This API endpoint is called after an invoice is paid
-app.post(process.env.WEBHOOK, (req, res) => {
+app.post(import.meta.env.WEBHOOK, (req, res) => {
   const index = invoiceWGKeysMap.findIndex((client) => {
     return client.paymentDetails.payment_hash === req.body.payment_hash;
   });
@@ -229,7 +229,7 @@ app.post(process.env.WEBHOOK, (req, res) => {
 
 // Webhook for updating the Subcription
 // Invoice Webhook
-app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
+app.post(import.meta.env.WEBHOOK_UPDATE_SUB, (req, res) => {
   const index = invoiceWGKeysMap.findIndex((client) => {
     return client.paymentDetails.payment_hash === req.body.payment_hash;
   });
@@ -305,8 +305,8 @@ app.post(process.env.WEBHOOK_UPDATE_SUB, (req, res) => {
   }
 });
 
-httpServer.listen(process.env.PORT, "0.0.0.0");
-console.log(`${getDate()} httpServer listening on port ${process.env.PORT}`);
+httpServer.listen(import.meta.env.PORT, "0.0.0.0");
+console.log(`${getDate()} httpServer listening on port ${import.meta.env.PORT}`);
 
 // Socket Connections
 io.on("connection", (socket) => {
@@ -390,7 +390,7 @@ io.on("connection", (socket) => {
               paymentDetails = await getInvoice(
                 priceSats,
                 priceDollar,
-                process.env.URL_WEBHOOK_UPDATE_SUB
+                import.meta.env.URL_WEBHOOK_UPDATE_SUB
               );
             } else {
               logDim(`Error - keyID is not valid ${payload.keyID}`);
@@ -402,7 +402,7 @@ io.on("connection", (socket) => {
               paymentDetails = await getInvoice(
                 priceSats,
                 priceDollar,
-                process.env.URL_WEBHOOK
+                import.meta.env.URL_WEBHOOK
               );
             }
           }
@@ -606,31 +606,31 @@ const getServer = (country) => {
 
   switch (country) {
     case "eu":
-      server = process.env.IP_EU;
+      server = import.meta.env.IP_EU;
       break;
     case "eu2":
-      server = process.env.IP_EU2;
+      server = import.meta.env.IP_EU2;
       break;
     case "eu3":
-      server = process.env.IP_EU3;
+      server = import.meta.env.IP_EU3;
       break;
     case "na":
-      server = process.env.IP_USA;
+      server = import.meta.env.IP_USA;
       break;
     case "na2":
-      server = process.env.IP_USA2;
+      server = import.meta.env.IP_USA2;
       break;
     case "na3":
-      server = process.env.IP_USA3;
+      server = import.meta.env.IP_USA3;
       break;
     case "sa":
-      server = process.env.IP_LATAM;
+      server = import.meta.env.IP_LATAM;
       break;
     case "as":
-      server = process.env.IP_ASIA;
+      server = import.meta.env.IP_ASIA;
       break;
     case "oc":
-      server = process.env.IP_OCEANIA;
+      server = import.meta.env.IP_OCEANIA;
       break;
     default:
       server = "";
@@ -646,22 +646,22 @@ const getTimeStamp = (selectedValue, offset) => {
     date = new Date(offset);
   }
 
-  if (selectedValue == REACT_APP_ONE_MONTH) {
+  if (selectedValue == VITE_ONE_MONTH) {
     date = addMonths(date, 1);
     return date;
   }
 
-  if (selectedValue == REACT_APP_THREE_MONTHS) {
+  if (selectedValue == VITE_THREE_MONTHS) {
     date = addMonths(date, 3);
     return date;
   }
 
-  if (selectedValue == REACT_APP_SIX_MONTHS) {
+  if (selectedValue == VITE_SIX_MONTHS) {
     date = addMonths(date, 6);
     return date;
   }
 
-  if (selectedValue == REACT_APP_ONE_YEAR) {
+  if (selectedValue == VITE_ONE_YEAR) {
     date = addMonths(date, 12);
     return date;
   }
@@ -691,8 +691,8 @@ const parseDate = (date) => {
 async function getInvoice(amount, priceDollar, webhook) {
   return axios({
     method: "post",
-    url: process.env.URL_INVOICE_API,
-    headers: { "X-Api-Key": process.env.INVOICE_KEY },
+    url: import.meta.env.URL_INVOICE_API,
+    headers: { "X-Api-Key": import.meta.env.INVOICE_KEY },
     data: {
       out: false,
       amount: amount,
@@ -718,7 +718,7 @@ async function getInvoice(amount, priceDollar, webhook) {
 async function getPrice() {
   return axios({
     method: "get",
-    url: process.env.URL_PRICE_API,
+    url: import.meta.env.URL_PRICE_API,
   })
     .then(function (response) {
       if (!isEmpty(response.data)) {
@@ -847,12 +847,12 @@ async function sendEmail(emailAddress, configData, date) {
   };
 
   const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
+    host: import.meta.env.EMAIL_HOST,
+    port: import.meta.env.EMAIL_PORT,
     secure: false, // true for 465, false for other ports
     auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
+      user: import.meta.env.EMAIL_USER,
+      pass: import.meta.env.EMAIL_PASS,
     },
     tls: {
       rejectUnauthorized: false,
@@ -872,8 +872,8 @@ async function sendEmail(emailAddress, configData, date) {
 async function checkInvoice(hash) {
   return axios({
     method: "get",
-    url: `${process.env.URL_INVOICE_API}/${hash}`,
-    headers: { "X-Api-Key": process.env.INVOICE_KEY },
+    url: `${import.meta.env.URL_INVOICE_API}/${hash}`,
+    headers: { "X-Api-Key": import.meta.env.INVOICE_KEY },
   })
     .then(function (response) {
       if (response.data.paid) {
@@ -1019,8 +1019,8 @@ async function getSubscription({ keyID, serverURL }) {
 const getAuth = (serverURL) => {
   const vultrServers = ["br1", "au1"/*, "za1"*/];
   if (serverURL.includes(...vultrServers)) {
-    return process.env.AUTH_VULTR;
+    return import.meta.env.AUTH_VULTR;
   }
 
-  return process.env.AUTH;
+  return import.meta.env.AUTH;
 };

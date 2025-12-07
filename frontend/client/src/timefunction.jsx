@@ -1,8 +1,8 @@
 // Env Variables to have the same code base main and dev
-const REACT_APP_ONE_MONTH = process.env.REACT_APP_ONE_MONTH || 3.0;
-const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 8.5;
-const REACT_APP_SIX_MONTHS = process.env.REACT_APP_SIX_MONTHS || 16.0;
-const REACT_APP_ONE_YEAR = process.env.REACT_APP_ONE_YEAR || 28.5;
+const VITE_ONE_MONTH = import.meta.env.VITE_ONE_MONTH || 3.0;
+const VITE_THREE_MONTHS = import.meta.env.VITE_THREE_MONTHS || 8.5;
+const VITE_SIX_MONTHS = import.meta.env.VITE_SIX_MONTHS || 16.0;
+const VITE_ONE_YEAR = import.meta.env.VITE_ONE_YEAR || 28.5;
 
 const getTimeStamp = (selectedValue, offset) => {
   let date = new Date();
@@ -11,19 +11,19 @@ const getTimeStamp = (selectedValue, offset) => {
     date = new Date(unixtime);
   }
 
-  if (selectedValue == REACT_APP_ONE_MONTH) {
+  if (selectedValue == VITE_ONE_MONTH) {
     date = addMonths(date, 1);
     return date;
   }
-  if (selectedValue == REACT_APP_THREE_MONTHS) {
+  if (selectedValue == VITE_THREE_MONTHS) {
     date = addMonths(date, 3);
     return date;
   }
-  if (selectedValue == REACT_APP_SIX_MONTHS) {
+  if (selectedValue == VITE_SIX_MONTHS) {
     date = addMonths(date, 6);
     return date;
   }
-  if (selectedValue == REACT_APP_ONE_YEAR) {
+  if (selectedValue == VITE_ONE_YEAR) {
     date = addMonths(date, 12);
     return date;
   }

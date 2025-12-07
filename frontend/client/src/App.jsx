@@ -34,18 +34,18 @@ const base64regex =
   /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
 
 // env variables to have the same code base main and dev
-const REACT_APP_THREE_MONTHS = process.env.REACT_APP_THREE_MONTHS || 8.5;
-const REACT_APP_LNBITS_URL = process.env.REACT_APP_LNBITS_URL || "";
-const REACT_APP_NOSTR_URL = process.env.REACT_APP_NOSTR_URL || "";
-const REACT_APP_SOCKETIO = process.env.REACT_APP_SOCKETIO || "/";
+const VITE_THREE_MONTHS = import.meta.env.VITE_THREE_MONTHS || 8.5;
+const VITE_LNBITS_URL = import.meta.env.VITE_LNBITS_URL || "";
+const VITE_NOSTR_URL = import.meta.env.VITE_NOSTR_URL || "";
+const VITE_SOCKETIO = import.meta.env.VITE_SOCKETIO || "/";
 
-const REACT_APP_REF = process.env.REACT_APP_REF || "";
-const REACT_APP_DISCOUNT = parseFloat(process.env.REACT_APP_DISCOUNT);
+const VITE_REF = import.meta.env.VITE_REF || "";
+const VITE_DISCOUNT = parseFloat(import.meta.env.VITE_DISCOUNT);
 
 const DEBUG = false;
 
 // WebSocket
-var socket = io.connect(REACT_APP_SOCKETIO);
+var socket = io.connect(VITE_SOCKETIO);
 // Consts
 var emailAddress;
 var clientPaymentHash;
@@ -57,7 +57,7 @@ function App() {
   const [keyPair, displayNewPair] = useState(
     window.wireguard.generateKeypair()
   );
-  const [priceDollar, updatePrice] = useState(REACT_APP_THREE_MONTHS);
+  const [priceDollar, updatePrice] = useState(VITE_THREE_MONTHS);
   const [subscriptionSelection, updateSelection] = useState("2");
   const [satsPerDollar, setSatsPerDollar] = useState(
     Math.round(100000000 / 20000)
@@ -234,8 +234,8 @@ function App() {
     const queryParams = new URLSearchParams(window.location.search);
     const param = queryParams.get("ref");
     // set discount per ref
-    if (param == REACT_APP_REF) {
-      setDiscount(REACT_APP_DISCOUNT);
+    if (param == VITE_REF) {
+      setDiscount(VITE_DISCOUNT);
     }
   };
 
@@ -572,7 +572,7 @@ function App() {
                       href="#"
                       onClick={() => {
                         showRenew();
-                        updatePrice(REACT_APP_THREE_MONTHS);
+                        updatePrice(VITE_THREE_MONTHS);
                       }}
                     >
                       Renew Subscription
@@ -582,7 +582,7 @@ function App() {
                       href="#"
                       onClick={() => {
                         hideRenew();
-                        updatePrice(REACT_APP_THREE_MONTHS);
+                        updatePrice(VITE_THREE_MONTHS);
                         handleSelectedCountry("na3");
                       }}
                     >
@@ -639,7 +639,7 @@ function App() {
                       href="#"
                       onClick={() => {
                         showRenew();
-                        updatePrice(REACT_APP_THREE_MONTHS);
+                        updatePrice(VITE_THREE_MONTHS);
                       }}
                     >
                       Renew Subscription
@@ -649,7 +649,7 @@ function App() {
                       href="#"
                       onClick={() => {
                         hideRenew();
-                        updatePrice(REACT_APP_THREE_MONTHS);
+                        updatePrice(VITE_THREE_MONTHS);
                       }}
                     >
                       Get Subscription
@@ -1050,7 +1050,7 @@ function App() {
                   </Col>
                   <Col>
                     <a
-                      href={REACT_APP_NOSTR_URL}
+                      href={VITE_NOSTR_URL}
                       target="_blank"
                       rel="noreferrer"
                     >
@@ -1059,7 +1059,7 @@ function App() {
                   </Col>
                   <Col>
                     <a
-                      href={REACT_APP_LNBITS_URL}
+                      href={VITE_LNBITS_URL}
                       target="_blank"
                       rel="noreferrer"
                     >
