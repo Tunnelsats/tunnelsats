@@ -1,4 +1,4 @@
-import React from "react";
+//import React from "react";
 import { Modal, Button, Form, InputGroup } from "react-bootstrap";
 
 const LoginModal = (props) => {
