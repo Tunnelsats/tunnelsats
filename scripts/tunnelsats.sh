@@ -2,13 +2,13 @@
 # TunnelSats Unified Setup Tool
 # Consolidates install, pre-check, uninstall, and status commands
 #
-# Usage: sudo ./tunnelsats.sh [command] [options]
+# Usage: sudo bash tunnelsats.sh [command] [options]
 
 set -e  # Exit on error
 
-#═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # GLOBAL VARIABLES
-#═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 VERSION="3.0beta"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,9 +16,9 @@ CONFIG_FILE=""
 PLATFORM=""
 LN_IMPL=""
 
-#═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # COLOR & FORMATTING FUNCTIONS
-#═══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 # ANSI Color codes
 RED='\033[0;31m'
@@ -28,20 +28,36 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
+
+print_line() {
+    local char="${1:-━}"
+    local count="${2:-42}"
+    printf "%0.s${char}" $(seq 1 $count)
+    echo ""
+}
+
 print_header() {
     local subtitle="$1"
-    local padding=$(( (42 - ${#subtitle}) / 2 ))
+    local title="Tunnel⚡Sats Setup Tool v${VERSION}"
+    local width=42
+    
+    # Calculate padding for Title
+    local title_len=${#title}
+    local title_padding=$(( (width - title_len) / 2 ))
+    local sub_padding=$(( (width - ${#subtitle}) / 2 ))
     
     echo -e "${BOLD}${BLUE}"
-    echo "╔══════════════════════════════════════════╗"
-    echo "║    Tunnel⚡Sats Setup Tool v${VERSION}    ║"
-    printf "║%*s%s%*s║\n" $padding "" "$subtitle" $((42 - padding - ${#subtitle})) ""
-    echo "╚══════════════════════════════════════════╝"
+    printf "╔"; print_line "═" "$width" | tr -d '\n'; echo "╗"
+    printf "║%*s%s%*s║\n" $title_padding "" "$title" $((width - title_padding - title_len)) ""
+    printf "║%*s%s%*s║\n" $sub_padding "" "$subtitle" $((width - sub_padding - ${#subtitle})) ""
+    printf "╚"; print_line "═" "$width" | tr -d '\n'; echo "╝"
     echo -e "${NC}"
 }
 
+
+
 print_success() {
-    echo -e "${GREEN}✓${NC} $1"
+    echo -e "${GREEN}✓${NC} $1" >&2
 }
 
 print_error() {
@@ -49,20 +65,20 @@ print_error() {
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠${NC}  $1"
+    echo -e "${YELLOW}⚠${NC}  $1" >&2
 }
 
 print_info() {
-    echo -e "${BLUE}→${NC} $1"
+    echo -e "${BLUE}→${NC} $1" >&2
 }
 
 print_step() {
-    echo -e "${BOLD}[$1/$2]${NC} $3"
+    echo -e "${BOLD}[$1/$2]${NC} $3" >&2
 }
 
-#══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # COMMON UTILITY FUNCTIONS
-#══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 check_root() {
     if [[ "$EUID" -ne 0 ]]; then
@@ -148,9 +164,9 @@ parse_config_metadata() {
     esac
 }
 
-#══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # CONFIG FILE DETECTION
-#══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 find_config_files() {
     local search_dir="${1:-.}"
@@ -177,15 +193,16 @@ find_config_files() {
 
 select_config_interactive() {
     local files=("$@")
-    echo ""
+    echo "" >&2
     print_info "Found ${#files[@]} WireGuard configuration file(s):"
-    echo ""
+    echo "" >&2
     
     for i in "${!files[@]}"; do
-        echo "  $((i+1))) ${files[$i]##*/}"
+        echo "  $((i+1))) ${files[$i]##*/}" >&2
     done
     
-    echo ""
+    echo "" >&2
+    # read -p prompts to stderr by default, but we need to ensure inputs don't clutter result
     read -p "Select config [1-${#files[@]}]: " selection
     
     if [[ "$selection" =~ ^[0-9]+$ ]] && \
@@ -218,12 +235,12 @@ detect_config_file() {
     
     if [[ ${#found_files[@]} -eq 0 ]]; then
         print_error "No WireGuard config files found"
-        echo ""
-        echo "Expected files:"
-        echo "  • tunnelsats_<server>.conf (e.g., tunnelsats_us-east.conf)"
-        echo "  • Any .conf file in the current directory"
-        echo ""
-        echo "Please place your config file here and try again."
+        echo "" >&2
+        echo "Expected files:" >&2
+        echo "  • tunnelsats_<server>.conf (e.g., tunnelsats_us-east.conf)" >&2
+        echo "  • Any .conf file in the current directory" >&2
+        echo "" >&2
+        echo "Please place your config file here and try again." >&2
         exit 1
         
     elif [[ ${#found_files[@]} -eq 1 ]]; then
@@ -240,15 +257,15 @@ detect_config_file() {
     fi
 }
 
-#══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # COMMAND HANDLERS
-#══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 cmd_help() {
     print_header "Usage Guide"
     
     cat << 'EOF'
-Usage: sudo ./tunnelsats.sh [COMMAND] [OPTIONS]
+Usage: sudo bash tunnelsats.sh [COMMAND] [OPTIONS]
 
 Commands:
   install              Install WireGuard VPN configuration
@@ -256,23 +273,27 @@ Commands:
   pre-check            Check system compatibility
   uninstall            Remove TunnelSats installation
   status               Show subscription and connection status
+  restart              Restart the WireGuard tunnel interface
   help                 Show this help message
 
 Examples:
   # Run compatibility check first
-  sudo ./tunnelsats.sh pre-check
+  sudo bash tunnelsats.sh pre-check
   
   # Install with auto-detection
-  sudo ./tunnelsats.sh install
+  sudo bash tunnelsats.sh install
   
   # Install with specific config
-  sudo ./tunnelsats.sh install --config tunnelsats_us-east.conf
+  sudo bash tunnelsats.sh install --config tunnelsats_us-east.conf
   
   # Check status
-  sudo ./tunnelsats.sh status
+  sudo bash tunnelsats.sh status
   
+  # Restart WireGuard tunnel
+  sudo bash tunnelsats.sh restart
+
   # Clean uninstall
-  sudo ./tunnelsats.sh uninstall
+  sudo bash tunnelsats.sh uninstall
 
 For more information:
   Website: https://tunnelsats.com
@@ -294,12 +315,17 @@ cmd_pre_check() {
     print_step 1 3 "Checking kernel version..."
     local kernelMajor=$(uname -r | cut -d '.' -f1)
     local kernelMinor=$(uname -r | cut -d '.' -f2)
-    local kernelPatch=$(uname -r | cut -d '.' -f3 | cut -d '-' -f1)
+    local kernelPatch=$(uname -r | cut -d '.' -f3 | cut -d '-' -f1 | tr -cd '0-9')
+    
+    # Defaults in case of parsing failure
+    kernelMajor=${kernelMajor:-0}
+    kernelMinor=${kernelMinor:-0}
+    kernelPatch=${kernelPatch:-0}
     
     if [[ $kernelMajor -gt 5 ]] || \
        [[ $kernelMajor -ge 5 && ( ($kernelMinor -ge 10 && $kernelPatch -ge 102) || $kernelMinor -ge 11 ) ]]; then
         print_success "Kernel $(uname -r) is compatible"
-        ((rating++))
+        ((rating+=1))
     else
         print_error "Kernel 5.10.102+ required (found $(uname -r))"
     fi
@@ -310,19 +336,27 @@ cmd_pre_check() {
     local nftablesVersion=""
     if command -v nft &>/dev/null; then
         nftablesVersion=$(nft -v | awk '{print $2}' | cut -d 'v' -f2)
+    elif command -v apt-cache &>/dev/null; then
+        nftablesVersion=$(apt-cache policy nftables | grep Candidate | awk '{print $2}' | cut -d '-' -f1)
     else
-        nftablesVersion=$(apt search nftables 2>/dev/null | grep "^nftables" | awk '{print $2}' | cut -d '-' -f1 || echo "0.0.0")
+        nftablesVersion="0.0.0"
     fi
     
+    if [[ -z "$nftablesVersion" ]]; then nftablesVersion="0.0.0"; fi
+
     local nftMajor=$(echo "$nftablesVersion" | cut -d '.' -f1)
     local nftMinor=$(echo "$nftablesVersion" | cut -d '.' -f2)
     local nftPatch=$(echo "$nftablesVersion" | cut -d '.' -f3)
     
+    nftMajor=${nftMajor:-0}
+    nftMinor=${nftMinor:-0}
+    nftPatch=${nftPatch:-0}
+    
     if [[ $nftMajor -ge 1 ]] || \
-       [[ $nftMinor -ge 9 && $nftPatch -ge 6 ]] || \
-       [[ $nftMinor -ge 10 ]]; then
+       [[ $nftMajor -eq 0 && $nftMinor -ge 9 && $nftPatch -ge 6 ]] || \
+       [[ $nftMajor -eq 0 && $nftMinor -ge 10 ]]; then
         print_success "nftables $nftablesVersion is compatible"
-        ((rating++))
+        ((rating+=1))
     else
         print_error "nftables 0.9.6+ required (found $nftablesVersion)"
     fi
@@ -332,19 +366,19 @@ cmd_pre_check() {
     print_step 3 3 "Looking for Lightning implementation..."
     if [[ -f /etc/systemd/system/lnd.service ]]; then
         print_success "Found lnd.service"
-        ((rating++))
+        ((rating+=1))
     elif [[ -f /etc/systemd/system/lightningd.service ]]; then
         print_success "Found lightningd.service"
-        ((rating++))
+        ((rating+=1))
     else
         print_info "Checking for Docker containers..."
         local dockerProcess=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' 2>/dev/null | grep -E "0.0.0.0:9735|0.0.0.0:9736" | awk '{print $2}' || echo "")
         if [[ ${dockerProcess} == *lnd* ]]; then
             print_success "Found LND container"
-            ((rating++))
+            ((rating+=1))
         elif [[ ${dockerProcess} == *clightning* ]]; then
             print_success "Found CLN container"
-            ((rating++))
+            ((rating+=1))
         else
             print_error "No suitable Lightning implementation found"
         fi
@@ -352,16 +386,16 @@ cmd_pre_check() {
     echo ""
     
     # Display result
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_line
     echo -e "${BOLD}Compatibility Rating: $rating/3${NC}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_line
     echo ""
     
     if [[ $rating -eq 3 ]]; then
         print_success "Your system is fully compatible with TunnelSats!"
         echo ""
         echo "Ready to install? Run:"
-        echo -e "  ${GREEN}sudo ./tunnelsats.sh install${NC}"
+        echo -e "  ${GREEN}sudo bash tunnelsats.sh install${NC}"
     elif [[ $rating -gt 0 && $rating -lt 3 ]]; then
         print_warning "Your system is likely compatible, but some requirements are missing"
         echo "Review the checks above and install missing components"
@@ -377,7 +411,7 @@ cmd_install() {
     
     # Detect config file
     local config_path
-    config_path=$(detect_config_file "$CONFIG_FILE")
+    config_path=$(detect_config_file "$CONFIG_FILE") || exit 1
     CONFIG_FILE="$config_path"
     
     echo ""
@@ -453,9 +487,9 @@ cmd_install() {
     echo ""
     
     # Success!
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_line
     print_success "Installation completed successfully!"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_line
     echo ""
     
     # Get VPN details from config
@@ -464,7 +498,7 @@ cmd_install() {
     
     # Show configuration instructions based on implementation
     echo -e "${BOLD}IMPORTANT: Configure your Lightning node${NC}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_line
     echo ""
     
     if [[ "$LN_IMPL" == "lnd" ]]; then
@@ -613,39 +647,39 @@ EOF
 # Helper functions for install command
 
 detect_platform() {
-    echo "What Lightning node package are you running?"
-    echo "  1) RaspiBlitz"
-    echo "  2) Umbrel"
-    echo "  3) myNode"
-    echo "  4) RaspiBolt / Bare Metal"
-    echo ""
+    echo "What Lightning node package are you running?" >&2
+    echo "  1) RaspiBlitz" >&2
+    echo "  2) Umbrel" >&2
+    echo "  3) myNode" >&2
+    echo "  4) RaspiBolt / Bare Metal" >&2
+    echo "" >&2
     read -p "Select [1-4]: " answer
     
     case $answer in
-        1) PLATFORM="raspiblitz"; print_success "Platform: RaspiBlitz" ;;
-        2) PLATFORM="umbrel"; print_success "Platform: Umbrel" ;;
-        3) PLATFORM="mynode"; print_success "Platform: myNode" ;;
-        4) PLATFORM="baremetal"; print_success "Platform: RaspiBolt/Bare Metal" ;;
+        1) echo "raspiblitz" ;;
+        2) echo "umbrel" ;;
+        3) echo "mynode" ;;
+        4) echo "baremetal" ;;
         *) print_error "Invalid selection"; exit 1 ;;
     esac
 }
 
 detect_ln_implementation() {
-    echo "Which Lightning implementation do you want to tunnel?"
-    echo "  1) LND"
-    echo "  2) CLN (Core Lightning)"
+    echo "Which Lightning implementation do you want to tunnel?" >&2
+    echo "  1) LND" >&2
+    echo "  2) CLN (Core Lightning)" >&2
     if [[ "$PLATFORM" == "baremetal" ]]; then
-        echo "  3) LIT (integrated mode)"
+        echo "  3) LIT (integrated mode)" >&2
     fi
-    echo ""
+    echo "" >&2
     read -p "Select [1-3]: " choice
     
     case $choice in
-        1) LN_IMPL="lnd"; print_success "Lightning: LND" ;;
-        2) LN_IMPL="cln"; print_success "Lightning: CLN" ;;
+        1) echo "lnd" ;;
+        2) echo "cln" ;;
         3) 
             if [[ "$PLATFORM" == "baremetal" ]]; then
-                LN_IMPL="lit"; print_success "Lightning: LIT"
+                echo "lit"
             else
                 print_error "LIT only available on bare metal"
                 exit 1
@@ -1099,17 +1133,37 @@ EOF
 
 
 enable_services() {
-    print_info "Enabling WireGuard service..."
+    if [[ -z "$WG_INTERFACE" ]]; then
+        print_error "WireGuard interface not determined"
+        exit 1
+    fi
+
+    print_info "Enabling WireGuard service (${WG_INTERFACE})..."
     
     systemctl daemon-reload > /dev/null 2>&1
-    systemctl enable wg-quick@${WG_INTERFACE} > /dev/null 2>&1 && \
-        print_success "WireGuard service enabled" || \
-        { print_error "Failed to enable service"; exit 1; }
+    
+    local out
+    if out=$(systemctl enable wg-quick@${WG_INTERFACE} 2>&1); then
+        print_success "WireGuard service enabled"
+    else
+        print_error "Failed to enable service:"
+        echo "$out"
+        exit 1
+    fi
     
     print_info "Starting WireGuard..."
-    systemctl start wg-quick@${WG_INTERFACE} > /dev/null 2>&1 && \
-        print_success "WireGuard service started" || \
-        { print_error "Failed to start service"; exit 1; }
+    if out=$(systemctl start wg-quick@${WG_INTERFACE} 2>&1); then
+        print_success "WireGuard service started"
+    else
+        print_error "Failed to start service:"
+        echo "$out"
+        
+        # Help user troubleshoot
+        echo ""
+        print_info "Checking status..."
+        systemctl status wg-quick@${WG_INTERFACE} --no-pager -l || true
+        exit 1
+    fi
 }
 
 verify_installation() {
@@ -1431,9 +1485,9 @@ cmd_uninstall() {
     fi
 
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_line
     print_success "TunnelSats uninstalled successfully!"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_line
     echo ""
     echo "Next: Restart your Lightning node."
     if [[ "$platform" == "umbrel" ]]; then
@@ -1447,7 +1501,52 @@ cmd_uninstall() {
 }
 
 cmd_install() {
-    # Enable services
+    check_root
+    print_header "TunnelSats Installation"
+    
+    # Step 1: Detect Environment
+    print_step 1 5 "Analyzing environment..."
+    PLATFORM=$(detect_platform)
+    LN_IMPL=$(detect_ln_implementation)
+    print_info "Platform: ${PLATFORM}, Lightning: ${LN_IMPL}"
+    echo ""
+
+    # Step 2: Check dependencies
+    print_step 2 5 "Checking dependencies..."
+    if ! command -v wg &>/dev/null; then
+        print_info "Installing wireguard-tools..."
+        apt-get update -qq && apt-get install -yqq wireguard-tools
+    fi
+    if ! command -v nft &>/dev/null; then
+        print_info "Installing nftables..."
+        apt-get install -yqq nftables
+    fi
+    
+    # Only install cgroup-tools for non-Docker platforms (Umbrel uses Docker networking)
+    if [[ "$PLATFORM" != "umbrel" ]]; then
+         if ! command -v cgexec &>/dev/null; then
+            print_info "Installing cgroup-tools..."
+            apt-get install -yqq cgroup-tools
+        fi
+    fi
+    echo ""
+
+    # Step 3: Detect Configuration
+    print_step 3 5 "Detecting configuration..."
+    local config_path
+    config_path=$(detect_config_file "$CONFIG_FILE") || exit 1
+    CONFIG_FILE="$config_path"
+    echo ""
+
+    # Step 4: Configure Lightning
+    configure_lightning
+    echo ""
+
+    # Step 5: Configure WireGuard
+    configure_wireguard
+    echo ""
+
+    # Step 6: Enable services
     enable_services
     
     # Verify installation
@@ -1465,27 +1564,95 @@ cmd_install() {
     echo ""
     
     # Display success message
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_line
     print_success "TunnelSats installed successfully!"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_line
     echo ""
-    echo "Next steps:"
-    echo ""
-    echo "1. Edit your Lightning config file to enable hybrid mode:"
-    if [[ "$LN_IMPL" == "lnd" ]]; then
-        echo "   Add line: tor.skip-proxy-for-clearnet-targets=true"
-    else
-        echo "   Add line: always-use-proxy=false"
-    fi
     
+    # Extract details for manual config
+    local vpn_dns=$(grep "^Endpoint" "$CONFIG_FILE" | awk '{print $3}' | cut -d ':' -f 1)
+    local vpn_port=$(grep -E "#VPNPort|# Port Forwarding:" "$CONFIG_FILE" | head -1 | awk '{print $NF}' | sed 's/.*: //')
+    
+    echo -e "${BOLD}CRITICAL: You must update your node configuration!${NC}"
+    echo "Please copy the following settings into your configuration file."
     echo ""
-    echo "2. Restart your Lightning node:"
+
+    if [[ "$LN_IMPL" == "lnd" ]]; then
+        if [[ "$PLATFORM" == "umbrel" ]]; then
+             echo "Edit: ~/umbrel/app-data/lightning/data/lnd/lnd.conf"
+             echo "Note: If 'tor.streamisolation' or 'tor.skip-proxy...' are already enabled in UI,"
+             echo "      do NOT duplicate them."
+             echo ""
+             echo "#########################################"
+             echo -e "${BOLD}[Application Options]${NC}"
+             echo -e "${BOLD}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+             echo ""
+             echo -e "${BOLD}[Tor]${NC}"
+             echo -e "${BOLD}tor.streamisolation=false${NC}"
+             echo -e "${BOLD}tor.skip-proxy-for-clearnet-targets=true${NC}"
+             echo "#########################################"
+        else
+             echo "Edit: lnd.conf"
+             echo ""
+             echo "#########################################"
+             echo -e "${BOLD}[Application Options]${NC}"
+             echo -e "${BOLD}listen=0.0.0.0:9735${NC}"
+             echo -e "${BOLD}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+             echo ""
+             echo -e "${BOLD}[Tor]${NC}"
+             echo -e "${BOLD}tor.streamisolation=false${NC}"
+             echo -e "${BOLD}tor.skip-proxy-for-clearnet-targets=true${NC}"
+             echo "#########################################"
+        fi
+        
+    elif [[ "$LN_IMPL" == "cln" ]]; then
+        if [[ "$PLATFORM" == "umbrel" ]]; then
+             echo "1. Edit: ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"
+             echo "#########################################"
+             echo -e "${BOLD}bind-addr=0.0.0.0:9735${NC}"
+             echo -e "${BOLD}announce-addr=${vpn_dns}:${vpn_port}${NC}"
+             echo -e "${BOLD}always-use-proxy=false${NC}"
+             echo "#########################################"
+             echo ""
+             echo "2. Edit: ~/umbrel/app-data/core-lightning/export.sh"
+             echo "#########################################"
+             echo -e "${BOLD}export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"${NC}"
+             echo "#########################################"
+             echo ""
+             echo "3. Edit: ~/umbrel/app-data/core-lightning/docker-compose.yml"
+             echo "   Comment out '--bind-addr' if present."
+        else
+             echo "Edit: config"
+             echo ""
+             echo "#########################################"
+             echo -e "${BOLD}bind-addr=0.0.0.0:9735${NC}"
+             echo -e "${BOLD}announce-addr=${vpn_dns}:${vpn_port}${NC}"
+             echo -e "${BOLD}always-use-proxy=false${NC}"
+             echo "#########################################"
+        fi
+        
+    elif [[ "$LN_IMPL" == "lit" ]]; then
+         echo "Edit: lit.conf"
+         echo ""
+         echo "#########################################"
+         echo -e "${BOLD}[Application Options]${NC}"
+         echo -e "${BOLD}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+         echo ""
+         echo -e "${BOLD}[Tor]${NC}"
+         echo -e "${BOLD}tor.streamisolation=false${NC}"
+         echo -e "${BOLD}tor.skip-proxy-for-clearnet-targets=true${NC}"
+         echo "#########################################"
+    fi
+
+    echo ""
+    echo "Then, restart your node:"
     if [[ "$PLATFORM" == "umbrel" ]]; then
-        echo "   sudo systemctl restart umbrel.service"
+        echo "   sudo reboot"
+        echo "   (Or restart via Settings -> Restart in Umbrel Dashboard)"
     else
-        local service_name="${LN_IMPL}"
-        [[ "$LN_IMPL" == "cln" ]] && service_name="lightningd"
-        echo "   sudo systemctl restart ${service_name}.service"
+        local svc="${LN_IMPL}"
+        [[ "$LN_IMPL" == "cln" ]] && svc="lightningd"
+        echo "   sudo systemctl restart ${svc}.service"
     fi
     echo ""
 }
@@ -1540,7 +1707,7 @@ cmd_status() {
     
     # Parse Config File Metadata
     local vpn_port=$(grep '#VPNPort\|# Port Forwarding:' "$config_file" | head -1 | awk '{print $NF}' | sed 's/.*: //')
-    local sub_end=$(grep '#ValidUntil\|# Valid Until:' "$config_file" | head -1 | sed 's/.*[=:] *//')
+    local sub_end=$(grep -E '#ValidUntil|# Valid Until:' "$config_file" | head -1 | awk -F '[=:]' '{print $2}' | xargs)
     # If endpoint missing from wg_output (tunnel down), try config
     if [[ -z "$endpoint" ]]; then
          endpoint=$(grep '^Endpoint' "$config_file" | awk '{print $3}' | cut -d ':' -f 1)
@@ -1563,7 +1730,7 @@ cmd_status() {
 
     # Display Summary
     echo -e "${BOLD}WireGuard Tunnel Status${NC}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print_line
     echo -e "  Interface:      ${interface_name}"
     echo -e "  Status:         ${status_msg}"
     echo -e "  Public Key:     ${BLUE}${public_key}${NC}"
@@ -1572,60 +1739,250 @@ cmd_status() {
     echo -e "  VPN Endpoint:   ${endpoint}"
     echo -e "  VPN Port:       ${vpn_port}"
     if [[ -n "$sub_end" ]]; then
-    if command -v lncli &>/dev/null; then
-        node_pubkey=$(lncli getinfo 2>/dev/null | grep "identity_pubkey" | awk '{print $2}' | tr -d '",')
-    elif command -v lightning-cli &>/dev/null; then
-        node_pubkey=$(lightning-cli getinfo 2>/dev/null | grep "\"id\"" | awk '{print $2}' | tr -d '",')
-    fi
-    
-    if [[ -n "$node_pubkey" ]] && [[ -n "$outbound_ip" ]] && [[ "$vpn_port" != "<unknown>" ]]; then
-        local node_address="${node_pubkey}@${outbound_ip}:${vpn_port}"
-        echo "  Address: $node_address"
-        print_success "Ready to announce"
-    elif [[ -n "$node_pubkey" ]]; then
-        echo "  Pubkey: ${node_pubkey:0:20}...${node_pubkey: -20}"
-        print_warning "Missing VPN connection details"
-    else
-        print_info "Unable to retrieve node info (LND/CLN not accessible)"
+        echo -e "  Expires:        ${sub_end}" 
     fi
     echo ""
+
+    # ---------------------------------------------------------
+    # Node & Connectivity Checks (Ported from tunnelsats-sub-details.sh)
+    # ---------------------------------------------------------
+
+    # 1. Docker Setup Check
+    check_docker_setup_status() {
+       if systemctl is-active --quiet docker; then
+         if docker ps --filter name=core-lightning -q | grep -q . || docker ps --filter name=lnd -q | grep -q .; then
+          if docker ps --filter name=core-lightning -q | grep -q .; then
+            echo "docker-core-lightning"
+            return 0
+          elif docker ps --filter name=lnd -q | grep -q .; then
+            echo "docker-lnd"
+            return 0
+          fi
+         fi
+       fi
+       echo "manual"
+       return 1
+    }
+
+    # 2. Outbound Check
+    perform_outbound_check_status() {
+      local setup_type=$1
+      local ip_address=""
+      local cmd_exit_code=0
     
-    # Overall status
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    
-    if [[ "$latest_handshake" == *"minute"* ]] || [[ "$latest_handshake" == *"second"* ]]; then
-        if [[ -n "$outbound_ip" ]] && valid_ipv4 "$outbound_ip"; then
-            print_success "All systems operational!"
-            echo ""
-            echo "Your node is tunneled through TunnelSats ⚡"
+      if [[ "$setup_type" == "docker-lnd" || "$setup_type" == "docker-core-lightning" ]]; then
+        if ! docker network inspect docker-tunnelsats > /dev/null 2>&1; then
+            ip_address="Error: Docker network missing"
         else
-            print_warning "Tunnel active but connectivity issues detected"
-            echo ""
-            echo "Troubleshooting:"
-            echo "  • Check Lightning node is running"
-            echo "  • Verify cgroups/Docker network configuration"
+            ip_address=$(timeout 20s docker run --rm --net=docker-tunnelsats curlimages/curl -s https://api.ipify.org)
+            cmd_exit_code=$?
+            if [ $cmd_exit_code -ne 0 ] || [[ -z "$ip_address" ]]; then
+                 ip_address="Error: Check failed or timed out"
+            fi
         fi
-    else
-        print_error "Tunnel connection issues detected"
-        echo ""
-        echo "Troubleshooting:"
-        echo "  • Check endpoint is reachable"
-        echo "  • Verify WireGuard config is correct"
-        echo "  • Restart: sudo systemctl restart wg-quick@tunnelsatsv2"
+      else
+        # Manual
+        if command -v cgexec &> /dev/null; then
+          ip_address=$(timeout 20s cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
+        else
+          # Fallback
+          ip_address=$(timeout 20s curl --silent https://api.ipify.org)
+        fi
+      fi
+      echo "$ip_address"
+    }
+    
+    # 3. Inbound Check
+    perform_inbound_check_status() {
+      local target_endpoint=$1
+      local target_port=$2
+      local result_url=""
+      local status="failed"
+      
+      # Clean endpoint
+      local clean_endpoint=$(echo $target_endpoint | cut -d ':' -f 1)
+      
+      local curl_output=$(timeout 3s curl -sv telnet://"${clean_endpoint}":"${target_port}" 2>&1 | head -n 2)
+      
+      if [[ "$curl_output" == *"Connected to"* ]]; then
+        result_url=$(echo "$curl_output" | grep "Connected to" | grep -oP 'Connected to [^ ]+ \(\K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+        if [[ -n "$result_url" ]]; then
+           status="success"
+        else
+           result_url="Unknown (Success)"
+           status="success_no_ip"
+        fi
+      else
+        result_url="Error: Connection failed"
+      fi
+      echo "$status $result_url"
+    }
+
+    # 4. Get Node Address
+    get_node_ext_addr_status() {
+        local setup_type=$1
+        local ext_addr="N/A"
+        local docker_name=""
+        local node_type=""
+
+        case "$setup_type" in
+            "docker-lnd")
+                docker_name=$(docker ps --filter name=lnd --format "{{.Names}}" | head -n 1) # Safer fetch
+                if [[ -z "$docker_name" ]]; then docker_name="lightning_lnd_1"; fi # Fallback
+                node_type="LND (Docker)"
+                if command -v jq &> /dev/null; then
+                    # Try direct exec
+                    local info=$(docker exec "$docker_name" lncli getinfo 2>&1)
+                    ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+                fi
+                ;;
+            "docker-core-lightning")
+                docker_name=$(docker ps --filter name=core-lightning --format "{{.Names}}" | head -n 1) # Safer
+                if [[ -z "$docker_name" ]]; then docker_name="core-lightning_lightningd_1"; fi
+                node_type="CLN (Docker)"
+                if command -v jq &> /dev/null; then
+                     local info=$(docker exec "$docker_name" lightning-cli getinfo 2>&1)
+                     local pk=$(echo "$info" | jq -r '.id')
+                     local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
+                     local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
+                     if [[ -n "$pk" && -n "$ip" ]]; then ext_addr="${pk}@${ip}:${port}"; fi
+                fi
+                ;;
+            "manual")
+                # Attempt to guess
+                 if systemctl is-active --quiet lnd; then
+                    node_type="LND (Systemd)"
+                    if command -v lncli &> /dev/null; then
+                         local info=$(lncli getinfo 2>/dev/null)
+                         ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+                    fi
+                 elif systemctl is-active --quiet lightningd; then
+                    node_type="CLN (Systemd)"
+                     if command -v lightning-cli &> /dev/null; then
+                         local info=$(lightning-cli getinfo 2>/dev/null)
+                         local pk=$(echo "$info" | jq -r '.id')
+                         local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
+                         local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
+                         if [[ -n "$pk" && -n "$ip" ]]; then ext_addr="${pk}@${ip}:${port}"; fi
+                    fi
+                 else
+                    node_type="Unknown/Manual"
+                 fi
+                ;;
+        esac
+        echo "$node_type|$ext_addr"
+    }
+
+    # Execute Checks
+    local setup_method=$(check_docker_setup_status)
+    local outbound_ip="N/A"
+    local inbound_status="N/A" 
+    local inbound_ip="N/A"
+    
+    # Only run if config is valid
+    if [[ -n "$endpoint" && -n "$vpn_port" ]]; then
+         outbound_ip=$(perform_outbound_check_status "$setup_method")
+         read -r inbound_status inbound_ip <<< "$(perform_inbound_check_status "$endpoint" "$vpn_port")"
     fi
+
+    local node_data=$(get_node_ext_addr_status "$setup_method")
+    local node_type=$(echo "$node_data" | cut -d '|' -f 1)
+    local node_addr=$(echo "$node_data" | cut -d '|' -f 2)
+
+    echo -e "${BOLD}Node Configuration${NC}"
+    print_line
+    echo -e "  Type:           $node_type"
+    echo -e "  Public Address: $node_addr"
     echo ""
     
-    # Helpful links
-    echo "Resources:"
-    echo "  • Guide: https://tunnelsats.com/guide"
-    echo "  • Test Bot: https://t.me/TunnelSatsBot"
-    echo "  • Support: https://t.me/tunnelsats"
+    echo -e "${BOLD}Connectivity Check${NC}"
+    print_line
+    echo -e "  Outbound IP:    $outbound_ip"
+    echo -e "  Inbound Check:  $inbound_status ($inbound_ip)"
+    echo ""
+    
+    # Final Verdict
+    local outbound_ok=false
+    local inbound_ok=false
+    
+    if [[ "$outbound_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then outbound_ok=true; fi
+    if [[ "$inbound_status" == "success" || "$inbound_status" == "success_no_ip" ]]; then inbound_ok=true; fi
+    
+    if $outbound_ok && $inbound_ok; then
+         print_success "Connectivity Verified"
+    elif ! $outbound_ok && ! $inbound_ok; then
+         print_error "Connectivity Check Failed (Both directions)"
+    elif ! $outbound_ok; then
+         print_warning "Outbound Check Failed (Inbound OK)"
+    elif ! $inbound_ok; then
+         print_warning "Inbound Check Failed (Outbound OK)"
+    fi
     echo ""
 }
 
-#══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+# RESTART COMMAND
+# ---------------------------------------------------------------------------
+cmd_restart() {
+    print_header "Restarting TunnelSats"
+    
+    # 1. Find Config/Interface
+    local config_file
+    config_file=$(find_active_wg_config)
+    
+    # Fallback logic if find fails but tunnel might be up
+    if [[ -z "$config_file" ]]; then
+       # check if tunnelsatsv2 matches
+       if sudo wg show tunnelsatsv2 &>/dev/null; then
+           config_file="/etc/wireguard/tunnelsatsv2.conf"
+       else
+           print_error "No active TunnelSats configuration or interface found."
+           exit 1
+       fi
+    fi
+    
+    local interface_name=$(basename "$config_file" .conf)
+    
+    echo ""
+    print_info "Interface: ${interface_name}"
+    
+    # 2. Restart Service
+    print_info "Stopping service..."
+    if systemctl stop "wg-quick@${interface_name}"; then
+        print_success "Service stopped"
+    else
+        print_warning "Failed to stop service (might not be running)"
+    fi
+    
+    sleep 1
+    
+    print_info "Starting service..."
+    if systemctl start "wg-quick@${interface_name}"; then
+        print_success "Service started successfully"
+    else
+        print_error "Failed to start service"
+        journalctl -n 10 -u "wg-quick@${interface_name}" --no-pager
+        exit 1
+    fi
+    
+    # 3. Verify
+    echo ""
+    print_info "Verifying status..."
+    sleep 2
+    if [[ -n "$(wg show ${interface_name} 2>/dev/null)" ]]; then
+        print_success "Tunnel Interface is UP"
+        # Optional: Trigger status to show details
+        echo ""
+        cmd_status
+    else
+        print_error "Tunnel Interface did not come up"
+        exit 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # ARGUMENT PARSING
-#══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 parse_args() {
     local command=""
@@ -1674,6 +2031,10 @@ parse_args() {
             check_root "$@"
             cmd_status
             ;;
+        restart)
+            check_root "$@"
+            cmd_restart
+            ;;
         help|-h|--help)
             cmd_help
             ;;
@@ -1686,9 +2047,9 @@ parse_args() {
     esac
 }
 
-#══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 # MAIN ENTRY POINT
-#══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
 
 main() {
     parse_args "$@"
