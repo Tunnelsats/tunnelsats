@@ -1013,6 +1013,7 @@ configure_lightning() {
     
     # For non-Docker setups, modify systemd service to use cgexec
     if [[ "$PLATFORM" != "umbrel" ]]; then
+        setup_cgroups
         local service_file=""
         local service_dir=""
         
@@ -1368,9 +1369,9 @@ cmd_uninstall() {
         # Check timers/services
         for svc in tunnelsats-splitting-processes.timer tunnelsats-splitting-processes.service tunnelsats-create-cgroup.service; do
              if [[ -f /etc/systemd/system/$svc ]]; then
-                 systemctl stop $svc &>/dev/null
-                 systemctl disable $svc &>/dev/null
-                 rm /etc/systemd/system/$svc &>/dev/null
+                 systemctl stop $svc &>/dev/null || true
+                 systemctl disable $svc &>/dev/null || true
+                 rm -f /etc/systemd/system/$svc &>/dev/null
                  print_success "Removed $svc"
              fi
         done
@@ -1383,16 +1384,16 @@ cmd_uninstall() {
         # Docker cleanup
          for svc in tunnelsats-docker-network.timer tunnelsats-docker-network.service; do
              if [[ -f /etc/systemd/system/$svc ]]; then
-                 systemctl stop $svc &>/dev/null
-                 systemctl disable $svc &>/dev/null
-                 rm /etc/systemd/system/$svc &>/dev/null
+                 systemctl stop $svc &>/dev/null || true
+                 systemctl disable $svc &>/dev/null || true
+                 rm -f /etc/systemd/system/$svc &>/dev/null
                  print_success "Removed $svc"
              fi
         done
         
         # Umbrel Killswitch
-        rm /etc/systemd/system/umbrel.service.d/tunnelsats_killswitch.conf &>/dev/null
-        rm /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf &>/dev/null
+        rm -f /etc/systemd/system/umbrel.service.d/tunnelsats_killswitch.conf &>/dev/null
+        rm -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf &>/dev/null
         print_success "Removed Umbrel killswitch"
     fi
     echo ""
@@ -1400,27 +1401,27 @@ cmd_uninstall() {
     # 5. Remove WireGuard Services
     print_step 4 6 "Removing WireGuard configuration..."
     
-    systemctl stop wg-quick@tunnelsatsv2 &>/dev/null
-    systemctl disable wg-quick@tunnelsatsv2 &>/dev/null
+    systemctl stop wg-quick@tunnelsatsv2 &>/dev/null || true
+    systemctl disable wg-quick@tunnelsatsv2 &>/dev/null || true
     
     if [[ -f /etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsats.service ]]; then
-         systemctl stop wg-quick@tunnelsats &>/dev/null
-         systemctl disable wg-quick@tunnelsats &>/dev/null
+         systemctl stop wg-quick@tunnelsats &>/dev/null || true
+         systemctl disable wg-quick@tunnelsats &>/dev/null || true
     fi
     
     # Remove DNS resolver
     if [[ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.service ]]; then
          systemctl stop tunnelsats-resolve-dns-wg.service &>/dev/null
          systemctl disable tunnelsats-resolve-dns-wg.service &>/dev/null
-         rm /etc/systemd/system/tunnelsats-resolve-dns-wg.service
+         rm -f /etc/systemd/system/tunnelsats-resolve-dns-wg.service
     fi
     if [[ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.timer ]]; then
          systemctl stop tunnelsats-resolve-dns-wg.timer &>/dev/null
          systemctl disable tunnelsats-resolve-dns-wg.timer &>/dev/null
-         rm /etc/systemd/system/tunnelsats-resolve-dns-wg.timer
+         rm -f /etc/systemd/system/tunnelsats-resolve-dns-wg.timer
     fi
 
-    rm -r /etc/systemd/system/wg-quick@tunnelsatsv2.service.d &>/dev/null
+    rm -rf /etc/systemd/system/wg-quick@tunnelsatsv2.service.d &>/dev/null
     print_success "WireGuard services removed"
     echo ""
 
@@ -1437,15 +1438,15 @@ cmd_uninstall() {
         fi
         
         # Restore nftables
-        nft delete table ip tunnelsatsv2 &>/dev/null
-        nft delete table inet tunnelsatsv2 &>/dev/null
+        nft delete table ip tunnelsatsv2 &>/dev/null || true
+        nft delete table inet tunnelsatsv2 &>/dev/null || true
         if [[ -f /etc/nftablespriortunnelsats.backup ]]; then
              mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf
              print_success "Restored original nftables.conf"
         fi
         
-        systemctl daemon-reload
-        systemctl restart docker &>/dev/null
+        systemctl daemon-reload || true
+        systemctl restart docker &>/dev/null || true
         print_success "Docker restarted"
         echo ""
     fi
@@ -1525,18 +1526,18 @@ cmd_install() {
     print_step 2 5 "Checking dependencies..."
     if ! command -v wg &>/dev/null; then
         print_info "Installing wireguard-tools..."
-        apt-get update -qq && apt-get install -yqq wireguard-tools
+        apt-get update -qq &>/dev/null && apt-get install -yqq wireguard-tools &>/dev/null
     fi
     if ! command -v nft &>/dev/null; then
         print_info "Installing nftables..."
-        apt-get install -yqq nftables
+        apt-get install -yqq nftables &>/dev/null
     fi
     
     # Only install cgroup-tools for non-Docker platforms (Umbrel uses Docker networking)
     if [[ "$PLATFORM" != "umbrel" ]]; then
          if ! command -v cgexec &>/dev/null; then
             print_info "Installing cgroup-tools..."
-            apt-get install -yqq cgroup-tools
+            apt-get install -yqq cgroup-tools &>/dev/null
         fi
     fi
     echo ""
