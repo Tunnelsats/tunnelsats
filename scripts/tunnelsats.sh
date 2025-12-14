@@ -930,13 +930,17 @@ setup_docker_network() {
     local delrule1=$(ip rule | grep -c "from all lookup main suppress_prefixlength 0" || echo "0")
     local delrule2=$(ip rule | grep -c "from $dockersubnet lookup 51820" || echo "0")
     
-    for i in $(seq 1 $delrule1); do
-        ip rule del from all table main suppress_prefixlength 0 2>/dev/null || true
-    done
+    if [ $delrule1 -gt 0 ]; then
+        for i in $(seq 1 $delrule1); do
+            ip rule del from all table main suppress_prefixlength 0 2>/dev/null || true
+        done
+    fi
     
-    for i in $(seq 1 $delrule2); do
-        ip rule del from $dockersubnet table 51820 2>/dev/null || true
-    done
+    if [ $delrule2 -gt 0 ]; then
+        for i in $(seq 1 $delrule2); do
+            ip rule del from $dockersubnet table 51820 2>/dev/null || true
+        done
+    fi
     
     ip route flush table 51820 &>/dev/null || true
     
@@ -964,7 +968,7 @@ exit 0
 EOF
     
     chmod +x /etc/wireguard/tunnelsats-docker-network.sh
-    bash /etc/wireguard/tunnelsats-docker-network.sh
+    bash /etc/wireguard/tunnelsats-docker-network.sh &>/dev/null
     
     # Create systemd service and timer
     cat > /etc/systemd/system/tunnelsats-docker-network.service <<'EOF'
@@ -991,10 +995,11 @@ WantedBy=timers.target
 EOF
     
     systemctl daemon-reload
-    systemctl enable tunnelsats-docker-network.service
-    systemctl start tunnelsats-docker-network.service
-    systemctl enable tunnelsats-docker-network.timer
-    systemctl start tunnelsats-docker-network.timer
+    systemctl daemon-reload
+    systemctl enable tunnelsats-docker-network.service &>/dev/null
+    systemctl start tunnelsats-docker-network.service &>/dev/null
+    systemctl enable tunnelsats-docker-network.timer &>/dev/null
+    systemctl start tunnelsats-docker-network.timer &>/dev/null
     
     print_success "Docker network configured"
 }
@@ -1601,6 +1606,11 @@ cmd_install() {
     print_step 1 5 "Analyzing environment..."
     PLATFORM=$(detect_platform)
     LN_IMPL=$(detect_ln_implementation)
+    
+    local is_docker=0
+    [[ "$PLATFORM" == "umbrel" ]] && is_docker=1
+    [[ "$PLATFORM" == "mynode" ]] && is_docker=1 # Assumption for now
+    
     print_info "Platform: ${PLATFORM}, Lightning: ${LN_IMPL}"
     echo ""
 
@@ -1613,6 +1623,10 @@ cmd_install() {
     if ! command -v nft &>/dev/null; then
         print_info "Installing nftables..."
         apt-get install -yqq nftables &>/dev/null
+    fi
+    if ! command -v resolvconf &>/dev/null; then
+        print_info "Installing resolvconf..."
+        apt-get install -yqq resolvconf &>/dev/null
     fi
     
     # Only install cgroup-tools for non-Docker platforms (Umbrel uses Docker networking)
@@ -1640,6 +1654,11 @@ cmd_install() {
     
     # Configure DNS Resolver Watchdog
     setup_dns_resolver
+    
+    # Configure Docker Network (Umbrel/Docker only)
+    if [[ $is_docker -eq 1 ]]; then
+        setup_docker_network
+    fi
     echo ""
 
     # Step 6: Enable services
@@ -1703,14 +1722,14 @@ cmd_install() {
         
     elif [[ "$LN_IMPL" == "cln" ]]; then
         if [[ "$PLATFORM" == "umbrel" ]]; then
-             echo "1. Edit: ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"
+             echo "1. Edit: sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"
              echo "#########################################"
              echo -e "${BOLD}bind-addr=0.0.0.0:9735${NC}"
              echo -e "${BOLD}announce-addr=${vpn_dns}:${vpn_port}${NC}"
              echo -e "${BOLD}always-use-proxy=false${NC}"
              echo "#########################################"
              echo ""
-             echo "2. Edit: ~/umbrel/app-data/core-lightning/export.sh"
+             echo "2. Edit: nano ~/umbrel/app-data/core-lightning/exports.sh"
              echo "#########################################"
              echo -e "${BOLD}export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"${NC}"
              echo "#########################################"
