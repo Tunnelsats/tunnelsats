@@ -999,6 +999,88 @@ EOF
     print_success "Docker network configured"
 }
 
+setup_dns_resolver() {
+    print_info "Configuring DNS resolver watchdog..."
+    
+    # Create resolver script
+    cat > /etc/wireguard/tunnelsats-resolve-dns-wg.sh << 'EOF'
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2015-2020 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+set -e
+shopt -s nocasematch
+shopt -s extglob
+export LC_ALL=C
+
+CONFIG_FILE="$1"
+[[ $CONFIG_FILE =~ ^[a-zA-Z0-9_=+.-]{1,15}$ ]] && CONFIG_FILE="/etc/wireguard/$CONFIG_FILE.conf"
+[[ $CONFIG_FILE =~ /?([a-zA-Z0-9_=+.-]{1,15})\.conf$ ]]
+INTERFACE="${BASH_REMATCH[1]}"
+
+process_peer() {
+    [[ $PEER_SECTION -ne 1 || -z $PUBLIC_KEY || -z $ENDPOINT ]] && return 0
+    [[ $(wg show "$INTERFACE" latest-handshakes) =~ ${PUBLIC_KEY//+/\\+}\	([0-9]+) ]] || return 0
+    (( ($EPOCHSECONDS - ${BASH_REMATCH[1]}) > 135 )) || return 0
+    wg set "$INTERFACE" peer "$PUBLIC_KEY" endpoint "$ENDPOINT"
+    reset_peer_section
+}
+
+reset_peer_section() {
+    PEER_SECTION=0
+    PUBLIC_KEY=""
+    ENDPOINT=""
+}
+
+reset_peer_section
+while read -r line || [[ -n $line ]]; do
+    stripped="${line%%\#*}"
+    key="${stripped%%=*}"; key="${key##*([[:space:]])}"; key="${key%%*([[:space:]])}"
+    value="${stripped#*=}"; value="${value##*([[:space:]])}"; value="${value%%*([[:space:]])}"
+    [[ $key == "["* ]] && { process_peer; reset_peer_section; }
+    [[ $key == "[Peer]" ]] && PEER_SECTION=1
+    if [[ $PEER_SECTION -eq 1 ]]; then
+        case "$key" in
+        PublicKey) PUBLIC_KEY="$value"; continue ;;
+        Endpoint) ENDPOINT="$value"; continue ;;
+        esac
+    fi
+done < "$CONFIG_FILE"
+process_peer
+EOF
+    
+    chmod +x /etc/wireguard/tunnelsats-resolve-dns-wg.sh
+    
+    # Create systemd service
+    cat > /etc/systemd/system/tunnelsats-resolve-dns-wg.service << EOF
+[Unit]
+Description=tunnelsats-resolve-dns-wg: Trigger Resolve DNS in case Handshake is older than 2 minutes
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /etc/wireguard/tunnelsats-resolve-dns-wg.sh tunnelsatsv2
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Create timer
+    cat > /etc/systemd/system/tunnelsats-resolve-dns-wg.timer << EOF
+[Unit]
+Description=30sec timer for tunnelsats-resolve-dns-wg.service
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=30
+Persistent=true
+[Install]
+WantedBy=timers.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable tunnelsats-resolve-dns-wg.service &>/dev/null || true
+    systemctl enable tunnelsats-resolve-dns-wg.timer &>/dev/null || true
+    systemctl start tunnelsats-resolve-dns-wg.timer &>/dev/null || true
+    
+    print_success "DNS resolver watchdog configured"
+}
+
 configure_lightning() {
     print_info "Configuring ${LN_IMPL} for tunneling..."
     
@@ -1555,6 +1637,9 @@ cmd_install() {
 
     # Step 5: Configure WireGuard
     configure_wireguard
+    
+    # Configure DNS Resolver Watchdog
+    setup_dns_resolver
     echo ""
 
     # Step 6: Enable services
