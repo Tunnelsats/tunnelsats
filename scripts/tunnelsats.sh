@@ -1489,9 +1489,19 @@ cmd_uninstall() {
     print_success "TunnelSats uninstalled successfully!"
     print_line
     echo ""
-    echo "Next: Restart your Lightning node."
-    if [[ "$platform" == "umbrel" ]]; then
-        echo "   sudo systemctl restart umbrel.service"
+    
+    echo -e "${BOLD}MANUAL CLEANUP REQUIRED:${NC}"
+    echo "Please check your lightning configuration files and remove any leftover"
+    echo "TunnelSats settings if they were not automatically restored:"
+    echo "  - externalhosts"
+    echo "  - announce-addr"
+    echo "  - tor.skip-proxy-for-clearnet-targets"
+    echo ""
+    
+    echo "Next: Restart your node."
+    if [[ "$PLATFORM" == "umbrel" ]]; then
+        echo "   sudo reboot"
+        echo "   (Or restart via Umbrel Dashboard)"
     else
         local svc_name="${ln_impl}"
         [[ "$ln_impl" == "cln" ]] && svc_name="lightningd"
@@ -1832,16 +1842,23 @@ cmd_status() {
                 node_type="LND (Docker)"
                 if command -v jq &> /dev/null; then
                     # Try direct exec
-                    local info=$(docker exec "$docker_name" lncli getinfo 2>&1)
+                    local info=$(docker exec "$docker_name" lncli getinfo 2>/dev/null)
                     ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
                 fi
                 ;;
             "docker-core-lightning")
-                docker_name=$(docker ps --filter name=core-lightning --format "{{.Names}}" | head -n 1) # Safer
+                # Filter specifically for the main lightningd container, avoiding proxies/apps
+                docker_name=$(docker ps --filter name=core-lightning --format "{{.Names}}" | grep "lightningd" | head -n 1)
+                
+                # Fallback if grep failed but generic name exists
+                if [[ -z "$docker_name" ]]; then 
+                     docker_name=$(docker ps --filter name=lightningd --format "{{.Names}}" | head -n 1)
+                fi
                 if [[ -z "$docker_name" ]]; then docker_name="core-lightning_lightningd_1"; fi
+                
                 node_type="CLN (Docker)"
                 if command -v jq &> /dev/null; then
-                     local info=$(docker exec "$docker_name" lightning-cli getinfo 2>&1)
+                     local info=$(docker exec "$docker_name" lightning-cli getinfo 2>/dev/null)
                      local pk=$(echo "$info" | jq -r '.id')
                      local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
                      local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
@@ -1850,16 +1867,32 @@ cmd_status() {
                 ;;
             "manual")
                 # Attempt to guess
+                local original_user="${SUDO_USER:-$(whoami)}"
+                
                  if systemctl is-active --quiet lnd; then
                     node_type="LND (Systemd)"
                     if command -v lncli &> /dev/null; then
-                         local info=$(lncli getinfo 2>/dev/null)
+                         local info
+                         # Try as sudo user first (RaspiBlitz standard)
+                         info=$(sudo -u "$original_user" lncli getinfo 2>/dev/null)
+                         
+                         # Fallback to root execution if user attempt empty
+                         if [[ -z "$info" ]]; then
+                             info=$(lncli getinfo 2>/dev/null)
+                         fi
+                         
                          ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
                     fi
                  elif systemctl is-active --quiet lightningd; then
                     node_type="CLN (Systemd)"
                      if command -v lightning-cli &> /dev/null; then
-                         local info=$(lightning-cli getinfo 2>/dev/null)
+                         local info
+                         info=$(sudo -u "$original_user" lightning-cli getinfo 2>/dev/null)
+                         
+                         if [[ -z "$info" ]]; then
+                             info=$(lightning-cli getinfo 2>/dev/null)
+                         fi
+                         
                          local pk=$(echo "$info" | jq -r '.id')
                          local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
                          local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
