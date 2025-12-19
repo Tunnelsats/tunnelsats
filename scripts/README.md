@@ -21,19 +21,33 @@ sudo bash tunnelsats.sh [install|uninstall|status|restart]
 
 ## Compatibility & Testing Status
 
-We are actively validating the script across the most popular Lightning node platforms.
+We are iteratively validating `tunnelsats.sh` across various Node OS platforms. The following table reflects the current **Verified** state.
 
-| Platform | Implementation | Status | Notes |
-| :--- | :--- | :--- | :--- |
-| **Umbrel** | CLN | ✅ Verified | Full support (Docker). |
-| **Umbrel** | LND | ✅ Verified | Full support (Docker). |
-| **RaspiBlitz** | LND | ✅ Verified | Full support (Systemd). |
-| **RaspiBlitz** | CLN | ✅ Verified | Full support (Systemd). |
-| **RaspiBolt** | LND/CLN | ✅ Verified | Uses standard systemd paths. |
-| **Barel Metal** | LND/CLN | ✅ Verified | Standard Debian/Ubuntu support. |
-| **myNode** | Any | ⚠️ Experimental | Detection logic behaves as "Systemd". If your myNode uses Docker, this may fail. |
+| Hardware/Platform | Node OS | OS Version | [i]nstall | [u]ninstall | [s]tatus | [r]estart |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: |
+| Raspberry Pi | **Umbrel** | v1.0.0+ | ✅ | ✅ | ✅ | ✅ |
+| Raspberry Pi | **RaspiBlitz** | v1.9.0 | ✅ | ✅ | ✅ | ✅ |
+| Proxmox VM | **Umbrel** | v1.2.1 | ✅ | ✅ | ✅ | ✅ |
+| PC / VPS | **Bare Metal** | Debian 12 | ⚠️ | ⚠️ | ✅ | ✅ |
+| Pi / PC (x86) | **myNode** | v0.3.x | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
+| Any | **Start9** | Any | ❌ | ❌ | ❌ | ❌ |
 
-> **Note**: While we strive for universal support, "Experimental" platforms should be tested with caution. Always backup your config!
+**Legend:**
+- ✅ **Verified**: Tested and working 100%.
+- ⚠️ **Experimental**: Logic exists (ported from v2), but needs live verification.
+- ❓ **Untested**: Not yet validated on this specific environment.
+- ❌ **Not Supported**: Current architecture is incompatible with script installation.
+
+---
+
+## 🚀 Help Us Stabilize!
+
+We want `tunnelsats.sh` to be rock-solid. If you are running on a platform marked as ⚠️ or ❓, please help us by:
+1. Running `sudo bash tunnelsats.sh status` and checking the output.
+2. Reporting any "Stabilization Snags" in our **[Telegram Group](https://t.me/tunnelsats)**.
+3. Providing your Hardware, Node OS, and OS Version (`cat /etc/os-release`).
+
+Your feedback directly translates into better stability for the entire community!
 
 ## Need Help?
 
