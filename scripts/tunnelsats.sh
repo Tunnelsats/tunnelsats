@@ -869,6 +869,7 @@ setup_cgroups() {
     cat > /etc/wireguard/tunnelsats-create-cgroup.sh << 'EOF'
 #!/bin/sh
 set -e
+modprobe cls_cgroup || true
 dir_netcls="/sys/fs/cgroup/net_cls"
 splitted_processes="/sys/fs/cgroup/net_cls/splitted_processes"
 
@@ -1618,7 +1619,14 @@ cmd_install() {
     print_step 2 5 "Checking dependencies..."
     if ! command -v wg &>/dev/null; then
         print_info "Installing wireguard-tools..."
-        apt-get update -qq &>/dev/null && apt-get install -yqq wireguard-tools &>/dev/null
+        if ! apt-get update -qq &>/dev/null || ! apt-get install -yqq wireguard-tools &>/dev/null; then
+            # try Debian 10 Buster workaround / myNode
+            local codename=$(lsb_release -c 2>/dev/null | awk '{print $2}')
+            if [[ "$codename" == "buster" && "$PLATFORM" != "umbrel" ]]; then
+                print_info "Attempting Debian 10 Buster workaround..."
+                apt-get install -yqq -t buster-backports wireguard-tools &>/dev/null
+            fi
+        fi
     fi
     if ! command -v nft &>/dev/null; then
         print_info "Installing nftables..."
@@ -2055,6 +2063,16 @@ cmd_status() {
     elif ! $inbound_ok; then
          print_warning "Inbound Check Failed (Outbound OK)"
     fi
+    echo ""
+
+    # Iterative Feedback Support: Debug Summary
+    echo -e "${BOLD}Debug Summary (Copy for Telegram)${NC}"
+    print_line
+    local os_info=$(cat /etc/os-release | grep -E "^PRETTY_NAME=" | cut -d= -f2 | tr -d '"')
+    echo "Platform: ${PLATFORM} | Lightning: ${LN_IMPL} | Node: ${node_type}"
+    echo "OS: ${os_info}"
+    echo "Tunnel: ${status_msg} | Handshake: ${latest_handshake}"
+    echo "Inbound: ${inbound_status} | Outbound: ${outbound_ip}"
     echo ""
 }
 
