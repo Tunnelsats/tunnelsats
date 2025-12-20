@@ -74,31 +74,31 @@ WireGuard is a fast, lightweight and secure VPN software. We offer a few WireGua
 
 2) Pay the lightning invoice.
 
-3) Copy, download or send the wireguard configuration (file: `tunnelsatsv2.conf` - please do NOT rename this file) to your local computer and transfer it to your node.
+3) Copy, download or send the wireguard configuration (file: `tunnelsats_[server].conf` - please do NOT rename this file) to your local computer and transfer it to your node.
 
-4) Backup `tunnelsatsv2.conf` to a safe place (to prevent deletion on updates, for example on RaspiBlitz create a new directory called `/tunnelsats/` and save the config file in there: `/mnt/hdd/app-data/tunnelsats/`)
+4) Backup `tunnelsats_[server].conf` to a safe place (to prevent deletion on updates, for example on RaspiBlitz create a new directory called `/tunnelsats/` and save the config file in there: `/mnt/hdd/app-data/tunnelsats/`)
 
 5) Download the setup script onto your node.
 
   Download setup script:
   
   ```sh
-  $ wget -O setupv2.sh https://github.com/tunnelsats/tunnelsats/raw/main/scripts/setupv2.sh
+  $ wget -O tunnelsats.sh https://github.com/tunnelsats/tunnelsats/raw/main/scripts/tunnelsats.sh
   ```
 
-  Copy your WireGuard config file (`tunnelsatsv2.conf`) to the same directory where `setupv2.sh` is located. If you need to transfer it to your node, use `scp` like so:
+  Copy your WireGuard config file (`tunnelsats_[server].conf`) to the same directory where `tunnelsats.sh` is located. If you need to transfer it to your node, use `scp` like so:
   
   ```sh
-  $ scp tunnelsatsv2.conf <user>@<ip/hostname>:/<path-to-home-dir>
+  $ scp tunnelsats_[server].conf <user>@<ip/hostname>:/<path-to-home-dir>
   ```
   
-  e.g. for Umbrel: ` scp tunnelsatsv2.conf umbrel@umbrel.local:/home/umbrel/ `
+  e.g. for Umbrel: ` scp tunnelsats_[server].conf umbrel@umbrel.local:/home/umbrel/ `
   
 
-  Make sure that both files (tunnelsatsv2.conf and setupv2.sh) are located in the same directory. Then start it:
+  Make sure that both files (tunnelsats_[server].conf and tunnelsats.sh) are located in the same directory. Then start it:
   
   ```sh
-  $ sudo bash setupv2.sh
+  $ sudo bash tunnelsats.sh install
   ```
   
   If everything went fine, your selected VPN's credentials and further instructions are shown to adjust the lightning configuration file. Copy to file or write them down for later use (e.g. LND config):
@@ -138,7 +138,7 @@ Running LND only requires a few parameters to be checked and set to activate hyb
   # omit the listen setting for Umbrel v0.5+
   listen=0.0.0.0:9735
   # the following placeholders {vpnDNS} and {vpnPort}
-  # are provided at the end of the setupv2.sh script
+  # are provided at the end of the tunnelsats.sh script
   externalhosts={vpnDNS}:{vpnPort}
   
   [Tor]
@@ -238,7 +238,7 @@ and enter the following settings:
 Renewal of existing subscriptions has been reworked. Now it is possible to prolong your subscription by extending the current fixed term. Here is how it works:
 - go to [tunnelsats.com](https://tunnelsats.com) and select "Renew Subscription" on the navigation bar
 - enter the WireGuard public key - find the key either
-  - commented out in your `tunnelsatsv2.conf`, look for `#myPubKey` line (new subscriptions only) or 
+  - commented out in your `tunnelsats_[server].conf`, look for `#myPubKey` line (new subscriptions only) or 
   - in your wireguard connection details extracted by running `sudo wg show | grep "public key"`
 - click "Query Key Info" to fetch your current valid date
 - select the desired term extension of your choice (it is appended to the current expiry)
@@ -262,11 +262,11 @@ Restore your configuration from with the backup file you (hopefully) created on 
 
 ## Deep Dive ##
 
-What is the `setupv2.sh` script doing in detail?
+What is the `tunnelsats.sh` script doing in detail?
 
 1) Checking if required components are already installed and if not, installing them. These are: `cgroup-tools` (for split-tunneling Tor), `nftables` (VPN rules) and `wireguard` (VPN software).
 
-2) Checking if `tunnelsatsv2.conf` exists in current directory (must be the same directory where setupv2 script is located).
+2) Checking if `tunnelsats_[server].conf` exists in current directory (must be the same directory where tunnelsats.sh script is located).
 
 3) Setting up "split-tunneling" to exclude Tor traffic from VPN usage.
 
