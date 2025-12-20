@@ -931,14 +931,14 @@ setup_docker_network() {
     local delrule1=$(ip rule | grep -c "from all lookup main suppress_prefixlength 0" || echo "0")
     local delrule2=$(ip rule | grep -c "from $dockersubnet lookup 51820" || echo "0")
     
-    if [ $delrule1 -gt 0 ]; then
-        for i in $(seq 1 $delrule1); do
+    if [ "$delrule1" -gt 0 ]; then
+        for i in $(seq 1 "$delrule1"); do
             ip rule del from all table main suppress_prefixlength 0 2>/dev/null || true
         done
     fi
     
-    if [ $delrule2 -gt 0 ]; then
-        for i in $(seq 1 $delrule2); do
+    if [ "$delrule2" -gt 0 ]; then
+        for i in $(seq 1 "$delrule2"); do
             ip rule del from $dockersubnet table 51820 2>/dev/null || true
         done
     fi
@@ -1608,9 +1608,16 @@ cmd_uninstall() {
 cmd_install() {
     check_root
     print_header "TunnelSats Installation"
+
+    # Step 1: Detect Configuration (Fail fast if missing)
+    print_step 1 6 "Detecting configuration..."
+    local config_path
+    config_path=$(detect_config_file "$CONFIG_FILE") || exit 1
+    CONFIG_FILE="$config_path"
+    echo ""
     
-    # Step 1: Detect Environment
-    print_step 1 5 "Analyzing environment..."
+    # Step 2: Detect Environment
+    print_step 2 6 "Analyzing environment..."
     PLATFORM=$(detect_platform)
     LN_IMPL=$(detect_ln_implementation)
     
@@ -1621,8 +1628,8 @@ cmd_install() {
     print_info "Platform: ${PLATFORM}, Lightning: ${LN_IMPL}"
     echo ""
 
-    # Step 2: Check dependencies
-    print_step 2 5 "Checking dependencies..."
+    # Step 3: Check dependencies
+    print_step 3 6 "Checking dependencies..."
     if ! command -v wg &>/dev/null; then
         print_info "Installing wireguard-tools..."
         if ! apt-get update -qq &>/dev/null || ! apt-get install -yqq wireguard-tools &>/dev/null; then
@@ -1652,18 +1659,13 @@ cmd_install() {
     fi
     echo ""
 
-    # Step 3: Detect Configuration
-    print_step 3 5 "Detecting configuration..."
-    local config_path
-    config_path=$(detect_config_file "$CONFIG_FILE") || exit 1
-    CONFIG_FILE="$config_path"
-    echo ""
-
     # Step 4: Configure Lightning
+    print_step 4 6 "Configuring Lightning..."
     configure_lightning
     echo ""
 
     # Step 5: Configure WireGuard
+    print_step 5 6 "Configuring WireGuard..."
     configure_wireguard
     
     # Configure DNS Resolver Watchdog
@@ -1676,6 +1678,7 @@ cmd_install() {
     echo ""
 
     # Step 6: Enable services
+    print_step 6 6 "Enabling services..."
     enable_services
     
     # Verify installation
