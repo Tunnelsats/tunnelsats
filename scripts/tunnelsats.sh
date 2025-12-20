@@ -1297,7 +1297,7 @@ cmd_uninstall() {
     
     # 1. Detect Platform & Implementation for Cleanup
     local is_docker=0
-    local platform=""
+    PLATFORM=""
     local home_dir=""
     local umbrel_user=${SUDO_USER:-${USER}}
 
@@ -1309,10 +1309,10 @@ cmd_uninstall() {
     read -p "Select [1-4]: " platform_choice
     
     case $platform_choice in
-        1) platform="raspiblitz"; is_docker=0 ;;
-        2) platform="umbrel"; is_docker=1; home_dir="/home/$umbrel_user" ;;
-        3) platform="mynode"; is_docker=0 ;;
-        4) platform="baremetal"; is_docker=0 ;;
+        1) PLATFORM="raspiblitz"; is_docker=0 ;;
+        2) PLATFORM="umbrel"; is_docker=1; home_dir="/home/$umbrel_user" ;;
+        3) PLATFORM="mynode"; is_docker=0 ;;
+        4) PLATFORM="baremetal"; is_docker=0 ;;
         *) print_error "Invalid selection"; exit 1 ;;
     esac
     
@@ -1444,11 +1444,11 @@ cmd_uninstall() {
              print_success "Restored Umbrel exports.sh port"
         fi
         
-         # Umbrel docker-compose
-        if [[ -f "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" ]]; then
-             sed -i "s/#- --bind-addr/- --bind-addr/g" "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" &>/dev/null
+         if [[ -f "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" ]]; then
+             # Handle potential spaces after # (e.g., # - --bind-addr or #- --bind-addr)
+             sed -i "s/^#\s*- --bind-addr/- --bind-addr/g" "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" &>/dev/null
              print_success "Restored Umbrel docker-compose binding"
-        fi
+         fi
     fi
     echo ""
 
@@ -1594,14 +1594,13 @@ cmd_uninstall() {
     echo "  - tor.skip-proxy-for-clearnet-targets"
     echo ""
     
-    echo "Next: Restart your node."
+    echo "Next: Restart your node for changes to take effect."
+    echo "      (Highly recommended to clear firewall and network rules)"
+    echo ""
+    echo "   sudo reboot"
+    
     if [[ "$PLATFORM" == "umbrel" ]]; then
-        echo "   sudo reboot"
         echo "   (Or restart via Umbrel Dashboard)"
-    else
-        local svc_name="${ln_impl}"
-        [[ "$ln_impl" == "cln" ]] && svc_name="lightningd"
-        echo "   sudo systemctl restart ${svc_name}.service"
     fi
     echo ""
 }
@@ -1791,6 +1790,36 @@ cmd_status() {
     print_header "Subscription Status"
     
     echo ""
+    
+    # 0. Auto-detect environment if not set (for status command standalone)
+    if [[ -z "$PLATFORM" ]]; then
+        if [[ -d /home/admin/config.scripts ]]; then
+            PLATFORM="raspiblitz"
+        elif [[ -d /home/umbrel/umbrel ]] || [[ -d /umbrel ]] || [[ -f /usr/bin/umbrel ]]; then
+            PLATFORM="umbrel"
+        elif [[ -d /usr/share/mynode ]]; then
+            PLATFORM="mynode"
+        else
+            PLATFORM="baremetal"
+        fi
+    fi
+    if [[ -z "$LN_IMPL" ]]; then
+        if [[ "$PLATFORM" == "umbrel" ]]; then
+            if docker ps --filter name=core-lightning -q | grep -q .; then
+                LN_IMPL="cln"
+            elif docker ps --filter name=lnd -q | grep -q .; then
+                LN_IMPL="lnd"
+            fi
+        else
+            if systemctl is-active --quiet lnd; then
+                LN_IMPL="lnd"
+            elif systemctl is-active --quiet lightningd; then
+                LN_IMPL="cln"
+            elif systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
+                LN_IMPL="lit"
+            fi
+        fi
+    fi
     
     # 1. Active Config & WireGuard Status Check
     local config_file
@@ -2068,14 +2097,16 @@ cmd_status() {
     fi
     echo ""
 
-    # Iterative Feedback Support: Debug Summary
+    # Iterative Feedback Support: Debug Summary (Simplified for Telegram)
     echo -e "${BOLD}Debug Summary (Copy for Telegram)${NC}"
     print_line
     local os_info=$(cat /etc/os-release | grep -E "^PRETTY_NAME=" | cut -d= -f2 | tr -d '"')
-    echo "Platform: ${PLATFORM} | Lightning: ${LN_IMPL} | Node: ${node_type}"
-    echo "OS: ${os_info}"
-    echo "Tunnel: ${status_msg} | Handshake: ${latest_handshake}"
-    echo "Inbound: ${inbound_status} | Outbound: ${outbound_ip}"
+    local status_plain=$(echo -e "${status_msg}" | sed 's/\x1b\[[0-9;]*m//g')
+    
+    echo -e "Platform: ${PLATFORM} | Lightning: ${LN_IMPL} | Node: ${node_type}"
+    echo -e "OS: ${os_info}"
+    echo -e "Tunnel: ${status_plain} | Handshake: ${latest_handshake}"
+    echo -e "Inbound: ${inbound_status} | Outbound: ${outbound_ip}"
     echo ""
 }
 
