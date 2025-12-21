@@ -1433,6 +1433,8 @@ cmd_uninstall() {
     if [[ "$ln_impl" == "lnd" ]]; then
         local paths=(
             "/mnt/hdd/lnd/lnd.conf"
+            "$home_dir/.lnd/lnd.conf"
+            "/home/bitcoin/.lnd/lnd.conf"
             "$home_dir/umbrel/lnd/lnd.conf"
             "$home_dir/umbrel/app-data/lightning/data/lnd/lnd.conf"
             "/data/lnd/lnd.conf"
@@ -1440,9 +1442,17 @@ cmd_uninstall() {
         )
         for path in "${paths[@]}"; do
             if [[ -f "$path" ]]; then 
-                if grep -q "tor.skip-proxy-for-clearnet-targets" "$path"; then
-                    sed -i "/tor.skip-proxy-for-clearnet-targets/d" "$path"
-                    print_success "Disabled hybrid mode in $path"
+                local cleaned=0
+                if grep -iq "externalhosts=" "$path" || grep -iq "tor.skip-proxy-for-clearnet-targets" "$path"; then
+                    # Backup before surgical cleaning
+                    cp "$path" "${path}.bak.$(date +%F_%H%M)"
+                    sed -i "/externalhosts=/Id" "$path"
+                    sed -i "/tor.skip-proxy-for-clearnet-targets/Id" "$path"
+                    sed -i "/tor.streamisolation=false/Id" "$path"
+                    cleaned=1
+                fi
+                if [[ $cleaned -eq 1 ]]; then
+                    print_success "Cleaned up $path"
                 fi
             fi
         done
@@ -1461,10 +1471,11 @@ cmd_uninstall() {
                     print_success "Restored Tor-only mode in $path"
                 fi
                 
-                # Umbrel specific cleanups
-                if [[ "$path" == *"$home_dir/umbrel"* ]]; then
-                     sed -i '/^bind-addr=/d' "$path" 2>/dev/null
-                     sed -i '/^announce-addr=/d' "$path" 2>/dev/null
+                # Cleanup TunnelSats specific CLN settings
+                if grep -qE "^bind-addr=|^announce-addr=" "$path"; then
+                    sed -i '/^bind-addr=/d' "$path" 2>/dev/null
+                    sed -i '/^announce-addr=/d' "$path" 2>/dev/null
+                    print_success "Removed TunnelSats address bindings in $path"
                 fi
             fi
         done
