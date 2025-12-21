@@ -1136,35 +1136,50 @@ EOF
 configure_lightning() {
     print_info "Configuring ${LN_IMPL} for tunneling..."
     
-    # Deactivate RaspiBlitz config checks if present
-    if [[ "$LN_IMPL" == "lnd" ]] && [[ -f /home/admin/config.scripts/lnd.check.sh ]]; then
-        mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak
-        print_info "RaspiBlitz lnd.check deactivated"
-    elif [[ "$LN_IMPL" == "cln" ]] && [[ -f /home/admin/config.scripts/cl.check.sh ]]; then
-        mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak
-        print_info "RaspiBlitz cl.check deactivated"
+    local service_file=""
+    local service_dir=""
+    case "$LN_IMPL" in
+        lnd)
+            service_file="/etc/systemd/system/lnd.service"
+            service_dir="/etc/systemd/system/lnd.service.d"
+            ;;
+        cln)
+            service_file="/etc/systemd/system/lightningd.service"
+            service_dir="/etc/systemd/system/lightningd.service.d"
+            ;;
+        lit)
+            service_file="/etc/systemd/system/lit.service"
+            service_dir="/etc/systemd/system/lit.service.d"
+            ;;
+    esac
+
+    # 1. Backup original service file before any modifications
+    if [[ -f "$service_file" ]] && [[ ! -f "${service_file}.bak" ]]; then
+        cp "$service_file" "${service_file}.bak"
+    fi
+
+    # 2. Deactivate RaspiBlitz config checks if present
+    if [[ "$PLATFORM" == "raspiblitz" ]]; then
+        if [[ "$LN_IMPL" == "lnd" ]] && [[ -f /home/admin/config.scripts/lnd.check.sh ]]; then
+            mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak 2>/dev/null || true
+            # Silence systemd warning by commenting out the call if it exists in the main service file
+            [[ -f "$service_file" ]] && sed -i 's|^ExecStartPre=.*lnd.check.sh|#ExecStartPre=|g' "$service_file" 2>/dev/null || true
+            # Also disable any separate health service if present
+            systemctl stop lnd-health.service &>/dev/null || true
+            systemctl disable lnd-health.service &>/dev/null || true
+            print_info "RaspiBlitz lnd.check deactivated"
+        elif [[ "$LN_IMPL" == "cln" ]] && [[ -f /home/admin/config.scripts/cl.check.sh ]]; then
+            mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak 2>/dev/null || true
+            [[ -f "$service_file" ]] && sed -i 's|^ExecStartPre=.*cl.check.sh|#ExecStartPre=|g' "$service_file" 2>/dev/null || true
+            systemctl stop cl-health.service &>/dev/null || true
+            systemctl disable cl-health.service &>/dev/null || true
+            print_info "RaspiBlitz cl.check deactivated"
+        fi
     fi
     
     # For non-Docker setups, modify systemd service to use cgexec
     if [[ "$PLATFORM" != "umbrel" ]]; then
         setup_cgroups
-        local service_file=""
-        local service_dir=""
-        
-        case "$LN_IMPL" in
-            lnd)
-                service_file="/etc/systemd/system/lnd.service"
-                service_dir="/etc/systemd/system/lnd.service.d"
-                ;;
-            cln)
-                service_file="/etc/systemd/system/lightningd.service"
-                service_dir="/etc/systemd/system/lightningd.service.d"
-                ;;
-            lit)
-                service_file="/etc/systemd/system/lit.service"
-                service_dir="/etc/systemd/system/lit.service.d"
-                ;;
-        esac
 
         # 1. Create Drop-in Dependency
         if [[ -n "$service_dir" ]]; then
@@ -1183,10 +1198,6 @@ EOF
         
         # 2. Modify ExecStart to use cgexec
         if [[ -f "$service_file" ]]; then
-            if [[ ! -f "${service_file}.bak" ]]; then
-                cp "$service_file" "${service_file}.bak"
-            fi
-            
             if ! grep -q "cgexec" "$service_file"; then
                 sed -i 's|ExecStart=|ExecStart=/usr/bin/cgexec -g net_cls:splitted_processes |g' "$service_file"
                 print_success "${LN_IMPL} service updated to use cgroup"
@@ -1389,7 +1400,9 @@ cmd_uninstall() {
         # Restore RaspiBlitz lnd.check
         if [[ -f /home/admin/config.scripts/lnd.check.bak ]]; then
              mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
-             print_success "Restored RaspiBlitz lnd.check.sh"
+             systemctl enable lnd-health.service &>/dev/null || true
+             systemctl start lnd-health.service &>/dev/null || true
+             print_success "Restored RaspiBlitz lnd.check logic"
         fi
 
     elif [[ "$ln_impl" == "cln" ]]; then
@@ -1426,7 +1439,9 @@ cmd_uninstall() {
         # Restore RaspiBlitz cl.check
         if [[ -f /home/admin/config.scripts/cl.check.bak ]]; then
              mv /home/admin/config.scripts/cl.check.bak /home/admin/config.scripts/cl.check.sh
-             print_success "Restored RaspiBlitz cl.check.sh"
+             systemctl enable cl-health.service &>/dev/null || true
+             systemctl start cl-health.service &>/dev/null || true
+             print_success "Restored RaspiBlitz cl.check logic"
         fi
     fi
     echo ""
