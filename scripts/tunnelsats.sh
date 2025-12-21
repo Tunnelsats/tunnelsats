@@ -962,16 +962,16 @@ setup_docker_network() {
     fi
     
     # Clean routing tables from prior failed starts
-    local delrule1=$(ip rule | grep -c "from all lookup main suppress_prefixlength 0" || echo "0")
-    local delrule2=$(ip rule | grep -c "from $dockersubnet lookup 51820" || echo "0")
+    local delrule1=$(ip rule | grep -c "from all lookup main suppress_prefixlength 0" || true)
+    local delrule2=$(ip rule | grep -c "from $dockersubnet lookup 51820" || true)
     
-    if [ "$delrule1" -gt 0 ]; then
+    if [ "$delrule1" -gt 0 ] 2>/dev/null; then
         for i in $(seq 1 "$delrule1"); do
             ip rule del from all table main suppress_prefixlength 0 2>/dev/null || true
         done
     fi
     
-    if [ "$delrule2" -gt 0 ]; then
+    if [ "$delrule2" -gt 0 ] 2>/dev/null; then
         for i in $(seq 1 "$delrule2"); do
             ip rule del from $dockersubnet table 51820 2>/dev/null || true
         done
@@ -980,21 +980,24 @@ setup_docker_network() {
     ip route flush table 51820 &>/dev/null || true
     
     # Create Docker network monitor script
-    cat > /etc/wireguard/tunnelsats-docker-network.sh <<'EOF'
-#!/bin/sh
-lightningcontainer=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 0.0.0.0:9735 | awk '{print $2}')
-checkdockernetwork=$(docker network ls 2> /dev/null | grep -c "docker-tunnelsats")
+    local filter_name="lnd"
+    [[ "$LN_IMPL" == "cln" ]] && filter_name="core-lightning"
 
-if [ $checkdockernetwork -eq 0 ]; then
+    cat > /etc/wireguard/tunnelsats-docker-network.sh <<EOF
+#!/bin/sh
+lightningcontainer=\$(docker ps --filter "name=${filter_name}" --format "{{.ID}}" | head -n 1)
+checkdockernetwork=\$(docker network ls 2> /dev/null | grep -c "docker-tunnelsats")
+
+if [ \$checkdockernetwork -eq 0 ]; then
   if ! docker network create "docker-tunnelsats" --subnet "10.9.9.0/25" -o "com.docker.network.driver.mtu"="1420" > /dev/null; then
     exit 1
   fi
 fi
 
-if [ ! -z $lightningcontainer ]; then
-  inspectlncontainer=$(docker inspect $lightningcontainer | grep -c "tunnelsats")
-  if [ $inspectlncontainer -eq 0 ]; then
-    if ! docker network connect --ip 10.9.9.9 docker-tunnelsats $lightningcontainer > /dev/null; then
+if [ -n "\$lightningcontainer" ]; then
+  inspectlncontainer=\$(docker inspect "\$lightningcontainer" 2>/dev/null | grep -c "docker-tunnelsats")
+  if [ \$inspectlncontainer -eq 0 ]; then
+    if ! docker network connect --ip 10.9.9.9 docker-tunnelsats "\$lightningcontainer" > /dev/null 2>&1; then
       exit 1
     fi
   fi
