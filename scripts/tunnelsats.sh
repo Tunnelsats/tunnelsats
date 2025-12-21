@@ -647,6 +647,23 @@ EOF
 # Helper functions for install command
 
 detect_platform() {
+    local guess=""
+    if [[ -d /home/admin/config.scripts ]]; then
+        guess="raspiblitz"
+    elif [[ -d /home/umbrel/umbrel ]] || [[ -d /umbrel ]] || [[ -f /usr/bin/umbrel ]]; then
+        guess="umbrel"
+    elif [[ -d /usr/share/mynode ]]; then
+        guess="mynode"
+    fi
+
+    if [[ -n "$guess" ]]; then
+        read -p "Detected Platform: ${guess}. Correct? [Y/n]: " use_guess
+        if [[ "$use_guess" =~ ^[Yy]$ ]] || [[ -z "$use_guess" ]]; then
+            echo "$guess"
+            return
+        fi
+    fi
+
     echo "What Lightning node package are you running?" >&2
     echo "  1) RaspiBlitz" >&2
     echo "  2) Umbrel" >&2
@@ -665,6 +682,23 @@ detect_platform() {
 }
 
 detect_ln_implementation() {
+    local guess=""
+    if [[ "$PLATFORM" == "umbrel" ]]; then
+        if docker ps -q --filter name=lnd | grep -q .; then guess="lnd";
+        elif docker ps -q --filter name=core-lightning | grep -q .; then guess="cln"; fi
+    else
+        if systemctl is-active --quiet lnd; then guess="lnd";
+        elif systemctl is-active --quiet lightningd; then guess="cln"; fi
+    fi
+
+    if [[ -n "$guess" ]]; then
+        read -p "Detected Implementation: ${guess^^}. Correct? [Y/n]: " use_guess
+        if [[ "$use_guess" =~ ^[Yy]$ ]] || [[ -z "$use_guess" ]]; then
+            echo "$guess"
+            return
+        fi
+    fi
+
     echo "Which Lightning implementation do you want to tunnel?" >&2
     echo "  1) LND" >&2
     echo "  2) CLN (Core Lightning)" >&2
