@@ -1780,7 +1780,7 @@ cmd_install() {
     echo "Then, restart your node:"
     if [[ "$PLATFORM" == "umbrel" ]]; then
         echo "   sudo reboot"
-        echo "   (Or restart via Settings -> Restart in Umbrel Dashboard)"
+        echo "   (Or restart the Lightning app via Umbrel Dashboard: Right-click -> Restart)"
     else
         local svc="${LN_IMPL}"
         [[ "$LN_IMPL" == "cln" ]] && svc="lightningd"
@@ -1789,12 +1789,8 @@ cmd_install() {
     echo ""
 }
 
-cmd_status() {
-    print_header "Subscription Status"
-    
-    echo ""
-    
-    # 0. Auto-detect environment if not set (for status command standalone)
+auto_detect_environment() {
+    # Auto-detect platform
     if [[ -z "$PLATFORM" ]]; then
         if [[ -d /home/admin/config.scripts ]]; then
             PLATFORM="raspiblitz"
@@ -1806,6 +1802,8 @@ cmd_status() {
             PLATFORM="baremetal"
         fi
     fi
+    
+    # Auto-detect implementation
     if [[ -z "$LN_IMPL" ]]; then
         if [[ "$PLATFORM" == "umbrel" ]]; then
             if docker ps --filter name=core-lightning -q | grep -q .; then
@@ -1823,6 +1821,15 @@ cmd_status() {
             fi
         fi
     fi
+}
+
+cmd_status() {
+    print_header "Subscription Status"
+    
+    echo ""
+    
+    # 0. Auto-detect environment if not set
+    auto_detect_environment
     
     # 1. Active Config & WireGuard Status Check
     local config_file
@@ -2119,52 +2126,78 @@ cmd_status() {
 cmd_restart() {
     print_header "Restarting TunnelSats"
     
+    # 0. Auto-detect environment
+    auto_detect_environment
+    
     # 1. Find Config/Interface
     local config_file
     config_file=$(find_active_wg_config)
     
     # Fallback logic if find fails but tunnel might be up
     if [[ -z "$config_file" ]]; then
-       # check if it matches detected interface
-       if sudo wg show ${interface_name} &>/dev/null; then
-           config_file="/etc/wireguard/${interface_name}.conf"
+       local active_interface=$(sudo wg show | grep "interface:" | head -n 1 | awk '{print $2}')
+       if [[ -n "$active_interface" ]]; then
+            config_file="/etc/wireguard/${active_interface}.conf"
        else
-           print_error "No active TunnelSats configuration or interface found."
-           exit 1
+            print_error "No active TunnelSats configuration or interface found."
+            exit 1
        fi
     fi
     
     local interface_name=$(basename "$config_file" .conf)
+    local stopped_containers=""
     
     echo ""
+    print_info "Platform: ${PLATFORM:-unknown}, Lightning: ${LN_IMPL:-unknown}"
     print_info "Interface: ${interface_name}"
-    
-    # 2. Restart Service
-    print_info "Stopping service..."
+    echo ""
+
+    # 2. Umbrel Specific: Stop App for safety (Privacy first)
+    if [[ "$PLATFORM" == "umbrel" ]] && [[ -n "$LN_IMPL" ]]; then
+        local filter_name="lnd"
+        [[ "$LN_IMPL" == "cln" ]] && filter_name="core-lightning"
+        
+        print_info "Umbrel detected: Stopping ${LN_IMPL} app for safe restart..."
+        stopped_containers=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
+        
+        if [[ -n "$stopped_containers" ]]; then
+            docker stop ${stopped_containers} &>/dev/null
+            print_success "${LN_IMPL} app stopped (Leak-proof mode)"
+        fi
+    fi
+
+    # 3. Restart WireGuard Service
+    print_info "Stopping WireGuard interface..."
     if systemctl stop "wg-quick@${interface_name}"; then
-        print_success "Service stopped"
+        print_success "Interface stopped"
     else
-        print_warning "Failed to stop service (might not be running)"
+        print_warning "Failed to stop interface (might not be running)"
     fi
     
     sleep 1
     
-    print_info "Starting service..."
+    print_info "Starting WireGuard interface..."
     if systemctl start "wg-quick@${interface_name}"; then
-        print_success "Service started successfully"
+        print_success "Interface started successfully"
     else
-        print_error "Failed to start service"
+        print_error "Failed to start interface"
         journalctl -n 10 -u "wg-quick@${interface_name}" --no-pager
         exit 1
     fi
     
-    # 3. Verify
+    # 4. Umbrel Specific: Restart App
+    if [[ "$PLATFORM" == "umbrel" ]] && [[ -n "$stopped_containers" ]]; then
+        print_info "Restarting ${LN_IMPL} app containers..."
+        docker start ${stopped_containers} &>/dev/null
+        print_success "${LN_IMPL} app restarted"
+    fi
+
+    # 5. Verify
     echo ""
     print_info "Verifying status..."
     sleep 2
     if [[ -n "$(wg show ${interface_name} 2>/dev/null)" ]]; then
         print_success "Tunnel Interface is UP"
-        # Optional: Trigger status to show details
         echo ""
         cmd_status
     else
