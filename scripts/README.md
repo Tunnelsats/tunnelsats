@@ -26,7 +26,7 @@ We are iteratively validating `tunnelsats.sh` across various Node OS platforms. 
 | Hardware/Platform | Node OS | OS Version | [i]nstall | [u]ninstall | [s]tatus | [r]estart |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: |
 | Raspberry Pi 4 | **Umbrel** | umbrelOS 1.5 | ✅ | ✅ | ✅ | ✅ |
-| Raspberry Pi | **RaspiBlitz** | v1.9.0 | ✅ | ✅ | ✅ | ✅ |
+| Raspberry Pi | **RaspiBlitz** | v1.11.x | ✅ | ✅ | ✅ | ✅ |
 | Proxmox VM | **Umbrel** | v1.2.1 | ✅ | ✅ | ✅ | ✅ |
 | PC / VPS | **Bare Metal** | Debian 12 | ⚠️ | ⚠️ | ✅ | ✅ |
 | Pi / PC (x86) | **myNode** | v0.3.x | ⚠️ | ⚠️ | ⚠️ | ⚠️ |

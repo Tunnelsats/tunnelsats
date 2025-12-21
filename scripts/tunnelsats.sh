@@ -857,7 +857,7 @@ PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
         if [[ "$PLATFORM" == "raspiblitz" ]]; then
             # Cgroup-aware killswitch: Only drop if user is bitcoin AND packet is in the tunnelsats cgroup (1118498)
             # This allows bitcoind (same user) to reach clearnet/tor normally
-            killswitchNonDocker="PostUp = nft insert rule ip %i nat skuid ${node_user} meta cgroup 1118498 fib daddr type != local ip daddr != {$localNetworks} meta oifname != %i counter drop\n"
+            killswitchNonDocker="PostUp = nft \"insert rule ip %i nat skuid ${node_user} meta cgroup 1118498 fib daddr type != local ip daddr != { $localNetworks } meta oifname != %i counter drop\"\n"
         fi
         
         local inputNonDocker="
@@ -880,11 +880,11 @@ PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
 
 PostUp = nft add table ip %i
-PostUp = nft add chain ip %i prerouting '{type filter hook prerouting priority mangle -1; policy accept;}'; nft add rule ip %i prerouting meta mark set ct mark
-PostUp = nft add chain ip %i mangle '{type route hook output priority mangle -1; policy accept;}'; nft add rule ip %i mangle tcp sport != { 8080, 10009 } meta mark and 0xff000000 != 0x2000000 meta cgroup 1118498 meta mark set 0x1000000
-PostUp = nft add chain ip %i nat'{type nat hook postrouting priority srcnat -1; policy accept;}'; nft insert rule ip %i nat  fib daddr type != local  ip daddr != {$localNetworks} oifname != %i ct mark and 0xff000000 == 0x1000000 drop;nft add rule ip %i nat oifname %i ct mark and 0xff000000 == 0x1000000 masquerade
-${killswitchNonDocker}PostUp = nft add chain ip %i postroutingmangle'{type filter hook postrouting priority mangle -1; policy accept;}'; nft add rule ip %i postroutingmangle meta mark and 0xff000000 == 0x1000000 ct mark set meta mark and 0x00ffffff xor 0x1000000 
-PostUp = nft add chain ip %i input'{type filter hook input priority filter -1; policy accept;}'; nft add rule ip %i input iifname %i  ct state established,related counter accept; nft add rule ip %i input iifname %i tcp dport != 9735 counter drop; nft add rule ip %i input iifname %i udp dport != 9735 counter drop
+PostUp = nft add chain ip %i prerouting '{ type filter hook prerouting priority mangle -1; policy accept; }'; nft add rule ip %i prerouting meta mark set ct mark
+PostUp = nft add chain ip %i mangle '{ type route hook output priority mangle -1; policy accept; }'; nft add rule ip %i mangle tcp sport != { 8080, 10009 } meta mark and 0xff000000 != 0x2000000 meta cgroup 1118498 meta mark set 0x1000000
+PostUp = nft \"add chain ip %i nat { type nat hook postrouting priority srcnat -1; policy accept; } ; insert rule ip %i nat fib daddr type != local ip daddr != { $localNetworks } oifname != %i ct mark and 0xff000000 == 0x1000000 drop ; add rule ip %i nat oifname %i ct mark and 0xff000000 == 0x1000000 masquerade\"
+${killswitchNonDocker}PostUp = nft \"add chain ip %i postroutingmangle { type filter hook postrouting priority mangle -1; policy accept; } ; add rule ip %i postroutingmangle meta mark and 0xff000000 == 0x1000000 ct mark set meta mark and 0x00ffffff xor 0x1000000\"
+PostUp = nft \"add chain ip %i input { type filter hook input priority filter -1; policy accept; } ; add rule ip %i input iifname %i ct state established,related counter accept ; add rule ip %i input iifname %i tcp dport != 9735 counter drop ; add rule ip %i input iifname %i udp dport != 9735 counter drop\"
 
 
 PostDown = nft delete table ip %i
