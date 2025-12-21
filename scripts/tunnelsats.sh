@@ -1621,22 +1621,24 @@ cmd_uninstall() {
     echo "Please check your lightning configuration files and remove any leftover"
     echo "TunnelSats settings if they were not automatically restored:"
     if [[ "$ln_impl" == "lnd" ]]; then
-        echo "  - externalhosts (should be removed from lnd.conf)"
+        if [[ "$PLATFORM" == "umbrel" ]]; then
+            echo -e "  Command: ${BOLD}nano $home_dir/umbrel/app-data/lightning/data/lnd/lnd.conf${NC}"
+        fi
+        echo "  - externalhosts (should be removed)"
         echo "  - tor.skip-proxy-for-clearnet-targets (should be false or removed)"
     elif [[ "$ln_impl" == "cln" ]]; then
-        echo "  - announce-addr (should be removed from config)"
-        echo "  - bind-addr=0.0.0.0:9735 (should be removed from config)"
+        if [[ "$PLATFORM" == "umbrel" ]]; then
+            echo -e "  Command: ${BOLD}nano $home_dir/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config${NC}"
+        fi
+        echo "  - announce-addr (should be removed)"
+        echo "  - bind-addr=0.0.0.0:9735 (should be removed)"
     fi
     echo ""
     
     echo "Next: Restart your node for changes to take effect."
-    echo "      (Highly recommended to clear firewall and network rules)"
+    echo "      (Required to fully clear persistent network rules)"
     echo ""
-    echo "   sudo reboot"
-    
-    if [[ "$PLATFORM" == "umbrel" ]]; then
-        echo "   (Or restart via Umbrel Dashboard)"
-    fi
+    echo -e "   ${BOLD}sudo reboot${NC}"
     echo ""
 }
 
