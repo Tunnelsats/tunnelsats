@@ -15,6 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE=""
 PLATFORM=""
 LN_IMPL=""
+node_user=""
 
 # ---------------------------------------------------------------------------
 # COLOR & FORMATTING FUNCTIONS
@@ -408,244 +409,6 @@ cmd_pre_check() {
     echo ""
 }
 
-cmd_install() {
-    print_header "Installation Wizard"
-    
-    # Detect config file
-    local config_path
-    config_path=$(detect_config_file "$CONFIG_FILE") || exit 1
-    CONFIG_FILE="$config_path"
-    
-    echo ""
-    print_info "Config file: ${CONFIG_FILE##*/}"
-    echo ""
-    
-    # Confirm to proceed
-    echo "This will install TunnelSats VPN on your system."
-    echo "The process will:"
-    echo "  • Install required dependencies (wireguard, nftables, cgroup-tools)"
-    echo "  • Configure WireGuard tunnel"
-    echo "  • Set up systemd services"
-    echo "  • Configure your Lightning node"
-    echo ""
-    read -p "Continue with installation? (Y/N) " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_info "Installation cancelled"
-        exit 0
-    fi
-    echo ""
-    
-    # Step 1: Detect Platform
-    print_step 1 8 "Detecting platform..."
-    detect_platform
-    echo ""
-    
-    # Step 2: Detect Lightning Implementation
-    print_step 2 8 "Selecting Lightning implementation..."
-    detect_ln_implementation
-    echo ""
-    
-    # Step 3: Install dependencies
-    print_step 3 8 "Installing dependencies..."
-    install_dependencies
-    echo ""
-    
-    # Step 4: Configure WireGuard
-    print_step 4 8 "Configuring WireGuard..."
-    configure_wireguard
-    echo ""
-    
-    # Step 4.5: Setup Docker network (Umbrel only)
-    if [[ "$PLATFORM" == "umbrel" ]]; then
-        print_info "Setting up Docker network..."
-        setup_docker_network
-        echo ""
-    fi
-    
-    # Step 5: Setup cgroups (non-Docker only)
-    if [[ "$PLATFORM" != "umbrel" ]]; then
-        print_step 5 8 "Setting up cgroups..."
-        setup_cgroups
-        echo ""
-    else
-        print_info "Skipping cgroups (Docker setup)"
-        echo ""
-    fi
-    
-    # Step 6: Configure Lightning node  
-    print_step 6 8 "Configuring Lightning node..."
-    configure_lightning
-    
-    # Step 5: Setup DNS Resolver
-    print_step 5 5 "Enabling services..."
-    setup_dns_resolver "$WG_INTERFACE"
-    enable_services
-    echo ""
-    
-    # Step 8: Final verification
-    print_step 8 8 "Verifying installation..."
-    verify_installation
-    echo ""
-    
-    # Success!
-    print_line
-    print_success "Installation completed successfully!"
-    print_line
-    echo ""
-    
-    # Get VPN details from config
-    local vpnExternalDNS=$(grep "Endpoint" /etc/wireguard/tunnelsatsv2.conf | awk '{print $3}' | cut -d ':' -f1)
-    local vpnExternalPort=$(grep "#VPNPort" /etc/wireguard/tunnelsatsv2.conf | awk '{print $3}' || echo "<port>")
-    
-    # Show configuration instructions based on implementation
-    echo -e "${BOLD}IMPORTANT: Configure your Lightning node${NC}"
-    print_line
-    echo ""
-    
-    if [[ "$LN_IMPL" == "lnd" ]]; then
-        if [[ "$PLATFORM" == "umbrel" ]]; then
-            cat << EOF
-LND on Umbrel 0.5+:
-
-Make a backup and then edit ~/umbrel/app-data/lightning/data/lnd/lnd.conf 
-to add or modify the below lines.
-
-Important:
-There are a few hybrid settings Umbrel's bringing to the UI, please do the following steps:
-- in the Umbrel GUI, navigate to the LND advanced settings
-- validate which of the below settings are activated already
-- leave those activated as they are
-- don't add those settings in your custom lnd.conf again to avoid duplication
-
-Example: in case tor.streamisolation and tor.skip-proxy-for-clearnet-targets is already 
-activated in the UI, skip the [Tor] section completely and only add externalhosts. 
-
-#########################################
-[Application Options]
-externalhosts=${vpnExternalDNS}:${vpnExternalPort}
-[Tor]
-tor.streamisolation=false
-tor.skip-proxy-for-clearnet-targets=true
-#########################################
-EOF
-        else
-            cat << EOF
-LND:
-
-Before editing, please create a backup of your current LND config file.
-Then edit and add or modify the following lines. Please note that
-settings could already be part of your configuration file 
-and duplicated lines could lead to errors.
-
-#########################################
-[Application Options]
-listen=0.0.0.0:9735
-externalhosts=${vpnExternalDNS}:${vpnExternalPort}
-[Tor]
-tor.streamisolation=false
-tor.skip-proxy-for-clearnet-targets=true
-#########################################
-EOF
-        fi
-    elif [[ "$LN_IMPL" == "cln" ]]; then
-        if [[ "$PLATFORM" == "umbrel" ]]; then
-            cat << EOF
-CLN on Umbrel 0.5+:
-
-Before editing, please create backups of your CLN config files.
-
-###############################################################################
-Create/edit CLN config file 'config':
-  \$ sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config 
-insert:
-  bind-addr=0.0.0.0:9735
-  announce-addr=${vpnExternalDNS}:${vpnExternalPort}
-  always-use-proxy=false
-
-Edit 'export.sh':
-  \$ nano ~/umbrel/app-data/core-lightning/export.sh
-change assigned port of APP_CORE_LIGHTNING_DAEMON_PORT from 9736 to 9735:
-  export APP_CORE_LIGHTNING_DAEMON_PORT="9735"
-
-Edit 'docker-compose.yml':
-comment out 'bind-addr' parameter like so:
-   command:
-   ...
-   #- --bind-addr=\${APP_CORE_LIGHTNING_DAEMON_IP}:9735  
-###############################################################################
-EOF
-        else
-            cat << EOF
-CLN:
-
-Before editing, please create a backup of your current CLN config file.
-Then edit and add or modify the following lines.
-
-###############################################################################
-Native CLN installation (config file):
-
-  # Tor
-  addr=statictor:127.0.0.1:9051/torport=9735
-  proxy=127.0.0.1:9050
-  always-use-proxy=false
-
-  # VPN
-  bind-addr=0.0.0.0:9735
-  announce-addr=${vpnExternalDNS}:${vpnExternalPort}
-###############################################################################
-EOF
-        fi
-    elif [[ "$LN_IMPL" == "lit" ]]; then
-        cat << EOF
-LIT:
-
-Before editing, please create a backup of your current lit.conf config file.
-Then edit and add or modify the following lines.
-
-#########################################
-[Application Options]
-#listen=0.0.0.0:9735
-externalhosts=${vpnExternalDNS}:${vpnExternalPort}
-[Tor]
-tor.streamisolation=false
-tor.skip-proxy-for-clearnet-targets=true
-#########################################
-EOF
-    fi
-    
-    echo ""
-    echo "Please save this info in a file or write them down for later use."
-    echo ""
-    echo "A more detailed guide is available at: https://tunnelsats.com/guide"
-    echo "Afterwards please restart your Lightning node for changes to take effect."
-    echo ""
-    echo "Welcome to Tunnel⚡Sats."
-    echo "- Feel free to join the Amboss Community: https://amboss.space/community/29db5f25-24bb-407e-b752-be69f9431071"
-    echo "- Check your clearnet connection functionality and speed: https://t.me/TunnelSatsBot"
-    echo "- Join our Telegram Group: https://t.me/tunnelsats"
-    echo "- Add a reminder on your subscription expiration date: https://t.me/TunnelSatsReminderBot"
-    echo ""
-    
-    # Restart instructions
-    echo -e "${BOLD}Restart your Lightning node:${NC}"
-    if [[ "$PLATFORM" == "umbrel" ]]; then
-        if [[ -f /etc/systemd/system/umbrel-startup.service ]]; then
-            echo "  sudo ~/umbrel/scripts/stop"
-            echo "  sudo ~/umbrel/scripts/start"
-        elif [[ -f /etc/systemd/system/umbrel.service ]]; then
-            echo "  sudo systemctl restart umbrel.service"
-        fi
-    else
-        local service_name="${LN_IMPL}"
-        if [[ "$LN_IMPL" == "cln" ]]; then
-            service_name="lightningd"
-        fi
-        echo "  sudo systemctl restart ${service_name}.service"
-    fi
-    echo ""
-}
-
 # Helper functions for install command
 
 detect_platform() {
@@ -689,13 +452,25 @@ detect_ln_implementation() {
         if docker ps -q --filter name=lnd | grep -q .; then guess="lnd";
         elif docker ps -q --filter name=core-lightning | grep -q .; then guess="cln"; fi
     else
-        if systemctl is-active --quiet lnd; then guess="lnd";
-        elif systemctl is-active --quiet lightningd; then guess="cln"; fi
+        if [[ -f /etc/systemd/system/lnd.service ]] || systemctl is-active --quiet lnd; then guess="lnd";
+        elif [[ -f /etc/systemd/system/lightningd.service ]] || systemctl is-active --quiet lightningd; then guess="cln"; fi
     fi
 
     if [[ -n "$guess" ]]; then
         read -p "Detected Implementation: ${guess^^}. Correct? [Y/n]: " use_guess
         if [[ "$use_guess" =~ ^[Yy]$ ]] || [[ -z "$use_guess" ]]; then
+            LN_IMPL="$guess"
+            # Detect node user for non-Docker
+            if [[ "$PLATFORM" != "umbrel" ]]; then
+                local s_file=""
+                [[ "$LN_IMPL" == "lnd" ]] && s_file="/etc/systemd/system/lnd.service"
+                [[ "$LN_IMPL" == "cln" ]] && s_file="/etc/systemd/system/lightningd.service"
+                if [[ -f "$s_file" ]]; then
+                    node_user=$(grep "^User=" "$s_file" | cut -d'=' -f2 | xargs)
+                fi
+                [[ -z "$node_user" ]] && [[ "$PLATFORM" == "raspiblitz" ]] && node_user="bitcoin"
+                [[ -z "$node_user" ]] && node_user=$(whoami)
+            fi
             echo "$guess"
             return
         fi
@@ -711,10 +486,21 @@ detect_ln_implementation() {
     read -p "Select [1-3]: " choice
     
     case $choice in
-        1) echo "lnd" ;;
-        2) echo "cln" ;;
+        1) 
+            LN_IMPL="lnd"
+            [[ -z "$node_user" ]] && node_user="bitcoin"
+            echo "lnd" 
+            ;;
+        2) 
+            LN_IMPL="cln"
+            [[ -z "$node_user" ]] && node_user="bitcoin"
+            echo "cln" 
+            ;;
         3) 
             if [[ "$PLATFORM" == "baremetal" ]]; then
+                LN_IMPL="lit"
+                node_user=$(grep "^User=" /etc/systemd/system/lit.service 2>/dev/null | cut -d'=' -f2 | xargs)
+                [[ -z "$node_user" ]] && node_user="bitcoin"
                 echo "lit"
             else
                 print_error "LIT only available on bare metal"
