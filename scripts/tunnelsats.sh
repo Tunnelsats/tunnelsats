@@ -425,7 +425,7 @@ detect_platform() {
         read -p "Detected Platform: ${guess}. Correct? [Y/n]: " use_guess
         if [[ "$use_guess" =~ ^[Yy]$ ]] || [[ -z "$use_guess" ]]; then
             PLATFORM="$guess"
-            return
+            return 0
         fi
     fi
 
@@ -444,6 +444,7 @@ detect_platform() {
         4) PLATFORM="baremetal" ;;
         *) print_error "Invalid selection"; exit 1 ;;
     esac
+    return 0
 }
 
 detect_ln_implementation() {
@@ -471,7 +472,7 @@ detect_ln_implementation() {
                 [[ -z "$node_user" ]] && [[ "$PLATFORM" == "raspiblitz" ]] && node_user="bitcoin"
                 [[ -z "$node_user" ]] && node_user=$(whoami)
             fi
-            return
+            return 0
         fi
     fi
 
@@ -505,6 +506,7 @@ detect_ln_implementation() {
             ;;
         *) print_error "Invalid selection"; exit 1 ;;
     esac
+    return 0
 }
 
 install_dependencies() {
@@ -1692,6 +1694,7 @@ auto_detect_environment() {
         [[ -z "$node_user" ]] && [[ "$PLATFORM" == "raspiblitz" ]] && node_user="bitcoin"
         [[ -z "$node_user" ]] && node_user=$(whoami)
     fi
+    return 0
 }
 
 cmd_status() {
