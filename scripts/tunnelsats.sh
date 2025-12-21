@@ -813,6 +813,12 @@ configure_wireguard() {
     if [[ "$PLATFORM" == "umbrel" ]]; then
         print_info "Applying Docker network rules..."
         
+        # Pre-resolve subnet to avoid command failure in PostUp
+        local dockersubnet=$(docker network inspect "docker-tunnelsats" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)
+        if [[ -z "$dockersubnet" ]]; then
+            dockersubnet="10.9.9.0/25" # Fallback to standard
+        fi
+
         local inputDocker="
 
 #Tunnelsats-Setupv2-Docker
@@ -821,24 +827,22 @@ configure_wireguard() {
 DNS = 8.8.8.8
 Table = off
 
-
 PostUp = while [ \$(ip rule | grep -c suppress_prefixlength) -gt 0 ]; do ip rule del from all table  main suppress_prefixlength 0;done
 PostUp = while [ \$(ip rule | grep -c 0x1000000) -gt 0 ]; do ip rule del from all fwmark 0x1000000/0xff000000 table  51820;done
 PostUp = if [ \$(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt  0 ]; then echo \$?; ip route del blackhole default metric 3 table 51820; ip rule flush table 51820 ;fi
 
-
-PostUp = ip rule add from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820
+PostUp = ip rule add from $dockersubnet table 51820
 PostUp = ip rule add from all table main suppress_prefixlength 0
 PostUp = ip route add blackhole default metric 3 table 51820
 PostUp = ip route add default dev %i metric 2 table 51820
-PostUp = ip route add  10.9.0.0/24 dev %i  proto kernel scope link; ping -c1 10.9.0.1
+PostUp = ip route add 10.9.0.0/24 dev %i proto kernel scope link; ping -c1 10.9.0.1
 
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
 
-PostDown = ip rule del from \$(docker network inspect \"docker-tunnelsats\" | grep Subnet | awk '{print \$2}' | sed 's/[\",]//g') table 51820
-PostDown = ip rule del from all table  main suppress_prefixlength 0
+PostDown = ip rule del from $dockersubnet table 51820
+PostDown = ip rule del from all table main suppress_prefixlength 0
 PostDown = ip route flush table 51820
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 "
