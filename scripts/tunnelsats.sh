@@ -1337,38 +1337,16 @@ cmd_uninstall() {
     done
     
     # 1. Detect Platform & Implementation for Cleanup
-    local is_docker=0
-    PLATFORM=""
-    local home_dir=""
     local umbrel_user=${SUDO_USER:-${USER}}
+    PLATFORM=$(detect_platform)
+    local ln_impl=$(detect_ln_implementation)
+    local is_docker=0
+    local home_dir=""
 
-    echo "What Lightning node package are you running?"
-    echo "  1) RaspiBlitz"
-    echo "  2) Umbrel"
-    echo "  3) myNode"
-    echo "  4) RaspiBolt / Bare Metal"
-    read -p "Select [1-4]: " platform_choice
-    
-    case $platform_choice in
-        1) PLATFORM="raspiblitz"; is_docker=0 ;;
-        2) PLATFORM="umbrel"; is_docker=1; home_dir="/home/$umbrel_user" ;;
-        3) PLATFORM="mynode"; is_docker=0 ;;
-        4) PLATFORM="baremetal"; is_docker=0 ;;
-        *) print_error "Invalid selection"; exit 1 ;;
-    esac
-    
-    local ln_impl=""
-    echo ""
-    echo "Which Lightning implementation was tunneled?"
-    echo "  1) LND"
-    echo "  2) CLN"
-    read -p "Select [1-2]: " ln_choice
-    
-    case $ln_choice in
-        1) ln_impl="lnd" ;;
-        2) ln_impl="cln" ;;
-        *) print_error "Invalid selection"; exit 1 ;;
-    esac
+    if [[ "$PLATFORM" == "umbrel" ]]; then
+        is_docker=1
+        home_dir="/home/$umbrel_user"
+    fi
 
     # 2. Stop Services & Clean Dependencies
     print_step 1 6 "Stopping Lightning services..."
