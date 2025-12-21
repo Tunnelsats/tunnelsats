@@ -1162,15 +1162,15 @@ configure_lightning() {
     if [[ "$PLATFORM" == "raspiblitz" ]]; then
         if [[ "$LN_IMPL" == "lnd" ]] && [[ -f /home/admin/config.scripts/lnd.check.sh ]]; then
             mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak 2>/dev/null || true
-            # Silence systemd warning by commenting out the call if it exists in the main service file
-            [[ -f "$service_file" ]] && sed -i 's|^ExecStartPre=.*lnd.check.sh|#ExecStartPre=|g' "$service_file" 2>/dev/null || true
+            # Silence systemd warning: Find lines with lnd.check.sh and comment out the start of the line
+            [[ -f "$service_file" ]] && sed -i '/lnd\.check\.sh/ s/^ExecStartPre=/#ExecStartPre=/' "$service_file" 2>/dev/null || true
             # Also disable any separate health service if present
             systemctl stop lnd-health.service &>/dev/null || true
             systemctl disable lnd-health.service &>/dev/null || true
             print_info "RaspiBlitz lnd.check deactivated"
         elif [[ "$LN_IMPL" == "cln" ]] && [[ -f /home/admin/config.scripts/cl.check.sh ]]; then
             mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak 2>/dev/null || true
-            [[ -f "$service_file" ]] && sed -i 's|^ExecStartPre=.*cl.check.sh|#ExecStartPre=|g' "$service_file" 2>/dev/null || true
+            [[ -f "$service_file" ]] && sed -i '/cl\.check\.sh/ s/^ExecStartPre=/#ExecStartPre=/' "$service_file" 2>/dev/null || true
             systemctl stop cl-health.service &>/dev/null || true
             systemctl disable cl-health.service &>/dev/null || true
             print_info "RaspiBlitz cl.check deactivated"
