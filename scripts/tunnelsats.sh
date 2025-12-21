@@ -41,16 +41,18 @@ print_header() {
     local title="Tunnel⚡Sats Setup Tool v${VERSION}"
     local width=42
     
-    # Calculate padding for Title
-    local title_len=${#title}
+    # Calculate padding (accounting for the 2-column width of the bolt symbol)
+    local title_len=32 # "Tunnel⚡Sats Setup Tool vX.X" effectively 32 columns wide
+    [[ "$title" != *"⚡"* ]] && title_len=${#title}
+    
     local title_padding=$(( (width - title_len) / 2 ))
     local sub_padding=$(( (width - ${#subtitle}) / 2 ))
     
     echo -e "${BOLD}${BLUE}"
-    printf "╔"; print_line "═" "$width" | tr -d '\n'; echo "╗"
+    printf "╔"; printf '═%.0s' $(seq 1 $width); echo "╗"
     printf "║%*s%s%*s║\n" $title_padding "" "$title" $((width - title_padding - title_len)) ""
     printf "║%*s%s%*s║\n" $sub_padding "" "$subtitle" $((width - sub_padding - ${#subtitle})) ""
-    printf "╚"; print_line "═" "$width" | tr -d '\n'; echo "╝"
+    printf "╚"; printf '═%.0s' $(seq 1 $width); echo "╝"
     echo -e "${NC}"
 }
 
@@ -945,7 +947,7 @@ WantedBy=multi-user.target
 EOF
     
     systemctl daemon-reload
-    systemctl enable tunnelsats-create-cgroup.service
+    systemctl enable tunnelsats-create-cgroup.service &>/dev/null
    systemctl start tunnelsats-create-cgroup.service
     
     print_success "Cgroups configured"
@@ -1250,10 +1252,10 @@ WantedBy=timers.target
 EOF
         
         systemctl daemon-reload
-        systemctl enable tunnelsats-splitting-processes.service
-        systemctl start tunnelsats-splitting-processes.service
-        systemctl enable tunnelsats-splitting-processes.timer
-        systemctl start tunnelsats-splitting-processes.timer
+        systemctl enable tunnelsats-splitting-processes.service &>/dev/null
+        systemctl start tunnelsats-splitting-processes.service &>/dev/null
+        systemctl enable tunnelsats-splitting-processes.timer &>/dev/null
+        systemctl start tunnelsats-splitting-processes.timer &>/dev/null
         
         print_success "Splitting processes service configured"
     fi
@@ -1759,39 +1761,43 @@ cmd_install() {
 
     if [[ "$LN_IMPL" == "lnd" ]]; then
         if [[ "$PLATFORM" == "umbrel" ]]; then
-             echo "Edit: ~/umbrel/app-data/lightning/data/lnd/lnd.conf"
-             echo "Note: If 'tor.streamisolation' or 'tor.skip-proxy...' are already enabled in UI,"
-             echo "      do NOT duplicate them."
+             echo -e "Edit: ${BOLD}${BLUE}~/umbrel/app-data/lightning/data/lnd/lnd.conf${NC}"
+             echo -e "${YELLOW}Note: If 'tor.streamisolation' or 'tor.skip-proxy...' are already enabled in UI,${NC}"
+             echo -e "${YELLOW}      do NOT duplicate them.${NC}"
              echo ""
              echo "#########################################"
-             echo -e "${BOLD}[Application Options]${NC}"
-             echo -e "${BOLD}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+             echo -e "${BOLD}${BLUE}[Application Options]${NC}"
+             echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
              echo ""
-             echo -e "${BOLD}[Tor]${NC}"
-             echo -e "${BOLD}tor.streamisolation=false${NC}"
-             echo -e "${BOLD}tor.skip-proxy-for-clearnet-targets=true${NC}"
+             echo -e "${BOLD}${BLUE}[Tor]${NC}"
+             echo -e "${YELLOW}tor.streamisolation=false${NC}"
+             echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
              echo "#########################################"
         else
-             echo "Edit: lnd.conf"
+             local lnd_path="$HOME/.lnd/lnd.conf"
+             [[ -d /home/bitcoin/.lnd ]] && lnd_path="/home/bitcoin/.lnd/lnd.conf"
+             
+             echo -e "Edit: ${BOLD}${BLUE}sudo nano $lnd_path${NC}"
+             echo -e "${YELLOW}Note: Place settings in their respective sections. Do NOT duplicate categories.${NC}"
              echo ""
              echo "#########################################"
-             echo -e "${BOLD}[Application Options]${NC}"
-             echo -e "${BOLD}listen=0.0.0.0:9735${NC}"
-             echo -e "${BOLD}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+             echo -e "${BOLD}${BLUE}[Application Options]${NC}"
+             echo -e "${YELLOW}listen=0.0.0.0:9735${NC}"
+             echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
              echo ""
-             echo -e "${BOLD}[Tor]${NC}"
-             echo -e "${BOLD}tor.streamisolation=false${NC}"
-             echo -e "${BOLD}tor.skip-proxy-for-clearnet-targets=true${NC}"
+             echo -e "${BOLD}${BLUE}[Tor]${NC}"
+             echo -e "${YELLOW}tor.streamisolation=false${NC}"
+             echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
              echo "#########################################"
         fi
         
     elif [[ "$LN_IMPL" == "cln" ]]; then
         if [[ "$PLATFORM" == "umbrel" ]]; then
-             echo "1. Edit: sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"
+             echo -e "1. Edit: ${BOLD}${BLUE}sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config${NC}"
              echo "#########################################"
-             echo -e "${BOLD}bind-addr=0.0.0.0:9735${NC}"
-             echo -e "${BOLD}announce-addr=${vpn_dns}:${vpn_port}${NC}"
-             echo -e "${BOLD}always-use-proxy=false${NC}"
+             echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
+             echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
+             echo -e "${YELLOW}always-use-proxy=false${NC}"
              echo "#########################################"
              echo ""
              echo "2. Edit: nano ~/umbrel/app-data/core-lightning/exports.sh"
@@ -1802,25 +1808,25 @@ cmd_install() {
              echo "3. Edit: ~/umbrel/app-data/core-lightning/docker-compose.yml"
              echo "   Comment out '--bind-addr' if present."
         else
-             echo "Edit: config"
+             echo -e "Edit: ${BOLD}${BLUE}config${NC}"
              echo ""
              echo "#########################################"
-             echo -e "${BOLD}bind-addr=0.0.0.0:9735${NC}"
-             echo -e "${BOLD}announce-addr=${vpn_dns}:${vpn_port}${NC}"
-             echo -e "${BOLD}always-use-proxy=false${NC}"
+             echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
+             echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
+             echo -e "${YELLOW}always-use-proxy=false${NC}"
              echo "#########################################"
         fi
         
     elif [[ "$LN_IMPL" == "lit" ]]; then
-         echo "Edit: lit.conf"
+         echo -e "Edit: ${BOLD}${BLUE}lit.conf${NC}"
          echo ""
          echo "#########################################"
-         echo -e "${BOLD}[Application Options]${NC}"
-         echo -e "${BOLD}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+         echo -e "${BOLD}${BLUE}[Application Options]${NC}"
+         echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
          echo ""
-         echo -e "${BOLD}[Tor]${NC}"
-         echo -e "${BOLD}tor.streamisolation=false${NC}"
-         echo -e "${BOLD}tor.skip-proxy-for-clearnet-targets=true${NC}"
+         echo -e "${BOLD}${BLUE}[Tor]${NC}"
+         echo -e "${YELLOW}tor.streamisolation=false${NC}"
+         echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
          echo "#########################################"
     fi
 
