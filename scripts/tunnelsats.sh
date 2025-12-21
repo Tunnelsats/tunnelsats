@@ -424,7 +424,7 @@ detect_platform() {
     if [[ -n "$guess" ]]; then
         read -p "Detected Platform: ${guess}. Correct? [Y/n]: " use_guess
         if [[ "$use_guess" =~ ^[Yy]$ ]] || [[ -z "$use_guess" ]]; then
-            echo "$guess"
+            PLATFORM="$guess"
             return
         fi
     fi
@@ -438,10 +438,10 @@ detect_platform() {
     read -p "Select [1-4]: " answer
     
     case $answer in
-        1) echo "raspiblitz" ;;
-        2) echo "umbrel" ;;
-        3) echo "mynode" ;;
-        4) echo "baremetal" ;;
+        1) PLATFORM="raspiblitz" ;;
+        2) PLATFORM="umbrel" ;;
+        3) PLATFORM="mynode" ;;
+        4) PLATFORM="baremetal" ;;
         *) print_error "Invalid selection"; exit 1 ;;
     esac
 }
@@ -471,7 +471,6 @@ detect_ln_implementation() {
                 [[ -z "$node_user" ]] && [[ "$PLATFORM" == "raspiblitz" ]] && node_user="bitcoin"
                 [[ -z "$node_user" ]] && node_user=$(whoami)
             fi
-            echo "$guess"
             return
         fi
     fi
@@ -489,19 +488,16 @@ detect_ln_implementation() {
         1) 
             LN_IMPL="lnd"
             [[ -z "$node_user" ]] && node_user="bitcoin"
-            echo "lnd" 
             ;;
         2) 
             LN_IMPL="cln"
             [[ -z "$node_user" ]] && node_user="bitcoin"
-            echo "cln" 
             ;;
         3) 
             if [[ "$PLATFORM" == "baremetal" ]]; then
                 LN_IMPL="lit"
                 node_user=$(grep "^User=" /etc/systemd/system/lit.service 2>/dev/null | cut -d'=' -f2 | xargs)
                 [[ -z "$node_user" ]] && node_user="bitcoin"
-                echo "lit"
             else
                 print_error "LIT only available on bare metal"
                 exit 1
@@ -1137,8 +1133,9 @@ cmd_uninstall() {
     
     # 1. Detect Platform & Implementation for Cleanup
     local umbrel_user=${SUDO_USER:-${USER}}
-    PLATFORM=$(detect_platform)
-    local ln_impl=$(detect_ln_implementation)
+    detect_platform
+    detect_ln_implementation
+    local ln_impl="${LN_IMPL}"
     local is_docker=0
     local home_dir=""
 
@@ -1367,9 +1364,20 @@ cmd_uninstall() {
     print_success "WireGuard services removed"
     echo ""
 
-    # 6. Docker Network Cleanup
+    # 6. NFTables Cleanup (All Platforms)
+    print_step 5 6 "Cleaning network rules..."
+    nft delete table ip ${target_interface} &>/dev/null || true
+    nft delete table inet ${target_interface} &>/dev/null || true
+    nft delete table ip tunnelsatsv2 &>/dev/null || true
+    nft delete table inet tunnelsatsv2 &>/dev/null || true
+    
+    if [[ -f /etc/nftablespriortunnelsats.backup ]]; then
+         mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf
+         print_success "Restored original nftables.conf"
+    fi
+
     if [[ $is_docker -eq 1 ]]; then
-        print_step 5 6 "Cleaning Docker network..."
+        print_info "Cleaning Docker network..."
         ip route flush table 51820 &>/dev/null
         
         # Disconnect containers from network
@@ -1379,21 +1387,13 @@ cmd_uninstall() {
             print_success "Removed docker-tunnelsats network"
         fi
         
-        # Restore nftables
-        nft delete table ip ${target_interface} &>/dev/null || true
-        nft delete table inet ${target_interface} &>/dev/null || true
-        nft delete table ip tunnelsatsv2 &>/dev/null || true
-        nft delete table inet tunnelsatsv2 &>/dev/null || true
-        if [[ -f /etc/nftablespriortunnelsats.backup ]]; then
-             mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf
-             print_success "Restored original nftables.conf"
-        fi
-        
         systemctl daemon-reload || true
         systemctl restart docker &>/dev/null || true
         print_success "Docker restarted"
-        echo ""
+    else
+        ip route flush table 51820 &>/dev/null
     fi
+    echo ""
     
     # 7. Restore Original Service Files
     if [[ $is_docker -eq 0 ]]; then
@@ -1473,8 +1473,8 @@ cmd_install() {
     
     # Step 2: Detect Environment
     print_step 2 6 "Analyzing environment..."
-    PLATFORM=$(detect_platform)
-    LN_IMPL=$(detect_ln_implementation)
+    detect_platform
+    detect_ln_implementation
     
     local is_docker=0
     [[ "$PLATFORM" == "umbrel" ]] && is_docker=1
@@ -1679,6 +1679,18 @@ auto_detect_environment() {
                 LN_IMPL="lit"
             fi
         fi
+    fi
+
+    # Detect node user for non-Docker
+    if [[ -n "$LN_IMPL" ]] && [[ "$PLATFORM" != "umbrel" ]] && [[ -z "$node_user" ]]; then
+        local s_file=""
+        [[ "$LN_IMPL" == "lnd" ]] && s_file="/etc/systemd/system/lnd.service"
+        [[ "$LN_IMPL" == "cln" ]] && s_file="/etc/systemd/system/lightningd.service"
+        if [[ -f "$s_file" ]]; then
+            node_user=$(grep "^User=" "$s_file" | cut -d'=' -f2 | xargs)
+        fi
+        [[ -z "$node_user" ]] && [[ "$PLATFORM" == "raspiblitz" ]] && node_user="bitcoin"
+        [[ -z "$node_user" ]] && node_user=$(whoami)
     fi
 }
 
