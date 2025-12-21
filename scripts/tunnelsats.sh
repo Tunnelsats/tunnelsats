@@ -2157,7 +2157,16 @@ cmd_restart() {
         local filter_name="lnd"
         [[ "$LN_IMPL" == "cln" ]] && filter_name="core-lightning"
         
-        print_info "Umbrel detected: Stopping ${LN_IMPL} app for safe restart..."
+        echo -e "${YELLOW}Umbrel detected. To ensure a leak-proof restart, we need to temporarily${NC}"
+        echo -e "${YELLOW}stop your ${LN_IMPL} app containers.${NC}"
+        read -p "Do you want to proceed? [y/N]: " restart_confirm
+        if [[ ! "$restart_confirm" =~ ^[Yy]$ ]]; then
+            print_info "Restart aborted by user."
+            exit 0
+        fi
+        echo ""
+
+        print_info "Stopping ${LN_IMPL} app for safe restart..."
         stopped_containers=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
         
         if [[ -n "$stopped_containers" ]]; then
@@ -2194,12 +2203,16 @@ cmd_restart() {
 
     # 5. Verify
     echo ""
-    print_info "Verifying status..."
+    print_info "Verifying tunnel state..."
     sleep 2
     if [[ -n "$(wg show ${interface_name} 2>/dev/null)" ]]; then
         print_success "Tunnel Interface is UP"
         echo ""
-        cmd_status
+        print_info "Note: Your node implementation (${LN_IMPL:-unknown}) may take several minutes"
+        print_info "to fully initialize and start listening on its ports."
+        echo ""
+        echo "Please wait a moment, then run this command to verify full connectivity:"
+        echo -e "   ${BOLD}sudo bash tunnelsats.sh status${NC}"
     else
         print_error "Tunnel Interface did not come up"
         exit 1
