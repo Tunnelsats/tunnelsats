@@ -2219,13 +2219,16 @@ cmd_restart() {
     
     local interface_name=$(basename "$config_file" .conf)
     local stopped_containers=""
+    local node_stopped_systemd=0
+    local service_name="${LN_IMPL}"
+    [[ "$LN_IMPL" == "cln" ]] && service_name="lightningd"
     
     echo ""
     print_info "Platform: ${PLATFORM:-unknown}, Lightning: ${LN_IMPL:-unknown}"
     print_info "Interface: ${interface_name}"
     echo ""
 
-    # 2. Umbrel Specific: Stop App for safety (Privacy first)
+    # 2. Deactivate Lightning node for safety (Privacy first / Leak-proof)
     if [[ "$PLATFORM" == "umbrel" ]] && [[ -n "$LN_IMPL" ]]; then
         local filter_name="lnd"
         [[ "$LN_IMPL" == "cln" ]] && filter_name="core-lightning"
@@ -2245,6 +2248,17 @@ cmd_restart() {
         if [[ -n "$stopped_containers" ]]; then
             docker stop ${stopped_containers} &>/dev/null
             print_success "${LN_IMPL} app stopped (Leak-proof mode)"
+        fi
+    elif [[ "$PLATFORM" != "umbrel" ]] && [[ -n "$LN_IMPL" ]]; then
+        echo -e "${YELLOW}Non-Docker setup detected. To ensure a leak-proof restart, it is${NC}"
+        echo -e "${YELLOW}highly recommended to stop your node service temporarily.${NC}"
+        read -p "Stop ${service_name}.service for safe tunnel restart? [y/N]: " stop_confirm
+        if [[ "$stop_confirm" =~ ^[Yy]$ ]]; then
+            print_info "Stopping ${service_name}.service..."
+            if systemctl stop "${service_name}.service"; then
+                node_stopped_systemd=1
+                print_success "Node stopped (Leak-proof mode)"
+            fi
         fi
     fi
 
@@ -2267,11 +2281,15 @@ cmd_restart() {
         exit 1
     fi
     
-    # 4. Umbrel Specific: Restart App
+    # 4. App Restart
     if [[ "$PLATFORM" == "umbrel" ]] && [[ -n "$stopped_containers" ]]; then
         print_info "Restarting ${LN_IMPL} app containers..."
         docker start ${stopped_containers} &>/dev/null
         print_success "${LN_IMPL} app restarted"
+    elif [[ "$node_stopped_systemd" -eq 1 ]]; then
+        print_info "Starting ${service_name}.service..."
+        systemctl start "${service_name}.service"
+        print_success "${LN_IMPL} service restarted"
     fi
 
     # 5. Verify
