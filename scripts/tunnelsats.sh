@@ -1160,20 +1160,18 @@ configure_lightning() {
 
     # 2. Deactivate RaspiBlitz config checks if present
     if [[ "$PLATFORM" == "raspiblitz" ]]; then
-        if [[ "$LN_IMPL" == "lnd" ]] && [[ -f /home/admin/config.scripts/lnd.check.sh ]]; then
-            mv /home/admin/config.scripts/lnd.check.sh /home/admin/config.scripts/lnd.check.bak 2>/dev/null || true
-            # Silence systemd warning: Find lines with lnd.check.sh and comment out the start of the line
+        if [[ "$LN_IMPL" == "lnd" ]]; then
+            # Comment out the ExecStartPre check in the service file
             [[ -f "$service_file" ]] && sed -i '/lnd\.check\.sh/ s/^ExecStartPre=/#ExecStartPre=/' "$service_file" 2>/dev/null || true
             # Also disable any separate health service if present
             systemctl stop lnd-health.service &>/dev/null || true
             systemctl disable lnd-health.service &>/dev/null || true
-            print_info "RaspiBlitz lnd.check deactivated"
-        elif [[ "$LN_IMPL" == "cln" ]] && [[ -f /home/admin/config.scripts/cl.check.sh ]]; then
-            mv /home/admin/config.scripts/cl.check.sh /home/admin/config.scripts/cl.check.bak 2>/dev/null || true
+            print_info "RaspiBlitz lnd.check deactivated in service file"
+        elif [[ "$LN_IMPL" == "cln" ]]; then
             [[ -f "$service_file" ]] && sed -i '/cl\.check\.sh/ s/^ExecStartPre=/#ExecStartPre=/' "$service_file" 2>/dev/null || true
             systemctl stop cl-health.service &>/dev/null || true
             systemctl disable cl-health.service &>/dev/null || true
-            print_info "RaspiBlitz cl.check deactivated"
+            print_info "RaspiBlitz cl.check deactivated in service file"
         fi
     fi
     
@@ -1397,13 +1395,15 @@ cmd_uninstall() {
              print_success "Removed lnd.service dependency"
         fi
         
-        # Restore RaspiBlitz lnd.check
-        if [[ -f /home/admin/config.scripts/lnd.check.bak ]]; then
-             mv /home/admin/config.scripts/lnd.check.bak /home/admin/config.scripts/lnd.check.sh
-             systemctl enable lnd-health.service &>/dev/null || true
-             systemctl start lnd-health.service &>/dev/null || true
-             print_success "Restored RaspiBlitz lnd.check logic"
+        # Restore original service file if backup exists
+        if [[ -f /etc/systemd/system/lnd.service.bak ]]; then
+             mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service
+             print_success "Restored original lnd.service"
         fi
+
+        # Restore RaspiBlitz health services
+        systemctl enable lnd-health.service &>/dev/null || true
+        systemctl start lnd-health.service &>/dev/null || true
 
     elif [[ "$ln_impl" == "cln" ]]; then
         if [[ $is_docker -eq 1 ]]; then
@@ -1436,13 +1436,15 @@ cmd_uninstall() {
              print_success "Removed lightningd.service dependency"
         fi
         
-        # Restore RaspiBlitz cl.check
-        if [[ -f /home/admin/config.scripts/cl.check.bak ]]; then
-             mv /home/admin/config.scripts/cl.check.bak /home/admin/config.scripts/cl.check.sh
-             systemctl enable cl-health.service &>/dev/null || true
-             systemctl start cl-health.service &>/dev/null || true
-             print_success "Restored RaspiBlitz cl.check logic"
+        # Restore original service file if backup exists
+        if [[ -f /etc/systemd/system/lightningd.service.bak ]]; then
+             mv /etc/systemd/system/lightningd.service.bak /etc/systemd/system/lightningd.service
+             print_success "Restored original lightningd.service"
         fi
+
+        # Restore RaspiBlitz health services
+        systemctl enable cl-health.service &>/dev/null || true
+        systemctl start cl-health.service &>/dev/null || true
     fi
     echo ""
 
