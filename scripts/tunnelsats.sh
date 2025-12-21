@@ -1333,16 +1333,22 @@ cmd_uninstall() {
     print_step 1 6 "Stopping Lightning services..."
     
     if [[ "$ln_impl" == "lnd" ]]; then
-        echo "Ensure lnd lightning process is stopped..."
         if [[ $is_docker -eq 1 ]]; then
-             local container=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}')
-             if [[ -n "$container" ]]; then
-                 docker stop "$container" &>/dev/null
-                 docker network disconnect docker-tunnelsats "$container" &>/dev/null
-                 docker rm "$container" &>/dev/null
-                 print_success "Stopped $container docker container"
+             local filter_name="lnd"
+             print_info "Stopping ${ln_impl} containers..."
+             local container_ids=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
+             if [[ -n "$container_ids" ]]; then
+                 for id in ${container_ids}; do
+                     local c_name=$(docker inspect --format '{{.Name}}' "$id" | sed 's/^\///')
+                     print_info "Stopping $c_name ... (this may take a few seconds)"
+                     echo -n "" >&2
+                     docker stop "$id" &>/dev/null
+                     docker network disconnect docker-tunnelsats "$id" &>/dev/null || true
+                     print_success "Stopped $c_name"
+                     echo "" >&2
+                 done
              else
-                 print_info "No lightning container active"
+                 print_info "No lightning containers found"
              fi
         elif [[ -f /etc/systemd/system/lnd.service ]]; then
              if systemctl is-active lnd.service &>/dev/null; then
@@ -1364,16 +1370,22 @@ cmd_uninstall() {
         fi
 
     elif [[ "$ln_impl" == "cln" ]]; then
-        echo "Ensure clightning process is stopped..."
         if [[ $is_docker -eq 1 ]]; then
-             local container=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' | grep 9735 | awk '{print $2}')
-             if [[ -n "$container" ]]; then
-                 docker stop "$container" &>/dev/null
-                 docker network disconnect docker-tunnelsats "$container" &>/dev/null
-                 docker rm "$container" &>/dev/null
-                 print_success "Stopped $container docker container"
+             local filter_name="core-lightning"
+             print_info "Stopping ${ln_impl} containers..."
+             local container_ids=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
+             if [[ -n "$container_ids" ]]; then
+                 for id in ${container_ids}; do
+                     local c_name=$(docker inspect --format '{{.Name}}' "$id" | sed 's/^\///')
+                     print_info "Stopping $c_name ... (this may take a few seconds)"
+                     echo -n "" >&2
+                     docker stop "$id" &>/dev/null
+                     docker network disconnect docker-tunnelsats "$id" &>/dev/null || true
+                     print_success "Stopped $c_name"
+                     echo "" >&2
+                 done
              else
-                 print_info "No lightning container active"
+                 print_info "No lightning containers found"
              fi
         elif [[ -f /etc/systemd/system/lightningd.service ]]; then
              if systemctl is-active lightningd.service &>/dev/null; then
@@ -1445,8 +1457,8 @@ cmd_uninstall() {
         fi
         
          if [[ -f "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" ]]; then
-             # Handle potential spaces after # (e.g., # - --bind-addr or #- --bind-addr)
-             sed -i "s/^#\s*- --bind-addr/- --bind-addr/g" "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" &>/dev/null
+             # Robust uncomment: handles leading spaces, #, and potential quotes around the flag
+             sed -i "s/^[[:space:]]*#[[:space:]]*- ['\"]*--bind-addr/      - '--bind-addr/g" "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" &>/dev/null
              print_success "Restored Umbrel docker-compose binding"
          fi
     fi
@@ -1589,9 +1601,13 @@ cmd_uninstall() {
     echo -e "${BOLD}MANUAL CLEANUP REQUIRED:${NC}"
     echo "Please check your lightning configuration files and remove any leftover"
     echo "TunnelSats settings if they were not automatically restored:"
-    echo "  - externalhosts"
-    echo "  - announce-addr"
-    echo "  - tor.skip-proxy-for-clearnet-targets"
+    if [[ "$ln_impl" == "lnd" ]]; then
+        echo "  - externalhosts (should be removed from lnd.conf)"
+        echo "  - tor.skip-proxy-for-clearnet-targets (should be false or removed)"
+    elif [[ "$ln_impl" == "cln" ]]; then
+        echo "  - announce-addr (should be removed from config)"
+        echo "  - bind-addr=0.0.0.0:9735 (should be removed from config)"
+    fi
     echo ""
     
     echo "Next: Restart your node for changes to take effect."
