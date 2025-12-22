@@ -479,11 +479,13 @@ detect_ln_implementation() {
     echo "Which Lightning implementation do you want to tunnel?" >&2
     echo "  1) LND" >&2
     echo "  2) CLN (Core Lightning)" >&2
+    local range="1-2"
     if [[ "$PLATFORM" == "baremetal" ]]; then
         echo "  3) LIT (integrated mode)" >&2
+        range="1-3"
     fi
     echo "" >&2
-    read -p "Select [1-3]: " choice
+    read -p "Select [$range]: " choice
     
     case $choice in
         1) 
@@ -638,9 +640,10 @@ PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
         print_info "Applying non-Docker network rules..."
         
         local killswitchNonDocker=""
-        if [[ "$PLATFORM" == "raspiblitz" ]]; then
-            # Cgroup-aware killswitch: Only drop if user is bitcoin AND packet is in the tunnelsats cgroup (1118498)
-            # This allows bitcoind (same user) to reach clearnet/tor normally
+        # Enable cgroup-aware killswitch for all non-Docker systemd platforms
+        if [[ "$PLATFORM" == "raspiblitz" || "$PLATFORM" == "baremetal" || "$PLATFORM" == "mynode" ]]; then
+            # Cgroup-aware killswitch: Only drop if user is node_user AND packet is in the tunnelsats cgroup (1118498)
+            # This allows other services (like bitcoind) sharing the same user to reach clearnet/tor normally
             killswitchNonDocker="PostUp = nft \"insert rule ip %i nat skuid ${node_user} meta cgroup 1118498 fib daddr type != local ip daddr != { $localNetworks } meta oifname != %i counter drop\"\n"
         fi
         
@@ -940,6 +943,7 @@ configure_lightning() {
     # 1. Backup original service file before any modifications
     if [[ -f "$service_file" ]] && [[ ! -f "${service_file}.bak" ]]; then
         cp "$service_file" "${service_file}.bak"
+        print_success "Created backup of original service file: ${service_file}.bak"
     fi
 
     # 2. Deactivate RaspiBlitz config checks if present
@@ -1625,7 +1629,9 @@ cmd_install() {
         fi
         
     elif [[ "$LN_IMPL" == "lit" ]]; then
-         echo -e "Edit: ${BOLD}${BLUE}lit.conf${NC}"
+         local lit_path="$HOME/.lit/lit.conf"
+         [[ -f "/etc/systemd/system/lit.service" ]] && lit_path=$(grep "^Environment=LIT_CONFIG_FILE=" /etc/systemd/system/lit.service | cut -d'=' -f3 || echo "$HOME/.lit/lit.conf")
+         echo -e "Edit: ${BOLD}${BLUE}$lit_path${NC}"
          echo ""
          echo "#########################################"
          echo -e "${BOLD}${BLUE}[Application Options]${NC}"
@@ -1635,6 +1641,13 @@ cmd_install() {
          echo -e "${YELLOW}tor.streamisolation=false${NC}"
          echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
          echo "#########################################"
+    fi
+
+    if [[ "$PLATFORM" == "baremetal" ]]; then
+        echo ""
+        echo -e "${BOLD}${YELLOW}UFW FIREWALL NOTICE:${NC}"
+        echo "If you use UFW, ensure you allow traffic on the Lightning port (TCP 9735):"
+        echo -e "  ${BOLD}sudo ufw allow 9735/tcp${NC}"
     fi
 
     echo ""
