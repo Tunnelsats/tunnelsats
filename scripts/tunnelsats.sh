@@ -454,7 +454,15 @@ detect_ln_implementation() {
         elif docker ps -q --filter name=core-lightning | grep -q .; then guess="cln"; fi
     else
         if [[ -f /etc/systemd/system/lnd.service ]] || systemctl is-active --quiet lnd; then guess="lnd";
-        elif [[ -f /etc/systemd/system/lightningd.service ]] || systemctl is-active --quiet lightningd; then guess="cln"; fi
+        elif [[ -f /etc/systemd/system/lightningd.service ]] || systemctl is-active --quiet lightningd; then guess="cln";
+        elif [[ -f /etc/systemd/system/litd.service ]] || [[ -f /etc/systemd/system/lit.service ]] || systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
+            # Verify if Integrated Mode
+            local s_file="/etc/systemd/system/litd.service"
+            [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+            if grep -qi "lnd-mode=integrated" "$s_file" 2>/dev/null || grep -qi "lnd-mode.*integrated" /etc/lit/lit.conf 2>/dev/null || grep -qi "lnd-mode.*integrated" "$HOME/.lit/lit.conf" 2>/dev/null; then
+                guess="lit"
+            fi
+        fi
     fi
 
     if [[ -n "$guess" ]]; then
@@ -466,6 +474,10 @@ detect_ln_implementation() {
                 local s_file=""
                 [[ "$LN_IMPL" == "lnd" ]] && s_file="/etc/systemd/system/lnd.service"
                 [[ "$LN_IMPL" == "cln" ]] && s_file="/etc/systemd/system/lightningd.service"
+                if [[ "$LN_IMPL" == "lit" ]]; then
+                    s_file="/etc/systemd/system/litd.service"
+                    [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+                fi
                 if [[ -f "$s_file" ]]; then
                     node_user=$(grep "^User=" "$s_file" | cut -d'=' -f2 | xargs)
                 fi
@@ -499,7 +511,21 @@ detect_ln_implementation() {
         3) 
             if [[ "$PLATFORM" == "baremetal" ]]; then
                 LN_IMPL="lit"
-                node_user=$(grep "^User=" /etc/systemd/system/lit.service 2>/dev/null | cut -d'=' -f2 | xargs)
+                local s_file="/etc/systemd/system/litd.service"
+                [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+                
+                # Verify Integrated Mode or warn
+                if ! grep -qi "lnd-mode=integrated" "$s_file" 2>/dev/null && ! grep -qi "lnd-mode.*integrated" /etc/lit/lit.conf 2>/dev/null && ! grep -qi "lnd-mode.*integrated" "$HOME/.lit/lit.conf" 2>/dev/null; then
+                    print_warning "LIT Integrated mode not detected in config."
+                    read -p "Are you sure LIT is managing its own LND? [y/N]: " lit_confirm
+                    if [[ ! "$lit_confirm" =~ ^[Yy]$ ]]; then
+                        print_info "Please restart and select LND instead."
+                        exit 0
+                    fi
+                fi
+                local s_file="/etc/systemd/system/litd.service"
+                [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+                node_user=$(grep "^User=" "$s_file" 2>/dev/null | cut -d'=' -f2 | xargs)
                 [[ -z "$node_user" ]] && node_user="bitcoin"
             else
                 print_error "LIT only available on bare metal"
@@ -935,8 +961,9 @@ configure_lightning() {
             service_dir="/etc/systemd/system/lightningd.service.d"
             ;;
         lit)
-            service_file="/etc/systemd/system/lit.service"
-            service_dir="/etc/systemd/system/lit.service.d"
+            service_file="/etc/systemd/system/litd.service"
+            [[ ! -f "$service_file" ]] && service_file="/etc/systemd/system/lit.service"
+            service_dir="${service_file}.d"
             ;;
     esac
 
@@ -1290,17 +1317,37 @@ cmd_uninstall() {
             fi
         done
         
-        # Umbrel exports.sh
         if [[ -f "$home_dir/umbrel/app-data/core-lightning/exports.sh" ]]; then
              sed -i 's/APP_CORE_LIGHTNING_DAEMON_PORT="9735"/APP_CORE_LIGHTNING_DAEMON_PORT="9736"/g' "$home_dir/umbrel/app-data/core-lightning/exports.sh"
              print_success "Restored Umbrel exports.sh port"
         fi
         
-         if [[ -f "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" ]]; then
+        if [[ -f "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" ]]; then
              # Robust uncomment: handles leading spaces, #, and potential quotes around the flag
              sed -i "s/^[[:space:]]*#[[:space:]]*- ['\"]*--bind-addr/      - '--bind-addr/g" "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" &>/dev/null
              print_success "Restored Umbrel docker-compose binding"
-         fi
+        fi
+    elif [[ "$ln_impl" == "lit" ]]; then
+        local paths=(
+            "$home_dir/.lit/lit.conf"
+            "/home/bitcoin/.lit/lit.conf"
+            "/data/lit/lit.conf"
+        )
+        for path in "${paths[@]}"; do
+            if [[ -f "$path" ]]; then 
+                local cleaned=0
+                if grep -iq "externalhosts=" "$path" || grep -iq "tor.skip-proxy-for-clearnet-targets" "$path"; then
+                    cp "$path" "${path}.bak.$(date +%F_%H%M)"
+                    sed -i "/externalhosts=/Id" "$path"
+                    sed -i "/tor.skip-proxy-for-clearnet-targets/Id" "$path"
+                    sed -i "/tor.streamisolation=false/Id" "$path"
+                    cleaned=1
+                fi
+                if [[ $cleaned -eq 1 ]]; then
+                    print_success "Cleaned up $path"
+                fi
+            fi
+        done
     fi
     echo ""
 
@@ -1412,6 +1459,14 @@ cmd_uninstall() {
              mv /etc/systemd/system/lightningd.service.bak /etc/systemd/system/lightningd.service
              print_success "Restored lightningd.service backup"
         fi
+        if [[ "$ln_impl" == "lit" ]]; then
+            local s_file="/etc/systemd/system/litd.service"
+            [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+            if [[ -f "${s_file}.bak" ]]; then
+                mv "${s_file}.bak" "$s_file"
+                print_success "Restored ${s_file} backup"
+            fi
+        fi
         systemctl daemon-reload
         echo ""
     fi
@@ -1456,6 +1511,9 @@ cmd_uninstall() {
         fi
         echo "  - announce-addr (should be removed)"
         echo "  - bind-addr=0.0.0.0:9735 (should be removed)"
+    elif [[ "$ln_impl" == "lit" ]]; then
+        echo "  - externalhosts (should be removed)"
+        echo "  - tor.skip-proxy-for-clearnet-targets (should be false or removed)"
     fi
     echo ""
     
@@ -1691,7 +1749,12 @@ auto_detect_environment() {
             elif systemctl is-active --quiet lightningd; then
                 LN_IMPL="cln"
             elif systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
-                LN_IMPL="lit"
+                # Only auto-detect if Integrated Mode
+                local s_file="/etc/systemd/system/litd.service"
+                [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+                if grep -qi "lnd-mode=integrated" "$s_file" 2>/dev/null || grep -qi "lnd-mode.*integrated" /etc/lit/lit.conf 2>/dev/null || grep -qi "lnd-mode.*integrated" "$HOME/.lit/lit.conf" 2>/dev/null; then
+                    LN_IMPL="lit"
+                fi
             fi
         fi
     fi
@@ -1701,6 +1764,10 @@ auto_detect_environment() {
         local s_file=""
         [[ "$LN_IMPL" == "lnd" ]] && s_file="/etc/systemd/system/lnd.service"
         [[ "$LN_IMPL" == "cln" ]] && s_file="/etc/systemd/system/lightningd.service"
+        if [[ "$LN_IMPL" == "lit" ]]; then
+            s_file="/etc/systemd/system/litd.service"
+            [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+        fi
         if [[ -f "$s_file" ]]; then
             node_user=$(grep "^User=" "$s_file" | cut -d'=' -f2 | xargs)
         fi
@@ -1934,15 +2001,22 @@ cmd_status() {
                          if [[ -z "$info" ]]; then
                              info=$(lightning-cli getinfo 2>/dev/null)
                          fi
-                         
-                         local pk=$(echo "$info" | jq -r '.id')
-                         local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
-                         local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
-                         if [[ -n "$pk" && -n "$ip" ]]; then ext_addr="${pk}@${ip}:${port}"; fi
+                                                  local pk=$(echo "$info" | jq -r '.id')
+                          local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
+                          local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
+                          if [[ -n "$pk" && -n "$ip" ]]; then ext_addr="${pk}@${ip}:${port}"; fi
+                     fi
+                  elif systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
+                    node_type="LIT (Systemd)"
+                    if command -v litcli &> /dev/null; then
+                         local info
+                         info=$(sudo -u "$original_user" litcli getinfo 2>/dev/null)
+                         [[ -z "$info" ]] && info=$(litcli getinfo 2>/dev/null)
+                         ext_addr=$(echo "$info" | jq -r '.lnd_uris[]' | grep -v "\.onion" | head -n 1)
                     fi
-                 else
+                  else
                     node_type="Unknown/Manual"
-                 fi
+                  fi
                 ;;
         esac
         echo "$node_type|$ext_addr"
@@ -2036,6 +2110,10 @@ cmd_restart() {
     local node_stopped_systemd=0
     local service_name="${LN_IMPL}"
     [[ "$LN_IMPL" == "cln" ]] && service_name="lightningd"
+    if [[ "$LN_IMPL" == "lit" ]]; then
+        service_name="litd"
+        systemctl list-units --type=service | grep -q "lit.service" && service_name="lit"
+    fi
     
     echo ""
     print_info "Platform: ${PLATFORM:-unknown}, Lightning: ${LN_IMPL:-unknown}"
