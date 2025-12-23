@@ -817,7 +817,7 @@ setup_docker_network() {
     ip route flush table 51820 &>/dev/null || true
     
     # Create Docker network monitor script
-    local filter_name="lnd"
+    local filter_name="_lnd"
     [[ "$LN_IMPL" == "cln" ]] && filter_name="lightningd"
 
     cat > /etc/wireguard/tunnelsats-docker-network.sh <<EOF
@@ -1209,7 +1209,7 @@ cmd_uninstall() {
     
     if [[ "$ln_impl" == "lnd" ]]; then
         if [[ $is_docker -eq 1 ]]; then
-             local filter_name="lnd"
+             local filter_name="_lnd"
              print_info "Stopping ${ln_impl} containers..."
              local container_ids=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
              if [[ -n "$container_ids" ]]; then
@@ -1984,7 +1984,7 @@ cmd_status() {
 
         case "$setup_type" in
             "docker-lnd")
-                docker_name=$(docker ps --filter name=lnd --format "{{.Names}}" | head -n 1) # Safer fetch
+                docker_name=$(docker ps --filter name=_lnd --format "{{.Names}}" | head -n 1) # Safer fetch
                 if [[ -z "$docker_name" ]]; then docker_name="lightning_lnd_1"; fi # Fallback
                 node_type="LND (Docker)"
                 if command -v jq &> /dev/null; then
