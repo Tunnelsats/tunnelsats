@@ -379,7 +379,7 @@ cmd_pre_check() {
         if [[ ${dockerProcess} == *lnd* ]]; then
             print_success "Found LND container"
             ((rating+=1))
-        elif [[ ${dockerProcess} == *clightning* ]]; then
+        elif [[ ${dockerProcess} == *clightning* ]] || [[ ${dockerProcess} == *core-lightning* ]]; then
             print_success "Found CLN container"
             ((rating+=1))
         else
