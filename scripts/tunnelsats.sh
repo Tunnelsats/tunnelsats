@@ -1138,6 +1138,17 @@ verify_installation() {
     else
         print_warning "WireGuard tunnel not detected (may be starting)"
     fi
+
+    # Pre-flight Listening Check (Non-Docker)
+    if [[ "$PLATFORM" != "umbrel" ]] && [[ -n "$LN_IMPL" ]]; then
+        local port=9735
+        if ss -tulpn | grep -q "127.0.0.1:${port}"; then
+            echo ""
+            print_warning "POSSIBLE CONFIG ISSUE: ${LN_IMPL^^} is only listening on 127.0.0.1"
+            print_warning "It will NOT accept inbound traffic from the tunnel."
+            print_warning "Ensure 'listen=0.0.0.0:${port}' is set in your config."
+        fi
+    fi
 }
 
 cmd_uninstall() {
@@ -1563,6 +1574,10 @@ cmd_install() {
     if ! command -v nft &>/dev/null; then
         print_info "Installing nftables..."
         apt-get install -yqq nftables &>/dev/null
+    fi
+    if ! command -v jq &>/dev/null; then
+        print_info "Installing jq..."
+        apt-get install -yqq jq &>/dev/null
     fi
     if ! command -v resolvconf &>/dev/null; then
         print_info "Installing resolvconf..."
@@ -1992,11 +2007,16 @@ cmd_status() {
                          # Try as sudo user first (RaspiBlitz standard)
                          info=$(sudo -u "$original_user" lncli getinfo 2>/dev/null)
                          
-                         # Fallback to common node users
-                         [[ -z "$info" ]] && [[ "$node_user" != "$original_user" ]] && info=$(sudo -u "$node_user" lncli getinfo 2>/dev/null)
-                         [[ -z "$info" ]] && info=$(sudo -u bitcoin lncli getinfo 2>/dev/null)
-                         [[ -z "$info" ]] && info=$(sudo -u lnd lncli getinfo 2>/dev/null)
-                         [[ -z "$info" ]] && info=$(lncli getinfo 2>/dev/null)
+                         # Fallback to common node users with explicit data directory check
+                         if [[ -z "$info" ]]; then
+                            local users=("$node_user" "lnd" "bitcoin" "admin")
+                            for u in "${users[@]}"; do
+                                [[ -z "$u" ]] && continue
+                                # Try with default paths for that user
+                                info=$(sudo -u "$u" lncli getinfo 2>/dev/null)
+                                [[ -n "$info" ]] && break
+                            done
+                         fi
                          
                          ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
                     fi
@@ -2035,6 +2055,13 @@ cmd_status() {
     local inbound_status="N/A" 
     local inbound_ip="N/A"
     
+    # 1. Listening Check (Manual/Bare Metal)
+    if [[ "$setup_method" == "manual" ]] && [[ -n "$LN_IMPL" ]]; then
+        if ss -tulpn | grep -q "127.0.0.1:9735"; then
+            print_warning "Node only listening on Localhost (127.0.0.1)!"
+        fi
+    fi
+
     # Only run if config is valid
     if [[ -n "$endpoint" && -n "$vpn_port" ]]; then
          outbound_ip=$(perform_outbound_check_status "$setup_method")
