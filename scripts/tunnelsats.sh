@@ -633,6 +633,14 @@ configure_wireguard() {
             dockersubnet="10.9.9.0/25" # Fallback to standard
         fi
 
+        # Dynamically determine the bridge interface for the tunnelsats network
+        local bridge_id=$(docker network inspect "docker-tunnelsats" --format '{{.Id}}' | cut -c1-12 2>/dev/null || echo "6c3d330ad9f5")
+        local bridge_name="br-$bridge_id"
+        
+        # Extract VPN port for DNAT
+        local vpn_port=$(grep -E "#VPNPort|# Port Forwarding:" "$target_path" | head -1 | awk '{print $NF}' | sed 's/.*: //')
+        [[ -z "$vpn_port" ]] && vpn_port=9735 # fallback
+
         local inputDocker="
 
 #Tunnelsats-Setupv2-Docker
@@ -651,9 +659,17 @@ PostUp = ip route add blackhole default metric 3 table 51820
 PostUp = ip route add default dev %i metric 2 table 51820
 PostUp = ip route add 10.9.0.0/24 dev %i proto kernel scope link; ping -c1 10.9.0.1
 
+PostUp = iptables -t nat -I PREROUTING -i %i -p tcp --dport $vpn_port -j DNAT --to-destination 10.9.9.9:9735
+PostUp = iptables -I FORWARD -i %i -o $bridge_name -j ACCEPT
+PostUp = iptables -I FORWARD -i $bridge_name -o %i -j ACCEPT
+
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
+
+PostDown = iptables -t nat -D PREROUTING -i %i -p tcp --dport $vpn_port -j DNAT --to-destination 10.9.9.9:9735
+PostDown = iptables -D FORWARD -i %i -o $bridge_name -j ACCEPT
+PostDown = iptables -D FORWARD -i $bridge_name -o %i -j ACCEPT
 
 PostDown = ip rule del from $dockersubnet table 51820
 PostDown = ip rule del from all table main suppress_prefixlength 0
@@ -802,7 +818,7 @@ setup_docker_network() {
     
     # Create Docker network monitor script
     local filter_name="lnd"
-    [[ "$LN_IMPL" == "cln" ]] && filter_name="core-lightning"
+    [[ "$LN_IMPL" == "cln" ]] && filter_name="lightningd"
 
     cat > /etc/wireguard/tunnelsats-docker-network.sh <<EOF
 #!/bin/sh
