@@ -1643,8 +1643,14 @@ cmd_install() {
              echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
              echo "#########################################"
         else
-             local lnd_path="$HOME/.lnd/lnd.conf"
-             [[ -d /home/bitcoin/.lnd ]] && lnd_path="/home/bitcoin/.lnd/lnd.conf"
+             local lnd_user="${node_user:-bitcoin}"
+             local lnd_path="/home/$lnd_user/.lnd/lnd.conf"
+             
+             # Forensic path guessing for Bare Metal
+             [[ ! -f "$lnd_path" ]] && [[ -f "/home/bitcoin/.lnd/lnd.conf" ]] && lnd_path="/home/bitcoin/.lnd/lnd.conf"
+             [[ ! -f "$lnd_path" ]] && [[ -f "/home/lnd/.lnd/lnd.conf" ]] && lnd_path="/home/lnd/.lnd/lnd.conf"
+             [[ ! -f "$lnd_path" ]] && [[ -f "/data/lnd/lnd.conf" ]] && lnd_path="/data/lnd/lnd.conf"
+             [[ ! -f "$lnd_path" ]] && [[ -f "/mnt/hdd/lnd/lnd.conf" ]] && lnd_path="/mnt/hdd/lnd/lnd.conf"
              
              echo -e "Edit: ${BOLD}${BLUE}sudo nano $lnd_path${NC}"
              echo -e "${YELLOW}Note: Place settings in their respective sections. Do NOT duplicate categories.${NC}"
@@ -1769,7 +1775,7 @@ auto_detect_environment() {
             [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
         fi
         if [[ -f "$s_file" ]]; then
-            node_user=$(grep "^User=" "$s_file" | cut -d'=' -f2 | xargs)
+            node_user=$(grep -Ei "^User[[:space:]]*=" "$s_file" | cut -d'=' -f2 | xargs)
         fi
         [[ -z "$node_user" ]] && [[ "$PLATFORM" == "raspiblitz" ]] && node_user="bitcoin"
         [[ -z "$node_user" ]] && node_user=$(whoami)
@@ -1943,6 +1949,7 @@ cmd_status() {
         local ext_addr="N/A"
         local docker_name=""
         local node_type=""
+        local target_impl="${LN_IMPL:-unknown}"
 
         case "$setup_type" in
             "docker-lnd")
@@ -1978,29 +1985,29 @@ cmd_status() {
                 # Attempt to guess
                 local original_user="${SUDO_USER:-$(whoami)}"
                 
-                 if systemctl is-active --quiet lnd; then
+                 if [[ "$target_impl" == "lnd" ]]; then
                     node_type="LND (Systemd)"
                     if command -v lncli &> /dev/null; then
                          local info
                          # Try as sudo user first (RaspiBlitz standard)
                          info=$(sudo -u "$original_user" lncli getinfo 2>/dev/null)
                          
-                         # Fallback to root execution if user attempt empty
-                         if [[ -z "$info" ]]; then
-                             info=$(lncli getinfo 2>/dev/null)
-                         fi
+                         # Fallback to common node users
+                         [[ -z "$info" ]] && [[ "$node_user" != "$original_user" ]] && info=$(sudo -u "$node_user" lncli getinfo 2>/dev/null)
+                         [[ -z "$info" ]] && info=$(sudo -u bitcoin lncli getinfo 2>/dev/null)
+                         [[ -z "$info" ]] && info=$(sudo -u lnd lncli getinfo 2>/dev/null)
+                         [[ -z "$info" ]] && info=$(lncli getinfo 2>/dev/null)
                          
                          ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
                     fi
-                 elif systemctl is-active --quiet lightningd; then
+                 elif [[ "$target_impl" == "cln" ]]; then
                     node_type="CLN (Systemd)"
                      if command -v lightning-cli &> /dev/null; then
                          local info
                          info=$(sudo -u "$original_user" lightning-cli getinfo 2>/dev/null)
-                         
-                         if [[ -z "$info" ]]; then
-                             info=$(lightning-cli getinfo 2>/dev/null)
-                         fi
+                         [[ -z "$info" ]] && [[ "$node_user" != "$original_user" ]] && info=$(sudo -u "$node_user" lightning-cli getinfo 2>/dev/null)
+                         [[ -z "$info" ]] && info=$(sudo -u bitcoin lightning-cli getinfo 2>/dev/null)
+                         [[ -z "$info" ]] && info=$(lightning-cli getinfo 2>/dev/null)
                                                   local pk=$(echo "$info" | jq -r '.id')
                           local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
                           local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
