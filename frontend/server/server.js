@@ -135,7 +135,7 @@ const sayWithTelegram = async ({ message, parse_mode = "HTML" }) => {
 
 // Server Settings
 const createServer = require("http");
-const { response } = require("express");
+// const { response } = require("express");
 // const { rootCertificates } = require('tls');
 const httpServer = createServer.createServer(app);
 const io = require("socket.io")(httpServer, {
@@ -457,82 +457,6 @@ io.on("connection", (socket) => {
   });
 
   // New Listening events for UpdateSubscription Request
-/*
-  socket.on("checkKeyDB", async ({ publicKey }) => {
-    console.log(publicKey);
-
-    let keyID;
-    let subscriptionEnd;
-    let success = false;
-    const servers = [
-      { domain: "de1.tunnelsats.com", country: "eu" },
-      { domain: "de3.tunnelsats.com", country: "eu2" },
-      { domain: "de2.tunnelsats.com", country: "eu3" },
-      { domain: "us2.tunnelsats.com", country: "na2" }, // us west
-      { domain: "us3.tunnelsats.com", country: "na3" }, // us east
-      { domain: "us1.tunnelsats.com", country: "na" }, // us east
-      { domain: "sg1.tunnelsats.com", country: "as" },
-      { domain: "br1.tunnelsats.com", country: "sa" },
-      { domain: "au1.tunnelsats.com", country: "oc" },
-      //{ domain: "za1.tunnelsats.com", country: "af" },      
-    ];
-
-    for (const serverURL of servers) {
-      if (!success) {
-        console.log(`server: ${serverURL.domain}`);
-        let country = serverURL.country;
-        let domain = serverURL.domain;
-        await getKey({ publicKey, serverURL: domain })
-          .then(async (result) => {
-            keyID = result.KeyID;
-
-            success = await getSubscription({
-              keyID: result.KeyID,
-              serverURL: domain,
-            })
-              .then((result) => {
-                console.log(result);
-                // let unixTimestamp = Date.parse(result.subscriptionEnd);
-                // let date = new Date(unixTimestamp);
-                let unixTimestamp = parseBackendDate(result.subscriptionEnd);
-                let date = new Date(unixTimestamp);
-                logDim("SubscriptionEnd: ", date.toISOString());
-                subscriptionEnd = date;
-
-                if (domain.includes("us1")) {
-                  socket.emit("receiveKeyLookup", "not-allowed");
-                } else {
-                  socket.emit("receiveKeyLookup", {
-                    keyID,
-                    subscriptionEnd,
-                    domain,
-                    country,
-                  });
-                };
-
-                return true;
-              })
-              .catch((error) => {
-                logDim(`getSubscription: ${error.message}`);
-                //socket.emit("receiveKeyLookup", "Error - No Subscription Found");
-              });
-          })
-          .catch((error) => {
-            logDim(`getKey: ${error.message}`);
-            //socket.emit("receiveKeyLookup", "key not found");
-          });
-
-        if (success) break;
-      }
-    }
-
-    if (!success) {
-      // key was not found on any server
-      console.log(`emitting 'receiveKeyLookup': no key found`);
-      socket.emit("receiveKeyLookup", null);
-    }
-  });
-*/
 
 socket.on("checkKeyDB", async ({ publicKey }) => {
   console.log(`server: checkKeyDB with key ${publicKey}`);
@@ -624,17 +548,6 @@ socket.on("checkKeyDB", async ({ publicKey }) => {
   }
 });
 
-
-  /*
-  socket.on("getServer", (country) => {
-    logDim(`getServer() called id: ${socket.id}`);
-    server = getServer(country);
-    socket.emit(
-      "receiveServer",
-      server.replace(/^https?:\/\//, "").replace(/\/manager\/$/, "")
-    );
-  });
-  */
 
   // send mail
   socket.on("sendEmail", (emailAddress, configData, date) => {

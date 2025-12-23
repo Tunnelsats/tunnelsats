@@ -249,13 +249,6 @@ function App() {
     renderPopupModal();
   });
 
-  /*
-  socket.removeAllListeners("receiveServer").on("receiveServer", (server) => {
-    DEBUG && console.log(`${getDate()} App.js: received server: `, server);
-    setServer(server);
-  });
-  */
-
   // get current btc per dollar
   const getPrice = () => {
     socket.removeAllListeners("getPrice").emit("getPrice");
@@ -391,20 +384,6 @@ function App() {
   };
 
   // renew subscription methods
-
-  /*
-  useEffect(() => {
-    setNewTime("");
-    setTime("");
-    setTimeValid(false);
-    socket.emit("getServer", country);
-  }, [country]);
-  */
-
-  const handleChangeServer = (event) => {
-    setServer({ server: event.target.value });
-  };
-
   const handleChangePubkey = (event) => {
     if (
       base64regex.test(event.target.value) &&
@@ -519,9 +498,7 @@ function App() {
 
   const handleKeyLookUp = (event) => {
     event.preventDefault();
-    // alert('You have submitted the form.')
     //DEBUG && console.log("checkKeyDB emitted", pubkey, server);
-    //socket.emit("checkKeyDB", { publicKey: pubkey, serverURL: server });
     DEBUG && console.log("checkKeyDB emitted", pubkeyRenewSub);
     socket.emit("checkKeyDB", { publicKey: pubkeyRenewSub });
     setSpinnerQuery(true);

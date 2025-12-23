@@ -1,4 +1,4 @@
-import React from "react";
+//import React from "react";
 import { Alert, Row, Col } from "react-bootstrap";
 import { SiTorproject } from "react-icons/si";
 import { TbSum } from "react-icons/tb";
