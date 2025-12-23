@@ -7,7 +7,7 @@ The `tunnelsats.sh` script is the new, unified setup tool for TunnelSats v2. It 
 Run the script with `sudo` and one of the following commands:
 
 ```bash
-sudo bash tunnelsats.sh [install|uninstall|status|restart]
+sudo bash tunnelsats.sh [install|uninstall|status|restart|pre-check]
 ```
 
 ### Commands
@@ -18,6 +18,7 @@ sudo bash tunnelsats.sh [install|uninstall|status|restart]
 | **`uninstall`** | "Nuclear" uninstall. Removes all TunnelSats configurations, restores backups, and cleans up Docker networks/firewalls. |
 | **`status`** | Detailed diagnostics. Checks subscription validity, interface status, Docker health, and connectivity (Ping/RTT). |
 | **`restart`** | Smart restart helper. Re-initializes the WireGuard interface and DNS watchdog if you lose connection. |
+| **`pre-check`** | Non-invasive verification. Checks if your system has the necessary prerequisites (WireGuard, Docker, etc.) without making changes. |
 
 ## Compatibility & Testing Status
 
@@ -28,7 +29,7 @@ We are iteratively validating `tunnelsats.sh` across various Node OS platforms. 
 | Raspberry Pi 4 | **Umbrel** | umbrelOS 1.5 | ✅ | ✅ | ✅ | ✅ |
 | Raspberry Pi | **RaspiBlitz** | v1.11.x | ✅ | ✅ | ✅ | ✅ |
 | Proxmox VM | **Umbrel** | v1.2.1 | ✅ | ✅ | ✅ | ✅ |
-| PC / VPS | **Bare Metal** | Debian 12 | ⚠️ | ⚠️ | ✅ | ✅ |
+| PC / VPS | **Bare Metal** | Debian 12 / Ubuntu | ✅ | ✅ | ✅ | ✅ |
 | Pi / PC (x86) | **myNode** | v0.3.x | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
 | Any | **Start9** | Any | ❌ | ❌ | ❌ | ❌ |
 
@@ -37,6 +38,9 @@ We are iteratively validating `tunnelsats.sh` across various Node OS platforms. 
 - ⚠️ **Experimental**: Logic exists (ported from v2), but needs live verification.
 - ❓ **Untested**: Not yet validated on this specific environment.
 - ❌ **Not Supported**: Current architecture is incompatible with script installation.
+
+> **Bare Metal / MiniBolt Note:**
+> We have explicitly verified the setup on **[MiniBolt](https://github.com/MiniBoltGuide/minibolt)** (Ubuntu/Debian) environments. If following the MiniBolt guide, this script respects the standard directory structure and user permissions.
 
 ---
 
