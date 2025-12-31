@@ -1061,7 +1061,7 @@ function App() {
                   </Col>
                   <Col>
                     <a
-                      href="https://t.me/+YfVVF9Q0X-A3YWIy"
+                      href="https://t.me/+-KOVttt7uk1lYzEy"
                       target="_blank"
                       rel="noreferrer"
                     >
