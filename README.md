@@ -1,4 +1,4 @@
-![TunnelSats Banner](/docs/assets/tunnelsats_banner_1280_640.png)
+![TunnelSats Banner](/docs/assets/guide_header.webp)
 
 # TunnelSats: Hybrid Lightning Node Setup
 
