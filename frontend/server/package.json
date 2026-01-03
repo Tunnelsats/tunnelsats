@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon server"
+    "dev": "DEBUG=true nodemon server",
+    "start": "DEBUG=false nodemon server"
   },
   "repository": {
     "type": "git",
@@ -19,7 +20,6 @@
   "homepage": "https://tunnelsats.com",
   "dependencies": {
     "axios": "^1.1.2",
-    "body-parser": "^2.2.0",
     "bolt11": "^1.4.0",
     "dayjs": "^1.11.1",
     "dotenv": "^17.0.0",
