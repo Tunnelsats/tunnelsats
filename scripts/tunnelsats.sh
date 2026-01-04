@@ -870,7 +870,6 @@ WantedBy=timers.target
 EOF
     
     systemctl daemon-reload
-    systemctl daemon-reload
     systemctl enable tunnelsats-docker-network.service &>/dev/null
     systemctl start tunnelsats-docker-network.service &>/dev/null
     systemctl enable tunnelsats-docker-network.timer &>/dev/null
