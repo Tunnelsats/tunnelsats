@@ -57,7 +57,7 @@ Your feedback directly translates into better stability for the entire community
 
 If you run into issues or have questions:
 
-1.  **Telegram Group**: tunnelsats.com/join-telegram - Quickest way to get community help.
+1.  **Telegram Group**: [tunnelsats.com/join-telegram](https://tunnelsats.com/join-telegram) - Quickest way to get community help.
 2.  **Guide**: [guide.tunnelsats.com](https://guide.tunnelsats.com) - Detailed manual setup instructions.
 3.  **Bot**: [t.me/TunnelSatsBot](https://t.me/TunnelSatsBot) - Check your clearnet connection speed and tools.
 
