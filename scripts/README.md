@@ -48,7 +48,7 @@ We are iteratively validating `tunnelsats.sh` across various Node OS platforms. 
 
 We want `tunnelsats.sh` to be rock-solid. If you are running on a platform marked as ⚠️ or ❓, please help us by:
 1. Running `sudo bash tunnelsats.sh status` and checking the output.
-2. Reporting any "Stabilization Snags" in our **[Telegram Group](https://t.me/+Ew0Avjz0GG84OTRi)**.
+2. Reporting any "Stabilization Snags" in our **[Telegram Group](https://tunnelsats.com/join-telegram)**.
 3. Providing your Hardware, Node OS, and OS Version (`cat /etc/os-release`).
 
 Your feedback directly translates into better stability for the entire community!
@@ -57,7 +57,7 @@ Your feedback directly translates into better stability for the entire community
 
 If you run into issues or have questions:
 
-1.  **Telegram Group**: [t.me/tunnelsats](https://t.me/+Ew0Avjz0GG84OTRi) - Quickest way to get community help.
+1.  **Telegram Group**: tunnelsats.com/join-telegram - Quickest way to get community help.
 2.  **Guide**: [guide.tunnelsats.com](https://guide.tunnelsats.com) - Detailed manual setup instructions.
 3.  **Bot**: [t.me/TunnelSatsBot](https://t.me/TunnelSatsBot) - Check your clearnet connection speed and tools.
 

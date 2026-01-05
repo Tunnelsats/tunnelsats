@@ -77,7 +77,7 @@ sudo bash tunnelsats.sh uninstall
 
 ## Support
 
-- 💬 **Telegram**: [Tunnel⚡Sats Group](https://t.me/+aIyeTSEStCQxYmRi)
+- 💬 **Telegram**: [Tunnel⚡Sats Group](https://tunnelsats.com/join-telegram)
 - 📖 **Guide**: [tunnelsats.com/guide](https://tunnelsats.com/guide)
 - ❓ **FAQ**: [tunnelsats.com/faq](https://tunnelsats.com/faq)
 - 🐛 **Issues**: [GitHub Issues](https://github.com/tunnelsats/tunnelsats/issues)
