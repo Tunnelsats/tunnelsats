@@ -10,7 +10,7 @@ set -e  # Exit on error
 # GLOBAL VARIABLES
 # ---------------------------------------------------------------------------
 
-VERSION="3.0"
+VERSION="3.1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE=""
 PLATFORM=""
@@ -82,8 +82,103 @@ print_step() {
 }
 
 # ---------------------------------------------------------------------------
+# NODE CONFIGURATION INSTRUCTIONS HELPER
+# Used by cmd_install (post-install) and cmd_status (troubleshooting)
+# ---------------------------------------------------------------------------
+
+print_node_config_instructions() {
+    local vpn_dns="$1"
+    local vpn_port="$2"
+    local context="${3:-install}"  # 'install' or 'status'
+    
+    if [[ "$LN_IMPL" == "lnd" ]]; then
+        if [[ "$PLATFORM" == "umbrel" ]]; then
+             echo -e "Edit: ${BOLD}${BLUE}~/umbrel/app-data/lightning/data/lnd/lnd.conf${NC}"
+             if [[ "$context" == "install" ]]; then
+                 echo -e "${YELLOW}Note: If 'tor.streamisolation' or 'tor.skip-proxy...' are already enabled in UI,${NC}"
+                 echo -e "${YELLOW}      do NOT duplicate them.${NC}"
+             fi
+             echo ""
+             echo "#########################################"
+             echo -e "${BOLD}${BLUE}[Application Options]${NC}"
+             echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+             echo ""
+             echo -e "${BOLD}${BLUE}[Tor]${NC}"
+             echo -e "${YELLOW}tor.streamisolation=false${NC}"
+             echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
+             echo "#########################################"
+        else
+             local lnd_user="${node_user:-bitcoin}"
+             local lnd_path="/home/$lnd_user/.lnd/lnd.conf"
+             
+             # Forensic path guessing for Bare Metal
+             [[ ! -f "$lnd_path" ]] && [[ -f "/home/bitcoin/.lnd/lnd.conf" ]] && lnd_path="/home/bitcoin/.lnd/lnd.conf"
+             [[ ! -f "$lnd_path" ]] && [[ -f "/home/lnd/.lnd/lnd.conf" ]] && lnd_path="/home/lnd/.lnd/lnd.conf"
+             [[ ! -f "$lnd_path" ]] && [[ -f "/data/lnd/lnd.conf" ]] && lnd_path="/data/lnd/lnd.conf"
+             [[ ! -f "$lnd_path" ]] && [[ -f "/mnt/hdd/lnd/lnd.conf" ]] && lnd_path="/mnt/hdd/lnd/lnd.conf"
+             
+             echo -e "Edit: ${BOLD}${BLUE}sudo nano $lnd_path${NC}"
+             if [[ "$context" == "install" ]]; then
+                 echo -e "${YELLOW}Note: Place settings in their respective sections. Do NOT duplicate categories.${NC}"
+             fi
+             echo ""
+             echo "#########################################"
+             echo -e "${BOLD}${BLUE}[Application Options]${NC}"
+             echo -e "${YELLOW}listen=0.0.0.0:9735${NC}"
+             echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+             echo ""
+             echo -e "${BOLD}${BLUE}[Tor]${NC}"
+             echo -e "${YELLOW}tor.streamisolation=false${NC}"
+             echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
+             echo "#########################################"
+        fi
+        
+    elif [[ "$LN_IMPL" == "cln" ]]; then
+        if [[ "$PLATFORM" == "umbrel" ]]; then
+             echo -e "1. Edit: ${BOLD}${BLUE}sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config${NC}"
+             echo "#########################################"
+             echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
+             echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
+             echo -e "${YELLOW}always-use-proxy=false${NC}"
+             echo "#########################################"
+             echo ""
+             echo "2. Edit: nano ~/umbrel/app-data/core-lightning/exports.sh"
+             echo "#########################################"
+             echo -e "${BOLD}export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"${NC}"
+             echo "#########################################"
+             echo ""
+             echo "3. Edit: ~/umbrel/app-data/core-lightning/docker-compose.yml"
+             echo "   Comment out '--bind-addr' if present."
+        else
+             echo -e "Edit: ${BOLD}${BLUE}config${NC}"
+             echo ""
+             echo "#########################################"
+             echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
+             echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
+             echo -e "${YELLOW}always-use-proxy=false${NC}"
+             echo "#########################################"
+        fi
+        
+    elif [[ "$LN_IMPL" == "lit" ]]; then
+         local lit_path="$HOME/.lit/lit.conf"
+         [[ -f "/etc/systemd/system/lit.service" ]] && lit_path=$(grep "^Environment=LIT_CONFIG_FILE=" /etc/systemd/system/lit.service | cut -d'=' -f3 || echo "$HOME/.lit/lit.conf")
+         echo -e "Edit: ${BOLD}${BLUE}$lit_path${NC}"
+         echo ""
+         echo "#########################################"
+         echo -e "${BOLD}${BLUE}[Application Options]${NC}"
+         echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+         echo ""
+         echo -e "${BOLD}${BLUE}[Tor]${NC}"
+         echo -e "${YELLOW}tor.streamisolation=false${NC}"
+         echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
+         echo "#########################################"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # COMMON UTILITY FUNCTIONS
 # ---------------------------------------------------------------------------
+
 
 check_root() {
     if [[ "$EUID" -ne 0 ]]; then
@@ -1656,84 +1751,7 @@ cmd_install() {
     echo "Please copy the following settings into your configuration file."
     echo ""
 
-    if [[ "$LN_IMPL" == "lnd" ]]; then
-        if [[ "$PLATFORM" == "umbrel" ]]; then
-             echo -e "Edit: ${BOLD}${BLUE}~/umbrel/app-data/lightning/data/lnd/lnd.conf${NC}"
-             echo -e "${YELLOW}Note: If 'tor.streamisolation' or 'tor.skip-proxy...' are already enabled in UI,${NC}"
-             echo -e "${YELLOW}      do NOT duplicate them.${NC}"
-             echo ""
-             echo "#########################################"
-             echo -e "${BOLD}${BLUE}[Application Options]${NC}"
-             echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
-             echo ""
-             echo -e "${BOLD}${BLUE}[Tor]${NC}"
-             echo -e "${YELLOW}tor.streamisolation=false${NC}"
-             echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
-             echo "#########################################"
-        else
-             local lnd_user="${node_user:-bitcoin}"
-             local lnd_path="/home/$lnd_user/.lnd/lnd.conf"
-             
-             # Forensic path guessing for Bare Metal
-             [[ ! -f "$lnd_path" ]] && [[ -f "/home/bitcoin/.lnd/lnd.conf" ]] && lnd_path="/home/bitcoin/.lnd/lnd.conf"
-             [[ ! -f "$lnd_path" ]] && [[ -f "/home/lnd/.lnd/lnd.conf" ]] && lnd_path="/home/lnd/.lnd/lnd.conf"
-             [[ ! -f "$lnd_path" ]] && [[ -f "/data/lnd/lnd.conf" ]] && lnd_path="/data/lnd/lnd.conf"
-             [[ ! -f "$lnd_path" ]] && [[ -f "/mnt/hdd/lnd/lnd.conf" ]] && lnd_path="/mnt/hdd/lnd/lnd.conf"
-             
-             echo -e "Edit: ${BOLD}${BLUE}sudo nano $lnd_path${NC}"
-             echo -e "${YELLOW}Note: Place settings in their respective sections. Do NOT duplicate categories.${NC}"
-             echo ""
-             echo "#########################################"
-             echo -e "${BOLD}${BLUE}[Application Options]${NC}"
-             echo -e "${YELLOW}listen=0.0.0.0:9735${NC}"
-             echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
-             echo ""
-             echo -e "${BOLD}${BLUE}[Tor]${NC}"
-             echo -e "${YELLOW}tor.streamisolation=false${NC}"
-             echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
-             echo "#########################################"
-        fi
-        
-    elif [[ "$LN_IMPL" == "cln" ]]; then
-        if [[ "$PLATFORM" == "umbrel" ]]; then
-             echo -e "1. Edit: ${BOLD}${BLUE}sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config${NC}"
-             echo "#########################################"
-             echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
-             echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
-             echo -e "${YELLOW}always-use-proxy=false${NC}"
-             echo "#########################################"
-             echo ""
-             echo "2. Edit: nano ~/umbrel/app-data/core-lightning/exports.sh"
-             echo "#########################################"
-             echo -e "${BOLD}export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"${NC}"
-             echo "#########################################"
-             echo ""
-             echo "3. Edit: ~/umbrel/app-data/core-lightning/docker-compose.yml"
-             echo "   Comment out '--bind-addr' if present."
-        else
-             echo -e "Edit: ${BOLD}${BLUE}config${NC}"
-             echo ""
-             echo "#########################################"
-             echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
-             echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
-             echo -e "${YELLOW}always-use-proxy=false${NC}"
-             echo "#########################################"
-        fi
-        
-    elif [[ "$LN_IMPL" == "lit" ]]; then
-         local lit_path="$HOME/.lit/lit.conf"
-         [[ -f "/etc/systemd/system/lit.service" ]] && lit_path=$(grep "^Environment=LIT_CONFIG_FILE=" /etc/systemd/system/lit.service | cut -d'=' -f3 || echo "$HOME/.lit/lit.conf")
-         echo -e "Edit: ${BOLD}${BLUE}$lit_path${NC}"
-         echo ""
-         echo "#########################################"
-         echo -e "${BOLD}${BLUE}[Application Options]${NC}"
-         echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
-         echo ""
-         echo -e "${BOLD}${BLUE}[Tor]${NC}"
-         echo -e "${YELLOW}tor.streamisolation=false${NC}"
-         echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
-         echo "#########################################"
-    fi
+    print_node_config_instructions "$vpn_dns" "$vpn_port" "install"
 
     if [[ "$PLATFORM" == "baremetal" ]]; then
         echo ""
@@ -2114,6 +2132,49 @@ cmd_status() {
          print_warning "Inbound Check Failed (Outbound OK)"
     fi
     echo ""
+
+    # ---------------------------------------------------------
+    # MISCONFIGURATION DETECTION: Node not advertising VPN address
+    # Scenario: Tunnel works (inbound/outbound OK) but getinfo shows no VPN URI
+    # ---------------------------------------------------------
+    if $outbound_ok && $inbound_ok; then
+        # Check if node_addr is empty, "N/A", or contains no clearnet IP
+        if [[ -z "$node_addr" ]] || [[ "$node_addr" == "N/A" ]] || [[ "$node_addr" == "" ]]; then
+            echo ""
+            echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${BOLD}${YELLOW}⚠  NODE NOT ADVERTISING VPN ADDRESS!${NC}"
+            echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+            echo "Your tunnel is working perfectly, but your node isn't configured"
+            echo "to announce the VPN address to the Lightning network."
+            echo ""
+            echo "Other nodes CAN connect to you through the tunnel, but they"
+            echo "don't know about your clearnet address (it won't appear in lncli getinfo)."
+            echo ""
+            echo -e "${BOLD}To fix this, please update your node configuration:${NC}"
+            echo ""
+            
+            # Get VPN endpoint details from config for guidance
+            local status_vpn_dns=$(grep "^Endpoint" "$config_file" | awk '{print $3}' | cut -d ':' -f 1)
+            local status_vpn_port="$vpn_port"
+            
+            print_node_config_instructions "$status_vpn_dns" "$status_vpn_port" "status"
+            
+            echo ""
+            echo -e "${BOLD}Then restart your node:${NC}"
+            if [[ "$PLATFORM" == "umbrel" ]]; then
+                echo "   sudo reboot"
+                echo "   (Or restart the Lightning app via Umbrel Dashboard: Right-click -> Restart)"
+            else
+                local svc="${LN_IMPL}"
+                [[ "$LN_IMPL" == "cln" ]] && svc="lightningd"
+                echo "   sudo systemctl restart ${svc}.service"
+            fi
+            echo ""
+            echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+        fi
+    fi
 
     # Iterative Feedback Support: Debug Summary (Simplified for Telegram)
     echo -e "${BOLD}Debug Summary (Copy for Telegram)${NC}"
