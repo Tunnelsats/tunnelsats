@@ -128,7 +128,7 @@ At present we successfully tested the following setups:
 - myNode (LND) v0.3+
 - RaspiBolt (LND / CLN) (please see [preconditions](README.md/#preconditions) if your system or architecture differs from RaspiBolt guide)
 
-For other setups please get back to us on Telegram (tunnelsats.com/join-telegram) to discuss if it's viable to go with TunnelSats.
+For other setups please get back to us on [Telegram](https://tunnelsats.com/join-telegram) to discuss if it's viable to go with TunnelSats.
 
 <br />
 
