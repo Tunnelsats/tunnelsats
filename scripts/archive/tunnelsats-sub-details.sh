@@ -22,7 +22,7 @@ check_wireguard_status() {
     if [ ! -f "$config_file" ]; then
       echo "The wireguard tunnel seems to be offline, and no tunnelsatsv2.conf could be found in the wireguard directory."
       echo "Please try a reinstall per https://guide.tunnelsats.com"
-      echo "Alternatively, visit the Tunnel⚡️Sats Telegram Chat: https://t.me/+xvjQdEObZ1Y4MjQy"
+      echo "Alternatively, visit the Tunnel⚡️Sats Telegram Chat: https://tunnelsats.com/join-telegram"
       return 1
     else
       echo "The wireguard tunnel seems to be offline. Please try restarting your node."

@@ -128,7 +128,7 @@ At present we successfully tested the following setups:
 - myNode (LND) v0.3+
 - RaspiBolt (LND / CLN) (please see [preconditions](README.md/#preconditions) if your system or architecture differs from RaspiBolt guide)
 
-For other setups please get back to us on Telegram to discuss if it's viable to go with TunnelSats.
+For other setups please get back to us on [Telegram](https://tunnelsats.com/join-telegram) to discuss if it's viable to go with TunnelSats.
 
 <br />
 
@@ -280,7 +280,7 @@ Now you are connected to your second wireguard network.
 
 ### I'm stuck with the setup process, can you help?
 
-Please raise an [issue](https://github.com/tunnelsats/tunnelsats/issues) in Github or simply join our [Telegram](https://t.me/+py_KS9wv6hdjMWMy) group, explaining where you are stuck, but leave out any personal or sensitive information. Especially handle your configuration file with care!
+Please raise an [issue](https://github.com/tunnelsats/tunnelsats/issues) in Github or simply join our [Telegram](https://tunnelsats.com/join-telegram) group, explaining where you are stuck, but leave out any personal or sensitive information. Especially handle your configuration file with care!
 
 <br/>
 
@@ -438,7 +438,7 @@ In short: No. Currently we are specializing VPN usage for the sole purpose of li
 
 ### I have some ideas to make this better. Where can I provide feedback or offer help?
 
-Great! Please do not hesitate to reach out via [Telegram](https://t.me/+py_KS9wv6hdjMWMy), [Nostr](https://snort.social/p/npub1n9z4y3xjramqes8fp9rl96x5e4nl0hff57ynw7vqnjpq370tq78sljsp8y), [X](https://x.com/tunnelsats), email (info @ tunnelsats.com) or log an issue here on github with your detailed ideas or feature requests. We always look forward to partner with great thinkers and doers.
+Great! Please do not hesitate to reach out via [Telegram](https://tunnelsats.com/join-telegram), [Nostr](https://snort.social/p/npub1n9z4y3xjramqes8fp9rl96x5e4nl0hff57ynw7vqnjpq370tq78sljsp8y), [X](https://x.com/tunnelsats), email (info @ tunnelsats.com) or log an issue here on github with your detailed ideas or feature requests. We always look forward to partner with great thinkers and doers.
 
 <br/>
 

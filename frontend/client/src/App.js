@@ -458,14 +458,14 @@ function App() {
         setSpinnerQuery(false);
       } else if (result == "not-allowed") {
         setPopupMessage(<span>This VPN server is going to be phased out. Please switch to us3.tunnelsats.com / Ashburn (see{" "}
-      <a
-        href="https://guide.tunnelsats.com/FAQ.html#phasing-out-us1tunnelsatscom---how-to-switch-to-us3tunnelsatscom"
-        target="_blank"
-        rel="noreferrer"
-      >
-        FAQ page
-      </a>{" "}
-      for instructions) or get a new subscription for US east at the end of your current subscription.</span>);
+          <a
+            href="https://guide.tunnelsats.com/FAQ.html#phasing-out-us1tunnelsatscom---how-to-switch-to-us3tunnelsatscom"
+            target="_blank"
+            rel="noreferrer"
+          >
+            FAQ page
+          </a>{" "}
+          for instructions) or get a new subscription for US east at the end of your current subscription.</span>);
         setTime("");
         setNewTime("");
         setTimeValid(false);
@@ -797,13 +797,13 @@ function App() {
                                 <h3>
                                   {discount != 1.0
                                     ? Math.trunc(
-                                        Math.round(
-                                          priceDollar * satsPerDollar * (1 - discount)
-                                        )
+                                      Math.round(
+                                        priceDollar * satsPerDollar * (1 - discount)
                                       )
+                                    )
                                     : Math.trunc(
-                                        Math.round(priceDollar * satsPerDollar)
-                                      ).toLocaleString()}{" "}
+                                      Math.round(priceDollar * satsPerDollar)
+                                    ).toLocaleString()}{" "}
                                   <i class="fak fa-satoshisymbol-solidcirtilt" />
                                 </h3>
                               </div>
@@ -939,13 +939,13 @@ function App() {
                           <h3>
                             {discount != 1.0
                               ? Math.trunc(
-                                  Math.round(
-                                    priceDollar * satsPerDollar * (1 - discount)
-                                  )
+                                Math.round(
+                                  priceDollar * satsPerDollar * (1 - discount)
                                 )
+                              )
                               : Math.trunc(
-                                  Math.round(priceDollar * satsPerDollar)
-                                ).toLocaleString()}{" "}
+                                Math.round(priceDollar * satsPerDollar)
+                              ).toLocaleString()}{" "}
                             <i class="fak fa-satoshisymbol-solidcirtilt" />
                           </h3>
                         </div>
@@ -1061,7 +1061,7 @@ function App() {
                   </Col>
                   <Col>
                     <a
-                      href="https://t.me/+-KOVttt7uk1lYzEy"
+                      href="https://tunnelsats.com/join-telegram"
                       target="_blank"
                       rel="noreferrer"
                     >

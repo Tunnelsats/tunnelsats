@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: 💬 Tunnelsats Telegram Group
-    url: https://t.me/+ELfawJHTLcY5MjZi
+    url: https://tunnelsats.com/join-telegram
     about: Ask quick questions or get help with setup in our Telegram community.
   - name: 🔐 Security Policy
     url: https://github.com/Tunnelsats/tunnelsats/blob/main/SECURITY.md
