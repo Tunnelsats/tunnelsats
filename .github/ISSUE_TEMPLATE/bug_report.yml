@@ -63,7 +63,7 @@ body:
     attributes:
       value: |
         ## 🔍 Troubleshooting Checks
-        *Please run these checks from the [FAQ > Troubleshooting & Verification](https://tunnelsats.com/faq) section and paste the results below.*
+        *Please run these checks from the [FAQ > Troubleshooting & Verification](https://tunnelsats.com/faq#troubleshooting--verification) section and paste the results below.*
   - type: textarea
     id: wg-check
     attributes:
