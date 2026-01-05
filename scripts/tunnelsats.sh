@@ -301,7 +301,7 @@ Examples:
 For more information:
   Website: https://tunnelsats.com
   Guide: https://tunnelsats.com/guide
-  Support: https://tunnelsats.com/join-telegram"
+  Support: https://tunnelsats.com/join-telegram
 
 EOF
 }
