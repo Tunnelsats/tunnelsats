@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for helping keep Tunnelsats stable! Please ensure you have reviewed the [Installation Guide](https://guide.tunnelsats.com/) and [FAQ](https://guide.tunnelsats.com/FAQ.html) before submitting.
+        Thank you for helping keep Tunnelsats stable! Please ensure you have reviewed the [Installation Guide](https://tunnelsats.com/guide) and [FAQ](https://tunnelsats.com/faq) before submitting.
   - type: dropdown
     id: node-setup
     attributes:
@@ -63,7 +63,7 @@ body:
     attributes:
       value: |
         ## 🔍 Troubleshooting Checks
-        *Please run these checks from the [FAQ > Troubleshooting & Verification](https://guide.tunnelsats.com/FAQ.html) section and paste the results below.*
+        *Please run these checks from the [FAQ > Troubleshooting & Verification](https://tunnelsats.com/faq) section and paste the results below.*
   - type: textarea
     id: wg-check
     attributes:
