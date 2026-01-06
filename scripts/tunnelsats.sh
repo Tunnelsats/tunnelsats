@@ -1,5 +1,5 @@
 #!/bin/bash
-# TunnelSats Unified Setup Tool
+# TunnelSats Unified Setup Tool - [Verification Entry]
 # Consolidates install, pre-check, uninstall, and status commands
 #
 # Usage: sudo bash tunnelsats.sh [command] [options]
@@ -161,8 +161,12 @@ print_node_config_instructions() {
         
     elif [[ "$LN_IMPL" == "lit" ]]; then
          local lit_path="$HOME/.lit/lit.conf"
-         if [[ -f "/etc/systemd/system/lit.service" ]]; then
-             local extracted_path=$(grep "^Environment=LIT_CONFIG_FILE=" /etc/systemd/system/lit.service | cut -d'=' -f3)
+         # Check both lit.service and litd.service for config path
+         local lit_service_file=""
+         [[ -f "/etc/systemd/system/litd.service" ]] && lit_service_file="/etc/systemd/system/litd.service"
+         [[ -f "/etc/systemd/system/lit.service" ]] && lit_service_file="/etc/systemd/system/lit.service"
+         if [[ -n "$lit_service_file" ]]; then
+             local extracted_path=$(grep "LIT_CONFIG_FILE" "$lit_service_file" | sed 's/.*LIT_CONFIG_FILE=//' | tr -d '"' | tr -d "'" | xargs)
              [[ -n "$extracted_path" ]] && lit_path="$extracted_path"
          fi
          echo -e "Edit: ${BOLD}${BLUE}$lit_path${NC}"
@@ -2172,8 +2176,14 @@ cmd_status() {
                 local svc="${LN_IMPL}"
                 [[ "$LN_IMPL" == "cln" ]] && svc="lightningd"
                 if [[ "$LN_IMPL" == "lit" ]]; then
-                    svc="litd"
-                    systemctl list-units --type=service 2>/dev/null | grep -q "lit.service" && svc="lit"
+                    # Use systemctl is-active for consistent service detection
+                    if systemctl is-active --quiet litd 2>/dev/null; then
+                        svc="litd"
+                    elif systemctl is-active --quiet lit 2>/dev/null; then
+                        svc="lit"
+                    else
+                        svc="litd"  # Default fallback
+                    fi
                 fi
                 echo "   sudo systemctl restart ${svc}.service"
             fi
