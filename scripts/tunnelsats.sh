@@ -161,7 +161,10 @@ print_node_config_instructions() {
         
     elif [[ "$LN_IMPL" == "lit" ]]; then
          local lit_path="$HOME/.lit/lit.conf"
-         [[ -f "/etc/systemd/system/lit.service" ]] && lit_path=$(grep "^Environment=LIT_CONFIG_FILE=" /etc/systemd/system/lit.service | cut -d'=' -f3 || echo "$HOME/.lit/lit.conf")
+         if [[ -f "/etc/systemd/system/lit.service" ]]; then
+             local extracted_path=$(grep "^Environment=LIT_CONFIG_FILE=" /etc/systemd/system/lit.service | cut -d'=' -f3)
+             [[ -n "$extracted_path" ]] && lit_path="$extracted_path"
+         fi
          echo -e "Edit: ${BOLD}${BLUE}$lit_path${NC}"
          echo ""
          echo "#########################################"
@@ -2138,8 +2141,8 @@ cmd_status() {
     # Scenario: Tunnel works (inbound/outbound OK) but getinfo shows no VPN URI
     # ---------------------------------------------------------
     if $outbound_ok && $inbound_ok; then
-        # Check if node_addr is empty, "N/A", or contains no clearnet IP
-        if [[ -z "$node_addr" ]] || [[ "$node_addr" == "N/A" ]] || [[ "$node_addr" == "" ]]; then
+        # Check if node_addr is empty or "N/A"
+        if [[ -z "$node_addr" ]] || [[ "$node_addr" == "N/A" ]]; then
             echo ""
             echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
             echo -e "${BOLD}${YELLOW}⚠  NODE NOT ADVERTISING VPN ADDRESS!${NC}"
@@ -2168,6 +2171,10 @@ cmd_status() {
             else
                 local svc="${LN_IMPL}"
                 [[ "$LN_IMPL" == "cln" ]] && svc="lightningd"
+                if [[ "$LN_IMPL" == "lit" ]]; then
+                    svc="litd"
+                    systemctl list-units --type=service 2>/dev/null | grep -q "lit.service" && svc="lit"
+                fi
                 echo "   sudo systemctl restart ${svc}.service"
             fi
             echo ""
