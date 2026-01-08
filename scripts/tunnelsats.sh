@@ -110,25 +110,54 @@ valid_ipv4() {
 # Find active WireGuard config file
 # Supports both old (tunnelsatsv2.conf) and new (tunnelsats-*.conf) formats
 find_active_wg_config() {
-    # Check for old format first
+    local configs=()
+    
+    # Collect all potential TunnelSats configs in /etc/wireguard
+    # 1. Old format: tunnelsatsv2.conf
     if [[ -f /etc/wireguard/tunnelsatsv2.conf ]]; then
-        echo "/etc/wireguard/tunnelsatsv2.conf"
-        return 0
+        configs+=("/etc/wireguard/tunnelsatsv2.conf")
     fi
     
-    # Look for new format
-    local configs=($(find /etc/wireguard -name "tunnelsats-*.conf" -type f 2>/dev/null))
-    if [[ ${#configs[@]} -eq 1 ]]; then
-        echo "${configs[0]}"
-        return 0
-    elif [[ ${#configs[@]} -gt 1 ]]; then
-        # Multiple configs found - use the first one
-        echo "${configs[0]}"
-        return 0
-    fi
+    # 2. New format with dash: tunnelsats-*.conf
+    while IFS= read -r -d '' file; do
+        configs+=("$file")
+    done < <(find /etc/wireguard -maxdepth 1 -name "tunnelsats-*.conf" -type f -print0 2>/dev/null)
     
-    # No config found
-    return 1
+    # 3. Format with underscore: tunnelsats_*.conf
+    while IFS= read -r -d '' file; do
+        configs+=("$file")
+    done < <(find /etc/wireguard -maxdepth 1 -name "tunnelsats_*.conf" -type f -print0 2>/dev/null)
+    
+    # Decide based on count
+    if [[ ${#configs[@]} -eq 0 ]]; then
+        # No config found
+        return 1
+    elif [[ ${#configs[@]} -eq 1 ]]; then
+        echo "${configs[0]}"
+        return 0
+    else
+        # Multiple configs found - prompt user to select
+        echo "" >&2
+        print_info "Found ${#configs[@]} WireGuard configuration file(s):"
+        echo "" >&2
+        
+        for i in "${!configs[@]}"; do
+            echo "  $((i+1))) ${configs[$i]##*/}" >&2
+        done
+        
+        echo "" >&2
+        read -p "Select active config [1-${#configs[@]}]: " selection
+        
+        if [[ "$selection" =~ ^[0-9]+$ ]] && \
+           [[ "$selection" -ge 1 ]] && \
+           [[ "$selection" -le "${#configs[@]}" ]]; then
+            echo "${configs[$((selection-1))]}"
+            return 0
+        else
+            print_error "Invalid selection"
+            return 1
+        fi
+    fi
 }
 
 # Parse metadata from config file (supports old and new formats)
