@@ -144,9 +144,8 @@ parse_config_metadata() {
     
     case "$field" in
         port)
-            # Old format: #VPNPort = 22632
-            # New format: # Port Forwarding: 12345
-            local port=$(grep -E "#VPNPort|# Port Forwarding:" "$config_file" | head -1 | awk '{print $NF}')
+            # Handles variable whitespace: #VPNPort, # VPNPort, # Port Forwarding, etc.
+            local port=$(grep -E '^#\s*(VPNPort|Port Forwarding)' "$config_file" | head -1 | grep -oE '[0-9]{4,5}' | head -1)
             echo "$port"
             ;;
         expiry)
@@ -637,8 +636,7 @@ configure_wireguard() {
         local bridge_id=$(docker network inspect "docker-tunnelsats" --format '{{.Id}}' | cut -c1-12 2>/dev/null || echo "6c3d330ad9f5")
         local bridge_name="br-$bridge_id"
         
-        # Extract VPN port for DNAT
-        local vpn_port=$(grep -E "#VPNPort|# Port Forwarding:" "$target_path" | head -1 | awk '{print $NF}' | sed 's/.*: //')
+        local vpn_port=$(parse_config_metadata "$target_path" port)
         [[ -z "$vpn_port" ]] && vpn_port=9735 # fallback
 
         local inputDocker="
@@ -1652,7 +1650,7 @@ cmd_install() {
     
     # Extract details for manual config
     local vpn_dns=$(grep "^Endpoint" "$CONFIG_FILE" | awk '{print $3}' | cut -d ':' -f 1)
-    local vpn_port=$(grep -E "#VPNPort|# Port Forwarding:" "$CONFIG_FILE" | head -1 | awk '{print $NF}' | sed 's/.*: //')
+    local vpn_port=$(parse_config_metadata "$CONFIG_FILE" port)
     
     echo -e "${BOLD}CRITICAL: You must update your node configuration!${NC}"
     echo "Please copy the following settings into your configuration file."
@@ -1861,7 +1859,7 @@ cmd_status() {
     local transfer_tx=$(echo "$transfer" | awk '{print $5, $6}')
     
     # Parse Config File Metadata
-    local vpn_port=$(grep '#VPNPort\|# Port Forwarding:' "$config_file" | head -1 | awk '{print $NF}' | sed 's/.*: //')
+    local vpn_port=$(parse_config_metadata "$config_file" port)
     local sub_end=$(grep -E '#ValidUntil|# Valid Until:' "$config_file" | head -1 | awk -F '[=:]' '{print $2}' | xargs)
     # If endpoint missing from wg_output (tunnel down), try config
     if [[ -z "$endpoint" ]]; then
