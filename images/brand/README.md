@@ -1,7 +1,3 @@
-Here is a professional `README.md` designed specifically for your public brand repository. It incorporates the technical specs we discussed—ensuring anyone who wants to contribute or use your brand assets has the exact font and color information.
-
----
-
 # 📁 TunnelSats Brand Identity & Assets
 
 This repository serves as the official, verifiable source for all **TunnelSats** visual assets. It is automatically synced from our core development environment to ensure the community always has access to the latest brand resources.
