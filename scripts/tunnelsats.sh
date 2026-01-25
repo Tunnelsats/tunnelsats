@@ -220,10 +220,10 @@ select_config_interactive() {
 detect_config_file() {
     local config_arg="$1"
     
-    # If --config provided, verify and use it
+    # Priority 1: If --config explicitly provided via argument, verify and use it
     if [[ -n "$config_arg" ]]; then
         if [[ -f "$config_arg" ]]; then
-            print_success "Using specified config: ${config_arg##*/}"
+            # print_success "Using specified config: ${config_arg##*/}"
             echo "$config_arg"
             return 0
         else
@@ -232,7 +232,13 @@ detect_config_file() {
         fi
     fi
     
-    # Auto-detect config files
+    # Priority 2: Use CONFIG_FILE global if set by parse_args
+    if [[ -n "$CONFIG_FILE" ]] && [[ -f "$CONFIG_FILE" ]]; then
+        echo "$CONFIG_FILE"
+        return 0
+    fi
+
+    # Priority 3: Auto-detect config files in current directory
     mapfile -t found_files < <(find_config_files "$SCRIPT_DIR")
     
     if [[ ${#found_files[@]} -eq 0 ]]; then
