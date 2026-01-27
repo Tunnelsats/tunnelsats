@@ -243,8 +243,9 @@ detect_config_file() {
         echo "Expected files:" >&2
         echo "  • tunnelsats_<server>.conf (e.g., tunnelsats_us-east.conf)" >&2
         echo "  • Any .conf file in the current directory" >&2
+        echo "  • Or specify a config path with --config <file>" >&2
         echo "" >&2
-        echo "Please place your config file here and try again." >&2
+        echo "Please specify your config file and try again." >&2
         exit 1
         
     elif [[ ${#found_files[@]} -eq 1 ]]; then
