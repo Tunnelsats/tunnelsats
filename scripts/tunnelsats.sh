@@ -10,7 +10,7 @@ set -e  # Exit on error
 # GLOBAL VARIABLES
 # ---------------------------------------------------------------------------
 
-VERSION="3.0beta"
+VERSION="3.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE=""
 PLATFORM=""
@@ -42,17 +42,19 @@ print_header() {
     local title="Tunnel⚡Sats Setup Tool v${VERSION}"
     local width=42
     
-    # Calculate padding (accounting for the 2-column width of the bolt symbol)
-    local title_len=32 # "Tunnel⚡Sats Setup Tool vX.X" effectively 32 columns wide
-    [[ "$title" != *"⚡"* ]] && title_len=${#title}
+    # Calculate visible length (⚡ counts as 2 columns but 1 character)
+    local title_len=${#title}
+    if [[ "$title" == *"⚡"* ]]; then
+        title_len=$((title_len + 1))
+    fi
     
     local title_padding=$(( (width - title_len) / 2 ))
     local sub_padding=$(( (width - ${#subtitle}) / 2 ))
     
     echo -e "${BOLD}${BLUE}"
     printf "╔"; printf '═%.0s' $(seq 1 $width); echo "╗"
-    printf "║%*s%s%*s║\n" $title_padding "" "$title" $((width - title_padding - title_len)) ""
-    printf "║%*s%s%*s║\n" $sub_padding "" "$subtitle" $((width - sub_padding - ${#subtitle})) ""
+    printf "║%*s%s%*s║\n" "$title_padding" "" "$title" $((width - title_padding - title_len)) ""
+    printf "║%*s%s%*s║\n" "$sub_padding" "" "$subtitle" $((width - sub_padding - ${#subtitle})) ""
     printf "╚"; printf '═%.0s' $(seq 1 $width); echo "╝"
     echo -e "${NC}"
 }
@@ -190,7 +192,7 @@ find_config_files() {
     fi
     
     # Return the array
-    printf '%s\n' "${found_files[@]}"
+    [[ ${#found_files[@]} -gt 0 ]] && printf '%s\n' "${found_files[@]}"
 }
 
 select_config_interactive() {
@@ -270,13 +272,13 @@ cmd_help() {
 Usage: sudo bash tunnelsats.sh [COMMAND] [OPTIONS]
 
 Commands:
-  install              Install WireGuard VPN configuration
-  install --config <file>  Install with specific config file
-  pre-check            Check system compatibility
-  uninstall            Remove TunnelSats installation
-  status               Show subscription and connection status
-  restart              Restart the WireGuard tunnel interface
-  help                 Show this help message
+  install                   Install WireGuard VPN configuration
+  install --config <file>   Install with specific config file
+  pre-check                 Check system compatibility
+  uninstall                 Remove TunnelSats installation
+  status                    Show subscription and connection status
+  restart                   Restart the WireGuard tunnel interface
+  help                      Show this help message
 
 Examples:
   # Run compatibility check first
@@ -1552,11 +1554,8 @@ cmd_install() {
     check_root
     print_header "TunnelSats Installation"
 
-    # Step 1: Detect Configuration (Fail fast if missing)
-    print_step 1 6 "Detecting configuration..."
-    local config_path
-    config_path=$(detect_config_file "$CONFIG_FILE") || exit 1
-    CONFIG_FILE="$config_path"
+    # Step 1: Configuration is already detected in parse_args
+    print_step 1 6 "Configuration verified: ${CONFIG_FILE##*/}"
     echo ""
     
     # Step 2: Detect Environment
@@ -2280,6 +2279,10 @@ parse_args() {
                     ;;
             esac
         done
+        
+        # Verify configuration exists before proceeding (Early fail)
+        config_path=$(detect_config_file "$CONFIG_FILE") || exit 1
+        CONFIG_FILE="$config_path"
     fi
     
     # Dispatch command
