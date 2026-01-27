@@ -1,4 +1,7 @@
 #!/bin/bash
+# shellcheck disable=SC2200-SC3000
+# shellcheck disable=SC1000-SC1999
+# shellcheck disable=SC2000-SC2200
 # SPDX-License-Identifier: GPL-2.0
 #
 # Copyright (C) 2015-2020 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.

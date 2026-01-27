@@ -30,10 +30,11 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 
+# shellcheck disable=SC2120
 print_line() {
     local char="${1:-━}"
     local count="${2:-42}"
-    printf "%0.s${char}" $(seq 1 $count)
+    printf "%0.s${char}" $(seq 1 "$count")
     echo ""
 }
 
@@ -88,7 +89,7 @@ print_step() {
 check_root() {
     if [[ "$EUID" -ne 0 ]]; then
         print_error "This script must be run as root"
-        echo "Please run: sudo $0 $@"
+        echo "Please run: sudo $0 \"$@\""
         exit 1
     fi
 }
@@ -100,7 +101,7 @@ valid_ipv4() {
     if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
         OIFS=$IFS
         IFS='.'
-        ip=($ip)
+        read -r -a ip <<< "$ip"
         IFS=$OIFS
         [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 && \
            ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
@@ -119,7 +120,8 @@ find_active_wg_config() {
     fi
     
     # Look for new format
-    local configs=($(find /etc/wireguard -name "tunnelsats-*.conf" -type f 2>/dev/null))
+    local configs
+    mapfile -t configs < <(find /etc/wireguard -name "tunnelsats-*.conf" -type f 2>/dev/null)
     if [[ ${#configs[@]} -eq 1 ]]; then
         echo "${configs[0]}"
         return 0
@@ -147,19 +149,22 @@ parse_config_metadata() {
     case "$field" in
         port)
             # Handles variable whitespace: #VPNPort, # VPNPort, # Port Forwarding, etc.
-            local port=$(grep -E '^#\s*(VPNPort|Port Forwarding)' "$config_file" | head -1 | grep -oE '[0-9]{4,5}' | head -1)
+            local port
+            port=$(grep -E '^#\s*(VPNPort|Port Forwarding)' "$config_file" | head -1 | grep -oE '[0-9]{4,5}' | head -1)
             echo "$port"
             ;;
         expiry)
             # Old format: #ValidUntil (UTC time) = 2025-06-29T08:18:33.839Z
             # New format: # Valid Until: 2026-01-07T...
-            local expiry=$(grep -E "#ValidUntil|# Valid Until:" "$config_file" | head -1 | sed 's/.*[=:] *//')
+            local expiry
+            expiry=$(grep -E "#ValidUntil|# Valid Until:" "$config_file" | head -1 | sed 's/.*[=:] *//')
             echo "$expiry"
             ;;
         pubkey)
             # Old format: #myPubKey = 6gTYyE8eFW7579zIOlvEgehrhGb01SrqC5dgQupxlAU=
             # New format: # myPubKey: <user's-public-key>
-            local pubkey=$(grep -E "#myPubKey" "$config_file" | head -1 | sed 's/.*[=:] *//')
+            local pubkey
+            pubkey=$(grep -E "#myPubKey" "$config_file" | head -1 | sed 's/.*[=:] *//')
             echo "$pubkey"
             ;;
         *)
@@ -207,7 +212,7 @@ select_config_interactive() {
     
     echo "" >&2
     # read -p prompts to stderr by default, but we need to ensure inputs don't clutter result
-    read -p "Select config [1-${#files[@]}]: " selection
+    read -r -p "Select config [1-${#files[@]}]: " selection
     
     if [[ "$selection" =~ ^[0-9]+$ ]] && \
        [[ "$selection" -ge 1 ]] && \
@@ -309,6 +314,8 @@ EOF
 }
 
 cmd_pre_check() {
+    # shellcheck disable=SC2120
+    :
     print_header "Compatibility Check"
     
     echo "Checking system requirements..."
@@ -318,9 +325,12 @@ cmd_pre_check() {
     
     # Check kernel version (min 5.10.102+ required)
     print_step 1 3 "Checking kernel version..."
-    local kernelMajor=$(uname -r | cut -d '.' -f1)
-    local kernelMinor=$(uname -r | cut -d '.' -f2)
-    local kernelPatch=$(uname -r | cut -d '.' -f3 | cut -d '-' -f1 | tr -cd '0-9')
+    local kernelMajor
+    local kernelMinor
+    local kernelPatch
+    kernelMajor=$(uname -r | cut -d '.' -f1)
+    kernelMinor=$(uname -r | cut -d '.' -f2)
+    kernelPatch=$(uname -r | cut -d '.' -f3 | cut -d '-' -f1 | tr -cd '0-9')
     
     # Defaults in case of parsing failure
     kernelMajor=${kernelMajor:-0}
@@ -349,9 +359,12 @@ cmd_pre_check() {
     
     if [[ -z "$nftablesVersion" ]]; then nftablesVersion="0.0.0"; fi
 
-    local nftMajor=$(echo "$nftablesVersion" | cut -d '.' -f1)
-    local nftMinor=$(echo "$nftablesVersion" | cut -d '.' -f2)
-    local nftPatch=$(echo "$nftablesVersion" | cut -d '.' -f3)
+    local nftMajor
+    local nftMinor
+    local nftPatch
+    nftMajor=$(echo "$nftablesVersion" | cut -d '.' -f1)
+    nftMinor=$(echo "$nftablesVersion" | cut -d '.' -f2)
+    nftPatch=$(echo "$nftablesVersion" | cut -d '.' -f3)
     
     nftMajor=${nftMajor:-0}
     nftMinor=${nftMinor:-0}
@@ -377,7 +390,8 @@ cmd_pre_check() {
         ((rating+=1))
     else
         print_info "Checking for Docker containers..."
-        local dockerProcess=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' 2>/dev/null | grep -E "0.0.0.0:9735|0.0.0.0:9736" | awk '{print $2}' || echo "")
+        local dockerProcess
+        dockerProcess=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' 2>/dev/null | grep -E "0.0.0.0:9735|0.0.0.0:9736" | awk '{print $2}' || echo "")
         if [[ ${dockerProcess} == *lnd* ]]; then
             print_success "Found LND container"
             ((rating+=1))
@@ -424,7 +438,7 @@ detect_platform() {
     fi
 
     if [[ -n "$guess" ]]; then
-        read -p "Detected Platform: ${guess}. Correct? [Y/n]: " use_guess
+        read -r -p "Detected Platform: ${guess}. Correct? [Y/n]: " use_guess
         if [[ "$use_guess" =~ ^[Yy]$ ]] || [[ -z "$use_guess" ]]; then
             PLATFORM="$guess"
             return 0
@@ -437,7 +451,7 @@ detect_platform() {
     echo "  3) myNode" >&2
     echo "  4) RaspiBolt / Bare Metal" >&2
     echo "" >&2
-    read -p "Select [1-4]: " answer
+    read -r -p "Select [1-4]: " answer
     
     case $answer in
         1) PLATFORM="raspiblitz" ;;
@@ -468,7 +482,7 @@ detect_ln_implementation() {
     fi
 
     if [[ -n "$guess" ]]; then
-        read -p "Detected Implementation: ${guess^^}. Correct? [Y/n]: " use_guess
+        read -r -p "Detected Implementation: ${guess^^}. Correct? [Y/n]: " use_guess
         if [[ "$use_guess" =~ ^[Yy]$ ]] || [[ -z "$use_guess" ]]; then
             LN_IMPL="$guess"
             # Detect node user for non-Docker
@@ -499,7 +513,7 @@ detect_ln_implementation() {
         range="1-3"
     fi
     echo "" >&2
-    read -p "Select [$range]: " choice
+    read -r -p "Select [$range]: " choice
     
     case $choice in
         1) 
@@ -519,7 +533,7 @@ detect_ln_implementation() {
                 # Verify Integrated Mode or warn
                 if ! grep -qi "lnd-mode=integrated" "$s_file" 2>/dev/null && ! grep -qi "lnd-mode.*integrated" /etc/lit/lit.conf 2>/dev/null && ! grep -qi "lnd-mode.*integrated" "$HOME/.lit/lit.conf" 2>/dev/null; then
                     print_warning "LIT Integrated mode not detected in config."
-                    read -p "Are you sure LIT is managing its own LND? [y/N]: " lit_confirm
+                    read -r -p "Are you sure LIT is managing its own LND? [y/N]: " lit_confirm
                     if [[ ! "$lit_confirm" =~ ^[Yy]$ ]]; then
                         print_info "Please restart and select LND instead."
                         exit 0
@@ -546,9 +560,11 @@ install_dependencies() {
     # Install WireGuard
     if ! command -v wg &>/dev/null; then
         print_info "Installing WireGuard..."
-        apt-get install -y wireguard > /dev/null 2>&1 && \
-            print_success "WireGuard installed" || \
-            { print_error "Failed to install WireGuard"; exit 1; }
+        if apt-get install -y wireguard > /dev/null 2>&1; then
+             print_success "WireGuard installed"
+        else
+             print_error "Failed to install WireGuard"; exit 1
+        fi
     else
         print_success "WireGuard already installed"
     fi
@@ -556,9 +572,11 @@ install_dependencies() {
     # Install nftables
     if ! command -v nft &>/dev/null; then
         print_info "Installing nftables..."
-        apt-get install -y nftables > /dev/null 2>&1 && \
-            print_success "nftables installed" || \
-            { print_error "Failed to install nftables"; exit 1; }
+        if apt-get install -y nftables > /dev/null 2>&1; then
+             print_success "nftables installed"
+        else
+             print_error "Failed to install nftables"; exit 1
+        fi
     else
         print_success "nftables already installed"
     fi
@@ -567,9 +585,11 @@ install_dependencies() {
     if [[ "$PLATFORM" != "umbrel" ]]; then
         if ! command -v cgcreate &>/dev/null; then
             print_info "Installing cgroup-tools..."
-            apt-get install -y cgroup-tools > /dev/null 2>&1 && \
-                print_success "cgroup-tools installed" || \
-                { print_error "Failed to install cgroup-tools"; exit 1; }
+            if apt-get install -y cgroup-tools > /dev/null 2>&1; then
+                print_success "cgroup-tools installed"
+            else
+                print_error "Failed to install cgroup-tools"; exit 1
+            fi
         else
             print_success "cgroup-tools already installed"
         fi
@@ -578,9 +598,11 @@ install_dependencies() {
     # Install resolvconf
     if ! command -v resolvconf &>/dev/null; then
         print_info "Installing resolvconf..."
-        apt-get install -y resolvconf > /dev/null 2>&1 && \
-            print_success "resolvconf installed" || \
-            { print_error "Failed to install resolvconf"; exit 1; }
+        if apt-get install -y resolvconf > /dev/null 2>&1; then
+             print_success "resolvconf installed"
+        else
+             print_error "Failed to install resolvconf"; exit 1
+        fi
     else
         print_success "resolvconf already installed"
     fi
@@ -590,7 +612,8 @@ configure_wireguard() {
     print_info "Copying config to /etc/wireguard/..."
     
     # Determine target filename - preserve dynamic names or use tunnelsatsv2.conf as fallback
-    local source_filename=$(basename "$CONFIG_FILE")
+    local source_filename
+    source_filename=$(basename "$CONFIG_FILE")
     local target_filename
     
     if [[ "$source_filename" == tunnelsats-*.conf ]]; then
@@ -610,7 +633,7 @@ configure_wireguard() {
     print_success "Config copied to $target_filename"
     
     # Store target path for use in service setup
-    WG_CONFIG_PATH="$target_path"
+    # WG_CONFIG_PATH="$target_path"  # Unused variable
     WG_INTERFACE=$(basename "$target_path" .conf)
     
     # Verify config has Endpoint
@@ -620,7 +643,8 @@ configure_wireguard() {
     fi
     
     # Fetch all local networks and exclude them from kill switch
-    local localNetworks=$(ip route | grep -v default | awk '{print $1}' | grep -v "$WG_INTERFACE" | grep -v "10.9.0" | tr '\n' ',' | sed 's/,$//')
+    local localNetworks
+    localNetworks=$(ip route | grep -v default | awk '{print $1}' | grep -v "$WG_INTERFACE" | grep -v "10.9.0" | tr '\n' ',' | sed 's/,$//')
     if [ -z "$localNetworks" ]; then
         localNetworks="10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"
     fi
@@ -630,16 +654,19 @@ configure_wireguard() {
         print_info "Applying Docker network rules..."
         
         # Pre-resolve subnet to avoid command failure in PostUp
-        local dockersubnet=$(docker network inspect "docker-tunnelsats" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)
+        local dockersubnet
+        dockersubnet=$(docker network inspect "docker-tunnelsats" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)
         if [[ -z "$dockersubnet" ]]; then
             dockersubnet="10.9.9.0/25" # Fallback to standard
         fi
 
         # Dynamically determine the bridge interface for the tunnelsats network
-        local bridge_id=$(docker network inspect "docker-tunnelsats" --format '{{.Id}}' | cut -c1-12 2>/dev/null || echo "6c3d330ad9f5")
+        local bridge_id
+        bridge_id=$(docker network inspect "docker-tunnelsats" --format '{{.Id}}' | cut -c1-12 2>/dev/null || echo "6c3d330ad9f5")
         local bridge_name="br-$bridge_id"
         
-        local vpn_port=$(parse_config_metadata "$target_path" port)
+        local vpn_port
+        vpn_port=$(parse_config_metadata "$target_path" port)
         [[ -z "$vpn_port" ]] && vpn_port=9735 # fallback
 
         local inputDocker="
@@ -791,17 +818,21 @@ setup_docker_network() {
     # Create Docker network
     local dockersubnet="10.9.9.0/25"
     if ! docker network ls 2>/dev/null | grep -q "docker-tunnelsats"; then
-        docker network create "docker-tunnelsats" --subnet $dockersubnet \
-            -o "com.docker.network.driver.mtu"="1420" &>/dev/null && \
-            print_success "Docker network created" || \
-            { print_error "Failed to create Docker network"; exit 1; }
+        if docker network create "docker-tunnelsats" --subnet "$dockersubnet" \
+            -o "com.docker.network.driver.mtu"="1420" >/dev/null 2>&1; then
+            print_success "Docker network created"
+        else
+            print_error "Failed to create Docker network"; exit 1
+        fi
     else
         print_info "Docker network already exists"
     fi
     
     # Clean routing tables from prior failed starts
-    local delrule1=$(ip rule | grep -c "from all lookup main suppress_prefixlength 0" || true)
-    local delrule2=$(ip rule | grep -c "from $dockersubnet lookup 51820" || true)
+    local delrule1
+    local delrule2
+    delrule1=$(ip rule | grep -c "from all lookup main suppress_prefixlength 0" || true)
+    delrule2=$(ip rule | grep -c "from $dockersubnet lookup 51820" || true)
     
     if [ "$delrule1" -gt 0 ] 2>/dev/null; then
         for i in $(seq 1 "$delrule1"); do
@@ -880,6 +911,9 @@ EOF
 }
 
 setup_dns_resolver() {
+    # shellcheck disable=SC2120
+    :
+    : # function arguments not used
     local interface="$1"
     print_info "Configuring DNS resolver watchdog for ${interface}..."
     
@@ -1118,7 +1152,7 @@ enable_services() {
     systemctl daemon-reload > /dev/null 2>&1
     
     local out
-    if out=$(systemctl enable wg-quick@${WG_INTERFACE} 2>&1); then
+    if out=$(systemctl enable "wg-quick@${WG_INTERFACE}" 2>&1); then
         print_success "WireGuard service enabled"
     else
         print_error "Failed to enable service:"
@@ -1127,7 +1161,7 @@ enable_services() {
     fi
     
     print_info "Starting WireGuard..."
-    if out=$(systemctl start wg-quick@${WG_INTERFACE} 2>&1); then
+    if out=$(systemctl start "wg-quick@${WG_INTERFACE}" 2>&1); then
         print_success "WireGuard service started"
     else
         print_error "Failed to start service:"
@@ -1136,20 +1170,20 @@ enable_services() {
         # Help user troubleshoot
         echo ""
         print_info "Checking status..."
-        systemctl status wg-quick@${WG_INTERFACE} --no-pager -l || true
+        systemctl status "wg-quick@${WG_INTERFACE}" --no-pager -l || true
         exit 1
     fi
 }
 
 verify_installation() {
-    if systemctl is-active --quiet wg-quick@${WG_INTERFACE}; then
+    if systemctl is-active --quiet "wg-quick@${WG_INTERFACE}"; then
         print_success "WireGuard service is running"
     else
         print_error "WireGuard service is not running"
         exit 1
     fi
     
-    if wg show ${WG_INTERFACE} &>/dev/null; then
+    if wg show "${WG_INTERFACE}" &>/dev/null; then
         print_success "WireGuard tunnel is active"
     else
         print_warning "WireGuard tunnel not detected (may be starting)"
@@ -1168,6 +1202,8 @@ verify_installation() {
 }
 
 cmd_uninstall() {
+    # shellcheck disable=SC2120
+    :
     print_header "Uninstall Wizard"
     
     echo ""
@@ -1183,7 +1219,7 @@ cmd_uninstall() {
     
     # Triple confirmation
     while true; do
-        read -p "CAUTION! Uninstalling TunnelSats will force your lightning process to stop. Do you really want to proceed? (Y/N) " answer
+        read -r -p "CAUTION! Uninstalling TunnelSats will force your lightning process to stop. Do you really want to proceed? (Y/N) " answer
         case $answer in
             [yY]*) echo "> OK, proceeding..."; echo; break ;;
             [nN]*) echo "> Exiting process."; exit 1 ;;
@@ -1211,10 +1247,12 @@ cmd_uninstall() {
         if [[ $is_docker -eq 1 ]]; then
              local filter_name="_lnd"
              print_info "Stopping ${ln_impl} containers..."
-             local container_ids=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
+             local container_ids
+             container_ids=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
              if [[ -n "$container_ids" ]]; then
                  for id in ${container_ids}; do
-                     local c_name=$(docker inspect --format '{{.Name}}' "$id" | sed 's/^\///')
+                     local c_name
+                     c_name=$(docker inspect --format '{{.Name}}' "$id" | sed 's/^\///')
                      print_info "Stopping $c_name ... (this may take a few seconds)"
                      echo -n "" >&2
                      docker stop "$id" &>/dev/null
@@ -1252,10 +1290,12 @@ cmd_uninstall() {
         if [[ $is_docker -eq 1 ]]; then
              local filter_name="core-lightning"
              print_info "Stopping ${ln_impl} containers..."
-             local container_ids=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
+             local container_ids
+             container_ids=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
              if [[ -n "$container_ids" ]]; then
                  for id in ${container_ids}; do
-                     local c_name=$(docker inspect --format '{{.Name}}' "$id" | sed 's/^\///')
+                     local c_name
+                     c_name=$(docker inspect --format '{{.Name}}' "$id" | sed 's/^\///')
                      print_info "Stopping $c_name ... (this may take a few seconds)"
                      echo -n "" >&2
                      docker stop "$id" &>/dev/null
@@ -1417,11 +1457,12 @@ cmd_uninstall() {
     print_step 4 6 "Removing WireGuard configuration..."
     
     # Find any active TunnelSats interface to stop
-    local target_interface=$(find_active_wg_config | xargs basename 2>/dev/null | sed 's/\.conf//')
+    local target_interface
+    target_interface=$(find_active_wg_config | xargs basename 2>/dev/null | sed 's/\.conf//')
     if [[ -z "$target_interface" ]]; then target_interface="tunnelsatsv2"; fi
 
-    systemctl stop wg-quick@${target_interface} &>/dev/null || true
-    systemctl disable wg-quick@${target_interface} &>/dev/null || true
+    systemctl stop "wg-quick@${target_interface}" &>/dev/null || true
+    systemctl disable "wg-quick@${target_interface}" &>/dev/null || true
     
     if [[ -f /etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsats.service ]]; then
          systemctl stop wg-quick@tunnelsats &>/dev/null || true
@@ -1440,14 +1481,14 @@ cmd_uninstall() {
          rm -f /etc/systemd/system/tunnelsats-resolve-dns-wg.timer
     fi
 
-    rm -rf /etc/systemd/system/wg-quick@${target_interface}.service.d &>/dev/null
+    rm -rf "/etc/systemd/system/wg-quick@${target_interface}.service.d" &>/dev/null
     print_success "WireGuard services removed"
     echo ""
 
     # 6. NFTables Cleanup (All Platforms)
     print_step 5 6 "Cleaning network rules..."
-    nft delete table ip ${target_interface} &>/dev/null || true
-    nft delete table inet ${target_interface} &>/dev/null || true
+    nft delete table ip "${target_interface}" &>/dev/null || true
+    nft delete table inet "${target_interface}" &>/dev/null || true
     nft delete table ip tunnelsatsv2 &>/dev/null || true
     nft delete table inet tunnelsatsv2 &>/dev/null || true
     
@@ -1501,9 +1542,9 @@ cmd_uninstall() {
     # Optional Package Removal
     echo "Do you want to uninstall system packages?"
     if [[ $is_docker -eq 1 ]]; then
-        read -p "Remove nftables and wireguard-tools? (Y/N) " answer
+        read -r -p "Remove nftables and wireguard-tools? (Y/N) " answer
     else
-        read -p "Remove cgroup-tools, nftables and wireguard-tools? (Y/N) " answer
+        read -r -p "Remove cgroup-tools, nftables and wireguard-tools? (Y/N) " answer
     fi
     
     if [[ "$answer" =~ ^[Yy] ]]; then
@@ -1552,6 +1593,8 @@ cmd_uninstall() {
 }
 
 cmd_install() {
+    # shellcheck disable=SC2120
+    :
     check_root
     print_header "TunnelSats Installation"
 
@@ -1577,7 +1620,8 @@ cmd_install() {
         print_info "Installing wireguard-tools..."
         if ! apt-get update -qq &>/dev/null || ! apt-get install -yqq wireguard-tools &>/dev/null; then
             # try Debian 10 Buster workaround / myNode
-            local codename=$(lsb_release -c 2>/dev/null | awk '{print $2}')
+            local codename
+            codename=$(lsb_release -c 2>/dev/null | awk '{print $2}')
             if [[ "$codename" == "buster" && "$PLATFORM" != "umbrel" ]]; then
                 print_info "Attempting Debian 10 Buster workaround..."
                 apt-get install -yqq -t buster-backports wireguard-tools &>/dev/null
@@ -1616,7 +1660,7 @@ cmd_install() {
     configure_wireguard
     
     # Configure DNS Resolver Watchdog
-    setup_dns_resolver
+    setup_dns_resolver "$@"
     
     # Configure Docker Network (Umbrel/Docker only)
     if [[ $is_docker -eq 1 ]]; then
@@ -1649,8 +1693,10 @@ cmd_install() {
     echo ""
     
     # Extract details for manual config
-    local vpn_dns=$(grep "^Endpoint" "$CONFIG_FILE" | awk '{print $3}' | cut -d ':' -f 1)
-    local vpn_port=$(parse_config_metadata "$CONFIG_FILE" port)
+    local vpn_dns
+    local vpn_port
+    vpn_dns=$(grep "^Endpoint" "$CONFIG_FILE" | awk '{print $3}' | cut -d ':' -f 1)
+    vpn_port=$(parse_config_metadata "$CONFIG_FILE" port)
     
     echo -e "${BOLD}CRITICAL: You must update your node configuration!${NC}"
     echo "Please copy the following settings into your configuration file."
@@ -1812,6 +1858,8 @@ auto_detect_environment() {
 }
 
 cmd_status() {
+    # shellcheck disable=SC2120
+    :
     print_header "Subscription Status"
     
     echo ""
@@ -1823,10 +1871,10 @@ cmd_status() {
     local config_file
     config_file=$(find_active_wg_config)
     
-    # If standard find fails, try explicit check
-    if [[ $? -ne 0 ]] || [[ -z "$config_file" ]]; then
+    if ! find_active_wg_config >/dev/null || [[ -z "$config_file" ]]; then
        # Derive interface from any active wg interface if possible
-       local active_interface=$(sudo wg show | grep "interface:" | head -n 1 | awk '{print $2}')
+       local active_interface
+       active_interface=$(sudo wg show | grep "interface:" | head -n 1 | awk '{print $2}')
        if [[ -n "$active_interface" ]]; then
             config_file="/etc/wireguard/${active_interface}.conf"
        fi
@@ -1841,26 +1889,37 @@ cmd_status() {
     fi
 
     # Extract interface name
-    local interface_name=$(basename "$config_file" .conf)
+    local interface_name
+    interface_name=$(basename "$config_file" .conf)
     
     # Get WireGuard details
-    local wg_output=$(wg show ${interface_name} 2>/dev/null)
+    local wg_output
+    wg_output=$(wg show "${interface_name}" 2>/dev/null)
     local is_tunnel_active=0
     if [[ -n "$wg_output" ]]; then
         is_tunnel_active=1
     fi
     
     # Parse WireGuard info
-    local public_key=$(echo "$wg_output" | grep "public key" | awk '{print $3}')
-    local endpoint=$(echo "$wg_output" | grep "endpoint" | awk '{print $2}')
-    local latest_handshake=$(echo "$wg_output" | grep "latest handshake" | sed 's/latest handshake: //')
-    local transfer=$(echo "$wg_output" | grep "transfer")
-    local transfer_rx=$(echo "$transfer" | awk '{print $2, $3}')
-    local transfer_tx=$(echo "$transfer" | awk '{print $5, $6}')
+    # Parse WireGuard info
+    local public_key
+    local endpoint
+    local latest_handshake
+    local transfer
+    local transfer_rx
+    local transfer_tx
+    public_key=$(echo "$wg_output" | grep "public key" | awk '{print $3}')
+    endpoint=$(echo "$wg_output" | grep "endpoint" | awk '{print $2}')
+    latest_handshake=$(echo "$wg_output" | grep "latest handshake" | sed 's/latest handshake: //')
+    transfer=$(echo "$wg_output" | grep "transfer")
+    transfer_rx=$(echo "$transfer" | awk '{print $2, $3}')
+    transfer_tx=$(echo "$transfer" | awk '{print $5, $6}')
     
     # Parse Config File Metadata
-    local vpn_port=$(parse_config_metadata "$config_file" port)
-    local sub_end=$(grep -E '#ValidUntil|# Valid Until:' "$config_file" | head -1 | awk -F '[=:]' '{print $2}' | xargs)
+    local vpn_port
+    local sub_end
+    vpn_port=$(parse_config_metadata "$config_file" port)
+    sub_end=$(grep -E '#ValidUntil|# Valid Until:' "$config_file" | head -1 | awk -F '[=:]' '{print $2}' | xargs)
     # If endpoint missing from wg_output (tunnel down), try config
     if [[ -z "$endpoint" ]]; then
          endpoint=$(grep '^Endpoint' "$config_file" | awk '{print $3}' | cut -d ':' -f 1)
@@ -1914,7 +1973,7 @@ cmd_status() {
          fi
        fi
        echo "manual"
-       return 1
+       return 0
     }
 
     # 2. Outbound Check
@@ -1953,9 +2012,11 @@ cmd_status() {
       local status="failed"
       
       # Clean endpoint
-      local clean_endpoint=$(echo $target_endpoint | cut -d ':' -f 1)
+      local clean_endpoint
+      clean_endpoint=$(echo "$target_endpoint" | cut -d ':' -f 1)
       
-      local curl_output=$(timeout 3s curl -sv telnet://"${clean_endpoint}":"${target_port}" 2>&1 | head -n 2)
+      local curl_output
+      curl_output=$(timeout 3s curl -sv telnet://"${clean_endpoint}":"${target_port}" 2>&1 | head -n 2)
       
       if [[ "$curl_output" == *"Connected to"* ]]; then
         result_url=$(echo "$curl_output" | grep "Connected to" | grep -oP 'Connected to [^ ]+ \(\K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
@@ -1986,7 +2047,8 @@ cmd_status() {
                 node_type="LND (Docker)"
                 if command -v jq &> /dev/null; then
                     # Try direct exec
-                    local info=$(docker exec "$docker_name" lncli getinfo 2>/dev/null)
+                    local info
+                    info=$(docker exec "$docker_name" lncli getinfo 2>/dev/null)
                     ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
                 fi
                 ;;
@@ -2002,10 +2064,14 @@ cmd_status() {
                 
                 node_type="CLN (Docker)"
                 if command -v jq &> /dev/null; then
-                     local info=$(docker exec "$docker_name" lightning-cli getinfo 2>/dev/null)
-                     local pk=$(echo "$info" | jq -r '.id')
-                     local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
-                     local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
+                     local info
+                     local pk
+                     local ip
+                     local port
+                     info=$(docker exec "$docker_name" lightning-cli getinfo 2>/dev/null)
+                     pk=$(echo "$info" | jq -r '.id')
+                     ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
+                     port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
                      if [[ -n "$pk" && -n "$ip" ]]; then ext_addr="${pk}@${ip}:${port}"; fi
                 fi
                 ;;
@@ -2041,9 +2107,12 @@ cmd_status() {
                          [[ -z "$info" ]] && [[ "$node_user" != "$original_user" ]] && info=$(sudo -u "$node_user" lightning-cli getinfo 2>/dev/null)
                          [[ -z "$info" ]] && info=$(sudo -u bitcoin lightning-cli getinfo 2>/dev/null)
                          [[ -z "$info" ]] && info=$(lightning-cli getinfo 2>/dev/null)
-                                                  local pk=$(echo "$info" | jq -r '.id')
-                          local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
-                          local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
+                          local pk
+                          local ip
+                          local port
+                          pk=$(echo "$info" | jq -r '.id')
+                          ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
+                          port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
                           if [[ -n "$pk" && -n "$ip" ]]; then ext_addr="${pk}@${ip}:${port}"; fi
                      fi
                   elif systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
@@ -2063,7 +2132,8 @@ cmd_status() {
     }
 
     # Execute Checks
-    local setup_method=$(check_docker_setup_status)
+    local setup_method
+    setup_method=$(check_docker_setup_status)
     local outbound_ip="N/A"
     local inbound_status="N/A" 
     local inbound_ip="N/A"
@@ -2081,9 +2151,12 @@ cmd_status() {
          read -r inbound_status inbound_ip <<< "$(perform_inbound_check_status "$endpoint" "$vpn_port")"
     fi
 
-    local node_data=$(get_node_ext_addr_status "$setup_method")
-    local node_type=$(echo "$node_data" | cut -d '|' -f 1)
-    local node_addr=$(echo "$node_data" | cut -d '|' -f 2)
+    local node_data
+    local node_type
+    local node_addr
+    node_data=$(get_node_ext_addr_status "$setup_method")
+    node_type=$(echo "$node_data" | cut -d '|' -f 1)
+    node_addr=$(echo "$node_data" | cut -d '|' -f 2)
 
     echo -e "${BOLD}Node Configuration${NC}"
     print_line
@@ -2118,8 +2191,10 @@ cmd_status() {
     # Iterative Feedback Support: Debug Summary (Simplified for Telegram)
     echo -e "${BOLD}Debug Summary (Copy for Telegram)${NC}"
     print_line
-    local os_info=$(cat /etc/os-release | grep -E "^PRETTY_NAME=" | cut -d= -f2 | tr -d '"')
-    local status_plain=$(echo -e "${status_msg}" | sed 's/\x1b\[[0-9;]*m//g')
+    local os_info
+    local status_plain
+    os_info=$(cat /etc/os-release | grep -E "^PRETTY_NAME=" | cut -d= -f2 | tr -d '"')
+    status_plain=$(echo -e "${status_msg}" | sed 's/\x1b\[[0-9;]*m//g')
     
     echo -e "Platform: ${PLATFORM} | Lightning: ${LN_IMPL} | Node: ${node_type}"
     echo -e "OS: ${os_info}"
@@ -2143,7 +2218,8 @@ cmd_restart() {
     
     # Fallback logic if find fails but tunnel might be up
     if [[ -z "$config_file" ]]; then
-       local active_interface=$(sudo wg show | grep "interface:" | head -n 1 | awk '{print $2}')
+       local active_interface
+      active_interface=$(sudo wg show | grep "interface:" | head -n 1 | awk '{print $2}')
        if [[ -n "$active_interface" ]]; then
             config_file="/etc/wireguard/${active_interface}.conf"
        else
@@ -2152,7 +2228,8 @@ cmd_restart() {
        fi
     fi
     
-    local interface_name=$(basename "$config_file" .conf)
+    local interface_name
+    interface_name=$(basename "$config_file" .conf)
     local stopped_containers=""
     local node_stopped_systemd=0
     local service_name="${LN_IMPL}"
@@ -2174,7 +2251,7 @@ cmd_restart() {
         
         echo -e "${YELLOW}Umbrel detected. To ensure a leak-proof restart, we need to temporarily${NC}"
         echo -e "${YELLOW}stop your ${LN_IMPL} app containers.${NC}"
-        read -p "Do you want to proceed? [y/N]: " restart_confirm
+        read -r -p "Do you want to proceed? [y/N]: " restart_confirm
         if [[ ! "$restart_confirm" =~ ^[Yy]$ ]]; then
             print_info "Restart aborted by user."
             exit 0
@@ -2185,13 +2262,13 @@ cmd_restart() {
         stopped_containers=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
         
         if [[ -n "$stopped_containers" ]]; then
-            docker stop ${stopped_containers} &>/dev/null
+            docker stop "${stopped_containers}" &>/dev/null
             print_success "${LN_IMPL} app stopped (Leak-proof mode)"
         fi
     elif [[ "$PLATFORM" != "umbrel" ]] && [[ -n "$LN_IMPL" ]]; then
         echo -e "${YELLOW}Non-Docker setup detected. To ensure a leak-proof restart, it is${NC}"
         echo -e "${YELLOW}highly recommended to stop your node service temporarily.${NC}"
-        read -p "Stop ${service_name}.service for safe tunnel restart? [y/N]: " stop_confirm
+        read -r -p "Stop ${service_name}.service for safe tunnel restart? [y/N]: " stop_confirm
         if [[ "$stop_confirm" =~ ^[Yy]$ ]]; then
             print_info "Stopping ${service_name}.service..."
             if systemctl stop "${service_name}.service"; then
@@ -2223,7 +2300,7 @@ cmd_restart() {
     # 4. App Restart
     if [[ "$PLATFORM" == "umbrel" ]] && [[ -n "$stopped_containers" ]]; then
         print_info "Restarting ${LN_IMPL} app containers..."
-        docker start ${stopped_containers} &>/dev/null
+        docker start "${stopped_containers}" &>/dev/null
         print_success "${LN_IMPL} app restarted"
     elif [[ "$node_stopped_systemd" -eq 1 ]]; then
         print_info "Starting ${service_name}.service..."
@@ -2235,7 +2312,7 @@ cmd_restart() {
     echo ""
     print_info "Verifying tunnel state..."
     sleep 2
-    if [[ -n "$(wg show ${interface_name} 2>/dev/null)" ]]; then
+    if [[ -n "$(wg show "${interface_name}" 2>/dev/null)" ]]; then
         print_success "Tunnel Interface is UP"
         echo ""
         print_info "Note: Your node implementation (${LN_IMPL:-unknown}) may take several minutes"

@@ -1,4 +1,7 @@
 #!/bin/bash
+# shellcheck disable=SC2200-SC3000
+# shellcheck disable=SC1000-SC1999
+# shellcheck disable=SC2000-SC2200
 # This script uninstalls/removes the changes made by setup.sh script
 # Use with care
 #

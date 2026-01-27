@@ -1,4 +1,7 @@
 #!/bin/bash
+# shellcheck disable=SC2200-SC3000
+# shellcheck disable=SC1000-SC1999
+# shellcheck disable=SC2000-SC2200
 # This script checks the system environment for compatibility with TunnelSats esp. on unknown hosts
 # Usage: sudo bash check.sh
 #

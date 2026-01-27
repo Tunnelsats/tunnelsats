@@ -39,7 +39,7 @@ if [ "$1" = "1" ] || [ "$1" = "on" ] && [ $# -eq 2 ]; then
         wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-tunnelsats-non-docker.sh"
         user="bitcoin"
     elif [ "$system" = "citadel-ts" ]; then
-        wget -q -O - "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-tunnelsats-docker.sh" | sed 's/docker-tunnelsats/a-docker-tunnelsats/g' >$HOME/amboss-health.sh
+        wget -q -O - "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-tunnelsats-docker.sh" | sed 's/docker-tunnelsats/a-docker-tunnelsats/g' >"$HOME/amboss-health.sh"
     elif [ "$system" = "clearnet" ]; then
         wget -q -O $scriptPath/amboss-health.sh "https://raw.githubusercontent.com/Tunnelsats/tunnelsats/main/scripts/amboss-health-clearnet.sh"
         user="bitcoin"
@@ -119,14 +119,14 @@ if [ "$1" = "2" ] || [ "$1" = "status" ] && [ $# -eq 1 ]; then
     if [ -f /etc/systemd/system/tunnelsats-amboss-health.service ] && [ -f /etc/systemd/system/tunnelsats-amboss-health.timer ]; then
         echo "> Amboss-Health Monitoring is installed ✅"
         status=$(systemctl status tunnelsats-amboss-health.service | grep -c "status=0/SUCCESS")
-        if [ $status -eq 1 ]; then
+        if [ "$status" -eq 1 ]; then
             echo "> Amboss-Health Monitoring is running ✅"
         else
             echo "> Amboss-Health Monitoring is not running lets restart"
             systemctl restart tunnelsats-amboss-health.service >/dev/null
             systemctl restart tunnelsats-amboss-health.timer >/dev/null
             status=$(systemctl status tunnelsats-amboss-health.service | grep -c "status=0/SUCCESS")
-            if [ $status -eq 0 ]; then
+            if [ "$status" -eq 0 ]; then
                 echo "> Amboss-Health Monitoring did not start successfully check with \"sudo systemctl status tunnelsats-amboss-health\" ✅"
             fi
         fi
