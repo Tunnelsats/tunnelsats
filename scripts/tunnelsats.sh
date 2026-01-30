@@ -53,8 +53,8 @@ print_header() {
     
     echo -e "${BOLD}${BLUE}"
     printf "╔"; printf '═%.0s' $(seq 1 $width); echo "╗"
-    printf "║%*s%s%*s║\n" "$title_padding" "" "$title" $((width - title_padding - title_len)) ""
-    printf "║%*s%s%*s║\n" "$sub_padding" "" "$subtitle" $((width - sub_padding - ${#subtitle})) ""
+printf "║%*s%s%*s║\n" "$title_padding" "" "$title" $((width - title_padding - title_len)) ""
+printf "║%*s%s%*s║\n" "$sub_padding" "" "$subtitle" $((width - sub_padding - ${#subtitle})) ""
     printf "╚"; printf '═%.0s' $(seq 1 $width); echo "╝"
     echo -e "${NC}"
 }
