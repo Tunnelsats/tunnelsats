@@ -1,0 +1,30 @@
+name: Script Integrity Verification
+
+on:
+  push:
+    branches: [ main ]
+    paths: ['scripts/tunnelsats.sh', 'scripts/tunnelsats.sh.sha256']
+  pull_request:
+    branches: [ main ]
+    paths: ['scripts/tunnelsats.sh', 'scripts/tunnelsats.sh.sha256']
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify SHA256
+        run: |
+          SCRIPT="scripts/tunnelsats.sh"
+          HASH_FILE="scripts/tunnelsats.sh.sha256"
+          CALCULATED=\$(sha256sum -b "\$SCRIPT")
+          COMMITTED=\$(cat "\$HASH_FILE")
+          
+          if [ "\$CALCULATED" = "\$COMMITTED" ]; then
+            echo "✅ Integrity verified!"
+          else
+            echo "❌ ERROR: Hash mismatch! Please update the hash file."
+            echo "Expected: \$CALCULATED"
+            echo "Found:    \$COMMITTED"
+            exit 1
+          fi

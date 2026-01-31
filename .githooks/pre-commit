@@ -1,0 +1,17 @@
+#!/bin/bash
+# --- Script Integrity Check ---
+SCRIPT_PATH="scripts/tunnelsats.sh"
+HASH_PATH="$SCRIPT_PATH.sha256"
+
+# Check if script is staged
+if git diff --cached --name-only | grep -q "^$SCRIPT_PATH$"; then
+    echo "🛡️  Generating integrity hash for $SCRIPT_PATH..."
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum -b "$SCRIPT_PATH" > "$HASH_PATH"
+        git add "$HASH_PATH"
+        echo "✅ Updated $HASH_PATH"
+    else
+        echo "⚠️  Warning: sha256sum command not found. Skipping hash generation."
+        exit 1
+    fi
+fi
