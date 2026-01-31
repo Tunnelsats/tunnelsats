@@ -2330,4 +2330,3 @@ main() {
 
 # Run the script
 main "$@"
-# Integrity check automated
