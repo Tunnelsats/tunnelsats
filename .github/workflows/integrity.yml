@@ -17,14 +17,14 @@ jobs:
         run: |
           SCRIPT="scripts/tunnelsats.sh"
           HASH_FILE="scripts/tunnelsats.sh.sha256"
-          CALCULATED=\$(sha256sum -b "\$SCRIPT")
-          COMMITTED=\$(cat "\$HASH_FILE")
+          CALCULATED=$(sha256sum -b "$SCRIPT")
+          COMMITTED=$(cat "$HASH_FILE")
           
-          if [ "\$CALCULATED" = "\$COMMITTED" ]; then
+          if [ "$CALCULATED" = "$COMMITTED" ]; then
             echo "✅ Integrity verified!"
           else
             echo "❌ ERROR: Hash mismatch! Please update the hash file."
-            echo "Expected: \$CALCULATED"
-            echo "Found:    \$COMMITTED"
+            echo "Expected: $CALCULATED"
+            echo "Found:    $COMMITTED"
             exit 1
           fi
