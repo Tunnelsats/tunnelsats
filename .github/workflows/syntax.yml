@@ -1,0 +1,12 @@
+name: Syntax Check
+
+on: [push, pull_request]
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check Syntax of Shell Scripts
+        run: |
+          find . -name "*.sh" -print0 | xargs -0 -I {} bash -n "{}"
