@@ -1,5 +1,5 @@
 #!/bin/bash
-# TunnelSats Unified Setup Tool
+# TunnelSats Unified Setup Tool - [Verification Entry]
 # Consolidates install, pre-check, uninstall, and status commands
 #
 # Usage: sudo bash tunnelsats.sh [command] [options]
@@ -10,7 +10,7 @@ set -e  # Exit on error
 # GLOBAL VARIABLES
 # ---------------------------------------------------------------------------
 
-VERSION="3.0"
+VERSION="3.1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE=""
 PLATFORM=""
@@ -82,8 +82,110 @@ print_step() {
 }
 
 # ---------------------------------------------------------------------------
+# NODE CONFIGURATION INSTRUCTIONS HELPER
+# Used by cmd_install (post-install) and cmd_status (troubleshooting)
+# ---------------------------------------------------------------------------
+
+print_node_config_instructions() {
+    local vpn_dns="$1"
+    local vpn_port="$2"
+    local context="${3:-install}"  # 'install' or 'status'
+    
+    if [[ "$LN_IMPL" == "lnd" ]]; then
+        if [[ "$PLATFORM" == "umbrel" ]]; then
+             echo -e "Edit: ${BOLD}${BLUE}~/umbrel/app-data/lightning/data/lnd/lnd.conf${NC}"
+             if [[ "$context" == "install" ]]; then
+                 echo -e "${YELLOW}Note: If 'tor.streamisolation' or 'tor.skip-proxy...' are already enabled in UI,${NC}"
+                 echo -e "${YELLOW}      do NOT duplicate them.${NC}"
+             fi
+             echo ""
+             echo "#########################################"
+             echo -e "${BOLD}${BLUE}[Application Options]${NC}"
+             echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+             echo ""
+             echo -e "${BOLD}${BLUE}[Tor]${NC}"
+             echo -e "${YELLOW}tor.streamisolation=false${NC}"
+             echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
+             echo "#########################################"
+        else
+             local lnd_user="${node_user:-bitcoin}"
+             local lnd_path="/home/$lnd_user/.lnd/lnd.conf"
+             
+             # Forensic path guessing for Bare Metal
+             [[ ! -f "$lnd_path" ]] && [[ -f "/home/bitcoin/.lnd/lnd.conf" ]] && lnd_path="/home/bitcoin/.lnd/lnd.conf"
+             [[ ! -f "$lnd_path" ]] && [[ -f "/home/lnd/.lnd/lnd.conf" ]] && lnd_path="/home/lnd/.lnd/lnd.conf"
+             [[ ! -f "$lnd_path" ]] && [[ -f "/data/lnd/lnd.conf" ]] && lnd_path="/data/lnd/lnd.conf"
+             [[ ! -f "$lnd_path" ]] && [[ -f "/mnt/hdd/lnd/lnd.conf" ]] && lnd_path="/mnt/hdd/lnd/lnd.conf"
+             
+             echo -e "Edit: ${BOLD}${BLUE}sudo nano $lnd_path${NC}"
+             if [[ "$context" == "install" ]]; then
+                 echo -e "${YELLOW}Note: Place settings in their respective sections. Do NOT duplicate categories.${NC}"
+             fi
+             echo ""
+             echo "#########################################"
+             echo -e "${BOLD}${BLUE}[Application Options]${NC}"
+             echo -e "${YELLOW}listen=0.0.0.0:9735${NC}"
+             echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+             echo ""
+             echo -e "${BOLD}${BLUE}[Tor]${NC}"
+             echo -e "${YELLOW}tor.streamisolation=false${NC}"
+             echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
+             echo "#########################################"
+        fi
+        
+    elif [[ "$LN_IMPL" == "cln" ]]; then
+        if [[ "$PLATFORM" == "umbrel" ]]; then
+             echo -e "1. Edit: ${BOLD}${BLUE}sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config${NC}"
+             echo "#########################################"
+             echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
+             echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
+             echo -e "${YELLOW}always-use-proxy=false${NC}"
+             echo "#########################################"
+             echo ""
+             echo "2. Edit: nano ~/umbrel/app-data/core-lightning/exports.sh"
+             echo "#########################################"
+             echo -e "${BOLD}export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"${NC}"
+             echo "#########################################"
+             echo ""
+             echo "3. Edit: ~/umbrel/app-data/core-lightning/docker-compose.yml"
+             echo "   Comment out '--bind-addr' if present."
+        else
+             echo -e "Edit: ${BOLD}${BLUE}config${NC}"
+             echo ""
+             echo "#########################################"
+             echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
+             echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
+             echo -e "${YELLOW}always-use-proxy=false${NC}"
+             echo "#########################################"
+        fi
+        
+    elif [[ "$LN_IMPL" == "lit" ]]; then
+         local lit_path="$HOME/.lit/lit.conf"
+         # Check both lit.service and litd.service for config path
+         local lit_service_file=""
+         [[ -f "/etc/systemd/system/litd.service" ]] && lit_service_file="/etc/systemd/system/litd.service"
+         [[ -f "/etc/systemd/system/lit.service" ]] && lit_service_file="/etc/systemd/system/lit.service"
+         if [[ -n "$lit_service_file" ]]; then
+             local extracted_path=$(grep "LIT_CONFIG_FILE" "$lit_service_file" | sed 's/.*LIT_CONFIG_FILE=//' | tr -d '"' | tr -d "'" | xargs)
+             [[ -n "$extracted_path" ]] && lit_path="$extracted_path"
+         fi
+         echo -e "Edit: ${BOLD}${BLUE}$lit_path${NC}"
+         echo ""
+         echo "#########################################"
+         echo -e "${BOLD}${BLUE}[Application Options]${NC}"
+         echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+         echo ""
+         echo -e "${BOLD}${BLUE}[Tor]${NC}"
+         echo -e "${YELLOW}tor.streamisolation=false${NC}"
+         echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
+         echo "#########################################"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # COMMON UTILITY FUNCTIONS
 # ---------------------------------------------------------------------------
+
 
 check_root() {
     if [[ "$EUID" -ne 0 ]]; then
@@ -1656,84 +1758,7 @@ cmd_install() {
     echo "Please copy the following settings into your configuration file."
     echo ""
 
-    if [[ "$LN_IMPL" == "lnd" ]]; then
-        if [[ "$PLATFORM" == "umbrel" ]]; then
-             echo -e "Edit: ${BOLD}${BLUE}~/umbrel/app-data/lightning/data/lnd/lnd.conf${NC}"
-             echo -e "${YELLOW}Note: If 'tor.streamisolation' or 'tor.skip-proxy...' are already enabled in UI,${NC}"
-             echo -e "${YELLOW}      do NOT duplicate them.${NC}"
-             echo ""
-             echo "#########################################"
-             echo -e "${BOLD}${BLUE}[Application Options]${NC}"
-             echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
-             echo ""
-             echo -e "${BOLD}${BLUE}[Tor]${NC}"
-             echo -e "${YELLOW}tor.streamisolation=false${NC}"
-             echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
-             echo "#########################################"
-        else
-             local lnd_user="${node_user:-bitcoin}"
-             local lnd_path="/home/$lnd_user/.lnd/lnd.conf"
-             
-             # Forensic path guessing for Bare Metal
-             [[ ! -f "$lnd_path" ]] && [[ -f "/home/bitcoin/.lnd/lnd.conf" ]] && lnd_path="/home/bitcoin/.lnd/lnd.conf"
-             [[ ! -f "$lnd_path" ]] && [[ -f "/home/lnd/.lnd/lnd.conf" ]] && lnd_path="/home/lnd/.lnd/lnd.conf"
-             [[ ! -f "$lnd_path" ]] && [[ -f "/data/lnd/lnd.conf" ]] && lnd_path="/data/lnd/lnd.conf"
-             [[ ! -f "$lnd_path" ]] && [[ -f "/mnt/hdd/lnd/lnd.conf" ]] && lnd_path="/mnt/hdd/lnd/lnd.conf"
-             
-             echo -e "Edit: ${BOLD}${BLUE}sudo nano $lnd_path${NC}"
-             echo -e "${YELLOW}Note: Place settings in their respective sections. Do NOT duplicate categories.${NC}"
-             echo ""
-             echo "#########################################"
-             echo -e "${BOLD}${BLUE}[Application Options]${NC}"
-             echo -e "${YELLOW}listen=0.0.0.0:9735${NC}"
-             echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
-             echo ""
-             echo -e "${BOLD}${BLUE}[Tor]${NC}"
-             echo -e "${YELLOW}tor.streamisolation=false${NC}"
-             echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
-             echo "#########################################"
-        fi
-        
-    elif [[ "$LN_IMPL" == "cln" ]]; then
-        if [[ "$PLATFORM" == "umbrel" ]]; then
-             echo -e "1. Edit: ${BOLD}${BLUE}sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config${NC}"
-             echo "#########################################"
-             echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
-             echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
-             echo -e "${YELLOW}always-use-proxy=false${NC}"
-             echo "#########################################"
-             echo ""
-             echo "2. Edit: nano ~/umbrel/app-data/core-lightning/exports.sh"
-             echo "#########################################"
-             echo -e "${BOLD}export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"${NC}"
-             echo "#########################################"
-             echo ""
-             echo "3. Edit: ~/umbrel/app-data/core-lightning/docker-compose.yml"
-             echo "   Comment out '--bind-addr' if present."
-        else
-             echo -e "Edit: ${BOLD}${BLUE}config${NC}"
-             echo ""
-             echo "#########################################"
-             echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
-             echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
-             echo -e "${YELLOW}always-use-proxy=false${NC}"
-             echo "#########################################"
-        fi
-        
-    elif [[ "$LN_IMPL" == "lit" ]]; then
-         local lit_path="$HOME/.lit/lit.conf"
-         [[ -f "/etc/systemd/system/lit.service" ]] && lit_path=$(grep "^Environment=LIT_CONFIG_FILE=" /etc/systemd/system/lit.service | cut -d'=' -f3 || echo "$HOME/.lit/lit.conf")
-         echo -e "Edit: ${BOLD}${BLUE}$lit_path${NC}"
-         echo ""
-         echo "#########################################"
-         echo -e "${BOLD}${BLUE}[Application Options]${NC}"
-         echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
-         echo ""
-         echo -e "${BOLD}${BLUE}[Tor]${NC}"
-         echo -e "${YELLOW}tor.streamisolation=false${NC}"
-         echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
-         echo "#########################################"
-    fi
+    print_node_config_instructions "$vpn_dns" "$vpn_port" "install"
 
     if [[ "$PLATFORM" == "baremetal" ]]; then
         echo ""
@@ -1821,7 +1846,13 @@ cmd_status() {
     
     # 1. Active Config & WireGuard Status Check
     local config_file
-    config_file=$(find_active_wg_config)
+    
+    # Use global CONFIG_FILE if set (via --config), otherwise auto-detect
+    if [[ -n "$CONFIG_FILE" ]]; then
+        config_file="$CONFIG_FILE"
+    else
+        config_file=$(find_active_wg_config)
+    fi
     
     # If standard find fails, try explicit check
     if [[ $? -ne 0 ]] || [[ -z "$config_file" ]]; then
@@ -1987,7 +2018,14 @@ cmd_status() {
                 if command -v jq &> /dev/null; then
                     # Try direct exec
                     local info=$(docker exec "$docker_name" lncli getinfo 2>/dev/null)
-                    ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+                    if [[ -n "$info" ]]; then
+                        ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+                        [[ -z "$ext_addr" ]] && ext_addr="NONE_DETECTED"
+                    else
+                        ext_addr="NODE_UNREACHABLE"
+                    fi
+                else
+                    ext_addr="DEPENDENCY_MISSING"
                 fi
                 ;;
             "docker-core-lightning")
@@ -2003,10 +2041,20 @@ cmd_status() {
                 node_type="CLN (Docker)"
                 if command -v jq &> /dev/null; then
                      local info=$(docker exec "$docker_name" lightning-cli getinfo 2>/dev/null)
-                     local pk=$(echo "$info" | jq -r '.id')
-                     local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
-                     local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
-                     if [[ -n "$pk" && -n "$ip" ]]; then ext_addr="${pk}@${ip}:${port}"; fi
+                     if [[ -n "$info" ]]; then
+                         local pk=$(echo "$info" | jq -r '.id')
+                         local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
+                         local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
+                         if [[ -n "$pk" && -n "$ip" ]]; then 
+                             ext_addr="${pk}@${ip}:${port}"
+                         else
+                             ext_addr="NONE_DETECTED"
+                         fi
+                     else
+                         ext_addr="NODE_UNREACHABLE"
+                     fi
+                else
+                    ext_addr="DEPENDENCY_MISSING"
                 fi
                 ;;
             "manual")
@@ -2031,7 +2079,14 @@ cmd_status() {
                             done
                          fi
                          
-                         ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+                         if [[ -n "$info" ]]; then
+                             ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+                             [[ -z "$ext_addr" ]] && ext_addr="NONE_DETECTED"
+                         else
+                             ext_addr="NODE_UNREACHABLE"
+                         fi
+                    else
+                         ext_addr="CLI_MISSING"
                     fi
                  elif [[ "$target_impl" == "cln" ]]; then
                     node_type="CLN (Systemd)"
@@ -2041,10 +2096,21 @@ cmd_status() {
                          [[ -z "$info" ]] && [[ "$node_user" != "$original_user" ]] && info=$(sudo -u "$node_user" lightning-cli getinfo 2>/dev/null)
                          [[ -z "$info" ]] && info=$(sudo -u bitcoin lightning-cli getinfo 2>/dev/null)
                          [[ -z "$info" ]] && info=$(lightning-cli getinfo 2>/dev/null)
-                                                  local pk=$(echo "$info" | jq -r '.id')
-                          local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
-                          local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
-                          if [[ -n "$pk" && -n "$ip" ]]; then ext_addr="${pk}@${ip}:${port}"; fi
+                         
+                         if [[ -n "$info" ]]; then
+                             local pk=$(echo "$info" | jq -r '.id')
+                             local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
+                             local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
+                             if [[ -n "$pk" && -n "$ip" ]]; then 
+                                 ext_addr="${pk}@${ip}:${port}"
+                             else
+                                 ext_addr="NONE_DETECTED"
+                             fi
+                         else
+                             ext_addr="NODE_UNREACHABLE"
+                         fi
+                     else
+                         ext_addr="CLI_MISSING"
                      fi
                   elif systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
                     node_type="LIT (Systemd)"
@@ -2052,13 +2118,27 @@ cmd_status() {
                          local info
                          info=$(sudo -u "$original_user" litcli getinfo 2>/dev/null)
                          [[ -z "$info" ]] && info=$(litcli getinfo 2>/dev/null)
-                         ext_addr=$(echo "$info" | jq -r '.lnd_uris[]' | grep -v "\.onion" | head -n 1)
+                         if [[ -n "$info" ]]; then
+                             ext_addr=$(echo "$info" | jq -r '.lnd_uris[]' | grep -v "\.onion" | head -n 1)
+                             [[ -z "$ext_addr" ]] && ext_addr="NONE_DETECTED"
+                         else
+                             ext_addr="NODE_UNREACHABLE"
+                         fi
+                    else
+                         ext_addr="CLI_MISSING"
                     fi
                   else
                     node_type="Unknown/Manual"
                   fi
                 ;;
         esac
+        
+        # Check if we actually have jq
+        if ! command -v jq &> /dev/null; then
+            echo "$node_type|DEPENDENCY_MISSING"
+            return 0
+        fi
+
         echo "$node_type|$ext_addr"
     }
 
@@ -2114,6 +2194,59 @@ cmd_status() {
          print_warning "Inbound Check Failed (Outbound OK)"
     fi
     echo ""
+
+    # ---------------------------------------------------------
+    # MISCONFIGURATION DETECTION: Node not advertising VPN address
+    # Scenario: Tunnel works (inbound/outbound OK) but getinfo shows no VPN URI
+    # ---------------------------------------------------------
+    if $outbound_ok && $inbound_ok; then
+        # ONLY warn if we successfully talked to the node and confirmed it has NO clearnet address
+        if [[ "$node_addr" == "NONE_DETECTED" ]] || [[ -z "$node_addr" ]]; then
+            echo ""
+            echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${BOLD}${YELLOW}⚠  NODE NOT ADVERTISING VPN ADDRESS!${NC}"
+            echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+            echo "Your tunnel is working perfectly, but your node isn't configured"
+            echo "to announce the VPN address to the Lightning network."
+            echo ""
+            echo "Other nodes CAN connect to you through the tunnel, but they"
+            echo "don't know about your clearnet address (it won't appear in lncli getinfo)."
+            echo ""
+            echo -e "${BOLD}To fix this, please update your node configuration:${NC}"
+            echo ""
+            
+            # Get VPN endpoint details from config for guidance
+            local status_vpn_dns=$(grep "^Endpoint" "$config_file" | awk '{print $3}' | cut -d ':' -f 1)
+            local status_vpn_port="$vpn_port"
+            
+            print_node_config_instructions "$status_vpn_dns" "$status_vpn_port" "status"
+            
+            echo ""
+            echo -e "${BOLD}Then restart your node:${NC}"
+            if [[ "$PLATFORM" == "umbrel" ]]; then
+                echo "   sudo reboot"
+                echo "   (Or restart the Lightning app via Umbrel Dashboard: Right-click -> Restart)"
+            else
+                local svc="${LN_IMPL}"
+                [[ "$LN_IMPL" == "cln" ]] && svc="lightningd"
+                if [[ "$LN_IMPL" == "lit" ]]; then
+                    # Use systemctl is-active for consistent service detection
+                    if systemctl is-active --quiet litd 2>/dev/null; then
+                        svc="litd"
+                    elif systemctl is-active --quiet lit 2>/dev/null; then
+                        svc="lit"
+                    else
+                        svc="litd"  # Default fallback
+                    fi
+                fi
+                echo "   sudo systemctl restart ${svc}.service"
+            fi
+            echo ""
+            echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+        fi
+    fi
 
     # Iterative Feedback Support: Debug Summary (Simplified for Telegram)
     echo -e "${BOLD}Debug Summary (Copy for Telegram)${NC}"

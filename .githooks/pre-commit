@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # --- Script Integrity Check ---
 SCRIPT_PATH="scripts/tunnelsats.sh"
 HASH_PATH="$SCRIPT_PATH.sha256"
@@ -15,7 +15,6 @@ if ! git diff --quiet --cached -- "$SCRIPT_PATH"; then
     else
         echo "⚠️  Error: 'sha256sum' or 'shasum' command not found." >&2
         echo "Cannot generate integrity hash. Please install one of these tools." >&2
-        echo "(On macOS, you can run 'brew install coreutils' to get sha256sum)." >&2
         exit 1
     fi
     git add "$HASH_PATH"
