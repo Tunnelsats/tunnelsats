@@ -1846,7 +1846,13 @@ cmd_status() {
     
     # 1. Active Config & WireGuard Status Check
     local config_file
-    config_file=$(find_active_wg_config)
+    
+    # Use global CONFIG_FILE if set (via --config), otherwise auto-detect
+    if [[ -n "$CONFIG_FILE" ]]; then
+        config_file="$CONFIG_FILE"
+    else
+        config_file=$(find_active_wg_config)
+    fi
     
     # If standard find fails, try explicit check
     if [[ $? -ne 0 ]] || [[ -z "$config_file" ]]; then
@@ -2012,7 +2018,14 @@ cmd_status() {
                 if command -v jq &> /dev/null; then
                     # Try direct exec
                     local info=$(docker exec "$docker_name" lncli getinfo 2>/dev/null)
-                    ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+                    if [[ -n "$info" ]]; then
+                        ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+                        [[ -z "$ext_addr" ]] && ext_addr="NONE_DETECTED"
+                    else
+                        ext_addr="NODE_UNREACHABLE"
+                    fi
+                else
+                    ext_addr="DEPENDENCY_MISSING"
                 fi
                 ;;
             "docker-core-lightning")
@@ -2028,10 +2041,20 @@ cmd_status() {
                 node_type="CLN (Docker)"
                 if command -v jq &> /dev/null; then
                      local info=$(docker exec "$docker_name" lightning-cli getinfo 2>/dev/null)
-                     local pk=$(echo "$info" | jq -r '.id')
-                     local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
-                     local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
-                     if [[ -n "$pk" && -n "$ip" ]]; then ext_addr="${pk}@${ip}:${port}"; fi
+                     if [[ -n "$info" ]]; then
+                         local pk=$(echo "$info" | jq -r '.id')
+                         local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
+                         local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
+                         if [[ -n "$pk" && -n "$ip" ]]; then 
+                             ext_addr="${pk}@${ip}:${port}"
+                         else
+                             ext_addr="NONE_DETECTED"
+                         fi
+                     else
+                         ext_addr="NODE_UNREACHABLE"
+                     fi
+                else
+                    ext_addr="DEPENDENCY_MISSING"
                 fi
                 ;;
             "manual")
@@ -2056,7 +2079,14 @@ cmd_status() {
                             done
                          fi
                          
-                         ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+                         if [[ -n "$info" ]]; then
+                             ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+                             [[ -z "$ext_addr" ]] && ext_addr="NONE_DETECTED"
+                         else
+                             ext_addr="NODE_UNREACHABLE"
+                         fi
+                    else
+                         ext_addr="CLI_MISSING"
                     fi
                  elif [[ "$target_impl" == "cln" ]]; then
                     node_type="CLN (Systemd)"
@@ -2066,10 +2096,21 @@ cmd_status() {
                          [[ -z "$info" ]] && [[ "$node_user" != "$original_user" ]] && info=$(sudo -u "$node_user" lightning-cli getinfo 2>/dev/null)
                          [[ -z "$info" ]] && info=$(sudo -u bitcoin lightning-cli getinfo 2>/dev/null)
                          [[ -z "$info" ]] && info=$(lightning-cli getinfo 2>/dev/null)
-                                                  local pk=$(echo "$info" | jq -r '.id')
-                          local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
-                          local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
-                          if [[ -n "$pk" && -n "$ip" ]]; then ext_addr="${pk}@${ip}:${port}"; fi
+                         
+                         if [[ -n "$info" ]]; then
+                             local pk=$(echo "$info" | jq -r '.id')
+                             local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
+                             local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
+                             if [[ -n "$pk" && -n "$ip" ]]; then 
+                                 ext_addr="${pk}@${ip}:${port}"
+                             else
+                                 ext_addr="NONE_DETECTED"
+                             fi
+                         else
+                             ext_addr="NODE_UNREACHABLE"
+                         fi
+                     else
+                         ext_addr="CLI_MISSING"
                      fi
                   elif systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
                     node_type="LIT (Systemd)"
@@ -2077,13 +2118,27 @@ cmd_status() {
                          local info
                          info=$(sudo -u "$original_user" litcli getinfo 2>/dev/null)
                          [[ -z "$info" ]] && info=$(litcli getinfo 2>/dev/null)
-                         ext_addr=$(echo "$info" | jq -r '.lnd_uris[]' | grep -v "\.onion" | head -n 1)
+                         if [[ -n "$info" ]]; then
+                             ext_addr=$(echo "$info" | jq -r '.lnd_uris[]' | grep -v "\.onion" | head -n 1)
+                             [[ -z "$ext_addr" ]] && ext_addr="NONE_DETECTED"
+                         else
+                             ext_addr="NODE_UNREACHABLE"
+                         fi
+                    else
+                         ext_addr="CLI_MISSING"
                     fi
                   else
                     node_type="Unknown/Manual"
                   fi
                 ;;
         esac
+        
+        # Check if we actually have jq
+        if ! command -v jq &> /dev/null; then
+            echo "$node_type|DEPENDENCY_MISSING"
+            return 0
+        fi
+
         echo "$node_type|$ext_addr"
     }
 
@@ -2145,8 +2200,8 @@ cmd_status() {
     # Scenario: Tunnel works (inbound/outbound OK) but getinfo shows no VPN URI
     # ---------------------------------------------------------
     if $outbound_ok && $inbound_ok; then
-        # Check if node_addr is empty or "N/A"
-        if [[ -z "$node_addr" ]] || [[ "$node_addr" == "N/A" ]]; then
+        # ONLY warn if we successfully talked to the node and confirmed it has NO clearnet address
+        if [[ "$node_addr" == "NONE_DETECTED" ]] || [[ -z "$node_addr" ]]; then
             echo ""
             echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
             echo -e "${BOLD}${YELLOW}⚠  NODE NOT ADVERTISING VPN ADDRESS!${NC}"
