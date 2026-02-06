@@ -75,6 +75,34 @@ sudo bash tunnelsats.sh uninstall
 
 ---
 
+## Development & Contribution
+
+### Local Setup
+This repository uses Git hooks to maintain script integrity. To set up your local development environment:
+
+1.  **Initialize hooks**:
+    ```bash
+    chmod +x scripts/hooks-install.sh
+    ./scripts/hooks-install.sh
+    ```
+    This will automatically configure the `pre-commit` and `post-rewrite` hooks to keep the `scripts/tunnelsats.sh.sha256` file in sync.
+
+---
+
+## Development & Contribution
+
+### Local Setup
+This repository uses Git hooks to maintain script integrity. To set up your local development environment:
+
+1.  **Initialize hooks**:
+    ```bash
+    chmod +x scripts/hooks-install.sh
+    ./scripts/hooks-install.sh
+    ```
+    This will automatically configure the `pre-commit` and `post-rewrite` hooks to keep the `scripts/tunnelsats.sh.sha256` file in sync.
+
+---
+
 ## Support
 
 - 💬 **Telegram**: [Tunnel⚡Sats Group](https://tunnelsats.com/join-telegram)

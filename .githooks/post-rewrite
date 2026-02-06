@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# --- Script Integrity Post-Rewrite (Rebase/Amend) ---
+# Triggers after 'git rebase' or 'git commit --amend'
+
+SCRIPT_PATH="scripts/tunnelsats.sh"
+HASH_PATH="$SCRIPT_PATH.sha256"
+
+if [ -f "$SCRIPT_PATH" ]; then
+    CALCULATED=$(sha256sum -b "$SCRIPT_PATH")
+    COMMITTED=$(cat "$HASH_PATH" 2>/dev/null)
+
+    if [ "$CALCULATED" != "$COMMITTED" ]; then
+        echo "🛡️  Post-Rewrite: Detecting hash mismatch in $SCRIPT_PATH..."
+        sha256sum -b "$SCRIPT_PATH" > "$HASH_PATH"
+        git add "$HASH_PATH"
+        echo "✅ Updated $HASH_PATH"
+        echo "⚠️  Note: The hash was updated. Please run 'git commit --amend --no-edit' to include it in the current commit."
+    fi
+fi
