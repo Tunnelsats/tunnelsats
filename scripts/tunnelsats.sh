@@ -720,6 +720,18 @@ configure_wireguard() {
         print_error "Config missing Endpoint entry"
         exit 1
     fi
+
+    # Check if IPv6 is disabled on the host
+    if [ ! -f /proc/net/if_inet6 ]; then
+        print_warning "IPv6 appears to be disabled on this host."
+        if grep -q "::/0" "$target_path"; then
+            print_info "Stripping IPv6 (::/0) from AllowedIPs to prevent wg-quick failure..."
+            # Strip ::/0, handles cases like "0.0.0.0/0, ::/0" or "::/0, 0.0.0.0/0" or "::/0"
+            sed -i 's/,\s*::\/0//g' "$target_path"
+            sed -i 's/::\/0,\s*//g' "$target_path"
+            sed -i 's/AllowedIPs\s*=\s*::\/0/AllowedIPs = /g' "$target_path" # Should not happen with Tunnelsats but for safety
+        fi
+    fi
     
     # Fetch all local networks and exclude them from kill switch
     local localNetworks=$(ip route | grep -v default | awk '{print $1}' | grep -v "$WG_INTERFACE" | grep -v "10.9.0" | tr '\n' ',' | sed 's/,$//')
