@@ -518,10 +518,9 @@ cmd_pre_check() {
 check_umbrel_version() {
     local version_file="/opt/umbreld/package.json"
     if [[ -f "$version_file" ]]; then
-        local version=$(grep -m 1 '"version":' "$version_file" | tr -d '", ' | cut -d':' -f2)
+        local version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$version_file" | head -n 1)
         if [[ -n "$version" ]]; then
-            local major=$(echo "$version" | cut -d. -f1)
-            local minor=$(echo "$version" | cut -d. -f2)
+            IFS=. read -r major minor _ <<< "$version"
             if [[ "$major" -gt 1 ]] || [[ "$major" -eq 1 && "$minor" -ge 6 ]]; then
                 echo "" >&2
                 print_error "TunnelSats CLI setup is discontinued for Umbrel OS versions 1.6 and above."
@@ -743,6 +742,27 @@ configure_wireguard() {
     if ! grep -q "Endpoint" "$target_path"; then
         print_error "Config missing Endpoint entry"
         exit 1
+    fi
+
+    # Check if IPv6 is disabled on the host (check procfs and sysctl)
+    local ipv6_disabled=0
+    if [ ! -f /proc/net/if_inet6 ]; then
+        ipv6_disabled=1
+    elif [ "$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null)" == "1" ]; then
+        ipv6_disabled=1
+    fi
+
+    if [ "$ipv6_disabled" -eq 1 ]; then
+        print_warning "IPv6 appears to be disabled on this host."
+        if grep -q "::/0" "$target_path"; then
+            print_info "Stripping IPv6 (::/0) from AllowedIPs to prevent wg-quick failure..."
+            # Strip ::/0, handles cases like "0.0.0.0/0, ::/0" or "::/0, 0.0.0.0/0"
+            sed -i 's/,\s*::\/0//g' "$target_path"
+            sed -i 's/::\/0,\s*//g' "$target_path"
+            # If the line is ONLY AllowedIPs = ::/0, removing it might leave an invalid config.
+            # We'll comment it out if it would otherwise be empty, though unlikely in Tunnelsats.
+            sed -i 's/^AllowedIPs\s*=\s*::\/0/#AllowedIPs = ::\/0 (removed: ipv6 disabled)/g' "$target_path"
+        fi
     fi
     
     # Fetch all local networks and exclude them from kill switch
