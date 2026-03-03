@@ -515,6 +515,26 @@ cmd_pre_check() {
 
 # Helper functions for install command
 
+check_umbrel_version() {
+    local version_file="/opt/umbreld/package.json"
+    if [[ -f "$version_file" ]]; then
+        local version=$(grep -m 1 '"version":' "$version_file" | tr -d '", ' | cut -d':' -f2)
+        if [[ -n "$version" ]]; then
+            local major=$(echo "$version" | cut -d. -f1)
+            local minor=$(echo "$version" | cut -d. -f2)
+            if [[ "$major" -gt 1 ]] || [[ "$major" -eq 1 && "$minor" -ge 6 ]]; then
+                echo "" >&2
+                print_error "TunnelSats CLI setup is discontinued for Umbrel OS versions 1.6 and above."
+                echo -e "Please install TunnelSats natively through the Umbrel Community App Store:"
+                echo -e "  ${BLUE}URL: TBD / In Draft${NC}"
+                echo -e "More details: https://github.com/Tunnelsats/tunnelsats/discussions/193"
+                echo "" >&2
+                exit 1
+            fi
+        fi
+    fi
+}
+
 detect_platform() {
     local guess=""
     if [[ -d /home/admin/config.scripts ]]; then
@@ -529,6 +549,7 @@ detect_platform() {
         read -p "Detected Platform: ${guess}. Correct? [Y/n]: " use_guess
         if [[ "$use_guess" =~ ^[Yy]$ ]] || [[ -z "$use_guess" ]]; then
             PLATFORM="$guess"
+            [[ "$PLATFORM" == "umbrel" ]] && check_umbrel_version
             return 0
         fi
     fi
@@ -543,7 +564,10 @@ detect_platform() {
     
     case $answer in
         1) PLATFORM="raspiblitz" ;;
-        2) PLATFORM="umbrel" ;;
+        2) 
+            PLATFORM="umbrel"
+            check_umbrel_version
+            ;;
         3) PLATFORM="mynode" ;;
         4) PLATFORM="baremetal" ;;
         *) print_error "Invalid selection"; exit 1 ;;
