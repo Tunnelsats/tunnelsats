@@ -25,7 +25,7 @@ To help us investigate and address the vulnerability effectively, please include
 
 **Our Commitment:**
 
-* We will acknowledge receipt of your report within [Number] business days.
+* We will acknowledge receipt of your report within 5 business days.
 * We will investigate the reported vulnerability and take appropriate action to address it.
 * We appreciate responsible disclosure and will work with you to resolve the issue.
 
