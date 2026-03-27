@@ -753,14 +753,22 @@ configure_wireguard() {
         print_info "Applying Docker network rules..."
         
         # Pre-resolve subnet to avoid command failure in PostUp
-        local dockersubnet=$(docker network inspect "docker-tunnelsats" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)
-        if [[ -z "$dockersubnet" ]]; then
-            dockersubnet="10.9.9.0/25" # Fallback to standard
+        # Pre-resolve subnet and bridge_id to avoid command failure in PostUp
+        local dockersubnet=""
+        local bridge_id=""
+        local inspect_output
+
+        if inspect_output=$(docker network inspect "docker-tunnelsats" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}} {{.Id}}' 2>/dev/null); then
+            local bridge_id_full
+            read -r dockersubnet bridge_id_full <<< "$inspect_output"
+            bridge_id=${bridge_id_full:0:12}
         fi
 
+        [[ -z "$dockersubnet" ]] && dockersubnet="10.9.9.0/25" # Fallback to standard
+
         # Dynamically determine the bridge interface for the tunnelsats network
-        local bridge_id=$(docker network inspect "docker-tunnelsats" --format '{{.Id}}' | cut -c1-12 2>/dev/null || echo "6c3d330ad9f5")
-        local bridge_name="br-$bridge_id"
+        local bridge_name
+        [[ -z "$bridge_id" ]] && bridge_name="br-6c3d330ad9f5" || bridge_name="br-$bridge_id"
         
         local vpn_port=$(parse_config_metadata "$target_path" port)
         [[ -z "$vpn_port" ]] && vpn_port=9735 # fallback
@@ -1696,7 +1704,11 @@ cmd_install() {
 
     # Step 3: Check dependencies
     print_step 3 6 "Checking dependencies..."
-    if ! command -v wg &>/dev/null; then
+    # wireguard-tools and its systemd unit template
+    local wg_service_template_exists=0
+    [[ -f /lib/systemd/system/wg-quick@.service || -f /usr/lib/systemd/system/wg-quick@.service || -f /etc/systemd/system/wg-quick@.service ]] && wg_service_template_exists=1
+
+    if ! command -v wg &>/dev/null || [[ $wg_service_template_exists -eq 0 ]]; then
         print_info "Installing wireguard-tools..."
         if ! apt-get update -qq &>/dev/null || ! apt-get install -yqq wireguard-tools &>/dev/null; then
             # try Debian 10 Buster workaround / myNode
@@ -1739,7 +1751,7 @@ cmd_install() {
     configure_wireguard
     
     # Configure DNS Resolver Watchdog
-    setup_dns_resolver
+    setup_dns_resolver "$WG_INTERFACE"
     
     # Configure Docker Network (Umbrel/Docker only)
     if [[ $is_docker -eq 1 ]]; then
