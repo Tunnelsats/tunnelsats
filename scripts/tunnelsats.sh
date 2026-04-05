@@ -524,9 +524,19 @@ check_umbrel_version() {
         else
             version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$version_file" | head -n 1)
         fi
+        if [[ -z "$version" ]]; then
+            echo "Warning: could not determine Umbrel OS version from $version_file" >&2
+            return 0
+        fi
         if [[ -n "$version" ]]; then
-            local major=$(echo "$version" | cut -d. -f1)
-            local minor=$(echo "$version" | cut -d. -f2)
+            local major
+            local minor
+            major=$(echo "$version" | cut -d. -f1 | sed 's/[^0-9].*//')
+            minor=$(echo "$version" | cut -d. -f2 | sed 's/[^0-9].*//')
+            
+            major=${major:-0}
+            minor=${minor:-0}
+            
             if [[ "$major" -gt 1 ]] || [[ "$major" -eq 1 && "$minor" -ge 6 ]]; then
                 echo "" >&2
                 print_error "TunnelSats CLI setup is discontinued for Umbrel OS versions 1.6 and above."
