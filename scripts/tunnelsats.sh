@@ -518,17 +518,22 @@ cmd_pre_check() {
 check_umbrel_version() {
     local version_file="/opt/umbreld/package.json"
     if [[ -f "$version_file" ]]; then
-        local version=$(grep -m 1 '"version":' "$version_file" | tr -d '", ' | cut -d':' -f2)
+        local version
+        if command -v jq &>/dev/null; then
+            version=$(jq -r '.version // empty' "$version_file")
+        else
+            version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$version_file" | head -n 1)
+        fi
         if [[ -n "$version" ]]; then
             local major=$(echo "$version" | cut -d. -f1)
             local minor=$(echo "$version" | cut -d. -f2)
             if [[ "$major" -gt 1 ]] || [[ "$major" -eq 1 && "$minor" -ge 6 ]]; then
                 echo "" >&2
                 print_error "TunnelSats CLI setup is discontinued for Umbrel OS versions 1.6 and above."
-                echo -e "Please install TunnelSats natively through the Umbrel Community App Store:"
-                echo -e "  ${BLUE}URL: https://github.com/Tunnelsats/ts-umbrel-app${NC}"
-                echo -e "  ${YELLOW}(Umbrel > App Store > Settings > Add App Store)${NC}"
-                echo -e "More details: https://github.com/Tunnelsats/tunnelsats/discussions/193"
+                echo -e "Please install TunnelSats natively through the Umbrel Community App Store:" >&2
+                echo -e "  ${BLUE}URL: https://github.com/Tunnelsats/ts-umbrel-app${NC}" >&2
+                echo -e "  ${YELLOW}(Umbrel > App Store > Settings > Add App Store)${NC}" >&2
+                echo -e "More details: https://github.com/Tunnelsats/tunnelsats/discussions/193" >&2
                 echo "" >&2
                 exit 1
             fi
@@ -550,7 +555,6 @@ detect_platform() {
         read -p "Detected Platform: ${guess}. Correct? [Y/n]: " use_guess
         if [[ "$use_guess" =~ ^[Yy]$ ]] || [[ -z "$use_guess" ]]; then
             PLATFORM="$guess"
-            [[ "$PLATFORM" == "umbrel" ]] && check_umbrel_version
             return 0
         fi
     fi
@@ -567,7 +571,6 @@ detect_platform() {
         1) PLATFORM="raspiblitz" ;;
         2) 
             PLATFORM="umbrel"
-            check_umbrel_version
             ;;
         3) PLATFORM="mynode" ;;
         4) PLATFORM="baremetal" ;;
@@ -1709,6 +1712,7 @@ cmd_uninstall() {
 
 cmd_install() {
     check_root
+    check_umbrel_version
     print_header "TunnelSats Installation"
 
     # Step 1: Configuration is already detected in parse_args
