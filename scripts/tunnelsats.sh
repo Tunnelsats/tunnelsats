@@ -531,13 +531,13 @@ check_umbrel_version() {
         if [[ -n "$version" ]]; then
             local major
             local minor
-            major=$(echo "$version" | cut -d. -f1 | sed 's/^[^0-9]*//')
-            minor=$(echo "$version" | cut -d. -f2 | sed 's/^[^0-9]*//')
+            major=$(echo "$version" | cut -d. -f1 | sed 's/^[^0-9]*//; s/[^0-9].*$//')
+            minor=$(echo "$version" | cut -d. -f2 | sed 's/^[^0-9]*//; s/[^0-9].*$//')
             
             major=${major:-0}
             minor=${minor:-0}
             
-            if [[ "$major" -gt 1 ]] || [[ "$major" -eq 1 && "$minor" -ge 6 ]]; then
+            if (( 10#$major > 1 || (10#$major == 1 && 10#$minor >= 6) )); then
                 echo "" >&2
                 print_error "TunnelSats CLI setup is discontinued for Umbrel OS versions 1.6 and above."
                 echo -e "Please install TunnelSats natively through the Umbrel Community App Store:" >&2
