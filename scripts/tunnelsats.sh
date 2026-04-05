@@ -526,7 +526,8 @@ check_umbrel_version() {
                 echo "" >&2
                 print_error "TunnelSats CLI setup is discontinued for Umbrel OS versions 1.6 and above."
                 echo -e "Please install TunnelSats natively through the Umbrel Community App Store:"
-                echo -e "  ${BLUE}URL: TBD / In Draft${NC}"
+                echo -e "  ${BLUE}URL: https://github.com/Tunnelsats/ts-umbrel-app${NC}"
+                echo -e "  ${YELLOW}(Umbrel > App Store > Settings > Add App Store)${NC}"
                 echo -e "More details: https://github.com/Tunnelsats/tunnelsats/discussions/193"
                 echo "" >&2
                 exit 1
