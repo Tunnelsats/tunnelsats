@@ -10,3 +10,6 @@ jobs:
       - name: Check Syntax of Shell Scripts
         run: |
           find . -name "*.sh" -print0 | xargs -0 -I {} bash -n "{}"
+      - name: Run Shell Script Tests
+        run: |
+          bash scripts/test_check_umbrel_version.sh

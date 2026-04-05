@@ -515,6 +515,42 @@ cmd_pre_check() {
 
 # Helper functions for install command
 
+check_umbrel_version() {
+    local version_file="${UMBREL_VERSION_FILE:-/opt/umbreld/package.json}"
+    if [[ -f "$version_file" ]]; then
+        local version
+        if command -v jq &>/dev/null; then
+            version=$(jq -r '.version // empty' "$version_file" 2>/dev/null || true)
+        else
+            version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$version_file" 2>/dev/null | head -n 1 || true)
+        fi
+        if [[ -z "$version" ]]; then
+            echo "Warning: could not determine Umbrel OS version from $version_file" >&2
+            return 0
+        fi
+        if [[ -n "$version" ]]; then
+            local major
+            local minor
+            major=$(echo "$version" | cut -d. -f1 | sed 's/^[^0-9]*//; s/[^0-9].*$//')
+            minor=$(echo "$version" | cut -d. -f2 | sed 's/^[^0-9]*//; s/[^0-9].*$//')
+            
+            major=${major:-0}
+            minor=${minor:-0}
+            
+            if (( 10#$major > 1 || (10#$major == 1 && 10#$minor >= 6) )); then
+                echo "" >&2
+                print_error "TunnelSats CLI setup is discontinued for Umbrel OS versions 1.6 and above."
+                echo -e "Please install TunnelSats natively through the Umbrel Community App Store:" >&2
+                echo -e "  ${BLUE}URL: https://github.com/Tunnelsats/ts-umbrel-app${NC}" >&2
+                echo -e "  ${YELLOW}(Umbrel > App Store > Settings > Add App Store)${NC}" >&2
+                echo -e "More details: https://github.com/Tunnelsats/tunnelsats/discussions/193" >&2
+                echo "" >&2
+                exit 1
+            fi
+        fi
+    fi
+}
+
 detect_platform() {
     local guess=""
     if [[ -d /home/admin/config.scripts ]]; then
@@ -543,7 +579,9 @@ detect_platform() {
     
     case $answer in
         1) PLATFORM="raspiblitz" ;;
-        2) PLATFORM="umbrel" ;;
+        2) 
+            PLATFORM="umbrel"
+            ;;
         3) PLATFORM="mynode" ;;
         4) PLATFORM="baremetal" ;;
         *) print_error "Invalid selection"; exit 1 ;;
@@ -1684,6 +1722,7 @@ cmd_uninstall() {
 
 cmd_install() {
     check_root
+    check_umbrel_version
     print_header "TunnelSats Installation"
 
     # Step 1: Configuration is already detected in parse_args
@@ -2494,5 +2533,7 @@ main() {
     parse_args "$@"
 }
 
-# Run the script
-main "$@"
+# Run the script only when executed directly, not when sourced by tests.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
