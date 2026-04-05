@@ -516,7 +516,7 @@ cmd_pre_check() {
 # Helper functions for install command
 
 check_umbrel_version() {
-    local version_file="/opt/umbreld/package.json"
+    local version_file="${UMBREL_VERSION_FILE:-/opt/umbreld/package.json}"
     if [[ -f "$version_file" ]]; then
         local version
         if command -v jq &>/dev/null; then
@@ -2533,5 +2533,7 @@ main() {
     parse_args "$@"
 }
 
-# Run the script
-main "$@"
+# Run the script only when executed directly, not when sourced by tests.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
