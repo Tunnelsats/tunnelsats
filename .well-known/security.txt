@@ -1,8 +1,11 @@
-Canonical: https://tunnelsats.com/.well-known/security.txt
 Contact: mailto:security@tunnelsats.com
 Contact: https://t.me/TunnelSats
 Contact: https://x.com/TunnelSats
 Contact: https://snort.social/p/npub1n9z4y3xjramqes8fp9rl96x5e4nl0hff57ynw7vqnjpq370tq78sljsp8y
+Encryption: https://tunnelsats.com/keys/hakuna.asc
+Encryption: https://tunnelsats.com/keys/blckbx.asc
+Encryption: https://tunnelsats.com/keys/ziggie1984.asc
+Canonical: https://tunnelsats.com/.well-known/security.txt
 Policy: https://github.com/Tunnelsats/tunnelsats/blob/main/SECURITY.md
 Preferred-Languages: en
 Expires: 2027-05-10T19:00:00Z
