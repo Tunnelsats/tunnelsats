@@ -1,3 +1,6 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
 Contact: mailto:security@tunnelsats.com
 Contact: https://t.me/TunnelSats
 Contact: https://x.com/TunnelSats
@@ -9,3 +12,17 @@ Canonical: https://tunnelsats.com/.well-known/security.txt
 Policy: https://github.com/Tunnelsats/tunnelsats/blob/main/SECURITY.md
 Preferred-Languages: en
 Expires: 2027-05-10T19:00:00Z
+-----BEGIN PGP SIGNATURE-----
+
+iQHKBAEBCgA0FiEE2SH9OmOjy9toJWvo5P1GeHH62X4FAmoAxT4WHGhha3VuYUB0
+dW5uZWxzYXRzLmNvbQAKCRDk/UZ4cfrZft9lC/4jd0BhrmzhAw2Ac2jcSqegeWma
+0Xs8Lh/TjX5+yhxe/1K7i1WbOjqoP1IJ4O2v8/k2iOyHAVHbfwKv0nXwGvSpOyL6
+Tf/srRuqaBV3xe5bKI5aAOJI+1GihWNCCkdk0EeiK9xkQ6V1nF1vnqX+6n37EFxv
+Goa9Ky4OATVgZ/TP4cNpkuZ4JRAicxgnbnoea9C7bvvdWUMqZKWgLa62lkPz2hfN
+OMklP1i7ZlT4Hav3nBxrCbcbc3VytbvmRccRqga1Y1Yn35Lun1JP6LFLFvjMmrFZ
+l9gwyAia/39KjMBH/vYdT8qRgXd1NviESDB+TUUyjeMDZtZ4iv9/1YUDuZeK63V2
++Msv+u23nGEJNJ39yf/XYkCVdT3Lw6JakVLMwWfY5gi+L2LJmXHoPYCQEMrO5Gxq
+0U8f5R1s9Q/Qn1ahtYzfkJaxrALk+biNaFXPL17HU0WIcxXH42w4xLDy2ccQXND5
+UpYDaM53SvatGvHLPzYXyT8bOK82C0gG79Yg+r4=
+=F6Xg
+-----END PGP SIGNATURE-----
