@@ -1,3 +1,4 @@
+Canonical: https://tunnelsats.com/.well-known/security.txt
 Contact: mailto:security@tunnelsats.com
 Contact: https://t.me/TunnelSats
 Contact: https://x.com/TunnelSats
