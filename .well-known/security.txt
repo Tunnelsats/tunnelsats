@@ -1,0 +1,28 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Contact: mailto:security@tunnelsats.com
+Contact: https://tunnelsats.com/join-telegram
+Contact: https://x.com/TunnelSats
+Contact: https://snort.social/p/npub1n9z4y3xjramqes8fp9rl96x5e4nl0hff57ynw7vqnjpq370tq78sljsp8y
+Encryption: https://tunnelsats.com/keys/hakuna.asc
+Encryption: https://tunnelsats.com/keys/blckbx.asc
+Encryption: https://tunnelsats.com/keys/ziggie1984.asc
+Canonical: https://tunnelsats.com/.well-known/security.txt
+Policy: https://github.com/Tunnelsats/tunnelsats/blob/main/SECURITY.md
+Preferred-Languages: en
+Expires: 2027-05-10T19:00:00Z
+-----BEGIN PGP SIGNATURE-----
+
+iQGzBAEBCgAdFiEE2SH9OmOjy9toJWvo5P1GeHH62X4FAmoEu/YACgkQ5P1GeHH6
+2X5feAv+InE2K7SHHm7maq5XhK8I7DnP7V68YQY/9BAPuFuefM+EV3VfJZ4rXV9v
+0FxX0WgJ6yeBA7/8/nuxokAuKOGtC5LxQLSLtWMJ70euhlyCwbbkh9PnWOLLkrLK
+INZcy26YfN18EV80F8KTdfIa2BRKOHN668fy+ZvBmJW+AX3gs0ByuJ3sLR6kHax2
+d0LR01voZjh94OsoQsxQheqnnvv61kQYw2dBwUvP5xJBnMsa2SUDx5+iF9DsEsKH
+qFi1W1Q6y992mG/BKCgzxQrn55CfOJf3cwNAWuP3wxzjXsje9zdJUSB/zksY9p7r
+9g/5UYm4vBNavKMhRcrNM2C9saMlnAXZXeNHV1lELqlvaxzk7O2OD7qJA2VvckgY
+TayQRIu58zg8GgWjR8piCZonDxNaDRwYWBuV4+OcmF/VvUp7Zyb5nANu4fsBqpqZ
+oM3NtiAwPGy1ZC1PfuJTbZTkMxmO+ZQvLiIL04fMTTgEqmLHlYJYU0M7mRFkRhbQ
+HS8NXoVQ
+=O2sT
+-----END PGP SIGNATURE-----
