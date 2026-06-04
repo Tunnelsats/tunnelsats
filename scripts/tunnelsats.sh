@@ -1718,7 +1718,7 @@ cmd_uninstall() {
     # UFW Rules Cleanup
     if command -v ufw >/dev/null 2>&1; then
         local ufw_rules=$(ufw status | grep -i "9735" 2>/dev/null || true)
-        if [[ -n "$ufw_rules" ]] && echo "$ufw_rules" | grep -qE "on[[:space:]]+${target_interface}([[:space:]]|$)"; then
+        if [[ -n "$ufw_rules" ]] && echo "$ufw_rules" | grep -qE "(^|[[:space:]])${target_interface}([[:space:]]|$)"; then
             print_info "Removing TunnelSats UFW rules..."
             if ufw delete allow in on "${target_interface}" to any port 9735 proto tcp &>/dev/null; then
                 print_success "Removed UFW rules for port 9735 on ${target_interface}"
