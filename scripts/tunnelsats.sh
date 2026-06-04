@@ -211,7 +211,8 @@ is_port_allowed_in_ufw() {
         return 0 # If UFW is not active, the port is allowed/unfiltered
     fi
     
-    local ufw_rules=$(echo "$ufw_status_out" | grep -Ei "(^|[[:space:]])${port}(/|[[:space:]]|$)")
+    local ufw_rules
+    ufw_rules=$(echo "$ufw_status_out" | grep -Ei "(^|[[:space:]])${port}(/|[[:space:]]|$)" || true)
     if [[ -z "$ufw_rules" ]]; then
         return 1
     fi
