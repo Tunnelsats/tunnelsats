@@ -195,6 +195,59 @@ check_root() {
     fi
 }
 
+check_ufw_configuration() {
+    local interface="$1"
+    
+    # Check if ufw command exists
+    if ! command -v ufw >/dev/null 2>&1; then
+        return 0
+    fi
+    
+    # Check if ufw is active
+    if ! ufw status | grep -q "Status: active"; then
+        print_info "UFW is installed but inactive (not filtering traffic)."
+        return 0
+    fi
+    
+    # UFW is active. Check if port 9735 is allowed
+    local ufw_rules=$(ufw status | grep -i "9735")
+    local allowed=0
+    
+    if [[ -n "$ufw_rules" ]]; then
+        while IFS= read -r line; do
+            if [[ ! "$line" =~ "ALLOW" ]]; then
+                continue
+            fi
+            
+            if [[ "$line" =~ "on " ]]; then
+                if [[ "$line" =~ "on $interface" ]]; then
+                    allowed=1
+                    break
+                fi
+            else
+                # Global rule
+                allowed=1
+                break
+            fi
+        done <<< "$ufw_rules"
+    fi
+    
+    if [[ $allowed -eq 1 ]]; then
+        print_success "UFW is active and inbound traffic on port 9735 is allowed."
+        return 0
+    else
+        print_info "UFW is active but port 9735 is not allowed on $interface. Adding rule..."
+        if ufw allow in on "$interface" to any port 9735 proto tcp &>/dev/null; then
+            print_success "Added UFW rule: allow inbound TCP 9735 on $interface"
+            return 0
+        else
+            print_error "Failed to add UFW rule for port 9735 on $interface"
+            return 1
+        fi
+    fi
+}
+
+
 valid_ipv4() {
     local ip=$1
     local stat=1
@@ -1643,6 +1696,17 @@ cmd_uninstall() {
         ip route flush table 51820 &>/dev/null
     fi
     echo ""
+
+    # UFW Rules Cleanup
+    if command -v ufw >/dev/null 2>&1; then
+        local ufw_rules=$(ufw status | grep -i "9735" 2>/dev/null || true)
+        if [[ -n "$ufw_rules" ]] && echo "$ufw_rules" | grep -q "${target_interface}"; then
+            print_info "Removing TunnelSats UFW rules..."
+            ufw delete allow in on "${target_interface}" to any port 9735 proto tcp &>/dev/null || true
+            ufw delete allow in on "${target_interface}" to any port 9735 proto udp &>/dev/null || true
+            print_success "Removed UFW rules for port 9735 on ${target_interface}"
+        fi
+    fi
     
     # 7. Restore Original Service Files
     if [[ $is_docker -eq 0 ]]; then
@@ -1832,7 +1896,12 @@ cmd_install() {
 
     print_node_config_instructions "$vpn_dns" "$vpn_port" "install"
 
-    if [[ "$PLATFORM" == "baremetal" ]]; then
+    # Check firewall configuration if UFW is active
+    if command -v ufw >/dev/null 2>&1; then
+        echo ""
+        print_info "Checking Firewall Configuration (UFW)..."
+        check_ufw_configuration "$WG_INTERFACE"
+    elif [[ "$PLATFORM" == "baremetal" || "$PLATFORM" == "raspiblitz" ]]; then
         echo ""
         echo -e "${BOLD}${YELLOW}UFW FIREWALL NOTICE:${NC}"
         echo "If you use UFW, ensure you allow traffic on the Lightning port (TCP 9735):"
@@ -2237,6 +2306,37 @@ cmd_status() {
     local node_type=$(echo "$node_data" | cut -d '|' -f 1)
     local node_addr=$(echo "$node_data" | cut -d '|' -f 2)
 
+    local ufw_status_str="Not Installed"
+    local ufw_blocked=0
+    if command -v ufw >/dev/null 2>&1; then
+        if ufw status | grep -q "Status: active"; then
+            local ufw_rules=$(ufw status | grep -i "9735")
+            local allowed=0
+            if [[ -n "$ufw_rules" ]]; then
+                while IFS= read -r line; do
+                    if [[ ! "$line" =~ "ALLOW" ]]; then continue; fi
+                    if [[ "$line" =~ "on " ]]; then
+                        if [[ "$line" =~ "on $interface_name" ]]; then
+                            allowed=1
+                            break
+                        fi
+                    else
+                        allowed=1
+                        break
+                    fi
+                done <<< "$ufw_rules"
+            fi
+            if [[ $allowed -eq 1 ]]; then
+                ufw_status_str="${GREEN}Active (Port 9735 Allowed)${NC}"
+            else
+                ufw_status_str="${RED}Active (Port 9735 BLOCKED on ${interface_name})${NC}"
+                ufw_blocked=1
+            fi
+        else
+            ufw_status_str="Inactive"
+        fi
+    fi
+
     echo -e "${BOLD}Node Configuration${NC}"
     print_line
     echo -e "  Type:           $node_type"
@@ -2247,6 +2347,7 @@ cmd_status() {
     print_line
     echo -e "  Outbound IP:    $outbound_ip"
     echo -e "  Inbound Check:  $inbound_status ($inbound_ip)"
+    echo -e "  UFW Status:     $ufw_status_str"
     echo ""
     
     # Final Verdict
@@ -2266,6 +2367,25 @@ cmd_status() {
          print_warning "Inbound Check Failed (Outbound OK)"
     fi
     echo ""
+
+    if [[ $ufw_blocked -eq 1 ]]; then
+        echo ""
+        echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BOLD}${YELLOW}⚠  UFW FIREWALL BLOCKING PORT 9735!${NC}"
+        echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "Your UFW firewall is active, but it does NOT allow inbound traffic"
+        echo "on the Lightning port (9735) via your WireGuard interface (${interface_name})."
+        echo ""
+        echo "To allow traffic via this interface specifically, run:"
+        echo -e "  ${BOLD}sudo ufw allow in on ${interface_name} to any port 9735 proto tcp${NC}"
+        echo ""
+        echo "Or to allow it globally on all interfaces:"
+        echo -e "  ${BOLD}sudo ufw allow 9735/tcp${NC}"
+        echo ""
+        echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+    fi
 
     # ---------------------------------------------------------
     # MISCONFIGURATION DETECTION: Node not advertising VPN address
