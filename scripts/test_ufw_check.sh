@@ -91,7 +91,7 @@ To                         Action      From
 run_test_case 1 "$status_active_blocked" 0 "tunnelsatsv2" 0 "UFW active, 9735 blocked, auto-allow succeeds (should return 0)"
 
 # Case 3b: UFW active, 9735 blocked, allow fails
-run_test_case 1 "$status_active_blocked" 1 "tunnelsatsv2" 1 "UFW active, 9735 blocked, auto-allow fails (should return 1)"
+run_test_case 1 "$status_active_blocked" 1 "tunnelsatsv2" 0 "UFW active, 9735 blocked, auto-allow fails (should return 0)"
 
 # Case 4: UFW active, global rule for 9735/tcp (no rule needs to be added)
 status_active_global="Status: active
@@ -126,7 +126,7 @@ To                         Action      From
 run_test_case 1 "$status_active_other_interface" 0 "tunnelsatsv2" 0 "UFW active, rule for eth0, auto-allow on tunnelsatsv2 succeeds (should return 0)"
 
 # Case 7b: UFW active, rule specifically on another interface, auto-allow fails
-run_test_case 1 "$status_active_other_interface" 1 "tunnelsatsv2" 1 "UFW active, rule for eth0, auto-allow on tunnelsatsv2 fails (should return 1)"
+run_test_case 1 "$status_active_other_interface" 1 "tunnelsatsv2" 0 "UFW active, rule for eth0, auto-allow on tunnelsatsv2 fails (should return 0)"
 
 echo "--------------------------------"
 echo "Passed: $pass_count"

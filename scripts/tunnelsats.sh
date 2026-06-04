@@ -195,6 +195,45 @@ check_root() {
     fi
 }
 
+is_port_allowed_in_ufw() {
+    local interface="$1"
+    local port="$2"
+    local ufw_status_out="$3"
+    
+    if [[ -z "$ufw_status_out" ]]; then
+        if ! command -v ufw >/dev/null 2>&1; then
+            return 1
+        fi
+        ufw_status_out=$(ufw status 2>/dev/null)
+    fi
+    
+    if ! echo "$ufw_status_out" | grep -q "Status: active"; then
+        return 0 # If UFW is not active, the port is allowed/unfiltered
+    fi
+    
+    local ufw_rules=$(echo "$ufw_status_out" | grep -i "$port")
+    if [[ -z "$ufw_rules" ]]; then
+        return 1
+    fi
+    
+    while IFS= read -r line; do
+        if [[ ! "$line" =~ "ALLOW" ]]; then
+            continue
+        fi
+        
+        if [[ "$line" =~ "on " ]]; then
+            if [[ "$line" =~ "on $interface" ]]; then
+                return 0
+            fi
+        else
+            # Global rule
+            return 0
+        fi
+    done <<< "$ufw_rules"
+    
+    return 1
+}
+
 check_ufw_configuration() {
     local interface="$1"
     
@@ -203,36 +242,15 @@ check_ufw_configuration() {
         return 0
     fi
     
+    local ufw_status_out
+    ufw_status_out=$(ufw status 2>/dev/null)
     # Check if ufw is active
-    if ! ufw status | grep -q "Status: active"; then
+    if ! echo "$ufw_status_out" | grep -q "Status: active"; then
         print_info "UFW is installed but inactive (not filtering traffic)."
         return 0
     fi
     
-    # UFW is active. Check if port 9735 is allowed
-    local ufw_rules=$(ufw status | grep -i "9735")
-    local allowed=0
-    
-    if [[ -n "$ufw_rules" ]]; then
-        while IFS= read -r line; do
-            if [[ ! "$line" =~ "ALLOW" ]]; then
-                continue
-            fi
-            
-            if [[ "$line" =~ "on " ]]; then
-                if [[ "$line" =~ "on $interface" ]]; then
-                    allowed=1
-                    break
-                fi
-            else
-                # Global rule
-                allowed=1
-                break
-            fi
-        done <<< "$ufw_rules"
-    fi
-    
-    if [[ $allowed -eq 1 ]]; then
+    if is_port_allowed_in_ufw "$interface" "9735" "$ufw_status_out"; then
         print_success "UFW is active and inbound traffic on port 9735 is allowed."
         return 0
     else
@@ -242,7 +260,7 @@ check_ufw_configuration() {
             return 0
         else
             print_error "Failed to add UFW rule for port 9735 on $interface"
-            return 1
+            return 0 # Return 0 so it doesn't trigger set -e abort
         fi
     fi
 }
@@ -1703,7 +1721,6 @@ cmd_uninstall() {
         if [[ -n "$ufw_rules" ]] && echo "$ufw_rules" | grep -q "${target_interface}"; then
             print_info "Removing TunnelSats UFW rules..."
             ufw delete allow in on "${target_interface}" to any port 9735 proto tcp &>/dev/null || true
-            ufw delete allow in on "${target_interface}" to any port 9735 proto udp &>/dev/null || true
             print_success "Removed UFW rules for port 9735 on ${target_interface}"
         fi
     fi
@@ -2309,24 +2326,10 @@ cmd_status() {
     local ufw_status_str="Not Installed"
     local ufw_blocked=0
     if command -v ufw >/dev/null 2>&1; then
-        if ufw status | grep -q "Status: active"; then
-            local ufw_rules=$(ufw status | grep -i "9735")
-            local allowed=0
-            if [[ -n "$ufw_rules" ]]; then
-                while IFS= read -r line; do
-                    if [[ ! "$line" =~ "ALLOW" ]]; then continue; fi
-                    if [[ "$line" =~ "on " ]]; then
-                        if [[ "$line" =~ "on $interface_name" ]]; then
-                            allowed=1
-                            break
-                        fi
-                    else
-                        allowed=1
-                        break
-                    fi
-                done <<< "$ufw_rules"
-            fi
-            if [[ $allowed -eq 1 ]]; then
+        local ufw_status_out
+        ufw_status_out=$(ufw status 2>/dev/null)
+        if echo "$ufw_status_out" | grep -q "Status: active"; then
+            if is_port_allowed_in_ufw "$interface_name" "9735" "$ufw_status_out"; then
                 ufw_status_str="${GREEN}Active (Port 9735 Allowed)${NC}"
             else
                 ufw_status_str="${RED}Active (Port 9735 BLOCKED on ${interface_name})${NC}"
