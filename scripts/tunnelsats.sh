@@ -1917,7 +1917,7 @@ cmd_install() {
     if command -v ufw >/dev/null 2>&1; then
         echo ""
         print_info "Checking Firewall Configuration (UFW)..."
-        check_ufw_configuration "$WG_INTERFACE"
+        check_ufw_configuration "$WG_INTERFACE" || true
     elif [[ "$PLATFORM" == "baremetal" || "$PLATFORM" == "raspiblitz" ]]; then
         echo ""
         echo -e "${BOLD}${YELLOW}UFW FIREWALL NOTICE:${NC}"
