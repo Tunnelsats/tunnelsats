@@ -211,18 +211,19 @@ is_port_allowed_in_ufw() {
         return 0 # If UFW is not active, the port is allowed/unfiltered
     fi
     
-    local ufw_rules=$(echo "$ufw_status_out" | grep -i "$port")
+    local ufw_rules=$(echo "$ufw_status_out" | grep -Ei "(^|[[:space:]])${port}(/|[[:space:]]|$)")
     if [[ -z "$ufw_rules" ]]; then
         return 1
     fi
     
+    local pattern="on[[:space:]]+${interface}([[:space:]]|$)"
     while IFS= read -r line; do
         if [[ ! "$line" =~ "ALLOW" ]]; then
             continue
         fi
         
         if [[ "$line" =~ "on " ]]; then
-            if [[ "$line" =~ "on $interface" ]]; then
+            if [[ "$line" =~ $pattern ]]; then
                 return 0
             fi
         else
@@ -1717,7 +1718,10 @@ cmd_uninstall() {
 
     # UFW Rules Cleanup
     if command -v ufw >/dev/null 2>&1; then
-        local ufw_rules=$(ufw status | grep -i "9735" 2>/dev/null || true)
+        local ufw_status_out
+        ufw_status_out=$(ufw status 2>/dev/null)
+        local ufw_rules
+        ufw_rules=$(echo "$ufw_status_out" | grep -Ei "(^|[[:space:]])9735(/|[[:space:]]|$)" || true)
         if [[ -n "$ufw_rules" ]] && echo "$ufw_rules" | grep -qE "(^|[[:space:]])${target_interface}([[:space:]]|$)"; then
             print_info "Removing TunnelSats UFW rules..."
             if ufw delete allow in on "${target_interface}" to any port 9735 proto tcp &>/dev/null; then
