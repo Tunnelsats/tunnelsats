@@ -72,6 +72,26 @@ run_test_case() {
     fi
 }
 
+run_is_port_allowed_case() {
+    local status_out="$1"
+    local interface="$2"
+    local expected_status="$3"
+    local desc="$4"
+
+    set +e
+    is_port_allowed_in_ufw "$interface" "9735" "$status_out"
+    local status=$?
+    set -e
+
+    if [[ "$status" -eq "$expected_status" ]]; then
+        echo "PASS: $desc (exit=$status)"
+        pass_count=$((pass_count + 1))
+    else
+        echo "FAIL: $desc (expected exit=$expected_status, got exit=$status)"
+        fail_count=$((fail_count + 1))
+    fi
+}
+
 echo "Running UFW check logic tests..."
 echo "--------------------------------"
 
@@ -127,6 +147,28 @@ run_test_case 1 "$status_active_other_interface" 0 "tunnelsatsv2" 0 "UFW active,
 
 # Case 7b: UFW active, rule specifically on another interface, auto-allow fails
 run_test_case 1 "$status_active_other_interface" 1 "tunnelsatsv2" 0 "UFW active, rule for eth0, auto-allow on tunnelsatsv2 fails (should return 0)"
+
+# Case 8: Interface names are matched literally, not as regex patterns
+status_active_plus_interface="Status: active
+
+To                         Action      From
+--                         ------      ----
+9735/tcp on tunnelsats+eu  ALLOW       Anywhere"
+run_is_port_allowed_case "$status_active_plus_interface" "tunnelsats+eu" 0 "UFW active, interface containing + matched literally"
+
+status_active_dot_interface="Status: active
+
+To                         Action      From
+--                         ------      ----
+9735/tcp on tunnelsats.eu  ALLOW       Anywhere"
+run_is_port_allowed_case "$status_active_dot_interface" "tunnelsats.eu" 0 "UFW active, interface containing . matched literally"
+
+status_active_dot_false_match="Status: active
+
+To                         Action      From
+--                         ------      ----
+9735/tcp on tunnelsatsXeu  ALLOW       Anywhere"
+run_is_port_allowed_case "$status_active_dot_false_match" "tunnelsats.eu" 1 "UFW active, interface . does not match another character"
 
 echo "--------------------------------"
 echo "Passed: $pass_count"

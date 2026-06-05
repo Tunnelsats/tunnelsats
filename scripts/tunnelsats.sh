@@ -223,15 +223,17 @@ is_port_allowed_in_ufw() {
         return 1
     fi
     
-    local pattern="on[[:space:]]+${interface}([[:space:]]|$)"
     while IFS= read -r line; do
         if [[ ! "$line" =~ "ALLOW" ]]; then
             continue
         fi
         
         if [[ "$line" =~ "on " ]]; then
-            if [[ "$line" =~ $pattern ]]; then
-                return 0
+            if [[ "$line" =~ [[:space:]]on[[:space:]]+([^[:space:]]+) ]]; then
+                local rule_interface="${BASH_REMATCH[1]}"
+                if [[ "$rule_interface" == "$interface" ]]; then
+                    return 0
+                fi
             fi
         else
             # Global rule
@@ -273,8 +275,6 @@ check_ufw_configuration() {
         fi
     fi
 }
-
-
 valid_ipv4() {
     local ip=$1
     local stat=1
