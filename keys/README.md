@@ -2,7 +2,7 @@ Signing keys
 
 blckbx.asc
 
-Fingerprint: `32A3 CE42 DB30 FD68 D3DB  3BF9 44F2 F78C 2BB1 0B16`
+Fingerprint: `29F2 19C0 0090 BDC5 3C4F  268B D3FB 31DE 57E3 92C5`
 
 ziggie1984.asc
 
