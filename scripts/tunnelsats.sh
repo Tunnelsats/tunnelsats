@@ -195,6 +195,90 @@ check_root() {
     fi
 }
 
+ufw_rule_marker_file() {
+    local interface="$1"
+    local safe_interface="${interface//[^[:alnum:]_.-]/_}"
+    echo "/etc/wireguard/.tunnelsats-ufw-9735-${safe_interface}.created"
+}
+
+is_port_allowed_in_ufw() {
+    local interface="$1"
+    local port="$2"
+    local ufw_status_out="$3"
+    
+    if [[ -z "$ufw_status_out" ]]; then
+        if ! command -v ufw >/dev/null 2>&1; then
+            return 1
+        fi
+        ufw_status_out=$(ufw status 2>/dev/null)
+    fi
+    
+    if ! echo "$ufw_status_out" | grep -q "Status: active"; then
+        return 0 # If UFW is not active, the port is allowed/unfiltered
+    fi
+    
+    local ufw_rules
+    ufw_rules=$(echo "$ufw_status_out" | grep -Ei "(^|[[:space:]])${port}(/|[[:space:]]|$)" || true)
+    if [[ -z "$ufw_rules" ]]; then
+        return 1
+    fi
+    
+    while IFS= read -r line; do
+        if [[ ! "$line" =~ "ALLOW" ]]; then
+            continue
+        fi
+
+        if [[ "$line" =~ ALLOW[[:space:]]+OUT ]]; then
+            continue
+        fi
+        
+        if [[ "$line" =~ "on " ]]; then
+            if [[ "$line" =~ [[:space:]]on[[:space:]]+([^[:space:]]+) ]]; then
+                local rule_interface="${BASH_REMATCH[1]}"
+                if [[ "$rule_interface" == "$interface" ]]; then
+                    return 0
+                fi
+            fi
+        else
+            # Global rule
+            return 0
+        fi
+    done <<< "$ufw_rules"
+    
+    return 1
+}
+
+check_ufw_configuration() {
+    local interface="$1"
+    
+    # Check if ufw command exists
+    if ! command -v ufw >/dev/null 2>&1; then
+        return 0
+    fi
+    
+    local ufw_status_out
+    ufw_status_out=$(ufw status 2>/dev/null)
+    # Check if ufw is active
+    if ! echo "$ufw_status_out" | grep -q "Status: active"; then
+        print_info "UFW is installed but inactive (not filtering traffic)."
+        return 0
+    fi
+    
+    if is_port_allowed_in_ufw "$interface" "9735" "$ufw_status_out"; then
+        print_success "UFW is active and inbound traffic on port 9735 is allowed."
+        return 0
+    else
+        print_info "UFW is active but port 9735 is not allowed on $interface. Adding rule..."
+        if ufw allow in on "$interface" to any port 9735 proto tcp comment "TunnelSats" &>/dev/null; then
+            touch "$(ufw_rule_marker_file "$interface")" 2>/dev/null || true
+            print_success "Added UFW rule: allow inbound TCP 9735 on $interface"
+            return 0
+        else
+            print_error "Failed to add UFW rule for port 9735 on $interface"
+            return 0 # Return 0 so it doesn't trigger set -e abort
+        fi
+    fi
+}
 valid_ipv4() {
     local ip=$1
     local stat=1
@@ -1643,6 +1727,21 @@ cmd_uninstall() {
         ip route flush table 51820 &>/dev/null
     fi
     echo ""
+
+    # UFW Rules Cleanup
+    if command -v ufw >/dev/null 2>&1; then
+        local ufw_marker_file
+        ufw_marker_file=$(ufw_rule_marker_file "$target_interface")
+        if [[ -f "$ufw_marker_file" ]]; then
+            print_info "Removing TunnelSats UFW rules..."
+            if ufw delete allow in on "${target_interface}" to any port 9735 proto tcp &>/dev/null; then
+                rm -f "$ufw_marker_file" &>/dev/null || true
+                print_success "Removed UFW rules for port 9735 on ${target_interface}"
+            else
+                print_error "Failed to remove UFW rules for port 9735 on ${target_interface}"
+            fi
+        fi
+    fi
     
     # 7. Restore Original Service Files
     if [[ $is_docker -eq 0 ]]; then
@@ -1832,7 +1931,12 @@ cmd_install() {
 
     print_node_config_instructions "$vpn_dns" "$vpn_port" "install"
 
-    if [[ "$PLATFORM" == "baremetal" ]]; then
+    # Check firewall configuration if UFW is active
+    if command -v ufw >/dev/null 2>&1; then
+        echo ""
+        print_info "Checking Firewall Configuration (UFW)..."
+        check_ufw_configuration "$WG_INTERFACE" || true
+    elif [[ "$PLATFORM" == "baremetal" || "$PLATFORM" == "raspiblitz" ]]; then
         echo ""
         echo -e "${BOLD}${YELLOW}UFW FIREWALL NOTICE:${NC}"
         echo "If you use UFW, ensure you allow traffic on the Lightning port (TCP 9735):"
@@ -2237,6 +2341,23 @@ cmd_status() {
     local node_type=$(echo "$node_data" | cut -d '|' -f 1)
     local node_addr=$(echo "$node_data" | cut -d '|' -f 2)
 
+    local ufw_status_str="Not Installed"
+    local ufw_blocked=0
+    if command -v ufw >/dev/null 2>&1; then
+        local ufw_status_out
+        ufw_status_out=$(ufw status 2>/dev/null)
+        if echo "$ufw_status_out" | grep -q "Status: active"; then
+            if is_port_allowed_in_ufw "$interface_name" "9735" "$ufw_status_out"; then
+                ufw_status_str="${GREEN}Active (Port 9735 Allowed)${NC}"
+            else
+                ufw_status_str="${RED}Active (Port 9735 BLOCKED on ${interface_name})${NC}"
+                ufw_blocked=1
+            fi
+        else
+            ufw_status_str="Inactive"
+        fi
+    fi
+
     echo -e "${BOLD}Node Configuration${NC}"
     print_line
     echo -e "  Type:           $node_type"
@@ -2247,6 +2368,7 @@ cmd_status() {
     print_line
     echo -e "  Outbound IP:    $outbound_ip"
     echo -e "  Inbound Check:  $inbound_status ($inbound_ip)"
+    echo -e "  UFW Status:     $ufw_status_str"
     echo ""
     
     # Final Verdict
@@ -2266,6 +2388,25 @@ cmd_status() {
          print_warning "Inbound Check Failed (Outbound OK)"
     fi
     echo ""
+
+    if [[ $ufw_blocked -eq 1 ]]; then
+        echo ""
+        echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BOLD}${YELLOW}⚠  UFW FIREWALL BLOCKING PORT 9735!${NC}"
+        echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "Your UFW firewall is active, but it does NOT allow inbound traffic"
+        echo "on the Lightning port (9735) via your WireGuard interface (${interface_name})."
+        echo ""
+        echo "To allow traffic via this interface specifically, run:"
+        echo -e "  ${BOLD}sudo ufw allow in on ${interface_name} to any port 9735 proto tcp${NC}"
+        echo ""
+        echo "Or to allow it globally on all interfaces:"
+        echo -e "  ${BOLD}sudo ufw allow 9735/tcp${NC}"
+        echo ""
+        echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+    fi
 
     # ---------------------------------------------------------
     # MISCONFIGURATION DETECTION: Node not advertising VPN address
