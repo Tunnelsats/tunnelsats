@@ -227,6 +227,10 @@ is_port_allowed_in_ufw() {
         if [[ ! "$line" =~ "ALLOW" ]]; then
             continue
         fi
+
+        if [[ "$line" =~ ALLOW[[:space:]]+OUT ]]; then
+            continue
+        fi
         
         if [[ "$line" =~ "on " ]]; then
             if [[ "$line" =~ [[:space:]]on[[:space:]]+([^[:space:]]+) ]]; then

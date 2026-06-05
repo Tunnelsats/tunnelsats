@@ -170,6 +170,21 @@ To                         Action      From
 9735/tcp on tunnelsatsXeu  ALLOW       Anywhere"
 run_is_port_allowed_case "$status_active_dot_false_match" "tunnelsats.eu" 1 "UFW active, interface . does not match another character"
 
+# Case 9: Outbound-only rules do not satisfy inbound Lightning access
+status_active_out_global="Status: active
+
+To                         Action      From
+--                         ------      ----
+9735/tcp                   ALLOW OUT   Anywhere"
+run_is_port_allowed_case "$status_active_out_global" "tunnelsatsv2" 1 "UFW active, global outbound-only 9735 rule ignored"
+
+status_active_out_interface="Status: active
+
+To                         Action      From
+--                         ------      ----
+9735/tcp on tunnelsatsv2   ALLOW OUT   Anywhere"
+run_is_port_allowed_case "$status_active_out_interface" "tunnelsatsv2" 1 "UFW active, interface outbound-only 9735 rule ignored"
+
 echo "--------------------------------"
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"
