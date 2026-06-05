@@ -13,3 +13,4 @@ jobs:
       - name: Run Shell Script Tests
         run: |
           bash scripts/test_check_umbrel_version.sh
+          bash scripts/test_ufw_check.sh

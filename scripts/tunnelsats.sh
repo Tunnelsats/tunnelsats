@@ -195,6 +195,12 @@ check_root() {
     fi
 }
 
+ufw_rule_marker_file() {
+    local interface="$1"
+    local safe_interface="${interface//[^[:alnum:]_.-]/_}"
+    echo "/etc/wireguard/.tunnelsats-ufw-9735-${safe_interface}.created"
+}
+
 is_port_allowed_in_ufw() {
     local interface="$1"
     local port="$2"
@@ -257,7 +263,8 @@ check_ufw_configuration() {
         return 0
     else
         print_info "UFW is active but port 9735 is not allowed on $interface. Adding rule..."
-        if ufw allow in on "$interface" to any port 9735 proto tcp &>/dev/null; then
+        if ufw allow in on "$interface" to any port 9735 proto tcp comment "TunnelSats" &>/dev/null; then
+            touch "$(ufw_rule_marker_file "$interface")" 2>/dev/null || true
             print_success "Added UFW rule: allow inbound TCP 9735 on $interface"
             return 0
         else
@@ -1719,13 +1726,12 @@ cmd_uninstall() {
 
     # UFW Rules Cleanup
     if command -v ufw >/dev/null 2>&1; then
-        local ufw_status_out
-        ufw_status_out=$(ufw status 2>/dev/null)
-        local ufw_rules
-        ufw_rules=$(echo "$ufw_status_out" | grep -Ei "(^|[[:space:]])9735(/|[[:space:]]|$)" || true)
-        if [[ -n "$ufw_rules" ]] && echo "$ufw_rules" | grep -qE "(^|[[:space:]])${target_interface}([[:space:]]|$)"; then
+        local ufw_marker_file
+        ufw_marker_file=$(ufw_rule_marker_file "$target_interface")
+        if [[ -f "$ufw_marker_file" ]]; then
             print_info "Removing TunnelSats UFW rules..."
             if ufw delete allow in on "${target_interface}" to any port 9735 proto tcp &>/dev/null; then
+                rm -f "$ufw_marker_file" &>/dev/null || true
                 print_success "Removed UFW rules for port 9735 on ${target_interface}"
             else
                 print_error "Failed to remove UFW rules for port 9735 on ${target_interface}"
