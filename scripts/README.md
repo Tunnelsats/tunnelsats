@@ -22,22 +22,20 @@ sudo bash tunnelsats.sh [install|uninstall|status|restart|pre-check]
 
 ## Compatibility & Testing Status
 
-We are iteratively validating `tunnelsats.sh` across various Node OS platforms. The following table reflects the current **Verified** state.
+We are iteratively validating `tunnelsats.sh` across various Node OS platforms. Note that `tunnelsats.sh` is designed for systemd / bare-metal environments, whereas **Umbrel** and **StartOS** use native containerized app packages.
 
-| Hardware/Platform | Node OS | OS Version | [i]nstall | [u]ninstall | [s]tatus | [r]estart |
-| :--- | :--- | :--- | :---: | :---: | :---: | :---: |
-| Raspberry Pi 4 | **Umbrel** | umbrelOS 1.5 | ✅ | ✅ | ✅ | ✅ |
-| Raspberry Pi | **RaspiBlitz** | v1.11.x | ✅ | ✅ | ✅ | ✅ |
-| Proxmox VM | **Umbrel** | v1.2.1 | ✅ | ✅ | ✅ | ✅ |
-| PC / VPS | **Bare Metal** | Debian 12 / Ubuntu | ✅ | ✅ | ✅ | ✅ |
-| Pi / PC (x86) | **myNode** | v0.3.x | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
-| Any | **Start9** | Any | ❌ | ❌ | ❌ | ❌ |
+| Hardware/Platform | Node OS | OS Version | Host Script (`tunnelsats.sh`) | Native App / Package |
+| :--- | :--- | :--- | :---: | :---: |
+| Raspberry Pi / PC | **Umbrel** | umbrelOS 1.0+ | N/A (Use Native App) | ✅ Native Umbrel App (Community Store / Official Review Pending) |
+| Any Hardware | **StartOS (Start9)** | 0.3.5 & 0.4.0+ | N/A (Use Native Package) | ✅ Native `.s9pk` Package (Sideload / Official Store Pending) |
+| Raspberry Pi | **RaspiBlitz** | v1.11.x | ✅ Supported | N/A |
+| PC / VPS | **Bare Metal** | Debian 12 / Ubuntu | ✅ Supported | N/A |
+| Pi / PC (x86) | **myNode** | v0.3.x | ⚠️ Experimental | N/A |
 
 **Legend:**
-- ✅ **Verified**: Tested and working 100%.
-- ⚠️ **Experimental**: Logic exists (ported from v2), but needs live verification.
-- ❓ **Untested**: Not yet validated on this specific environment.
-- ❌ **Not Supported**: Current architecture is incompatible with script installation.
+- ✅ **Verified / Supported**: Tested and working.
+- ⚠️ **Experimental**: Logic exists, but needs live community verification.
+- N/A: Platform uses sandboxed container architecture — script execution bypassed in favor of native App Store packages.
 
 > **Bare Metal / MiniBolt Note:**
 > We have explicitly verified the setup on **[MiniBolt](https://github.com/MiniBoltGuide/minibolt)** (Ubuntu/Debian) environments. If following the MiniBolt guide, this script respects the standard directory structure and user permissions.
