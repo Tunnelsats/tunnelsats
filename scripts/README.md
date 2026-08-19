@@ -22,15 +22,15 @@ sudo bash tunnelsats.sh [install|uninstall|status|restart|pre-check]
 
 ## Compatibility & Testing Status
 
-We are iteratively validating `tunnelsats.sh` across various Node OS platforms. Note that `tunnelsats.sh` is designed for systemd / bare-metal environments, whereas **Umbrel** and **StartOS** use native containerized app packages.
+We are iteratively validating `tunnelsats.sh` across various Node OS platforms. Note that `tunnelsats.sh` is designed for systemd / bare-metal environments, whereas **Umbrel** uses a native containerized app package.
 
 | Hardware/Platform | Node OS | OS Version | Host Script (`tunnelsats.sh`) | Native App / Package |
 | :--- | :--- | :--- | :---: | :---: |
 | Raspberry Pi / PC | **Umbrel** | umbrelOS 1.0+ | N/A (Use Native App) | ✅ Native Umbrel App (Community Store / Official Review Pending) |
-| Any Hardware | **StartOS (Start9)** | 0.3.5 & 0.4.0+ | N/A (Use Native Package) | ✅ Native `.s9pk` Package (Sideload / Official Store Pending) |
 | Raspberry Pi | **RaspiBlitz** | v1.11.x | ✅ Supported | N/A |
 | PC / VPS | **Bare Metal** | Debian 12 / Ubuntu | ✅ Supported | N/A |
 | Pi / PC (x86) | **myNode** | v0.3.x | ⚠️ Experimental | N/A |
+| Any Hardware | **StartOS (Start9)** | 0.3.5 & 0.4.0+ | ❌ Unsupported | ❌ Unsupported (LXC isolation prevents cross-package egress routing) |
 
 **Legend:**
 - ✅ **Verified / Supported**: Tested and working.
