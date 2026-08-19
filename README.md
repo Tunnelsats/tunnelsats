@@ -38,14 +38,14 @@ The Lightning Network needs **fast, reliable, discoverable** nodes for efficient
 | Platform | Type | LND | CLN | Installation Method |
 |:---|:---|:---:|:---:|:---|
 | **Umbrel** (umbrelOS 1.0+) | Docker App | ✅ | ✅ | **Native Umbrel App** ([Community App Store](https://github.com/Tunnelsats/ts-umbrel-app) / Official Review Pending) |
-| **StartOS** (StartOS 0.3.5 & 0.4.0+) | Service Package | ✅ | ✅ | **Native `.s9pk` Package** ([tunnelsats-startos repo](https://github.com/Tunnelsats/tunnelsats-startos) / Official Store Pending) |
 | **RaspiBlitz** (v1.11+) | Systemd | ✅ | ✅ | Host Script (`tunnelsats.sh`) |
 | **Bare Metal** (Debian/Ubuntu) | Systemd | ✅ | ✅ | Host Script (`tunnelsats.sh`) |
 | **myNode** (v0.3+) | Systemd | ⚠️ | ⚠️ | Host Script (`tunnelsats.sh` - Experimental) |
+| **StartOS** (Start9) | Service Package | ❌ | ❌ | ❌ **Unsupported** (LXC isolation prevents cross-package egress routing) |
 
 > ℹ️ **Security Architecture Note**:
 > The `tunnelsats.sh` bash installer is designed for bare-metal / systemd nodes (RaspiBlitz, RaspiBolt, MiniBolt, myNode).
-> Due to the strict container sandboxing and security infrastructure of **Umbrel** and **StartOS**, manual host script execution is unsupported on those platforms — please use their respective native App / Service installations.
+> Due to container sandboxing, manual host script execution is unsupported on **Umbrel** — please use the native [Umbrel App](https://github.com/Tunnelsats/ts-umbrel-app) installation. StartOS is unsupported as its LXC architecture does not allow third-party packages to encapsulate peer node egress.
 
 See [scripts/README.md](./scripts/) for detailed compatibility info.
 
