@@ -12,27 +12,28 @@ sudo bash tunnelsats.sh [install|uninstall|status|restart|pre-check]
 
 ### Commands
 
-| Command | Description |
-| :--- | :--- |
-| **`install`** | Interactive wizard to install WireGuard, configure your node (LND/CLN/LIT), and set up networking. |
-| **`uninstall`** | "Nuclear" uninstall. Removes all TunnelSats configurations, restores backups, and cleans up Docker networks/firewalls. |
-| **`status`** | Detailed diagnostics. Checks subscription validity, interface status, Docker health, and connectivity (Ping/RTT). |
-| **`restart`** | Smart restart helper. Re-initializes the WireGuard interface and DNS watchdog if you lose connection. |
+| Command         | Description                                                                                                                        |
+| :-------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
+| **`install`**   | Interactive wizard to install WireGuard, configure your node (LND/CLN/LIT), and set up networking.                                 |
+| **`uninstall`** | "Nuclear" uninstall. Removes all TunnelSats configurations, restores backups, and cleans up Docker networks/firewalls.             |
+| **`status`**    | Detailed diagnostics. Checks subscription validity, interface status, Docker health, and connectivity (Ping/RTT).                  |
+| **`restart`**   | Smart restart helper. Re-initializes the WireGuard interface and DNS watchdog if you lose connection.                              |
 | **`pre-check`** | Non-invasive verification. Checks if your system has the necessary prerequisites (WireGuard, Docker, etc.) without making changes. |
 
 ## Compatibility & Testing Status
 
-We are iteratively validating `tunnelsats.sh` across various Node OS platforms. Note that `tunnelsats.sh` is designed for systemd / bare-metal environments, whereas **Umbrel** uses a native containerized app package.
+We are iteratively validating `tunnelsats.sh` across various Node OS platforms. Note that `tunnelsats.sh` is designed for systemd / bare-metal environments, whereas **Umbrel** and **StartOS** use native containerized app packages.
 
-| Hardware/Platform | Node OS | OS Version | Host Script (`tunnelsats.sh`) | Native App / Package |
-| :--- | :--- | :--- | :---: | :---: |
-| Raspberry Pi / PC | **Umbrel** | umbrelOS 1.0+ | N/A (Use Native App) | ✅ Native Umbrel App (Community Store / Official Review Pending) |
-| Raspberry Pi | **RaspiBlitz** | v1.11.x | ✅ Supported | N/A |
-| PC / VPS | **Bare Metal** | Debian 12 / Ubuntu | ✅ Supported | N/A |
-| Pi / PC (x86) | **myNode** | v0.3.x | ⚠️ Experimental | N/A |
-| Any Hardware | **StartOS (Start9)** | 0.3.5 & 0.4.0+ | ❌ Unsupported | ❌ Unsupported (LXC isolation prevents cross-package egress routing) |
+| Hardware/Platform | Node OS              | OS Version         | Host Script (`tunnelsats.sh`) |                       Native App / Package                       |
+| :---------------- | :------------------- | :----------------- | :---------------------------: | :--------------------------------------------------------------: |
+| Raspberry Pi / PC | **Umbrel**           | umbrelOS 1.0+      |     N/A (Use Native App)      | ✅ Native Umbrel App (Community Store / Official Review Pending) |
+| Any Hardware      | **StartOS (Start9)** | 0.4.0+             |   N/A (Use Native Package)    |  ✅ Native `.s9pk` Package (Sideload / Community Store Pending)  |
+| Raspberry Pi      | **RaspiBlitz**       | v1.11.x            |         ✅ Supported          |                               N/A                                |
+| PC / VPS          | **Bare Metal**       | Debian 12 / Ubuntu |         ✅ Supported          |                               N/A                                |
+| Pi / PC (x86)     | **myNode**           | v0.3.x             |        ⚠️ Experimental        |                               N/A                                |
 
 **Legend:**
+
 - ✅ **Verified / Supported**: Tested and working.
 - ⚠️ **Experimental**: Logic exists, but needs live community verification.
 - N/A: Platform uses sandboxed container architecture — script execution bypassed in favor of native App Store packages.
@@ -45,6 +46,7 @@ We are iteratively validating `tunnelsats.sh` across various Node OS platforms. 
 ## 🚀 Help Us Stabilize!
 
 We want `tunnelsats.sh` to be rock-solid. If you are running on a platform marked as ⚠️ or ❓, please help us by:
+
 1. Running `sudo bash tunnelsats.sh status` and checking the output.
 2. Reporting any "Stabilization Snags" in our **[Telegram Group](https://tunnelsats.com/join-telegram)**.
 3. Providing your Hardware, Node OS, and OS Version (`cat /etc/os-release`).
@@ -66,6 +68,7 @@ If you run into issues or have questions:
 If you encounter critical issues with `tunnelsats.sh` (v3.0), you can fall back to the proven v2 scripts located in the `archive/` folder.
 
 **To use the legacy version:**
+
 ```bash
 cd archive
 sudo bash setupv2.sh
