@@ -824,7 +824,16 @@ sanitize_wireguard_config() {
 
     # Backup existing destination if present
     if [[ -f "$output_file" ]]; then
-        cp "$output_file" "${output_file}.bak.$(date +%s)" 2>/dev/null || true
+        local backup_file
+        if ! backup_file=$(mktemp "${output_file}.bak.XXXXXX"); then
+            print_error "Failed to create backup file for: $output_file"
+            return 1
+        fi
+        if ! cp "$output_file" "$backup_file"; then
+            print_error "Failed to backup existing config to: $backup_file"
+            rm -f "$backup_file"
+            return 1
+        fi
     fi
 
     # Extract base config:
@@ -840,30 +849,30 @@ sanitize_wireguard_config() {
         in_peer && /^\[Interface\]/ { in_secondary=1; next }
         in_secondary && /^\[/ { in_secondary=0 }
         in_secondary { next }
-        /^PostUp\s*=/ { next }
-        /^PostDown\s*=/ { next }
-        /^FwMark\s*=/ { next }
-        /^Table\s*=\s*off/ { next }
+        /^PostUp[[:space:]]*=/ { next }
+        /^PostDown[[:space:]]*=/ { next }
+        /^FwMark[[:space:]]*=/ { next }
+        /^Table[[:space:]]*=[[:space:]]*off/ { next }
         { print }
     ' "$input_file")
 
     # Safety validation: PrivateKey and Endpoint must exist
-    if ! echo "$clean_content" | grep -qE "^\s*PrivateKey\s*="; then
+    if ! echo "$clean_content" | grep -qE "^[[:space:]]*PrivateKey[[:space:]]*="; then
         print_error "Config sanitization failed: PrivateKey missing from config"
         return 1
     fi
-    if ! echo "$clean_content" | grep -qE "^\s*Endpoint\s*="; then
+    if ! echo "$clean_content" | grep -qE "^[[:space:]]*Endpoint[[:space:]]*="; then
         print_error "Config sanitization failed: Endpoint missing from config"
         return 1
     fi
 
     # Ensure PersistentKeepalive is set to maintain NAT state across firewalls/routers
-    if ! echo "$clean_content" | grep -qE "^\s*PersistentKeepalive\s*="; then
+    if ! echo "$clean_content" | grep -qE "^[[:space:]]*PersistentKeepalive[[:space:]]*="; then
         print_info "PersistentKeepalive not found; ensuring PersistentKeepalive = 25 under [Peer]..."
         clean_content=$(printf '%s\nPersistentKeepalive = 25\n' "$clean_content")
-    elif echo "$clean_content" | grep -qE "^\s*PersistentKeepalive\s*=\s*0\b"; then
+    elif echo "$clean_content" | grep -qE "^[[:space:]]*PersistentKeepalive[[:space:]]*=[[:space:]]*0\b"; then
         print_warning "PersistentKeepalive is set to 0. Updating to 25 to prevent NAT state drops..."
-        clean_content=$(echo "$clean_content" | sed -E 's/^\s*PersistentKeepalive\s*=\s*0\b/PersistentKeepalive = 25/')
+        clean_content=$(echo "$clean_content" | sed -E 's/^[[:space:]]*PersistentKeepalive[[:space:]]*=[[:space:]]*0\b/PersistentKeepalive = 25/')
     fi
 
     # Trim trailing blank lines
@@ -871,9 +880,20 @@ sanitize_wireguard_config() {
 
     # Write sanitized content safely via temporary file
     local temp_out
-    temp_out=$(mktemp)
-    echo "$clean_content" > "$temp_out"
-    mv "$temp_out" "$output_file"
+    if ! temp_out=$(mktemp); then
+        print_error "Failed to create temporary file for sanitized config"
+        return 1
+    fi
+    if ! printf '%s\n' "$clean_content" > "$temp_out"; then
+        print_error "Failed to write sanitized config to temporary file"
+        rm -f "$temp_out"
+        return 1
+    fi
+    if ! mv "$temp_out" "$output_file"; then
+        print_error "Failed to move sanitized config to destination: $output_file"
+        rm -f "$temp_out"
+        return 1
+    fi
     return 0
 }
 
@@ -1451,6 +1471,12 @@ enable_services() {
         exit 1
     fi
     
+    # If service is already active, stop it cleanly before flushing routing rules
+    if systemctl is-active --quiet "wg-quick@${WG_INTERFACE}"; then
+        print_info "Stopping active WireGuard service (${WG_INTERFACE}) before updating configuration..."
+        systemctl stop "wg-quick@${WG_INTERFACE}" > /dev/null 2>&1 || true
+    fi
+
     # Ensure kernel routing table 51820 is clean before starting
     ip route flush table 51820 &>/dev/null || true
     ip rule del from all fwmark 0x1000000/0xff000000 table 51820 2>/dev/null || true

@@ -220,5 +220,59 @@ verify_custom_keepalive() {
 }
 run_test "Custom PersistentKeepalive (15) preserved" "$custom_keepalive" "true" verify_custom_keepalive
 
+# Test 10: Tabs and irregular whitespace before '=' in hooks stripped
+tab_polluted="[Interface]
+PrivateKey = aaaaaa=
+Address = 10.9.0.109/32
+PostUp	= echo tab_postup
+PostDown 	= echo space_tab_postdown
+FwMark	 = 0x123
+Table	=	off
+
+[Peer]
+PublicKey = bbbbbb=
+Endpoint = us3.tunnelsats.com:48049
+AllowedIPs = 0.0.0.0/0"
+
+verify_tab_polluted() {
+    local f="$1"
+    ! grep -q "echo tab_postup" "$f" && \
+    ! grep -q "echo space_tab_postdown" "$f" && \
+    ! grep -q "0x123" "$f" && \
+    ! grep -q "Table" "$f" && \
+    grep -q "PrivateKey = aaaaaa=" "$f"
+}
+run_test "Irregular tabs and whitespace in hooks stripped" "$tab_polluted" "true" verify_tab_polluted
+
+# Test 11: Backup file created with unique name when destination exists
+test_backup_created() {
+    test_num=$((test_num + 1))
+    local in_f=$(mktemp)
+    local out_f=$(mktemp)
+    echo -e "$raw_config" > "$in_f"
+    echo "ORIGINAL_DESTINATION_CONTENT" > "$out_f"
+
+    if sanitize_wireguard_config "$in_f" "$out_f"; then
+        # Check that a backup file exists containing the original content
+        local bak_files
+        bak_files=( "${out_f}".bak.* )
+        if [[ ${#bak_files[@]} -gt 0 && -f "${bak_files[0]}" ]]; then
+            if grep -q "ORIGINAL_DESTINATION_CONTENT" "${bak_files[0]}"; then
+                echo "PASS (Test $test_num): Unique backup file created and preserved original content"
+                rm -f "${bak_files[@]}" "$in_f" "$out_f"
+                return 0
+            fi
+        fi
+        echo "FAIL (Test $test_num): Backup file was not created or did not preserve content"
+        rm -f "${bak_files[@]}" "$in_f" "$out_f"
+        exit 1
+    else
+        echo "FAIL (Test $test_num): sanitize_wireguard_config failed unexpectedly"
+        rm -f "$in_f" "$out_f"
+        exit 1
+    fi
+}
+test_backup_created
+
 echo "All $test_num tests passed successfully!"
 

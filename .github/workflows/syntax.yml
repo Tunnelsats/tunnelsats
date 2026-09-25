@@ -14,3 +14,5 @@ jobs:
         run: |
           bash scripts/test_check_umbrel_version.sh
           bash scripts/test_ufw_check.sh
+          bash scripts/test_ipv6_patch.sh
+          bash scripts/test_sanitize_config.sh
