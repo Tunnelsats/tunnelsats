@@ -16,7 +16,7 @@ CONFIG_FILE=""
 PLATFORM=""
 LN_IMPL=""
 node_user=""
-node_stopped_systemd=0
+restarted_systemd_service=""
 stopped_docker_containers=""
 
 # ---------------------------------------------------------------------------
@@ -1487,9 +1487,9 @@ enable_services() {
             if command -v docker >/dev/null 2>&1; then
                 # Select only the specific Lightning daemon container, avoiding UI/web app containers
                 if [[ "$LN_IMPL" == "cln" ]]; then
-                    stopped_docker_containers=$(docker ps --format "{{.ID}} {{.Names}}" 2>/dev/null | grep -E "core-lightning.*lightningd|lightningd" | awk '{print $1}')
+                    stopped_docker_containers=$(docker ps --format "{{.ID}} {{.Names}}" 2>/dev/null | grep -Ei "(core-lightning.*lightningd|lightning.*cln|lightningd)" | grep -Eiv "[-_](app|web|ui)([-_]|$)" | awk '{print $1}')
                 else
-                    stopped_docker_containers=$(docker ps --format "{{.ID}} {{.Names}}" 2>/dev/null | grep -E "(lightning_lnd|lnd_lnd|_lnd_1|^lnd$)" | awk '{print $1}')
+                    stopped_docker_containers=$(docker ps --format "{{.ID}} {{.Names}}" 2>/dev/null | grep -Ei "(^|[[:space:]]|[-_])(lightning[-_])?lnd([-._]lnd)?([-._][0-9]+)?$" | grep -Eiv "[-_](app|web|ui)([-_]|$)" | awk '{print $1}')
                 fi
 
                 if [[ -n "$stopped_docker_containers" ]]; then
@@ -1507,16 +1507,14 @@ enable_services() {
                 target_service="${service_name}.service"
             elif systemctl is-active --quiet lnd.service 2>/dev/null; then
                 target_service="lnd.service"
-                service_name="lnd"
             elif systemctl is-active --quiet lightningd.service 2>/dev/null; then
                 target_service="lightningd.service"
-                service_name="lightningd"
             fi
 
             if [[ -n "$target_service" ]]; then
                 print_info "Stopping ${target_service} for leak-proof tunnel restart..."
                 if systemctl stop "${target_service}"; then
-                    node_stopped_systemd=1
+                    restarted_systemd_service="${target_service}"
                     print_success "${target_service} stopped (Leak-proof mode)"
                 else
                     print_error "Failed to stop ${target_service} safely. Aborting tunnel restart to prevent traffic leaks."
@@ -1556,7 +1554,7 @@ enable_services() {
         echo ""
         print_info "Checking status..."
         systemctl status wg-quick@${WG_INTERFACE} --no-pager -l || true
-        if [[ "$node_stopped_systemd" -eq 1 ]] || [[ -n "$stopped_docker_containers" ]]; then
+        if [[ -n "$restarted_systemd_service" ]] || [[ -n "$stopped_docker_containers" ]]; then
             echo ""
             print_warning "Lightning service was kept stopped to prevent clearnet IP leakage."
         fi
@@ -1572,12 +1570,12 @@ enable_services() {
             print_error "Failed to restart ${LN_IMPL} daemon container"
             exit 1
         fi
-    elif [[ "$node_stopped_systemd" -eq 1 ]]; then
-        print_info "Restarting ${service_name}.service under tunnel..."
-        if systemctl start "${service_name}.service"; then
-            print_success "${service_name}.service restarted"
+    elif [[ -n "$restarted_systemd_service" ]]; then
+        print_info "Restarting ${restarted_systemd_service} under tunnel..."
+        if systemctl start "${restarted_systemd_service}"; then
+            print_success "${restarted_systemd_service} restarted"
         else
-            print_error "Failed to restart ${service_name}.service"
+            print_error "Failed to restart ${restarted_systemd_service}"
             exit 1
         fi
     fi
@@ -1591,25 +1589,19 @@ verify_installation() {
         exit 1
     fi
 
-    # If Lightning node was restarted during tunnel update, verify it is running
+    # If Lightning daemon containers were restarted, verify that each one is running
     if [[ "$PLATFORM" == "umbrel" ]] && [[ -n "$stopped_docker_containers" ]]; then
         if command -v docker >/dev/null 2>&1; then
-            local running_containers
-            running_containers=$(docker ps -q --no-trunc | grep -F "$stopped_docker_containers" 2>/dev/null || true)
-            if [[ -z "$running_containers" ]]; then
-                print_error "Restarted ${LN_IMPL} container is not running"
-                exit 1
-            fi
+            for cid in $stopped_docker_containers; do
+                if ! docker ps -q --no-trunc | grep -q "^${cid}"; then
+                    print_error "Restarted container (${cid}) is not running"
+                    exit 1
+                fi
+            done
         fi
-    elif [[ "$node_stopped_systemd" -eq 1 ]]; then
-        local svc="${LN_IMPL}"
-        [[ "$LN_IMPL" == "cln" ]] && svc="lightningd"
-        if [[ "$LN_IMPL" == "lit" ]]; then
-            svc="litd"
-            systemctl list-units --type=service 2>/dev/null | grep -q "lit.service" && svc="lit"
-        fi
-        if ! systemctl is-active --quiet "${svc}.service"; then
-            print_error "${svc}.service is not running after restart"
+    elif [[ -n "$restarted_systemd_service" ]]; then
+        if ! systemctl is-active --quiet "${restarted_systemd_service}"; then
+            print_error "${restarted_systemd_service} is not running after restart"
             exit 1
         fi
     fi
