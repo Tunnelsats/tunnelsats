@@ -810,6 +810,73 @@ install_dependencies() {
     fi
 }
 
+# Sanitize WireGuard config by stripping any prior TunnelSats setup hooks,
+# duplicate [Interface] sections, or stale routing directives.
+# Preserves only the canonical base config (keys, endpoint, addresses, and comments).
+sanitize_wireguard_config() {
+    local input_file="$1"
+    local output_file="$2"
+    
+    if [[ ! -f "$input_file" ]]; then
+        print_error "Input config file does not exist: $input_file"
+        return 1
+    fi
+
+    # Backup existing destination if present
+    if [[ -f "$output_file" ]]; then
+        cp "$output_file" "${output_file}.bak.$(date +%s)" 2>/dev/null || true
+    fi
+
+    # Extract base config:
+    # 1. Stop processing at any TunnelSats marker (#Tunnelsats-Setup)
+    # 2. Drop any secondary [Interface] blocks that appear after [Peer]
+    # 3. Strip any stray PostUp, PostDown, FwMark, or Table directives
+    local clean_content
+    clean_content=$(awk '
+        BEGIN { in_peer=0; found_marker=0; in_secondary=0 }
+        /#Tunnelsats-Setup/ { found_marker=1 }
+        found_marker { next }
+        /^\[Peer\]/ { in_peer=1; in_secondary=0 }
+        in_peer && /^\[Interface\]/ { in_secondary=1; next }
+        in_secondary && /^\[/ { in_secondary=0 }
+        in_secondary { next }
+        /^PostUp\s*=/ { next }
+        /^PostDown\s*=/ { next }
+        /^FwMark\s*=/ { next }
+        /^Table\s*=\s*off/ { next }
+        { print }
+    ' "$input_file")
+
+    # Safety validation: PrivateKey and Endpoint must exist
+    if ! echo "$clean_content" | grep -qE "^\s*PrivateKey\s*="; then
+        print_error "Config sanitization failed: PrivateKey missing from config"
+        return 1
+    fi
+    if ! echo "$clean_content" | grep -qE "^\s*Endpoint\s*="; then
+        print_error "Config sanitization failed: Endpoint missing from config"
+        return 1
+    fi
+
+    # Ensure PersistentKeepalive is set to maintain NAT state across firewalls/routers
+    if ! echo "$clean_content" | grep -qE "^\s*PersistentKeepalive\s*="; then
+        print_info "PersistentKeepalive not found; ensuring PersistentKeepalive = 25 under [Peer]..."
+        clean_content=$(printf '%s\nPersistentKeepalive = 25\n' "$clean_content")
+    elif echo "$clean_content" | grep -qE "^\s*PersistentKeepalive\s*=\s*0\b"; then
+        print_warning "PersistentKeepalive is set to 0. Updating to 25 to prevent NAT state drops..."
+        clean_content=$(echo "$clean_content" | sed -E 's/^\s*PersistentKeepalive\s*=\s*0\b/PersistentKeepalive = 25/')
+    fi
+
+    # Trim trailing blank lines
+    clean_content=$(echo "$clean_content" | sed -e :a -e '/^\n*$/{$d;N;};/\n$/ba')
+
+    # Write sanitized content safely via temporary file
+    local temp_out
+    temp_out=$(mktemp)
+    echo "$clean_content" > "$temp_out"
+    mv "$temp_out" "$output_file"
+    return 0
+}
+
 configure_wireguard() {
     print_info "Copying config to /etc/wireguard/..."
     
@@ -827,11 +894,14 @@ configure_wireguard() {
     
     local target_path="/etc/wireguard/$target_filename"
     
-    # Copy config
-    cp "$CONFIG_FILE" "$target_path" || \
-        { print_error "Failed to copy config"; exit 1; }
+    # Sanitize and copy config, stripping any previous routing/hook residue
+    print_info "Sanitizing WireGuard configuration..."
+    if ! sanitize_wireguard_config "$CONFIG_FILE" "$target_path"; then
+        print_error "Failed to sanitize WireGuard configuration"
+        exit 1
+    fi
     
-    print_success "Config copied to $target_filename"
+    print_success "Config sanitized and copied to $target_filename"
     
     # Store target path for use in service setup
     WG_CONFIG_PATH="$target_path"
@@ -909,6 +979,7 @@ PostUp = if [ \$(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt 
 
 PostUp = ip rule add from $dockersubnet table 51820
 PostUp = ip rule add from all table main suppress_prefixlength 0
+PostUp = ip route flush table 51820
 PostUp = ip route add blackhole default metric 3 table 51820
 PostUp = ip route add default dev %i metric 2 table 51820
 PostUp = ip route add 10.9.0.0/24 dev %i proto kernel scope link; ping -c1 10.9.0.1
@@ -956,6 +1027,7 @@ PostUp = while [ \$(ip rule | grep -c suppress_prefixlength) -gt 0 ]; do ip rule
 PostUp = while [ \$(ip rule | grep -c 0x1000000) -gt 0 ]; do ip rule del from all fwmark 0x1000000/0xff000000 table  51820;done
 
 PostUp = ip rule add from all fwmark 0x1000000/0xff000000 table 51820;ip rule add from all table main suppress_prefixlength 0
+PostUp = ip route flush table 51820
 PostUp = ip route add default dev %i table 51820;
 PostUp = ip route add  10.9.0.0/24 dev %i  proto kernel scope link; ping -c1 10.9.0.1
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
@@ -1379,6 +1451,11 @@ enable_services() {
         exit 1
     fi
     
+    # Ensure kernel routing table 51820 is clean before starting
+    ip route flush table 51820 &>/dev/null || true
+    ip rule del from all fwmark 0x1000000/0xff000000 table 51820 2>/dev/null || true
+    ip rule del from all table main suppress_prefixlength 0 2>/dev/null || true
+
     print_info "Starting WireGuard..."
     if out=$(systemctl start wg-quick@${WG_INTERFACE} 2>&1); then
         print_success "WireGuard service started"
