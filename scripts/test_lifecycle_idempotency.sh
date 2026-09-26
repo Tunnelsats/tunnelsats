@@ -748,6 +748,74 @@ EOF
 }
 test_generated_monitor_attaches_single_target
 
+test_generated_monitor_keeps_owner_while_no_daemon_running() {
+    local tmp_wg tmp_sys tmp_bin log
+    tmp_wg=$(mktemp -d); tmp_sys=$(mktemp -d); tmp_bin=$(mktemp -d); log=$(mktemp)
+    WG_DIR_T="$tmp_wg" SYSTEMD_DIR_T="$tmp_sys" run_case /dev/null <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+PLATFORM="umbrel"; LN_IMPL="lnd"; WG_INTERFACE="tunnelsatsv2"
+WG_DIR="$WG_DIR_T"; SYSTEMD_DIR="$SYSTEMD_DIR_T"
+docker() {
+    case "$1" in
+        network) [[ "$2" == "ls" ]] && echo "docker-tunnelsats"; return 0 ;;
+        ps) echo "cid_live lightning_lnd_1"; return 0 ;;
+        inspect) echo "attached 10.9.9.9 10.9.9.9"; return 0 ;;
+    esac
+    return 0
+}
+ip() { return 0; }
+systemctl() { return 0; }
+bash() { return 0; }
+setup_docker_network
+EOF
+    # Installer window: daemon stopped (owns static 10.9.9.9), newer stale stopped container listed first
+    cat > "$tmp_bin/docker" <<EOF
+#!/bin/bash
+case "\$1" in
+  network)
+    if [ "\$2" = "ls" ]; then echo "docker-tunnelsats"; exit 0; fi
+    echo "DOCKER:\$*" >> "$log"; exit 0 ;;
+  ps)
+    if [ "\$2" = "-a" ]; then printf 'cid_stale_newer lnd\ncid_installer lightning_lnd_1\n'; fi
+    exit 0 ;;
+  inspect)
+    case "\$3" in *State.Running*) echo false; exit 0 ;; esac
+    [ "\$4" = "cid_installer" ] && echo "attached 10.9.9.9 "
+    exit 0 ;;
+esac
+exit 0
+EOF
+    chmod +x "$tmp_bin/docker"
+    local status
+    set +e
+    PATH="$tmp_bin:$PATH" sh "$tmp_wg/tunnelsats-docker-network.sh" &>/dev/null
+    status=$?
+    set -e
+    assert_status 0 "$status" "Monitor exits cleanly while no daemon is running"
+    assert_log_not_contains "$log" "DOCKER:network" "Monitor never reassigns 10.9.9.9 away from the stopped owner (no disconnect/connect)"
+    rm -rf "$tmp_wg" "$tmp_sys" "$tmp_bin" "$log"
+}
+test_generated_monitor_keeps_owner_while_no_daemon_running
+
+test_select_target_prefers_current_owner_over_newest_stopped() {
+    local output
+    output=$(run_case /dev/null <<'EOF' 2>/dev/null
+source "$SCRIPT_UNDER_TEST"
+LN_IMPL="lnd"; stopped_docker_containers=""
+docker() {
+    case "$1" in
+        ps) [[ "$2" == "-a" ]] && printf 'cid_stale_newer lnd\ncid_owner lightning_lnd_1\n'; return 0 ;;
+        inspect) [[ "$4" == "cid_owner" ]] && echo "attached 10.9.9.9 "; return 0 ;;
+    esac
+    return 0
+}
+select_tunnel_target_container
+EOF
+)
+    assert_equals "cid_owner" "$output" "select_tunnel_target_container prefers the stopped container already owning 10.9.9.9"
+}
+test_select_target_prefers_current_owner_over_newest_stopped
+
 # ---------------------------------------------------------------------------
 # TEST GROUP 8: Selector-scoped policy rule cleanup
 # ---------------------------------------------------------------------------

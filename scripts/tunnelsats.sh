@@ -719,8 +719,16 @@ select_tunnel_target_container() {
         candidates=$(get_lightning_docker_containers)
     fi
     if [[ -z "$candidates" ]]; then
-        # docker ps -a lists newest first; stale leftovers from earlier deployments are ignored
-        candidates=$(get_lightning_docker_containers "-a" | head -n 1)
+        # No daemon running: keep the stopped container that already owns the tunnel IP (sticky owner),
+        # otherwise fall back to the newest one (docker ps -a lists newest first).
+        local c
+        for c in $(get_lightning_docker_containers "-a"); do
+            if [[ " $(docker inspect -f "$TUNNEL_NET_INSPECT_FMT" "$c" 2>/dev/null || true) " == *" ${TUNNEL_CONTAINER_IP} "* ]]; then
+                candidates="$c"
+                break
+            fi
+        done
+        [[ -z "$candidates" ]] && candidates=$(get_lightning_docker_containers "-a" | head -n 1)
     fi
     local count
     count=$(printf '%s\n' $candidates | grep -c . || true)
@@ -1450,7 +1458,13 @@ if [ "$(printf '%s\n' $running | grep -c .)" -gt 1 ]; then
   exit 1
 fi
 target="$running"
-[ -z "$target" ] && target=$(list_ln "-a" | head -n 1)
+if [ -z "$target" ]; then
+  # No daemon running (e.g. installer restart window): never move the tunnel IP away from its current owner
+  for c in $(list_ln "-a"); do
+    case " $(tunnel_state "$c") " in *" $TUNNEL_IP "*) exit 0 ;; esac
+  done
+  target=$(list_ln "-a" | head -n 1)
+fi
 [ -z "$target" ] && exit 0
 
 state=$(tunnel_state "$target")
