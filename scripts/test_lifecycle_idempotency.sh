@@ -501,6 +501,380 @@ test_failclosed_covers_forward_and_output() {
 }
 test_failclosed_covers_forward_and_output
 
+# Helper: run a snippet (from stdin) in an isolated bash with the production script sourced.
+# LOG is exported so mocks can record calls.
+run_case() {
+    local log="$1"
+    SCRIPT_UNDER_TEST="$SCRIPT_UNDER_TEST" LOG="$log" bash -s
+}
+
+assert_log_contains() {
+    local log="$1" needle="$2" desc="$3"
+    if grep -qF -- "$needle" "$log"; then
+        echo "PASS: $desc"
+        pass_count=$((pass_count + 1))
+    else
+        echo "FAIL: $desc (missing '$needle')"
+        fail_count=$((fail_count + 1))
+    fi
+}
+
+assert_log_not_contains() {
+    local log="$1" needle="$2" desc="$3"
+    if grep -qF -- "$needle" "$log"; then
+        echo "FAIL: $desc (unexpected '$needle')"
+        fail_count=$((fail_count + 1))
+    else
+        echo "PASS: $desc"
+        pass_count=$((pass_count + 1))
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# TEST GROUP 6: CLN daemon naming coverage
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- Group 6: CLN Daemon Naming ---"
+
+test_cln_resolver_matches_bare_core_lightning() {
+    local output
+    output=$(run_case /dev/null <<'EOF'
+source "$SCRIPT_UNDER_TEST"
+LN_IMPL="cln"
+docker() {
+    cat << 'LIST'
+c1 core-lightning
+c2 core-lightning-1
+c3 core-lightning_1
+c4 core-lightning_tor_1
+c5 core-lightning_app_proxy_1
+c6 core-lightning-rtl_web_1
+c7 clightning
+LIST
+}
+get_lightning_docker_containers
+EOF
+)
+    assert_equals $'c1\nc2\nc3\nc7' "$output" "CLN resolver matches bare core-lightning/clightning daemons and excludes tor/app_proxy/web sidecars"
+}
+test_cln_resolver_matches_bare_core_lightning
+
+# ---------------------------------------------------------------------------
+# TEST GROUP 7: Single-owner static tunnel IP
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- Group 7: Single-Owner Static Tunnel IP ---"
+
+test_setup_attaches_only_stopped_daemon_and_releases_stale_holder() {
+    local tmp_wg tmp_sys log
+    tmp_wg=$(mktemp -d); tmp_sys=$(mktemp -d); log=$(mktemp)
+    WG_DIR_T="$tmp_wg" SYSTEMD_DIR_T="$tmp_sys" run_case "$log" <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+PLATFORM="umbrel"; LN_IMPL="lnd"; WG_INTERFACE="tunnelsatsv2"
+WG_DIR="$WG_DIR_T"; SYSTEMD_DIR="$SYSTEMD_DIR_T"
+stopped_docker_containers="cid_live"
+docker() {
+    case "$1" in
+        network)
+            [[ "$2" == "ls" ]] && { echo "docker-tunnelsats"; return 0; }
+            echo "DOCKER:$*" >> "$LOG"; return 0 ;;
+        ps) printf 'cid_live lightning_lnd_1\ncid_old lnd\n'; return 0 ;;
+        inspect)
+            if [[ "$3" == *State.Running* ]]; then echo "false"; return 0; fi
+            [[ "$4" == "cid_old" ]] && echo "attached 10.9.9.9 "
+            return 0 ;;
+    esac
+    return 0
+}
+ip() { return 0; }
+systemctl() { return 0; }
+bash() { return 0; }
+setup_docker_network
+EOF
+    assert_log_contains "$log" "DOCKER:network disconnect -f docker-tunnelsats cid_old" "Stale stopped container holding 10.9.9.9 is released"
+    assert_log_contains "$log" "DOCKER:network connect --ip 10.9.9.9 docker-tunnelsats cid_live" "Only the stopped-for-restart daemon is attached with 10.9.9.9"
+    assert_log_not_contains "$log" "DOCKER:network connect --ip 10.9.9.9 docker-tunnelsats cid_old" "Stale container is never attached to 10.9.9.9"
+    rm -rf "$tmp_wg" "$tmp_sys" "$log"
+}
+test_setup_attaches_only_stopped_daemon_and_releases_stale_holder
+
+test_attach_reattaches_container_with_wrong_address() {
+    local log status
+    log=$(mktemp)
+    set +e
+    run_case "$log" <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+LN_IMPL="lnd"
+docker() {
+    case "$1" in
+        network) echo "DOCKER:$*" >> "$LOG"; return 0 ;;
+        ps) echo "cid_a lightning_lnd_1"; return 0 ;;
+        inspect) echo "attached  10.9.9.3"; return 0 ;;
+    esac
+    return 0
+}
+attach_container_to_tunnel_network cid_a
+EOF
+    status=$?
+    set -e
+    assert_status 0 "$status" "attach_container_to_tunnel_network succeeds for container attached with another address"
+    assert_log_contains "$log" "DOCKER:network disconnect -f docker-tunnelsats cid_a" "Container with non-10.9.9.9 address is detached first"
+    assert_log_contains "$log" "DOCKER:network connect --ip 10.9.9.9 docker-tunnelsats cid_a" "Container is reattached with 10.9.9.9 (verification can pass)"
+    rm -f "$log"
+}
+test_attach_reattaches_container_with_wrong_address
+
+test_attach_noop_when_static_ip_already_configured_on_stopped_container() {
+    local log
+    log=$(mktemp)
+    run_case "$log" <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+LN_IMPL="lnd"
+docker() {
+    case "$1" in
+        network) echo "DOCKER:$*" >> "$LOG"; return 0 ;;
+        ps) echo "cid_a lightning_lnd_1"; return 0 ;;
+        inspect) echo "attached 10.9.9.9 "; return 0 ;;  # stopped: static IPAM set, live IP empty
+    esac
+    return 0
+}
+attach_container_to_tunnel_network cid_a
+EOF
+    assert_log_not_contains "$log" "DOCKER:network" "Stopped container with static 10.9.9.9 is left untouched (no duplicate connect)"
+    rm -f "$log"
+}
+test_attach_noop_when_static_ip_already_configured_on_stopped_container
+
+test_attach_refuses_to_evict_running_holder() {
+    local log status
+    log=$(mktemp)
+    set +e
+    run_case "$log" <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+LN_IMPL="lnd"
+docker() {
+    case "$1" in
+        network) echo "DOCKER:$*" >> "$LOG"; return 0 ;;
+        ps) printf 'cid_a lightning_lnd_1\ncid_b lnd\n'; return 0 ;;
+        inspect)
+            if [[ "$3" == *State.Running* ]]; then echo "true"; return 0; fi
+            [[ "$4" == "cid_b" ]] && echo "attached 10.9.9.9 10.9.9.9"
+            return 0 ;;
+    esac
+    return 0
+}
+attach_container_to_tunnel_network cid_a
+EOF
+    status=$?
+    set -e
+    assert_status 1 "$status" "attach_container_to_tunnel_network refuses when a running container holds 10.9.9.9"
+    assert_log_not_contains "$log" "DOCKER:network disconnect -f docker-tunnelsats cid_b" "Running holder is never evicted"
+    rm -f "$log"
+}
+test_attach_refuses_to_evict_running_holder
+
+test_stop_aborts_on_multiple_running_daemons_before_stopping() {
+    local log status
+    log=$(mktemp)
+    set +e
+    run_case "$log" <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+PLATFORM="umbrel"; LN_IMPL="lnd"; WG_INTERFACE=""
+docker() {
+    case "$1" in
+        ps) printf 'cid_a lightning_lnd_1\ncid_b lnd\n'; return 0 ;;
+        stop) echo "DOCKER:$*" >> "$LOG"; return 0 ;;
+    esac
+    return 0
+}
+stop_lightning_daemon_for_safe_restart
+EOF
+    status=$?
+    set -e
+    assert_status 1 "$status" "stop_lightning_daemon_for_safe_restart aborts when multiple daemons would compete for 10.9.9.9"
+    assert_log_not_contains "$log" "DOCKER:stop" "No daemon is stopped when aborting on ambiguity"
+    rm -f "$log"
+}
+test_stop_aborts_on_multiple_running_daemons_before_stopping
+
+test_generated_monitor_attaches_single_target() {
+    local tmp_wg tmp_sys tmp_bin log
+    tmp_wg=$(mktemp -d); tmp_sys=$(mktemp -d); tmp_bin=$(mktemp -d); log=$(mktemp)
+    WG_DIR_T="$tmp_wg" SYSTEMD_DIR_T="$tmp_sys" run_case /dev/null <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+PLATFORM="umbrel"; LN_IMPL="lnd"; WG_INTERFACE="tunnelsatsv2"
+WG_DIR="$WG_DIR_T"; SYSTEMD_DIR="$SYSTEMD_DIR_T"
+docker() {
+    case "$1" in
+        network) [[ "$2" == "ls" ]] && echo "docker-tunnelsats"; return 0 ;;
+        ps) echo "cid_live lightning_lnd_1"; return 0 ;;
+        inspect) echo "attached 10.9.9.9 10.9.9.9"; return 0 ;;
+    esac
+    return 0
+}
+ip() { return 0; }
+systemctl() { return 0; }
+bash() { return 0; }
+setup_docker_network
+EOF
+    # Fake docker binary: one running daemon (not attached) and one stale stopped container holding 10.9.9.9
+    cat > "$tmp_bin/docker" <<EOF
+#!/bin/bash
+case "\$1" in
+  network)
+    if [ "\$2" = "ls" ]; then echo "docker-tunnelsats"; exit 0; fi
+    echo "DOCKER:\$*" >> "$log"; exit 0 ;;
+  ps)
+    if [ "\$2" = "-a" ]; then printf 'cid_live lightning_lnd_1\ncid_old lnd\n'; else echo "cid_live lightning_lnd_1"; fi
+    exit 0 ;;
+  inspect)
+    case "\$3" in *State.Running*) echo false; exit 0 ;; esac
+    [ "\$4" = "cid_old" ] && echo "attached 10.9.9.9 "
+    exit 0 ;;
+esac
+exit 0
+EOF
+    chmod +x "$tmp_bin/docker"
+    local status
+    set +e
+    PATH="$tmp_bin:$PATH" sh "$tmp_wg/tunnelsats-docker-network.sh" &>/dev/null
+    status=$?
+    set -e
+    assert_status 0 "$status" "Generated monitor script runs successfully"
+    assert_log_contains "$log" "DOCKER:network disconnect -f docker-tunnelsats cid_old" "Monitor releases 10.9.9.9 from stale stopped container"
+    assert_log_contains "$log" "DOCKER:network connect --ip 10.9.9.9 docker-tunnelsats cid_live" "Monitor attaches only the running daemon"
+    assert_log_not_contains "$log" "connect --ip 10.9.9.9 docker-tunnelsats cid_old" "Monitor never attaches stale container"
+    rm -rf "$tmp_wg" "$tmp_sys" "$tmp_bin" "$log"
+}
+test_generated_monitor_attaches_single_target
+
+# ---------------------------------------------------------------------------
+# TEST GROUP 8: Selector-scoped policy rule cleanup
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- Group 8: Selector-Scoped Rule Cleanup ---"
+
+test_cleanup_preserves_foreign_rules_on_shared_priorities() {
+    local rules_file log
+    rules_file=$(mktemp); log=$(mktemp)
+    printf '21820:\tfrom all lookup 100\n21821:\tfrom 192.168.1.0/24 lookup 200\n21821:\tfrom 10.9.9.0/25 lookup 51820\n' > "$rules_file"
+    RULES="$rules_file" run_case "$log" <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+WG_INTERFACE="tunnelsatsv2"
+wg() { return 0; }
+ip() {
+    if [[ "$*" == *"route show table 51820"* ]]; then return 0; fi
+    if [[ "$1" == "rule" && "$2" == "show" ]]; then cat "$RULES"; return 0; fi
+    if [[ "$1" == "rule" && "$2" == "del" ]]; then
+        echo "RULE_DEL:$*" >> "$LOG"
+        [[ "$*" == *"from 10.9.9.0/25 table 51820"* ]] && sed -i '/10.9.9.0\/25 lookup 51820/d' "$RULES"
+        return 0
+    fi
+    return 0
+}
+check_and_cleanup_routing_table "tunnelsatsv2"
+EOF
+    assert_log_contains "$log" "RULE_DEL:rule del priority 21821 from 10.9.9.0/25 table 51820" "Owned Docker rule is deleted by full selector"
+    assert_log_not_contains "$log" "RULE_DEL:rule del priority 21820" "Foreign rule at priority 21820 (table 100) is preserved"
+    if grep -q "lookup 100" "$rules_file" && grep -q "lookup 200" "$rules_file"; then
+        echo "PASS: Foreign rules sharing TunnelSats priorities remain installed"
+        pass_count=$((pass_count + 1))
+    else
+        echo "FAIL: Foreign rules sharing TunnelSats priorities were removed"
+        fail_count=$((fail_count + 1))
+    fi
+    rm -f "$rules_file" "$log"
+}
+test_cleanup_preserves_foreign_rules_on_shared_priorities
+
+# ---------------------------------------------------------------------------
+# TEST GROUP 9: Install failure rollback
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- Group 9: Install Failure Rollback ---"
+
+test_rollback_restores_previous_tunnel_then_restarts_daemon() {
+    local log tmp status
+    log=$(mktemp); tmp=$(mktemp -d)
+    echo "old" > "$tmp/backup"; echo "new" > "$tmp/tunnelsatsv2.conf"
+    set +e
+    TMPD="$tmp" run_case "$log" <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+PLATFORM="umbrel"; LN_IMPL="lnd"; WG_INTERFACE="tunnelsatsv2"
+stopped_docker_containers="cid_live"; stopped_wireguard_interface="tunnelsatsv2"
+WG_CONFIG_PATH="$TMPD/tunnelsatsv2.conf"; WG_CONFIG_BACKUP="$TMPD/backup"
+systemctl() { echo "SYSTEMCTL:$*" >> "$LOG"; [[ "$1" == "is-active" ]] && return 1; return 0; }
+wg() { return 0; }
+ip() { [[ "$1 $2" == "rule show" ]] && echo "21821:	from 10.9.9.0/25 lookup 51820"; return 0; }
+docker() {
+    case "$1" in
+        start) echo "DOCKER:$*" >> "$LOG"; return 0 ;;
+        ps) echo "cid_live lightning_lnd_1"; return 0 ;;
+        inspect) echo "attached 10.9.9.9 "; return 0 ;;
+    esac
+    return 0
+}
+trap rollback_failed_install EXIT
+exit 1
+EOF
+    status=$?
+    set -e
+    assert_status 1 "$status" "Rollback preserves the original failure exit code"
+    assert_equals "old" "$(cat "$tmp/tunnelsatsv2.conf")" "Rollback restores the previous WireGuard config from backup"
+    assert_log_contains "$log" "SYSTEMCTL:start wg-quick@tunnelsatsv2" "Rollback restarts the previous tunnel"
+    assert_log_contains "$log" "DOCKER:start cid_live" "Daemon is restarted once the previous tunnel is verified"
+    rm -rf "$log" "$tmp"
+}
+test_rollback_restores_previous_tunnel_then_restarts_daemon
+
+test_rollback_keeps_daemon_stopped_without_previous_tunnel() {
+    local log status
+    log=$(mktemp)
+    set +e
+    run_case "$log" <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+PLATFORM="umbrel"; LN_IMPL="lnd"; WG_INTERFACE="tunnelsatsv2"
+stopped_docker_containers="cid_live"; stopped_wireguard_interface=""
+systemctl() { [[ "$1" == "is-active" ]] && return 1; echo "SYSTEMCTL:$*" >> "$LOG"; return 0; }
+wg() { return 0; }
+docker() { echo "DOCKER:$*" >> "$LOG"; return 0; }
+trap rollback_failed_install EXIT
+exit 1
+EOF
+    status=$?
+    set -e
+    assert_status 1 "$status" "Rollback without previous tunnel exits with failure"
+    assert_log_not_contains "$log" "DOCKER:start" "Daemon stays stopped when no previous tunnel exists (fail-closed)"
+    rm -f "$log"
+}
+test_rollback_keeps_daemon_stopped_without_previous_tunnel
+
+test_rollback_keeps_daemon_stopped_if_tunnel_restore_fails() {
+    local log status
+    log=$(mktemp)
+    set +e
+    run_case "$log" <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+PLATFORM="baremetal"; LN_IMPL="lnd"; WG_INTERFACE="tunnelsatsv2"
+restarted_systemd_service="lnd.service"; stopped_wireguard_interface="tunnelsatsv2"
+systemctl() {
+    echo "SYSTEMCTL:$*" >> "$LOG"
+    [[ "$1" == "is-active" ]] && return 1
+    [[ "$1" == "start" && "$2" == wg-quick@* ]] && return 1
+    return 0
+}
+wg() { return 1; }
+trap rollback_failed_install EXIT
+exit 1
+EOF
+    status=$?
+    set -e
+    assert_status 1 "$status" "Rollback with failed tunnel restore exits with failure"
+    assert_log_not_contains "$log" "SYSTEMCTL:start lnd.service" "Daemon stays stopped when previous tunnel cannot be restored (fail-closed)"
+    rm -f "$log"
+}
+test_rollback_keeps_daemon_stopped_if_tunnel_restore_fails
+
 echo ""
 echo "--------------------------------"
 echo "Passed: $pass_count"
