@@ -10,10 +10,13 @@ jobs:
       - name: Check Syntax of Shell Scripts
         run: |
           find . -name "*.sh" -print0 | xargs -0 -I {} bash -n "{}"
-      - name: Run Shell Script Tests
-        run: |
-          bash scripts/test_check_umbrel_version.sh
-          bash scripts/test_ufw_check.sh
-          bash scripts/test_ipv6_patch.sh
-          bash scripts/test_sanitize_config.sh
-          bash scripts/test_lifecycle_idempotency.sh
+      - name: Test Umbrel Version Guardrail
+        run: bash scripts/test_check_umbrel_version.sh
+      - name: Test UFW Firewall Checks
+        run: bash scripts/test_ufw_check.sh
+      - name: Test IPv6 Patch Logic
+        run: bash scripts/test_ipv6_patch.sh
+      - name: Test WireGuard Config Sanitization
+        run: bash scripts/test_sanitize_config.sh
+      - name: Test Lifecycle & Routing Idempotency
+        run: bash scripts/test_lifecycle_idempotency.sh
