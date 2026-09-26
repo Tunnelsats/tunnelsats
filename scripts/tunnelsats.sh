@@ -675,11 +675,44 @@ detect_platform() {
     return 0
 }
 
+get_lightning_docker_containers() {
+    # Returns container IDs matching the lightning daemon for $LN_IMPL
+    # $1 (optional): extra flags for docker ps (e.g. "-a" to list stopped containers as well)
+    local extra_flags="${1:-}"
+    if ! command -v docker >/dev/null 2>&1; then
+        return 0
+    fi
+    if [[ "$LN_IMPL" == "cln" ]]; then
+        docker ps $extra_flags --format "{{.ID}} {{.Names}}" 2>/dev/null | \
+            grep -Ei "(core-lightning.*lightningd|lightning.*cln|lightningd)" | \
+            grep -Eiv "[-_](app|web|ui)([-_]|$)" | \
+            awk '{print $1}'
+    elif [[ "$LN_IMPL" == "lnd" ]]; then
+        docker ps $extra_flags --format "{{.ID}} {{.Names}}" 2>/dev/null | \
+            grep -Ei "(^|[[:space:]]|[-_])(lightning[-_])?lnd([-._]lnd)?([-._][0-9]+)?$" | \
+            grep -Eiv "[-_](app|web|ui)([-_]|$)" | \
+            awk '{print $1}'
+    else
+        # If LN_IMPL is not set, match either implementation
+        docker ps $extra_flags --format "{{.ID}} {{.Names}}" 2>/dev/null | \
+            grep -Ei "(^|[[:space:]]|[-_])(lightning[-_])?lnd([-._]lnd)?([-._][0-9]+)?$|(core-lightning.*lightningd|lightning.*cln|lightningd)" | \
+            grep -Eiv "[-_](app|web|ui)([-_]|$)" | \
+            awk '{print $1}'
+    fi
+}
+
 detect_ln_implementation() {
     local guess=""
     if [[ "$PLATFORM" == "umbrel" ]]; then
-        if docker ps -q --filter name=lnd | grep -q .; then guess="lnd";
-        elif docker ps -q --filter name=core-lightning | grep -q .; then guess="cln"; fi
+        local lnd_containers
+        lnd_containers=$(LN_IMPL=lnd get_lightning_docker_containers)
+        local cln_containers
+        cln_containers=$(LN_IMPL=cln get_lightning_docker_containers)
+        if [[ -n "$lnd_containers" ]]; then
+            guess="lnd"
+        elif [[ -n "$cln_containers" ]]; then
+            guess="cln"
+        fi
     else
         if [[ -f /etc/systemd/system/lnd.service ]] || systemctl is-active --quiet lnd; then guess="lnd";
         elif [[ -f /etc/systemd/system/lightningd.service ]] || systemctl is-active --quiet lightningd; then guess="cln";
@@ -841,40 +874,43 @@ sanitize_wireguard_config() {
     # Extract base config:
     # 1. Stop processing at any TunnelSats marker (#Tunnelsats-Setup)
     # 2. Drop any secondary [Interface] blocks that appear after [Peer]
-    # 3. Strip any stray PostUp, PostDown, FwMark, or Table directives
+    # 3. Strip any PreUp, PostUp, PreDown, PostDown, FwMark, or Table directives (tolerant of indentation and casing)
     local clean_content
     clean_content=$(awk '
         BEGIN { in_peer=0; found_marker=0; in_secondary=0 }
-        /#Tunnelsats-Setup/ { found_marker=1 }
+        {
+            raw = $0
+            lower = tolower(raw)
+            trimmed = lower
+            sub(/^[[:space:]]+/, "", trimmed)
+        }
+        trimmed ~ /^#tunnelsats-setup/ { found_marker=1 }
         found_marker { next }
-        /^\[Peer\]/ { in_peer=1; in_secondary=0 }
-        in_peer && /^\[Interface\]/ { in_secondary=1; next }
-        in_secondary && /^\[/ { in_secondary=0 }
+        trimmed ~ /^\[peer\]/ { in_peer=1; in_secondary=0 }
+        in_peer && (trimmed ~ /^\[interface\]/) { in_secondary=1; next }
+        in_secondary && (trimmed ~ /^\[/) { in_secondary=0 }
         in_secondary { next }
-        /^PostUp[[:space:]]*=/ { next }
-        /^PostDown[[:space:]]*=/ { next }
-        /^FwMark[[:space:]]*=/ { next }
-        /^Table[[:space:]]*=[[:space:]]*off/ { next }
-        { print }
+        trimmed ~ /^(preup|postup|predown|postdown|fwmark|table)[[:space:]]*=/ { next }
+        { print raw }
     ' "$input_file")
 
     # Safety validation: PrivateKey and Endpoint must exist
-    if ! echo "$clean_content" | grep -qE "^[[:space:]]*PrivateKey[[:space:]]*="; then
+    if ! echo "$clean_content" | grep -qiE "^[[:space:]]*PrivateKey[[:space:]]*="; then
         print_error "Config sanitization failed: PrivateKey missing from config"
         return 1
     fi
-    if ! echo "$clean_content" | grep -qE "^[[:space:]]*Endpoint[[:space:]]*="; then
+    if ! echo "$clean_content" | grep -qiE "^[[:space:]]*Endpoint[[:space:]]*="; then
         print_error "Config sanitization failed: Endpoint missing from config"
         return 1
     fi
 
     # Ensure PersistentKeepalive is set to maintain NAT state across firewalls/routers
-    if ! echo "$clean_content" | grep -qE "^[[:space:]]*PersistentKeepalive[[:space:]]*="; then
+    if ! echo "$clean_content" | grep -qiE "^[[:space:]]*PersistentKeepalive[[:space:]]*="; then
         print_info "PersistentKeepalive not found; ensuring PersistentKeepalive = 25 under [Peer]..."
         clean_content=$(printf '%s\nPersistentKeepalive = 25\n' "$clean_content")
-    elif echo "$clean_content" | grep -qE "^[[:space:]]*PersistentKeepalive[[:space:]]*=[[:space:]]*0\b"; then
+    elif echo "$clean_content" | grep -qiE "^[[:space:]]*PersistentKeepalive[[:space:]]*=[[:space:]]*0\b"; then
         print_warning "PersistentKeepalive is set to 0. Updating to 25 to prevent NAT state drops..."
-        clean_content=$(echo "$clean_content" | sed -E 's/^[[:space:]]*PersistentKeepalive[[:space:]]*=[[:space:]]*0\b/PersistentKeepalive = 25/')
+        clean_content=$(echo "$clean_content" | sed -E 's/^[[:space:]]*[Pp][Ee][Rr][Ss][Ii][Ss][Tt][Ee][Nn][Tt][Kk][Ee][Ee][Pp][Aa][Ll][Ii][Vv][Ee][[:space:]]*=[[:space:]]*0\b/PersistentKeepalive = 25/')
     fi
 
     # Trim trailing blank lines
@@ -995,12 +1031,12 @@ configure_wireguard() {
 DNS = 8.8.8.8
 Table = off
 
-PostUp = while [ \$(ip rule | grep -c suppress_prefixlength) -gt 0 ]; do ip rule del from all table  main suppress_prefixlength 0;done
-PostUp = while [ \$(ip rule | grep -c 0x1000000) -gt 0 ]; do ip rule del from all fwmark 0x1000000/0xff000000 table  51820;done
-PostUp = if [ \$(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt  0 ]; then echo \$?; ip route del blackhole default metric 3 table 51820; ip rule flush table 51820 ;fi
+PostUp = while [ \$(ip rule show 2>/dev/null | grep -c -E \"^21820:\") -gt 0 ]; do ip rule del priority 21820 2>/dev/null || break; done
+PostUp = while [ \$(ip rule show 2>/dev/null | grep -c -E \"^21821:\") -gt 0 ]; do ip rule del priority 21821 2>/dev/null || break; done
+PostUp = if [ \$(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt 0 ]; then ip route del blackhole default metric 3 table 51820 2>/dev/null; fi
 
-PostUp = ip rule add from $dockersubnet table 51820
-PostUp = ip rule add from all table main suppress_prefixlength 0
+PostUp = ip rule add from all table main suppress_prefixlength 0 priority 21820
+PostUp = ip rule add from $dockersubnet table 51820 priority 21821
 PostUp = ip route flush table 51820
 PostUp = ip route add blackhole default metric 3 table 51820
 PostUp = ip route add default dev %i metric 2 table 51820
@@ -1018,9 +1054,9 @@ PostDown = iptables -t nat -D PREROUTING -i %i -p tcp --dport $vpn_port -j DNAT 
 PostDown = iptables -D FORWARD -i %i -o $bridge_name -j ACCEPT
 PostDown = iptables -D FORWARD -i $bridge_name -o %i -j ACCEPT
 
-PostDown = ip rule del from $dockersubnet table 51820
-PostDown = ip rule del from all table main suppress_prefixlength 0
-PostDown = ip route flush table 51820
+PostDown = ip rule del priority 21820 2>/dev/null || true
+PostDown = ip rule del priority 21821 2>/dev/null || true
+PostDown = ip route flush table 51820 2>/dev/null || true
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 "
         echo -e "$inputDocker" >> "$target_path"
@@ -1045,10 +1081,11 @@ FwMark = 0x2000000
 Table = off
 
 
-PostUp = while [ \$(ip rule | grep -c suppress_prefixlength) -gt 0 ]; do ip rule del from all table  main suppress_prefixlength 0;done
-PostUp = while [ \$(ip rule | grep -c 0x1000000) -gt 0 ]; do ip rule del from all fwmark 0x1000000/0xff000000 table  51820;done
+PostUp = while [ \$(ip rule show 2>/dev/null | grep -c -E \"^21820:\") -gt 0 ]; do ip rule del priority 21820 2>/dev/null || break; done
+PostUp = while [ \$(ip rule show 2>/dev/null | grep -c -E \"^21821:\") -gt 0 ]; do ip rule del priority 21821 2>/dev/null || break; done
 
-PostUp = ip rule add from all fwmark 0x1000000/0xff000000 table 51820;ip rule add from all table main suppress_prefixlength 0
+PostUp = ip rule add from all table main suppress_prefixlength 0 priority 21820
+PostUp = ip rule add from all fwmark 0x1000000/0xff000000 table 51820 priority 21821
 PostUp = ip route flush table 51820
 PostUp = ip route add default dev %i table 51820;
 PostUp = ip route add  10.9.0.0/24 dev %i  proto kernel scope link; ping -c1 10.9.0.1
@@ -1065,8 +1102,9 @@ PostUp = nft \"add chain ip %i input { type filter hook input priority filter -1
 
 
 PostDown = nft delete table ip %i
-PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del from all fwmark 0x1000000/0xff000000 table 51820
-PostDown = ip route flush table 51820
+PostDown = ip rule del priority 21820 2>/dev/null || true
+PostDown = ip rule del priority 21821 2>/dev/null || true
+PostDown = ip route flush table 51820 2>/dev/null || true
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 "
         echo -e "$inputNonDocker" >> "$target_path"
@@ -1132,6 +1170,115 @@ EOF
     print_success "Cgroups configured"
 }
 
+check_and_cleanup_routing_table() {
+    local iface="${1:-$WG_INTERFACE}"
+
+    # 1. Detect conflicting WireGuard interfaces owning table 51820
+    if command -v wg >/dev/null 2>&1; then
+        local other_wg
+        for other_wg in $(wg show interfaces 2>/dev/null); do
+            if [[ -n "$iface" ]] && [[ "$other_wg" != "$iface" ]]; then
+                if ip route show table 51820 2>/dev/null | grep -q "dev ${other_wg}\b"; then
+                    print_error "Routing table 51820 contains routes owned by another active WireGuard interface (${other_wg}). Conflicting ownership detected. Aborting."
+                    exit 1
+                fi
+            fi
+        done
+    fi
+
+    # 2. Check for foreign routes in table 51820 not owned by TunnelSats or blackhole
+    local foreign_routes=""
+    if [[ -n "$iface" ]]; then
+        foreign_routes=$(ip route show table 51820 2>/dev/null | grep -v "dev ${iface}\b" | grep -v "^blackhole" || true)
+    else
+        foreign_routes=$(ip route show table 51820 2>/dev/null | grep -v "^blackhole" || true)
+    fi
+    if [[ -n "$foreign_routes" ]]; then
+        print_error "Routing table 51820 contains routes owned by another interface/service:"
+        echo "$foreign_routes"
+        print_error "Conflicting routing ownership detected. Aborting cleanup to protect other networking services."
+        exit 1
+    fi
+
+    # 3. Clean up TunnelSats-owned policy rules by priority (21820, 21821)
+    while [ $(ip rule show 2>/dev/null | grep -c -E "^21820:") -gt 0 ]; do
+        ip rule del priority 21820 2>/dev/null || break
+    done
+    while [ $(ip rule show 2>/dev/null | grep -c -E "^21821:") -gt 0 ]; do
+        ip rule del priority 21821 2>/dev/null || break
+    done
+
+    # Also clean up legacy TunnelSats-specific selectors without touching generic rules
+    local dsubnet="${dockersubnet:-10.9.9.0/25}"
+    while [ $(ip rule show 2>/dev/null | grep -c "from ${dsubnet} lookup 51820") -gt 0 ]; do
+        ip rule del from "$dsubnet" table 51820 2>/dev/null || break
+    done
+    while [ $(ip rule show 2>/dev/null | grep -c "from all fwmark 0x1000000/0xff000000 lookup 51820") -gt 0 ]; do
+        ip rule del from all fwmark 0x1000000/0xff000000 table 51820 2>/dev/null || break
+    done
+
+    # 4. Safe to flush table 51820 now that exclusive TunnelSats ownership is verified
+    ip route flush table 51820 &>/dev/null || true
+}
+
+stop_lightning_daemon_for_safe_restart() {
+    # Identify and stop running Lightning daemon BEFORE any route/network mutation,
+    # independently of WireGuard unit state (fail-closed leak prevention).
+    if [[ "$PLATFORM" == "umbrel" ]]; then
+        local running_cids
+        running_cids=$(get_lightning_docker_containers)
+        if [[ -n "$running_cids" ]]; then
+            print_info "Stopping ${LN_IMPL} daemon container for leak-proof tunnel restart..."
+            if ! docker stop $running_cids >/dev/null 2>&1; then
+                print_error "Failed to safely stop ${LN_IMPL} container. Aborting before network/route changes to prevent traffic leaks."
+                exit 1
+            fi
+            stopped_docker_containers="$running_cids"
+            print_success "${LN_IMPL} daemon container stopped (Leak-proof mode)"
+        fi
+    else
+        local service_name="${LN_IMPL}"
+        [[ "$LN_IMPL" == "cln" ]] && service_name="lightningd"
+        if [[ "$LN_IMPL" == "lit" ]]; then
+            service_name="litd"
+            systemctl list-units --type=service 2>/dev/null | grep -q "lit.service" && service_name="lit"
+        fi
+
+        local target_service=""
+        if [[ -n "$service_name" ]] && systemctl is-active --quiet "${service_name}.service" 2>/dev/null; then
+            target_service="${service_name}.service"
+        elif systemctl is-active --quiet lnd.service 2>/dev/null; then
+            target_service="lnd.service"
+        elif systemctl is-active --quiet lightningd.service 2>/dev/null; then
+            target_service="lightningd.service"
+        fi
+
+        if [[ -n "$target_service" ]]; then
+            print_info "Stopping ${target_service} for leak-proof tunnel restart..."
+            if systemctl stop "${target_service}"; then
+                restarted_systemd_service="${target_service}"
+                print_success "${target_service} stopped (Leak-proof mode)"
+            else
+                print_error "Failed to stop ${target_service} safely. Aborting before network/route changes to prevent traffic leaks."
+                exit 1
+            fi
+        fi
+    fi
+
+    # If WireGuard interface is currently active, stop it before updating configuration
+    if [[ -n "$WG_INTERFACE" ]] && systemctl is-active --quiet "wg-quick@${WG_INTERFACE}"; then
+        print_info "Stopping active WireGuard service (${WG_INTERFACE}) before updating configuration..."
+        if ! systemctl stop "wg-quick@${WG_INTERFACE}"; then
+            print_error "Failed to safely stop active WireGuard service (${WG_INTERFACE}). Aborting to prevent routing conflicts."
+            if [[ -n "$restarted_systemd_service" ]] || [[ -n "$stopped_docker_containers" ]]; then
+                print_warning "Lightning service was kept stopped to prevent clearnet IP leakage."
+            fi
+            exit 1
+        fi
+        print_success "WireGuard service stopped"
+    fi
+}
+
 setup_docker_network() {
     print_info "Setting up Docker tunnelsats network..."
     
@@ -1146,55 +1293,61 @@ setup_docker_network() {
         print_info "Docker network already exists"
     fi
     
-    # Clean routing tables from prior failed starts
-    local delrule1=$(ip rule | grep -c "from all lookup main suppress_prefixlength 0" || true)
-    local delrule2=$(ip rule | grep -c "from $dockersubnet lookup 51820" || true)
+    # Clean routing tables from prior failed starts, strictly scoped to TunnelSats ownership
+    check_and_cleanup_routing_table "$WG_INTERFACE"
     
-    if [ "$delrule1" -gt 0 ] 2>/dev/null; then
-        for i in $(seq 1 "$delrule1"); do
-            ip rule del from all table main suppress_prefixlength 0 2>/dev/null || true
-        done
-    fi
-    
-    if [ "$delrule2" -gt 0 ] 2>/dev/null; then
-        for i in $(seq 1 "$delrule2"); do
-            ip rule del from $dockersubnet table 51820 2>/dev/null || true
-        done
-    fi
-    
-    ip route flush table 51820 &>/dev/null || true
-    
-    # Create Docker network monitor script
-    local filter_name="_lnd"
-    [[ "$LN_IMPL" == "cln" ]] && filter_name="lightningd"
+    # Attach resolved lightning containers to docker-tunnelsats
+    local target_cids
+    target_cids=$(get_lightning_docker_containers "-a")
+    for cid in $target_cids; do
+        local attached_ip
+        attached_ip=$(docker inspect -f '{{with index .NetworkSettings.Networks "docker-tunnelsats"}}{{.IPAddress}}{{end}}' "$cid" 2>/dev/null)
+        if [[ -z "$attached_ip" ]]; then
+            print_info "Connecting container ($cid) to docker-tunnelsats network (10.9.9.9)..."
+            if ! docker network connect --ip 10.9.9.9 docker-tunnelsats "$cid" >/dev/null 2>&1; then
+                print_error "Failed to connect container ($cid) to docker-tunnelsats network"
+                exit 1
+            fi
+        fi
+    done
 
-    cat > /etc/wireguard/tunnelsats-docker-network.sh <<EOF
+    # Create Docker network monitor script with shared container resolver regex
+    local container_regex
+    if [[ "$LN_IMPL" == "cln" ]]; then
+        container_regex="(core-lightning.*lightningd|lightning.*cln|lightningd)"
+    else
+        container_regex="(^|[[:space:]]|[-_])(lightning[-_])?lnd([-._]lnd)?([-._][0-9]+)?$"
+    fi
+
+    local wg_dir="${WG_DIR:-/etc/wireguard}"
+    local systemd_dir="${SYSTEMD_DIR:-/etc/systemd/system}"
+    mkdir -p "$wg_dir" "$systemd_dir" 2>/dev/null || true
+
+    cat > "$wg_dir/tunnelsats-docker-network.sh" <<EOF
 #!/bin/sh
-lightningcontainer=\$(docker ps --filter "name=${filter_name}" --format "{{.ID}}" | head -n 1)
 checkdockernetwork=\$(docker network ls 2> /dev/null | grep -c "docker-tunnelsats")
-
-if [ \$checkdockernetwork -eq 0 ]; then
+if [ "\$checkdockernetwork" -eq 0 ]; then
   if ! docker network create "docker-tunnelsats" --subnet "10.9.9.0/25" -o "com.docker.network.driver.mtu"="1420" > /dev/null; then
     exit 1
   fi
 fi
 
-if [ -n "\$lightningcontainer" ]; then
-  inspectlncontainer=\$(docker inspect "\$lightningcontainer" 2>/dev/null | grep -c "docker-tunnelsats")
-  if [ \$inspectlncontainer -eq 0 ]; then
-    if ! docker network connect --ip 10.9.9.9 docker-tunnelsats "\$lightningcontainer" > /dev/null 2>&1; then
-      exit 1
-    fi
+lightningcontainers=\$(docker ps -a --format "{{.ID}} {{.Names}}" 2>/dev/null | grep -Ei "${container_regex}" | grep -Eiv "[-_](app|web|ui)([-_]|$)" | awk '{print \$1}')
+
+for cid in \$lightningcontainers; do
+  current_ip=\$(docker inspect -f '{{with index .NetworkSettings.Networks "docker-tunnelsats"}}{{.IPAddress}}{{end}}' "\$cid" 2>/dev/null)
+  if [ -z "\$current_ip" ]; then
+    docker network connect --ip 10.9.9.9 docker-tunnelsats "\$cid" > /dev/null 2>&1 || exit 1
   fi
-fi
+done
 exit 0
 EOF
     
-    chmod +x /etc/wireguard/tunnelsats-docker-network.sh
-    bash /etc/wireguard/tunnelsats-docker-network.sh &>/dev/null
+    chmod +x "$wg_dir/tunnelsats-docker-network.sh"
+    bash "$wg_dir/tunnelsats-docker-network.sh" &>/dev/null
     
     # Create systemd service and timer
-    cat > /etc/systemd/system/tunnelsats-docker-network.service <<'EOF'
+    cat > "$systemd_dir/tunnelsats-docker-network.service" <<'EOF'
 [Unit]
 Description=Adding Lightning Container to the tunnel
 StartLimitInterval=200
@@ -1206,7 +1359,7 @@ ExecStart=/bin/bash /etc/wireguard/tunnelsats-docker-network.sh
 WantedBy=multi-user.target
 EOF
     
-    cat > /etc/systemd/system/tunnelsats-docker-network.timer <<'EOF'
+    cat > "$systemd_dir/tunnelsats-docker-network.timer" <<'EOF'
 [Unit]
 Description=5min timer for tunnelsats-docker-network.service
 [Timer]
@@ -1473,64 +1626,8 @@ enable_services() {
         exit 1
     fi
     
-    local service_name="${LN_IMPL}"
-    [[ "$LN_IMPL" == "cln" ]] && service_name="lightningd"
-    if [[ "$LN_IMPL" == "lit" ]]; then
-        service_name="litd"
-        systemctl list-units --type=service 2>/dev/null | grep -q "lit.service" && service_name="lit"
-    fi
-
-    # If WireGuard is active, stop running Lightning daemon FIRST to maintain leak-proof protection
-    # before WireGuard teardown deletes the kernel killswitch table
-    if systemctl is-active --quiet "wg-quick@${WG_INTERFACE}"; then
-        if [[ "$PLATFORM" == "umbrel" ]]; then
-            if command -v docker >/dev/null 2>&1; then
-                # Select only the specific Lightning daemon container, avoiding UI/web app containers
-                if [[ "$LN_IMPL" == "cln" ]]; then
-                    stopped_docker_containers=$(docker ps --format "{{.ID}} {{.Names}}" 2>/dev/null | grep -Ei "(core-lightning.*lightningd|lightning.*cln|lightningd)" | grep -Eiv "[-_](app|web|ui)([-_]|$)" | awk '{print $1}')
-                else
-                    stopped_docker_containers=$(docker ps --format "{{.ID}} {{.Names}}" 2>/dev/null | grep -Ei "(^|[[:space:]]|[-_])(lightning[-_])?lnd([-._]lnd)?([-._][0-9]+)?$" | grep -Eiv "[-_](app|web|ui)([-_]|$)" | awk '{print $1}')
-                fi
-
-                if [[ -n "$stopped_docker_containers" ]]; then
-                    print_info "Stopping ${LN_IMPL} daemon container for leak-proof tunnel restart..."
-                    if ! docker stop ${stopped_docker_containers} >/dev/null 2>&1; then
-                        print_error "Failed to safely stop ${LN_IMPL} container. Aborting tunnel restart to prevent traffic leaks."
-                        exit 1
-                    fi
-                    print_success "${LN_IMPL} daemon container stopped (Leak-proof mode)"
-                fi
-            fi
-        else
-            local target_service=""
-            if [[ -n "$service_name" ]] && systemctl is-active --quiet "${service_name}.service" 2>/dev/null; then
-                target_service="${service_name}.service"
-            elif systemctl is-active --quiet lnd.service 2>/dev/null; then
-                target_service="lnd.service"
-            elif systemctl is-active --quiet lightningd.service 2>/dev/null; then
-                target_service="lightningd.service"
-            fi
-
-            if [[ -n "$target_service" ]]; then
-                print_info "Stopping ${target_service} for leak-proof tunnel restart..."
-                if systemctl stop "${target_service}"; then
-                    restarted_systemd_service="${target_service}"
-                    print_success "${target_service} stopped (Leak-proof mode)"
-                else
-                    print_error "Failed to stop ${target_service} safely. Aborting tunnel restart to prevent traffic leaks."
-                    exit 1
-                fi
-            fi
-        fi
-
-        print_info "Stopping active WireGuard service (${WG_INTERFACE}) before updating configuration..."
-        systemctl stop "wg-quick@${WG_INTERFACE}" > /dev/null 2>&1 || true
-    fi
-
-    # Ensure kernel routing table 51820 is clean before starting
-    ip route flush table 51820 &>/dev/null || true
-    ip rule del from all fwmark 0x1000000/0xff000000 table 51820 2>/dev/null || true
-    ip rule del from all table main suppress_prefixlength 0 2>/dev/null || true
+    # Ensure kernel routing table 51820 is clean before starting, scoped to TunnelSats ownership
+    check_and_cleanup_routing_table "$WG_INTERFACE"
 
     print_info "Starting WireGuard..."
     if out=$(systemctl start wg-quick@${WG_INTERFACE} 2>&1); then
@@ -1544,10 +1641,13 @@ enable_services() {
         echo "$out"
         
         # Arm emergency fail-closed drop in nftables if available to ensure no clearnet leakage
+        # Covers both local host traffic (output) and forwarded Docker traffic (forward)
         if command -v nft >/dev/null 2>&1; then
             nft add table ip tunnelsats_failclosed 2>/dev/null || true
             nft "add chain ip tunnelsats_failclosed output { type filter hook output priority -100; policy accept; }" 2>/dev/null || true
             nft "add rule ip tunnelsats_failclosed output meta cgroup 1118498 fib daddr type != local counter drop" 2>/dev/null || true
+            nft "add chain ip tunnelsats_failclosed forward { type filter hook forward priority -100; policy accept; }" 2>/dev/null || true
+            nft "add rule ip tunnelsats_failclosed forward ip saddr 10.9.9.0/25 fib daddr type != local counter drop" 2>/dev/null || true
         fi
 
         # Help user troubleshoot
@@ -1589,14 +1689,28 @@ verify_installation() {
         exit 1
     fi
 
-    # If Lightning daemon containers were restarted, verify that each one is running
-    if [[ "$PLATFORM" == "umbrel" ]] && [[ -n "$stopped_docker_containers" ]]; then
+    # If Lightning daemon containers were restarted (or resolved on Umbrel), verify that each one is running
+    # and connected to docker-tunnelsats with expected IP 10.9.9.9
+    if [[ "$PLATFORM" == "umbrel" ]]; then
         if command -v docker >/dev/null 2>&1; then
-            for cid in $stopped_docker_containers; do
+            local verify_cids="$stopped_docker_containers"
+            [[ -z "$verify_cids" ]] && verify_cids=$(get_lightning_docker_containers)
+            if [[ -z "$verify_cids" ]]; then
+                print_error "No Lightning daemon container found during verification"
+                exit 1
+            fi
+            for cid in $verify_cids; do
                 if ! docker ps -q --no-trunc | grep -q "^${cid}"; then
                     print_error "Restarted container (${cid}) is not running"
                     exit 1
                 fi
+                local container_ip
+                container_ip=$(docker inspect -f '{{with index .NetworkSettings.Networks "docker-tunnelsats"}}{{.IPAddress}}{{end}}' "$cid" 2>/dev/null)
+                if [[ "$container_ip" != "10.9.9.9" ]]; then
+                    print_error "Container (${cid}) is not attached to docker-tunnelsats with expected IP 10.9.9.9 (found: ${container_ip:-none})"
+                    exit 1
+                fi
+                print_success "Container (${cid}) verified running on docker-tunnelsats (10.9.9.9)"
             done
         fi
     elif [[ -n "$restarted_systemd_service" ]]; then
@@ -1915,7 +2029,7 @@ cmd_uninstall() {
 
     if [[ $is_docker -eq 1 ]]; then
         print_info "Cleaning Docker network..."
-        ip route flush table 51820 &>/dev/null
+        check_and_cleanup_routing_table "$target_interface"
         
         # Disconnect containers from network
         docker inspect docker-tunnelsats 2>/dev/null | jq '.[].Containers' | grep Name | sed 's/[",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats % 2>/dev/null'
@@ -1928,7 +2042,7 @@ cmd_uninstall() {
         systemctl restart docker &>/dev/null || true
         print_success "Docker restarted"
     else
-        ip route flush table 51820 &>/dev/null
+        check_and_cleanup_routing_table "$target_interface"
     fi
     echo ""
 
@@ -2087,6 +2201,9 @@ cmd_install() {
     print_step 4 6 "Configuring Lightning..."
     configure_lightning
     echo ""
+
+    # Stop running Lightning daemon BEFORE any route or network changes to prevent clearnet leakage
+    stop_lightning_daemon_for_safe_restart
 
     # Step 5: Configure WireGuard
     print_step 5 6 "Configuring WireGuard..."
@@ -2732,7 +2849,7 @@ cmd_restart() {
         echo ""
 
         print_info "Stopping ${LN_IMPL} app for safe restart..."
-        stopped_containers=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
+        stopped_containers=$(get_lightning_docker_containers)
         
         if [[ -n "$stopped_containers" ]]; then
             docker stop ${stopped_containers} &>/dev/null

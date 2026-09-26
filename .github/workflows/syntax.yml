@@ -16,3 +16,4 @@ jobs:
           bash scripts/test_ufw_check.sh
           bash scripts/test_ipv6_patch.sh
           bash scripts/test_sanitize_config.sh
+          bash scripts/test_lifecycle_idempotency.sh

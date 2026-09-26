@@ -274,5 +274,132 @@ test_backup_created() {
 }
 test_backup_created
 
+# Test 12: Indented hooks (leading spaces and tabs) are stripped
+indented_hooks_config="   [Interface]
+   PrivateKey = aaaaaa=
+   Address = 10.9.0.109/32
+   PostUp = /bin/echo indented_postup
+	PostDown = /bin/echo tab_indented_postdown
+  Table = 51820
+   FwMark = 0x1234
+
+   [Peer]
+   PublicKey = bbbbbb=
+   Endpoint = us3.tunnelsats.com:48049
+   AllowedIPs = 0.0.0.0/0
+   PersistentKeepalive = 25"
+
+verify_indented_hooks() {
+    local f="$1"
+    grep -q "PrivateKey = aaaaaa=" "$f" && \
+    grep -q "Endpoint = us3.tunnelsats.com:48049" "$f" && \
+    ! grep -q "indented_postup" "$f" && \
+    ! grep -q "tab_indented_postdown" "$f" && \
+    ! grep -q "51820" "$f" && \
+    ! grep -q "0x1234" "$f"
+}
+run_test "Indented hooks (spaces and tabs) stripped" "$indented_hooks_config" "true" verify_indented_hooks
+
+# Test 13: Case-variant hooks (preup, PREUP, postup, predown, table, fwmark) are stripped
+case_variant_config="[Interface]
+privatekey = aaaaaa=
+Address = 10.9.0.109/32
+preup = echo lowercase_preup
+PREUP = echo uppercase_preup
+postup = echo lowercase_postup
+predown = echo lowercase_predown
+PREDOWN = echo uppercase_predown
+postdown = echo lowercase_postdown
+table = 51820
+TABLE = off
+fwmark = 0x999
+
+[PEER]
+publickey = bbbbbb=
+endpoint = us3.tunnelsats.com:48049
+allowedips = 0.0.0.0/0
+persistentkeepalive = 25"
+
+verify_case_variants() {
+    local f="$1"
+    grep -qi "privatekey = aaaaaa=" "$f" && \
+    grep -qi "endpoint = us3.tunnelsats.com:48049" "$f" && \
+    ! grep -qi "lowercase_preup" "$f" && \
+    ! grep -qi "uppercase_preup" "$f" && \
+    ! grep -qi "lowercase_postup" "$f" && \
+    ! grep -qi "lowercase_predown" "$f" && \
+    ! grep -qi "uppercase_predown" "$f" && \
+    ! grep -qi "lowercase_postdown" "$f" && \
+    ! grep -qiE "^[[:space:]]*table[[:space:]]*=" "$f" && \
+    ! grep -qiE "^[[:space:]]*fwmark[[:space:]]*=" "$f"
+}
+run_test "Case-variant hooks (preup, table, fwmark, etc.) stripped" "$case_variant_config" "true" verify_case_variants
+
+# Test 14: Non-off Table directives (Table = 51820, Table = auto) stripped
+custom_table_config="[Interface]
+PrivateKey = aaaaaa=
+Address = 10.9.0.109/32
+Table = 51820
+table = auto
+
+[Peer]
+PublicKey = bbbbbb=
+Endpoint = us3.tunnelsats.com:48049
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25"
+
+verify_custom_table() {
+    local f="$1"
+    grep -q "PrivateKey = aaaaaa=" "$f" && \
+    ! grep -qiE "^[[:space:]]*table[[:space:]]*=" "$f"
+}
+run_test "Non-off Table directives (Table = 51820, auto) stripped" "$custom_table_config" "true" verify_custom_table
+
+# Test 15: PreUp and PreDown hook forms stripped
+pre_hooks_config="[Interface]
+PrivateKey = aaaaaa=
+Address = 10.9.0.109/32
+PreUp = /usr/local/bin/preup-script.sh
+PreDown = /usr/local/bin/predown-script.sh
+
+[Peer]
+PublicKey = bbbbbb=
+Endpoint = us3.tunnelsats.com:48049
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25"
+
+verify_pre_hooks() {
+    local f="$1"
+    grep -q "PrivateKey = aaaaaa=" "$f" && \
+    ! grep -q "preup-script.sh" "$f" && \
+    ! grep -q "predown-script.sh" "$f"
+}
+run_test "PreUp and PreDown hook directives stripped" "$pre_hooks_config" "true" verify_pre_hooks
+
+# Test 16: Indented and mixed-case secondary [Interface] blocks stripped
+indented_secondary_config="[Interface]
+PrivateKey = aaaaaa=
+Address = 10.9.0.109/32
+
+  [peer]
+  PublicKey = bbbbbb=
+  Endpoint = us3.tunnelsats.com:48049
+  AllowedIPs = 0.0.0.0/0
+  PersistentKeepalive = 25
+
+  [interface]
+  FwMark = 0x2000000
+  PostUp = echo stale_secondary_hook"
+
+verify_indented_secondary() {
+    local f="$1"
+    grep -q "PrivateKey = aaaaaa=" "$f" && \
+    grep -q "Endpoint = us3.tunnelsats.com:48049" "$f" && \
+    ! grep -qi "stale_secondary_hook" "$f" && \
+    ! grep -qi "0x2000000" "$f" && \
+    [[ $(grep -ci "\[interface\]" "$f") -eq 1 ]]
+}
+run_test "Indented/case-variant secondary [interface] block stripped" "$indented_secondary_config" "true" verify_indented_secondary
+
 echo "All $test_num tests passed successfully!"
 
