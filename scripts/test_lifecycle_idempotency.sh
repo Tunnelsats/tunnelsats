@@ -1163,6 +1163,59 @@ BROKENIP
 test_runtime_hooks_scope umbrel "Docker"
 test_runtime_hooks_scope baremetal "Non-Docker"
 
+test_refused_postup_reports_unarmed_failclosed() {
+    local dir bin status err
+    dir=$(mktemp -d); bin=$(mktemp -d)
+    generate_tunnel_config umbrel "$dir"
+    make_fake_net_bin "$bin"
+    # nft rejects the drop rules
+    printf '#!/bin/bash\necho "NFT:$*" >> "$HOOK_LOG"\n[[ "$*" == *"add rule"* ]] && exit 1\nexit 0\n' > "$bin/nft"
+    chmod +x "$bin/nft"
+    export HOOK_LOG="$dir/hooks.log" ROUTES="$dir/table51820"
+    printf 'default dev wg1 scope link \n' > "$ROUTES"
+    set +e; err=$(run_wg_hooks PostUp "$dir/tunnelsatsv2.conf" "$bin" 2>&1 >/dev/null); status=$?; set -e
+    if [[ "$status" -ne 0 ]]; then
+        echo "PASS: Refused PostUp still fails when the emergency drop cannot be armed (exit=$status)"
+        pass_count=$((pass_count + 1))
+    else
+        echo "FAIL: PostUp succeeded despite foreign routes and failed emergency drop"
+        fail_count=$((fail_count + 1))
+    fi
+    if [[ "$err" == *"could NOT be armed"* ]] && [[ "$err" != *"(Lightning traffic blocked)"* ]]; then
+        echo "PASS: Guard reports that the emergency drop is NOT armed instead of claiming traffic is blocked"
+        pass_count=$((pass_count + 1))
+    else
+        echo "FAIL: Guard did not report the failed emergency drop (stderr: $err)"
+        fail_count=$((fail_count + 1))
+    fi
+    assert_log_not_contains "$HOOK_LOG" "IP:rule add" "No policy rule is added when the refused start cannot arm the drop"
+    unset HOOK_LOG ROUTES
+    rm -rf "$dir" "$bin"
+}
+test_refused_postup_reports_unarmed_failclosed
+
+test_failed_guard_rewrite_keeps_previous_guard() {
+    local dir status
+    dir=$(mktemp -d)
+    echo "PREVIOUS-GUARD" > "$dir/tunnelsats-route-guard.sh"
+    set +e
+    DIR_T="$dir" run_case /dev/null <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+WG_DIR="$DIR_T"
+cat() { return 1; }   # simulate a failed write (e.g. disk full) while generating the guard
+write_route_guard_script
+EOF
+    status=$?
+    set -e
+    assert_status 1 "$status" "write_route_guard_script reports a failed write"
+    assert_equals "PREVIOUS-GUARD" "$(command cat "$dir/tunnelsats-route-guard.sh")" "Failed rewrite leaves the previous route guard intact (rollback config keeps working)"
+    local leftovers
+    leftovers=$(find "$dir" -name 'tunnelsats-route-guard.sh.*' | wc -l)
+    assert_equals "0" "$leftovers" "No temporary guard files are left behind"
+    rm -rf "$dir"
+}
+test_failed_guard_rewrite_keeps_previous_guard
+
 # ---------------------------------------------------------------------------
 # TEST GROUP 11: Ownership-scoped installer/uninstaller route cleanup
 # ---------------------------------------------------------------------------
