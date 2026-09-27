@@ -16,6 +16,21 @@ CONFIG_FILE=""
 PLATFORM=""
 LN_IMPL=""
 node_user=""
+restarted_systemd_service=""
+stopped_docker_containers=""
+stopped_wireguard_interface=""
+# Lightning daemon container selected by setup_docker_network to own the tunnel IP (may be stopped)
+tunnel_target_container=""
+WG_CONFIG_BACKUP=""
+
+# Shared Lightning daemon container resolvers (used by the installer and the generated network monitor)
+LND_CONTAINER_REGEX='(^|[[:space:]]|[-_])(lightning[-_])?lnd([-._]lnd)?([-._][0-9]+)?$'
+CLN_CONTAINER_REGEX='(core-lightning.*lightningd|lightning.*cln|lightningd|(^|[[:space:]])(core-lightning|clightning)([-._][0-9]+)?$)'
+LN_CONTAINER_EXCLUDE_REGEX='[-_](app|web|ui)([-_]|$)'
+TUNNEL_CONTAINER_IP="10.9.9.9"
+# Prints "attached <static-ip> <live-ip>" when attached to docker-tunnelsats, empty otherwise.
+# Static IPAM config is included because stopped containers report an empty live IPAddress.
+TUNNEL_NET_INSPECT_FMT='{{with index .NetworkSettings.Networks "docker-tunnelsats"}}attached {{if .IPAMConfig}}{{.IPAMConfig.IPv4Address}}{{end}} {{.IPAddress}}{{end}}'
 
 # ---------------------------------------------------------------------------
 # COLOR & FORMATTING FUNCTIONS
@@ -673,11 +688,114 @@ detect_platform() {
     return 0
 }
 
+get_lightning_docker_containers() {
+    # Returns container IDs matching the lightning daemon for $LN_IMPL
+    # $1 (optional): extra flags for docker ps (e.g. "-a" to list stopped containers as well)
+    local extra_flags="${1:-}"
+    if ! command -v docker >/dev/null 2>&1; then
+        return 0
+    fi
+    local regex
+    if [[ "$LN_IMPL" == "cln" ]]; then
+        regex="$CLN_CONTAINER_REGEX"
+    elif [[ "$LN_IMPL" == "lnd" ]]; then
+        regex="$LND_CONTAINER_REGEX"
+    else
+        # If LN_IMPL is not set, match either implementation
+        regex="${LND_CONTAINER_REGEX}|${CLN_CONTAINER_REGEX}"
+    fi
+    docker ps $extra_flags --format "{{.ID}} {{.Names}}" 2>/dev/null | \
+        grep -Ei "$regex" | \
+        grep -Eiv "$LN_CONTAINER_EXCLUDE_REGEX" | \
+        awk '{print $1}'
+}
+
+# Selects exactly one Lightning daemon container to own the static tunnel IP (10.9.9.9).
+# Preference: the daemon stopped for this restart > running daemons > newest stopped daemon.
+# Fails (return 1) if multiple candidates would compete for the same static IP.
+select_tunnel_target_container() {
+    local candidates=""
+    if [[ -n "$stopped_docker_containers" ]]; then
+        candidates="$stopped_docker_containers"
+    else
+        candidates=$(get_lightning_docker_containers)
+    fi
+    if [[ -z "$candidates" ]]; then
+        # No daemon running: keep the stopped container that already owns the tunnel IP (sticky owner),
+        # otherwise fall back to the newest one (docker ps -a lists newest first).
+        local c
+        for c in $(get_lightning_docker_containers "-a"); do
+            if [[ " $(docker inspect -f "$TUNNEL_NET_INSPECT_FMT" "$c" 2>/dev/null || true) " == *" ${TUNNEL_CONTAINER_IP} "* ]]; then
+                candidates="$c"
+                break
+            fi
+        done
+        [[ -z "$candidates" ]] && candidates=$(get_lightning_docker_containers "-a" | head -n 1)
+    fi
+    local count
+    count=$(printf '%s\n' $candidates | grep -c . || true)
+    if [[ "$count" -gt 1 ]]; then
+        print_error "Multiple running ${LN_IMPL} daemon containers found ($(echo $candidates)). Only one can own the tunnel IP ${TUNNEL_CONTAINER_IP}."
+        return 1
+    fi
+    echo "$candidates"
+}
+
+# Ensures exactly the given container holds 10.9.9.9 on docker-tunnelsats.
+# Reattaches it if attached with another address and releases the static IP from stale (stopped) containers.
+attach_container_to_tunnel_network() {
+    local cid="$1"
+    local state
+    state=$(docker inspect -f "$TUNNEL_NET_INSPECT_FMT" "$cid" 2>/dev/null || true)
+    if [[ " $state " == *" ${TUNNEL_CONTAINER_IP} "* ]]; then
+        return 0
+    fi
+
+    if [[ -n "$state" ]]; then
+        print_info "Container ($cid) is attached to docker-tunnelsats with a different address; reattaching with ${TUNNEL_CONTAINER_IP}..."
+        if ! docker network disconnect -f docker-tunnelsats "$cid" >/dev/null 2>&1; then
+            print_error "Failed to detach container ($cid) from docker-tunnelsats"
+            return 1
+        fi
+    fi
+
+    local other other_state
+    for other in $(get_lightning_docker_containers "-a"); do
+        [[ "$other" == "$cid" ]] && continue
+        other_state=$(docker inspect -f "$TUNNEL_NET_INSPECT_FMT" "$other" 2>/dev/null || true)
+        [[ " $other_state " == *" ${TUNNEL_CONTAINER_IP} "* ]] || continue
+        if [[ "$(docker inspect -f '{{.State.Running}}' "$other" 2>/dev/null)" == "true" ]]; then
+            print_error "Running container ($other) already holds ${TUNNEL_CONTAINER_IP} on docker-tunnelsats. Refusing to evict it."
+            return 1
+        fi
+        print_info "Releasing ${TUNNEL_CONTAINER_IP} from stale stopped container ($other)..."
+        if ! docker network disconnect -f docker-tunnelsats "$other" >/dev/null 2>&1; then
+            print_error "Failed to detach stale container ($other) from docker-tunnelsats"
+            return 1
+        fi
+    done
+
+    print_info "Connecting container ($cid) to docker-tunnelsats network (${TUNNEL_CONTAINER_IP})..."
+    if ! docker network connect --ip "$TUNNEL_CONTAINER_IP" docker-tunnelsats "$cid" >/dev/null 2>&1; then
+        print_error "Failed to connect container ($cid) to docker-tunnelsats network"
+        return 1
+    fi
+    return 0
+}
+
+
 detect_ln_implementation() {
     local guess=""
     if [[ "$PLATFORM" == "umbrel" ]]; then
-        if docker ps -q --filter name=lnd | grep -q .; then guess="lnd";
-        elif docker ps -q --filter name=core-lightning | grep -q .; then guess="cln"; fi
+        local lnd_containers
+        lnd_containers=$(LN_IMPL=lnd get_lightning_docker_containers)
+        local cln_containers
+        cln_containers=$(LN_IMPL=cln get_lightning_docker_containers)
+        if [[ -n "$lnd_containers" ]]; then
+            guess="lnd"
+        elif [[ -n "$cln_containers" ]]; then
+            guess="cln"
+        fi
     else
         if [[ -f /etc/systemd/system/lnd.service ]] || systemctl is-active --quiet lnd; then guess="lnd";
         elif [[ -f /etc/systemd/system/lightningd.service ]] || systemctl is-active --quiet lightningd; then guess="cln";
@@ -810,32 +928,130 @@ install_dependencies() {
     fi
 }
 
+# Sanitize WireGuard config by stripping any prior TunnelSats setup hooks,
+# duplicate [Interface] sections, or stale routing directives.
+# Preserves only the canonical base config (keys, endpoint, addresses, and comments).
+sanitize_wireguard_config() {
+    local input_file="$1"
+    local output_file="$2"
+    
+    if [[ ! -f "$input_file" ]]; then
+        print_error "Input config file does not exist: $input_file"
+        return 1
+    fi
+
+    # Backup existing destination if present
+    if [[ -f "$output_file" ]]; then
+        local backup_file
+        if ! backup_file=$(mktemp "${output_file}.bak.XXXXXX"); then
+            print_error "Failed to create backup file for: $output_file"
+            return 1
+        fi
+        if ! cp "$output_file" "$backup_file"; then
+            print_error "Failed to backup existing config to: $backup_file"
+            rm -f "$backup_file"
+            return 1
+        fi
+        WG_CONFIG_BACKUP="$backup_file"
+    fi
+
+    # Extract base config:
+    # 1. Stop processing at any TunnelSats marker (#Tunnelsats-Setup)
+    # 2. Drop any secondary [Interface] blocks that appear after [Peer]
+    # 3. Strip any PreUp, PostUp, PreDown, PostDown, FwMark, or Table directives (tolerant of indentation and casing)
+    local clean_content
+    clean_content=$(awk '
+        BEGIN { in_peer=0; found_marker=0; in_secondary=0 }
+        {
+            raw = $0
+            lower = tolower(raw)
+            trimmed = lower
+            sub(/^[[:space:]]+/, "", trimmed)
+        }
+        trimmed ~ /^#tunnelsats-setup/ { found_marker=1 }
+        found_marker { next }
+        trimmed ~ /^\[peer\]/ { in_peer=1; in_secondary=0 }
+        in_peer && (trimmed ~ /^\[interface\]/) { in_secondary=1; next }
+        in_secondary && (trimmed ~ /^\[/) { in_secondary=0 }
+        in_secondary { next }
+        trimmed ~ /^(preup|postup|predown|postdown|fwmark|table)[[:space:]]*=/ { next }
+        { print raw }
+    ' "$input_file")
+
+    # Safety validation: PrivateKey and Endpoint must exist
+    if ! echo "$clean_content" | grep -qiE "^[[:space:]]*PrivateKey[[:space:]]*="; then
+        print_error "Config sanitization failed: PrivateKey missing from config"
+        return 1
+    fi
+    if ! echo "$clean_content" | grep -qiE "^[[:space:]]*Endpoint[[:space:]]*="; then
+        print_error "Config sanitization failed: Endpoint missing from config"
+        return 1
+    fi
+
+    # Ensure PersistentKeepalive is set to maintain NAT state across firewalls/routers
+    if ! echo "$clean_content" | grep -qiE "^[[:space:]]*PersistentKeepalive[[:space:]]*="; then
+        print_info "PersistentKeepalive not found; ensuring PersistentKeepalive = 25 under [Peer]..."
+        clean_content=$(printf '%s\nPersistentKeepalive = 25\n' "$clean_content")
+    elif echo "$clean_content" | grep -qiE "^[[:space:]]*PersistentKeepalive[[:space:]]*=[[:space:]]*0\b"; then
+        print_warning "PersistentKeepalive is set to 0. Updating to 25 to prevent NAT state drops..."
+        clean_content=$(echo "$clean_content" | sed -E 's/^[[:space:]]*[Pp][Ee][Rr][Ss][Ii][Ss][Tt][Ee][Nn][Tt][Kk][Ee][Ee][Pp][Aa][Ll][Ii][Vv][Ee][[:space:]]*=[[:space:]]*0\b/PersistentKeepalive = 25/')
+    fi
+
+    # Trim trailing blank lines
+    clean_content=$(echo "$clean_content" | sed -e :a -e '/^\n*$/{$d;N;};/\n$/ba')
+
+    # Write sanitized content safely via temporary file
+    local temp_out
+    if ! temp_out=$(mktemp); then
+        print_error "Failed to create temporary file for sanitized config"
+        return 1
+    fi
+    if ! printf '%s\n' "$clean_content" > "$temp_out"; then
+        print_error "Failed to write sanitized config to temporary file"
+        rm -f "$temp_out"
+        return 1
+    fi
+    if ! mv "$temp_out" "$output_file"; then
+        print_error "Failed to move sanitized config to destination: $output_file"
+        rm -f "$temp_out"
+        return 1
+    fi
+    return 0
+}
+
+resolve_wg_target_path() {
+    # Determine target filename - preserve dynamic names or use tunnelsatsv2.conf as fallback
+    local source_filename
+    source_filename=$(basename "$CONFIG_FILE")
+    if [[ "$source_filename" == tunnelsats-*.conf ]]; then
+        # New format with server name - preserve it
+        echo "/etc/wireguard/$source_filename"
+    else
+        # Old format or generic - use tunnelsatsv2.conf for backward compatibility
+        echo "/etc/wireguard/tunnelsatsv2.conf"
+    fi
+}
+
 configure_wireguard() {
     print_info "Copying config to /etc/wireguard/..."
     
-    # Determine target filename - preserve dynamic names or use tunnelsatsv2.conf as fallback
-    local source_filename=$(basename "$CONFIG_FILE")
+    local target_path
+    target_path=$(resolve_wg_target_path)
     local target_filename
+    target_filename=$(basename "$target_path")
     
-    if [[ "$source_filename" == tunnelsats-*.conf ]]; then
-        # New format with server name - preserve it
-        target_filename="$source_filename"
-    else
-        # Old format or generic - use tunnelsatsv2.conf for backward compatibility
-        target_filename="tunnelsatsv2.conf"
-    fi
-    
-    local target_path="/etc/wireguard/$target_filename"
-    
-    # Copy config
-    cp "$CONFIG_FILE" "$target_path" || \
-        { print_error "Failed to copy config"; exit 1; }
-    
-    print_success "Config copied to $target_filename"
-    
-    # Store target path for use in service setup
+    # Store target path for use in service setup (and for rollback of the config backup)
     WG_CONFIG_PATH="$target_path"
     WG_INTERFACE=$(basename "$target_path" .conf)
+    
+    # Sanitize and copy config, stripping any previous routing/hook residue
+    print_info "Sanitizing WireGuard configuration..."
+    if ! sanitize_wireguard_config "$CONFIG_FILE" "$target_path"; then
+        print_error "Failed to sanitize WireGuard configuration"
+        exit 1
+    fi
+    
+    print_success "Config sanitized and copied to $target_filename"
     
     # Verify config has Endpoint
     if ! grep -q "Endpoint" "$target_path"; then
@@ -870,6 +1086,14 @@ configure_wireguard() {
         localNetworks="10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"
     fi
     
+    # Ownership-scoped table 51820 guard executed by the PostUp/PostDown hooks below
+    local route_guard
+    route_guard=$(route_guard_path)
+    if ! write_route_guard_script; then
+        print_error "Failed to write routing guard: ${route_guard}"
+        exit 1
+    fi
+
     # Apply network rules based on platform
     if [[ "$PLATFORM" == "umbrel" ]]; then
         print_info "Applying Docker network rules..."
@@ -903,14 +1127,15 @@ configure_wireguard() {
 DNS = 8.8.8.8
 Table = off
 
-PostUp = while [ \$(ip rule | grep -c suppress_prefixlength) -gt 0 ]; do ip rule del from all table  main suppress_prefixlength 0;done
-PostUp = while [ \$(ip rule | grep -c 0x1000000) -gt 0 ]; do ip rule del from all fwmark 0x1000000/0xff000000 table  51820;done
-PostUp = if [ \$(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt  0 ]; then echo \$?; ip route del blackhole default metric 3 table 51820; ip rule flush table 51820 ;fi
+PostUp = $route_guard check %i $dockersubnet
+PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || break; done
+PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21821 from $dockersubnet table 51820 2>/dev/null || break; done
+PostUp = $route_guard clean %i
 
-PostUp = ip rule add from $dockersubnet table 51820
-PostUp = ip rule add from all table main suppress_prefixlength 0
 PostUp = ip route add blackhole default metric 3 table 51820
 PostUp = ip route add default dev %i metric 2 table 51820
+PostUp = ip rule add from all table main suppress_prefixlength 0 priority 21820
+PostUp = ip rule add from $dockersubnet table 51820 priority 21821
 PostUp = ip route add 10.9.0.0/24 dev %i proto kernel scope link; ping -c1 10.9.0.1
 
 PostUp = iptables -t nat -I PREROUTING -i %i -p tcp --dport $vpn_port -j DNAT --to-destination 10.9.9.9:9735
@@ -920,14 +1145,15 @@ PostUp = iptables -I FORWARD -i $bridge_name -o %i -j ACCEPT
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
+PostUp = $route_guard release
 
 PostDown = iptables -t nat -D PREROUTING -i %i -p tcp --dport $vpn_port -j DNAT --to-destination 10.9.9.9:9735
 PostDown = iptables -D FORWARD -i %i -o $bridge_name -j ACCEPT
 PostDown = iptables -D FORWARD -i $bridge_name -o %i -j ACCEPT
 
-PostDown = ip rule del from $dockersubnet table 51820
-PostDown = ip rule del from all table main suppress_prefixlength 0
-PostDown = ip route flush table 51820
+PostDown = ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || true
+PostDown = ip rule del priority 21821 from $dockersubnet table 51820 2>/dev/null || true
+PostDown = $route_guard clean %i || true
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 "
         echo -e "$inputDocker" >> "$target_path"
@@ -952,11 +1178,14 @@ FwMark = 0x2000000
 Table = off
 
 
-PostUp = while [ \$(ip rule | grep -c suppress_prefixlength) -gt 0 ]; do ip rule del from all table  main suppress_prefixlength 0;done
-PostUp = while [ \$(ip rule | grep -c 0x1000000) -gt 0 ]; do ip rule del from all fwmark 0x1000000/0xff000000 table  51820;done
+PostUp = $route_guard check %i
+PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || break; done
+PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21821 from all fwmark 0x1000000/0xff000000 table 51820 2>/dev/null || break; done
+PostUp = $route_guard clean %i
 
-PostUp = ip rule add from all fwmark 0x1000000/0xff000000 table 51820;ip rule add from all table main suppress_prefixlength 0
 PostUp = ip route add default dev %i table 51820;
+PostUp = ip rule add from all table main suppress_prefixlength 0 priority 21820
+PostUp = ip rule add from all fwmark 0x1000000/0xff000000 table 51820 priority 21821
 PostUp = ip route add  10.9.0.0/24 dev %i  proto kernel scope link; ping -c1 10.9.0.1
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
@@ -968,11 +1197,13 @@ PostUp = nft add chain ip %i mangle '{ type route hook output priority mangle -1
 PostUp = nft \"add chain ip %i nat { type nat hook postrouting priority srcnat -1; policy accept; } ; insert rule ip %i nat fib daddr type != local ip daddr != { $localNetworks } oifname != %i ct mark and 0xff000000 == 0x1000000 drop ; add rule ip %i nat oifname %i ct mark and 0xff000000 == 0x1000000 masquerade\"
 ${killswitchNonDocker}PostUp = nft \"add chain ip %i postroutingmangle { type filter hook postrouting priority mangle -1; policy accept; } ; add rule ip %i postroutingmangle meta mark and 0xff000000 == 0x1000000 ct mark set meta mark and 0x00ffffff xor 0x1000000\"
 PostUp = nft \"add chain ip %i input { type filter hook input priority filter -1; policy accept; } ; add rule ip %i input iifname %i ct state established,related counter accept ; add rule ip %i input iifname %i tcp dport != 9735 counter drop ; add rule ip %i input iifname %i udp dport != 9735 counter drop\"
+PostUp = $route_guard release
 
 
 PostDown = nft delete table ip %i
-PostDown = ip rule del from all table  main suppress_prefixlength 0; ip rule del from all fwmark 0x1000000/0xff000000 table 51820
-PostDown = ip route flush table 51820
+PostDown = ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || true
+PostDown = ip rule del priority 21821 from all fwmark 0x1000000/0xff000000 table 51820 2>/dev/null || true
+PostDown = $route_guard clean %i || true
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 "
         echo -e "$inputNonDocker" >> "$target_path"
@@ -1038,6 +1269,308 @@ EOF
     print_success "Cgroups configured"
 }
 
+# Deletes a TunnelSats-owned policy rule only while `ip rule show` contains a line matching
+# the full selector regex ($1). Remaining args are passed to `ip rule del`. Bounded to avoid spinning.
+delete_owned_ip_rule() {
+    local pattern="$1"
+    shift
+    local attempt
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        ip rule show 2>/dev/null | grep -Eq "$pattern" || return 0
+        if ! ip rule del "$@" 2>/dev/null; then
+            print_warning "Failed to delete TunnelSats policy rule: ip rule del $*"
+            return 1
+        fi
+    done
+    return 0
+}
+
+check_and_cleanup_routing_table() {
+    local iface="${1:-$WG_INTERFACE}"
+
+    # 1. Detect conflicting WireGuard interfaces owning table 51820
+    if command -v wg >/dev/null 2>&1; then
+        local other_wg
+        for other_wg in $(wg show interfaces 2>/dev/null); do
+            if [[ -n "$iface" ]] && [[ "$other_wg" != "$iface" ]]; then
+                if ip route show table 51820 2>/dev/null | grep -q "dev ${other_wg}\b"; then
+                    print_error "Routing table 51820 contains routes owned by another active WireGuard interface (${other_wg}). Conflicting ownership detected. Aborting."
+                    exit 1
+                fi
+            fi
+        done
+    fi
+
+    # 2. Check for foreign routes in table 51820 (anything not owned by TunnelSats).
+    #    An unreadable table is unverified state and aborts (fail-closed).
+    local foreign_routes=""
+    if ! foreign_routes=$(ts_table51820_foreign_routes "$iface"); then
+        print_error "Routing table 51820 could not be verified. Aborting to prevent inconsistent routing."
+        exit 1
+    fi
+    if [[ -n "$foreign_routes" ]]; then
+        print_error "Routing table 51820 contains routes owned by another interface/service:"
+        echo "$foreign_routes"
+        print_error "Conflicting routing ownership detected. Aborting cleanup to protect other networking services."
+        exit 1
+    fi
+
+    # 3./4. Remove TunnelSats-owned policy rules and routes only
+    if ! cleanup_owned_routing_state "$iface"; then
+        print_error "Failed to remove stale TunnelSats policy rules. Aborting to prevent inconsistent routing."
+        exit 1
+    fi
+}
+
+# Removes TunnelSats-owned policy rules and TunnelSats-owned routes in table 51820.
+# Never flushes the table and never touches foreign rules/routes, so it is also safe for uninstall
+# when another service uses table 51820. Returns 1 if an owned policy rule could not be removed.
+cleanup_owned_routing_state() {
+    local iface="${1:-$WG_INTERFACE}"
+
+    # Rules are matched by priority AND full selector/table,
+    # so foreign rules that happen to reuse priority 21820/21821 are never touched.
+    local dsubnet="${dockersubnet:-10.9.9.0/25}"
+    local dsubnet_re
+    dsubnet_re=$(printf '%s' "$dsubnet" | sed 's/\./\\./g')
+    local rule_cleanup_failed=0
+    delete_owned_ip_rule "^21820:[[:space:]]+from all lookup main suppress_prefixlength 0([[:space:]]|$)" \
+        priority 21820 from all table main suppress_prefixlength 0 || rule_cleanup_failed=1
+    delete_owned_ip_rule "^21821:[[:space:]]+from ${dsubnet_re} lookup 51820([[:space:]]|$)" \
+        priority 21821 from "$dsubnet" table 51820 || rule_cleanup_failed=1
+    delete_owned_ip_rule "^21821:[[:space:]]+from all fwmark 0x1000000/0xff000000 lookup 51820([[:space:]]|$)" \
+        priority 21821 from all fwmark 0x1000000/0xff000000 table 51820 || rule_cleanup_failed=1
+
+    # Also clean up legacy TunnelSats-specific selectors (any priority) targeting table 51820
+    delete_owned_ip_rule "from ${dsubnet_re} lookup 51820([[:space:]]|$)" \
+        from "$dsubnet" table 51820 || rule_cleanup_failed=1
+    delete_owned_ip_rule "from all fwmark 0x1000000/0xff000000 lookup 51820([[:space:]]|$)" \
+        from all fwmark 0x1000000/0xff000000 table 51820 || rule_cleanup_failed=1
+
+    # Routes: only the ones TunnelSats installs (never `ip route flush table 51820`)
+    ts_table51820_remove_owned "$iface"
+
+    [[ "$rule_cleanup_failed" -eq 0 ]]
+}
+
+# ---------------------------------------------------------------------------
+# OWNERSHIP-SCOPED ROUTING TABLE 51820 PRIMITIVES
+# These functions are embedded verbatim (declare -f) into the generated wg-quick route guard
+# (write_route_guard_script), so the installer and the runtime PostUp/PostDown hooks share one
+# implementation. Keep them self-contained: no globals, no print_* helpers.
+#
+# TunnelSats-owned routes in table 51820 are exactly:
+#   - the Docker kill-switch route "blackhole default metric 3"
+#   - routes via the TunnelSats WireGuard interface ("... dev <iface> ...")
+# Everything else in table 51820 belongs to another service and must never be removed.
+# ---------------------------------------------------------------------------
+
+# Prints the IPv4 routes of table 51820. A table that does not exist yet is reported as empty.
+# Returns 1 if the table cannot be read; callers must treat that as unverified and fail closed.
+ts_table51820_routes() {
+    local out rc
+    out=$(ip route show table 51820 2>&1) && rc=0 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        case "$out" in
+            *"FIB table does not exist"*) return 0 ;;
+        esac
+        echo "TunnelSats: unable to read routing table 51820: ${out}" >&2
+        return 1
+    fi
+    if [ -n "$out" ]; then
+        printf '%s\n' "$out"
+    fi
+    return 0
+}
+
+# Prints the routes in table 51820 that TunnelSats does not own ($1 = TunnelSats interface).
+# Returns 1 if the table cannot be read.
+ts_table51820_foreign_routes() {
+    local iface="$1" routes
+    routes=$(ts_table51820_routes) || return 1
+    [ -n "$routes" ] || return 0
+    printf '%s\n' "$routes" | awk -v ifc="$iface" '
+        NF == 0 { next }
+        NF == 4 && $1 == "blackhole" && $2 == "default" && $3 == "metric" && $4 == "3" { next }
+        {
+            for (i = 1; i < NF; i++) {
+                if ($i == "dev" && ifc != "" && $(i + 1) == ifc) { next }
+            }
+            print
+        }'
+}
+
+# Removes only the routes TunnelSats installs into table 51820. Never flushes the table.
+# Bounded loops; a missing route or device simply ends the loop.
+ts_table51820_remove_owned() {
+    local iface="$1" n
+    for n in 1 2 3 4 5 6 7 8 9 10; do
+        ip route del blackhole default metric 3 table 51820 2>/dev/null || break
+    done
+    if [ -n "$iface" ]; then
+        for n in 1 2 3 4 5 6 7 8 9 10; do
+            ip route del default dev "$iface" table 51820 2>/dev/null || break
+        done
+    fi
+    return 0
+}
+
+# Arms the emergency fail-closed drop for Lightning traffic while no verified tunnel exists:
+# host traffic in the TunnelSats cgroup and forwarded traffic from the Docker tunnel subnet ($1).
+# Returns 1 unless every table/chain/rule was accepted by nft (callers must report that).
+ts_arm_failclosed() {
+    local subnet="${1:-10.9.9.0/25}" failed=0
+    if ! command -v nft >/dev/null 2>&1; then
+        echo "TunnelSats: nft not available; emergency fail-closed drop could NOT be armed" >&2
+        return 1
+    fi
+    nft add table ip tunnelsats_failclosed || failed=1
+    nft "add chain ip tunnelsats_failclosed output { type filter hook output priority -100; policy accept; }" || failed=1
+    nft "add rule ip tunnelsats_failclosed output meta cgroup 1118498 fib daddr type != local counter drop" || failed=1
+    nft "add chain ip tunnelsats_failclosed forward { type filter hook forward priority -100; policy accept; }" || failed=1
+    nft "add rule ip tunnelsats_failclosed forward ip saddr ${subnet} fib daddr type != local counter drop" || failed=1
+    if [ "$failed" -ne 0 ]; then
+        echo "TunnelSats: nft rejected an emergency drop rule; emergency fail-closed drop could NOT be armed" >&2
+        return 1
+    fi
+    return 0
+}
+
+# Removes the emergency fail-closed drop once a tunnel is verified active.
+ts_release_failclosed() {
+    command -v nft >/dev/null 2>&1 || return 0
+    nft delete table ip tunnelsats_failclosed 2>/dev/null || true
+    return 0
+}
+
+route_guard_path() {
+    echo "${WG_DIR:-/etc/wireguard}/tunnelsats-route-guard.sh"
+}
+
+# Generates the route guard executed by the wg-quick PostUp/PostDown hooks:
+#   check IFACE [SUBNET]  first PostUp hook: if table 51820 holds foreign routes or cannot be
+#                         read, refuse to start and arm the emergency fail-closed drop.
+#                         exit 1 = refused, drop armed; exit 3 = refused, drop could NOT be armed
+#   clean IFACE           remove only TunnelSats-owned routes from table 51820
+#   release               remove the emergency fail-closed drop (last PostUp hook)
+# The guard is replaced atomically (temp file + rename): a failed write leaves the previous
+# guard in place, so a rolled-back config that calls it keeps working.
+write_route_guard_script() {
+    local guard tmp
+    guard=$(route_guard_path)
+    mkdir -p "$(dirname "$guard")" 2>/dev/null || true
+    tmp=$(mktemp "${guard}.XXXXXX") || return 1
+    if ! {
+        echo '#!/bin/bash'
+        echo '# Generated by tunnelsats.sh - ownership-scoped management of routing table 51820.'
+        echo '# Never flushes table 51820; foreign routes are preserved and cause a fail-closed refusal.'
+        declare -f ts_table51820_routes ts_table51820_foreign_routes ts_table51820_remove_owned \
+            ts_arm_failclosed ts_release_failclosed
+        cat <<'GUARD'
+# Refuses the tunnel start ($1 = reason, $2 = optional details). Never returns.
+refuse_start() {
+    if ts_arm_failclosed "$subnet"; then
+        echo "TunnelSats: $1; refusing to start ${iface}. Emergency fail-closed drop armed: Lightning traffic is blocked." >&2
+        [ -n "${2:-}" ] && printf '%s\n' "$2" >&2
+        exit 1
+    fi
+    echo "TunnelSats: $1; refusing to start ${iface}. WARNING: emergency fail-closed drop could NOT be armed: Lightning traffic is NOT blocked. Stop the Lightning daemon until the tunnel is up." >&2
+    [ -n "${2:-}" ] && printf '%s\n' "$2" >&2
+    exit 3
+}
+
+action="${1:-}"
+case "$action" in
+    check)
+        iface="${2:?interface required}"
+        subnet="${3:-}"
+        if ! foreign=$(ts_table51820_foreign_routes "$iface"); then
+            refuse_start "routing table 51820 could not be verified"
+        fi
+        if [ -n "$foreign" ]; then
+            refuse_start "routing table 51820 contains routes not owned by ${iface}" "$foreign"
+        fi
+        ;;
+    clean)
+        ts_table51820_remove_owned "${2:?interface required}"
+        ;;
+    release)
+        ts_release_failclosed
+        ;;
+    *)
+        echo "usage: $0 check IFACE [SUBNET] | clean IFACE | release" >&2
+        exit 2
+        ;;
+esac
+exit 0
+GUARD
+    } > "$tmp" || ! chmod 755 "$tmp" || ! mv -f "$tmp" "$guard"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    return 0
+}
+
+stop_lightning_daemon_for_safe_restart() {
+    # Identify and stop running Lightning daemon BEFORE any route/network mutation,
+    # independently of WireGuard unit state (fail-closed leak prevention).
+    if [[ "$PLATFORM" == "umbrel" ]]; then
+        local running_cids
+        running_cids=$(get_lightning_docker_containers)
+        if [[ "$(printf '%s\n' $running_cids | grep -c . || true)" -gt 1 ]]; then
+            print_error "Multiple running ${LN_IMPL} daemon containers found ($(echo $running_cids)). Only one can own the tunnel IP ${TUNNEL_CONTAINER_IP}. Aborting before any changes."
+            exit 1
+        fi
+        if [[ -n "$running_cids" ]]; then
+            print_info "Stopping ${LN_IMPL} daemon container for leak-proof tunnel restart..."
+            if ! docker stop $running_cids >/dev/null 2>&1; then
+                print_error "Failed to safely stop ${LN_IMPL} container. Aborting before network/route changes to prevent traffic leaks."
+                exit 1
+            fi
+            stopped_docker_containers="$running_cids"
+            print_success "${LN_IMPL} daemon container stopped (Leak-proof mode)"
+        fi
+    else
+        local service_name="${LN_IMPL}"
+        [[ "$LN_IMPL" == "cln" ]] && service_name="lightningd"
+        if [[ "$LN_IMPL" == "lit" ]]; then
+            service_name="litd"
+            systemctl list-units --type=service 2>/dev/null | grep -q "lit.service" && service_name="lit"
+        fi
+
+        local target_service=""
+        if [[ -n "$service_name" ]] && systemctl is-active --quiet "${service_name}.service" 2>/dev/null; then
+            target_service="${service_name}.service"
+        elif systemctl is-active --quiet lnd.service 2>/dev/null; then
+            target_service="lnd.service"
+        elif systemctl is-active --quiet lightningd.service 2>/dev/null; then
+            target_service="lightningd.service"
+        fi
+
+        if [[ -n "$target_service" ]]; then
+            print_info "Stopping ${target_service} for leak-proof tunnel restart..."
+            if systemctl stop "${target_service}"; then
+                restarted_systemd_service="${target_service}"
+                print_success "${target_service} stopped (Leak-proof mode)"
+            else
+                print_error "Failed to stop ${target_service} safely. Aborting before network/route changes to prevent traffic leaks."
+                exit 1
+            fi
+        fi
+    fi
+
+    # If WireGuard interface is currently active, stop it before updating configuration
+    if [[ -n "$WG_INTERFACE" ]] && systemctl is-active --quiet "wg-quick@${WG_INTERFACE}"; then
+        print_info "Stopping active WireGuard service (${WG_INTERFACE}) before updating configuration..."
+        if ! systemctl stop "wg-quick@${WG_INTERFACE}"; then
+            print_error "Failed to safely stop active WireGuard service (${WG_INTERFACE}). Aborting to prevent routing conflicts."
+            exit 1
+        fi
+        stopped_wireguard_interface="$WG_INTERFACE"
+        print_success "WireGuard service stopped"
+    fi
+}
+
 setup_docker_network() {
     print_info "Setting up Docker tunnelsats network..."
     
@@ -1052,55 +1585,100 @@ setup_docker_network() {
         print_info "Docker network already exists"
     fi
     
-    # Clean routing tables from prior failed starts
-    local delrule1=$(ip rule | grep -c "from all lookup main suppress_prefixlength 0" || true)
-    local delrule2=$(ip rule | grep -c "from $dockersubnet lookup 51820" || true)
+    # Clean routing tables from prior failed starts, strictly scoped to TunnelSats ownership
+    check_and_cleanup_routing_table "$WG_INTERFACE"
     
-    if [ "$delrule1" -gt 0 ] 2>/dev/null; then
-        for i in $(seq 1 "$delrule1"); do
-            ip rule del from all table main suppress_prefixlength 0 2>/dev/null || true
-        done
+    # Attach exactly one resolved lightning daemon to docker-tunnelsats with the static tunnel IP.
+    # Only one container can own 10.9.9.9; stale stopped leftovers must not compete for it.
+    local target_cid
+    if ! target_cid=$(select_tunnel_target_container); then
+        exit 1
     fi
-    
-    if [ "$delrule2" -gt 0 ] 2>/dev/null; then
-        for i in $(seq 1 "$delrule2"); do
-            ip rule del from $dockersubnet table 51820 2>/dev/null || true
-        done
+    if [[ -z "$target_cid" ]]; then
+        print_error "No ${LN_IMPL} daemon container found to attach to docker-tunnelsats"
+        exit 1
     fi
-    
-    ip route flush table 51820 &>/dev/null || true
-    
-    # Create Docker network monitor script
-    local filter_name="_lnd"
-    [[ "$LN_IMPL" == "cln" ]] && filter_name="lightningd"
+    if ! attach_container_to_tunnel_network "$target_cid"; then
+        exit 1
+    fi
+    tunnel_target_container="$target_cid"
 
-    cat > /etc/wireguard/tunnelsats-docker-network.sh <<EOF
+    # Create Docker network monitor script with shared container resolver regex
+    local container_regex
+    if [[ "$LN_IMPL" == "cln" ]]; then
+        container_regex="$CLN_CONTAINER_REGEX"
+    else
+        container_regex="$LND_CONTAINER_REGEX"
+    fi
+
+    local wg_dir="${WG_DIR:-/etc/wireguard}"
+    local systemd_dir="${SYSTEMD_DIR:-/etc/systemd/system}"
+    mkdir -p "$wg_dir" "$systemd_dir" 2>/dev/null || true
+
+    local monitor_script=""
+    IFS= read -r -d '' monitor_script <<'EOF' || true
 #!/bin/sh
-lightningcontainer=\$(docker ps --filter "name=${filter_name}" --format "{{.ID}}" | head -n 1)
-checkdockernetwork=\$(docker network ls 2> /dev/null | grep -c "docker-tunnelsats")
-
-if [ \$checkdockernetwork -eq 0 ]; then
-  if ! docker network create "docker-tunnelsats" --subnet "10.9.9.0/25" -o "com.docker.network.driver.mtu"="1420" > /dev/null; then
+# Generated by tunnelsats.sh - keeps exactly one Lightning daemon attached to docker-tunnelsats at __TUNNEL_IP__
+NET="docker-tunnelsats"
+TUNNEL_IP="__TUNNEL_IP__"
+if [ "$(docker network ls 2> /dev/null | grep -c "$NET")" -eq 0 ]; then
+  if ! docker network create "$NET" --subnet "10.9.9.0/25" -o "com.docker.network.driver.mtu"="1420" > /dev/null; then
     exit 1
   fi
 fi
 
-if [ -n "\$lightningcontainer" ]; then
-  inspectlncontainer=\$(docker inspect "\$lightningcontainer" 2>/dev/null | grep -c "docker-tunnelsats")
-  if [ \$inspectlncontainer -eq 0 ]; then
-    if ! docker network connect --ip 10.9.9.9 docker-tunnelsats "\$lightningcontainer" > /dev/null 2>&1; then
-      exit 1
-    fi
-  fi
+list_ln() {
+  docker ps $1 --format "{{.ID}} {{.Names}}" 2>/dev/null | grep -Ei '__CONTAINER_REGEX__' | grep -Eiv '__EXCLUDE_REGEX__' | awk '{print $1}'
+}
+tunnel_state() {
+  docker inspect -f '__INSPECT_FMT__' "$1" 2>/dev/null
+}
+
+running=$(list_ln "")
+if [ "$(printf '%s\n' $running | grep -c .)" -gt 1 ]; then
+  echo "Multiple running Lightning daemon containers; refusing to share $TUNNEL_IP" >&2
+  exit 1
 fi
+target="$running"
+if [ -z "$target" ]; then
+  # No daemon running (e.g. installer restart window): never move the tunnel IP away from its current owner
+  for c in $(list_ln "-a"); do
+    case " $(tunnel_state "$c") " in *" $TUNNEL_IP "*) exit 0 ;; esac
+  done
+  target=$(list_ln "-a" | head -n 1)
+fi
+[ -z "$target" ] && exit 0
+
+state=$(tunnel_state "$target")
+case " $state " in *" $TUNNEL_IP "*) exit 0 ;; esac
+if [ -n "$state" ]; then
+  docker network disconnect -f "$NET" "$target" > /dev/null 2>&1 || exit 1
+fi
+
+for other in $(list_ln "-a"); do
+  [ "$other" = "$target" ] && continue
+  case " $(tunnel_state "$other") " in
+    *" $TUNNEL_IP "*)
+      [ "$(docker inspect -f '{{.State.Running}}' "$other" 2>/dev/null)" = "true" ] && exit 1
+      docker network disconnect -f "$NET" "$other" > /dev/null 2>&1 || exit 1
+      ;;
+  esac
+done
+
+docker network connect --ip "$TUNNEL_IP" "$NET" "$target" > /dev/null 2>&1 || exit 1
 exit 0
 EOF
+    monitor_script="${monitor_script//__CONTAINER_REGEX__/"$container_regex"}"
+    monitor_script="${monitor_script//__EXCLUDE_REGEX__/"$LN_CONTAINER_EXCLUDE_REGEX"}"
+    monitor_script="${monitor_script//__INSPECT_FMT__/"$TUNNEL_NET_INSPECT_FMT"}"
+    monitor_script="${monitor_script//__TUNNEL_IP__/"$TUNNEL_CONTAINER_IP"}"
+    printf '%s' "$monitor_script" > "$wg_dir/tunnelsats-docker-network.sh"
     
-    chmod +x /etc/wireguard/tunnelsats-docker-network.sh
-    bash /etc/wireguard/tunnelsats-docker-network.sh &>/dev/null
+    chmod +x "$wg_dir/tunnelsats-docker-network.sh"
+    bash "$wg_dir/tunnelsats-docker-network.sh" &>/dev/null
     
     # Create systemd service and timer
-    cat > /etc/systemd/system/tunnelsats-docker-network.service <<'EOF'
+    cat > "$systemd_dir/tunnelsats-docker-network.service" <<'EOF'
 [Unit]
 Description=Adding Lightning Container to the tunnel
 StartLimitInterval=200
@@ -1112,7 +1690,7 @@ ExecStart=/bin/bash /etc/wireguard/tunnelsats-docker-network.sh
 WantedBy=multi-user.target
 EOF
     
-    cat > /etc/systemd/system/tunnelsats-docker-network.timer <<'EOF'
+    cat > "$systemd_dir/tunnelsats-docker-network.timer" <<'EOF'
 [Unit]
 Description=5min timer for tunnelsats-docker-network.service
 [Timer]
@@ -1379,19 +1957,125 @@ enable_services() {
         exit 1
     fi
     
+    # Ensure kernel routing table 51820 is clean before starting, scoped to TunnelSats ownership
+    check_and_cleanup_routing_table "$WG_INTERFACE"
+
     print_info "Starting WireGuard..."
     if out=$(systemctl start wg-quick@${WG_INTERFACE} 2>&1); then
         print_success "WireGuard service started"
+        # Ensure any temporary emergency failclosed table is cleared once tunnel is active
+        ts_release_failclosed
     else
         print_error "Failed to start service:"
         echo "$out"
         
+        # Arm emergency fail-closed drop in nftables if available to ensure no clearnet leakage
+        # Covers both local host traffic (output) and forwarded Docker traffic (forward)
+        if ! ts_arm_failclosed "10.9.9.0/25"; then
+            print_error "Emergency fail-closed drop could NOT be armed: Lightning traffic is NOT blocked by nftables. Keep the Lightning daemon stopped until the tunnel is up."
+        fi
+
         # Help user troubleshoot
         echo ""
         print_info "Checking status..."
         systemctl status wg-quick@${WG_INTERFACE} --no-pager -l || true
+        if [[ -n "$restarted_systemd_service" ]] || [[ -n "$stopped_docker_containers" ]]; then
+            echo ""
+            print_warning "Lightning service was kept stopped to prevent clearnet IP leakage."
+        fi
         exit 1
     fi
+
+    # Restart Lightning node under the active tunnel if it was stopped for the restart
+    if ! restart_stopped_lightning_daemon; then
+        exit 1
+    fi
+}
+
+# Restarts the Lightning daemon that stop_lightning_daemon_for_safe_restart stopped.
+# Returns 1 on failure. Callers must only invoke this once a tunnel is verified active.
+restart_stopped_lightning_daemon() {
+    if [[ -n "$stopped_docker_containers" ]]; then
+        print_info "Restarting ${LN_IMPL} daemon container under tunnel..."
+        if docker start ${stopped_docker_containers} >/dev/null 2>&1; then
+            print_success "${LN_IMPL} daemon container restarted"
+        else
+            print_error "Failed to restart ${LN_IMPL} daemon container"
+            return 1
+        fi
+    elif [[ -n "$restarted_systemd_service" ]]; then
+        print_info "Restarting ${restarted_systemd_service} under tunnel..."
+        if systemctl start "${restarted_systemd_service}"; then
+            print_success "${restarted_systemd_service} restarted"
+        else
+            print_error "Failed to restart ${restarted_systemd_service}"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# EXIT trap armed by cmd_install between the leak-proof daemon stop and enable_services.
+# On failure it restores the previous WireGuard config and tunnel, verifies the tunnel against
+# real kernel state, and only then restarts the daemon. Without a verified tunnel the daemon
+# stays stopped (fail-closed) to avoid clearnet IP leakage.
+rollback_failed_install() {
+    local rc=$?
+    trap - EXIT
+    [[ "$rc" -eq 0 ]] && return 0
+
+    if [[ -z "$stopped_docker_containers" ]] && [[ -z "$restarted_systemd_service" ]]; then
+        exit "$rc"
+    fi
+
+    echo "" >&2
+    print_warning "Installation failed before the new tunnel was started. Attempting to restore the previous tunnel..."
+
+    if [[ -n "$WG_CONFIG_BACKUP" ]] && [[ -f "$WG_CONFIG_BACKUP" ]] && [[ -n "$WG_CONFIG_PATH" ]]; then
+        if mv -f "$WG_CONFIG_BACKUP" "$WG_CONFIG_PATH"; then
+            print_info "Restored previous WireGuard config: ${WG_CONFIG_PATH}"
+        else
+            print_error "Failed to restore previous WireGuard config from ${WG_CONFIG_BACKUP}. Lightning daemon kept stopped to prevent clearnet IP leakage."
+            exit "$rc"
+        fi
+    fi
+
+    local restore_iface="$stopped_wireguard_interface"
+    if [[ -z "$restore_iface" ]] && [[ -n "$WG_INTERFACE" ]] && systemctl is-active --quiet "wg-quick@${WG_INTERFACE}" 2>/dev/null; then
+        # The previous tunnel was never stopped (e.g. stopping it failed) and is still up
+        restore_iface="$WG_INTERFACE"
+    fi
+
+    if [[ -z "$restore_iface" ]]; then
+        print_warning "No previously active TunnelSats tunnel to restore. Lightning daemon kept stopped to prevent clearnet IP leakage."
+        print_warning "Fix the error above and re-run the installer."
+        exit "$rc"
+    fi
+
+    if ! systemctl is-active --quiet "wg-quick@${restore_iface}" 2>/dev/null; then
+        if ! systemctl start "wg-quick@${restore_iface}" >/dev/null 2>&1; then
+            print_error "Failed to restart previous tunnel (${restore_iface}). Lightning daemon kept stopped to prevent clearnet IP leakage."
+            exit "$rc"
+        fi
+    fi
+    if ! wg show "$restore_iface" >/dev/null 2>&1; then
+        print_error "Previous tunnel (${restore_iface}) is not present in the kernel. Lightning daemon kept stopped to prevent clearnet IP leakage."
+        exit "$rc"
+    fi
+    if ! ip rule show 2>/dev/null | grep -Eq "lookup 51820([[:space:]]|$)"; then
+        print_error "TunnelSats policy routing (table 51820) is not active. Lightning daemon kept stopped to prevent clearnet IP leakage."
+        exit "$rc"
+    fi
+    if [[ -n "$stopped_docker_containers" ]] && ! attach_container_to_tunnel_network "$stopped_docker_containers"; then
+        print_error "Lightning container could not be attached to docker-tunnelsats. Lightning daemon kept stopped to prevent clearnet IP leakage."
+        exit "$rc"
+    fi
+    print_success "Previous tunnel (${restore_iface}) restored"
+
+    if restart_stopped_lightning_daemon; then
+        print_warning "Lightning daemon restarted on the previous tunnel. The new installation did NOT complete."
+    fi
+    exit "$rc"
 }
 
 verify_installation() {
@@ -1400,6 +2084,58 @@ verify_installation() {
     else
         print_error "WireGuard service is not running"
         exit 1
+    fi
+
+    # Verify the Lightning daemon container(s) on docker-tunnelsats:
+    # - containers the installer stopped and restarted must be running with live IP 10.9.9.9
+    # - the selected target that was already stopped before installation stays stopped and
+    #   only needs its static 10.9.9.9 attachment (it gets the tunnel IP when the user starts it)
+    if [[ "$PLATFORM" == "umbrel" ]]; then
+        if command -v docker >/dev/null 2>&1; then
+            local target="$tunnel_target_container"
+            if [[ -z "$target" ]]; then
+                if ! target=$(select_tunnel_target_container); then
+                    exit 1
+                fi
+            fi
+            local verify_cids
+            verify_cids=$(printf '%s\n' $stopped_docker_containers $target | awk 'NF && !seen[$0]++')
+            if [[ -z "$verify_cids" ]]; then
+                print_error "No Lightning daemon container found during verification"
+                exit 1
+            fi
+            local cid
+            for cid in $verify_cids; do
+                local restarted_by_installer=0
+                [[ " $(echo $stopped_docker_containers) " == *" ${cid} "* ]] && restarted_by_installer=1
+
+                if docker ps -q --no-trunc | grep -q "^${cid}"; then
+                    local container_ip
+                    container_ip=$(docker inspect -f '{{with index .NetworkSettings.Networks "docker-tunnelsats"}}{{.IPAddress}}{{end}}' "$cid" 2>/dev/null)
+                    if [[ "$container_ip" != "$TUNNEL_CONTAINER_IP" ]]; then
+                        print_error "Container (${cid}) is not attached to docker-tunnelsats with expected IP ${TUNNEL_CONTAINER_IP} (found: ${container_ip:-none})"
+                        exit 1
+                    fi
+                    print_success "Container (${cid}) verified running on docker-tunnelsats (${TUNNEL_CONTAINER_IP})"
+                elif [[ "$restarted_by_installer" -eq 1 ]]; then
+                    print_error "Restarted container (${cid}) is not running"
+                    exit 1
+                else
+                    local tunnel_state
+                    tunnel_state=$(docker inspect -f "$TUNNEL_NET_INSPECT_FMT" "$cid" 2>/dev/null || true)
+                    if [[ " $tunnel_state " != *" ${TUNNEL_CONTAINER_IP} "* ]]; then
+                        print_error "Stopped container (${cid}) is not attached to docker-tunnelsats with static IP ${TUNNEL_CONTAINER_IP}"
+                        exit 1
+                    fi
+                    print_success "Container (${cid}) attached to docker-tunnelsats (${TUNNEL_CONTAINER_IP}); it was stopped before installation and was left stopped"
+                fi
+            done
+        fi
+    elif [[ -n "$restarted_systemd_service" ]]; then
+        if ! systemctl is-active --quiet "${restarted_systemd_service}"; then
+            print_error "${restarted_systemd_service} is not running after restart"
+            exit 1
+        fi
     fi
     
     if wg show ${WG_INTERFACE} &>/dev/null; then
@@ -1703,15 +2439,21 @@ cmd_uninstall() {
     nft delete table inet ${target_interface} &>/dev/null || true
     nft delete table ip tunnelsatsv2 &>/dev/null || true
     nft delete table inet tunnelsatsv2 &>/dev/null || true
+    # TunnelSats is being removed on purpose: drop any emergency fail-closed table it armed
+    ts_release_failclosed
     
     if [[ -f /etc/nftablespriortunnelsats.backup ]]; then
          mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf
          print_success "Restored original nftables.conf"
     fi
 
+    # Remove only TunnelSats-owned policy rules/routes; other users of table 51820 are preserved
+    if ! cleanup_owned_routing_state "$target_interface"; then
+        print_warning "Some TunnelSats policy rules could not be removed. Check 'ip rule show'."
+    fi
+
     if [[ $is_docker -eq 1 ]]; then
         print_info "Cleaning Docker network..."
-        ip route flush table 51820 &>/dev/null
         
         # Disconnect containers from network
         docker inspect docker-tunnelsats 2>/dev/null | jq '.[].Containers' | grep Name | sed 's/[",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats % 2>/dev/null'
@@ -1723,8 +2465,6 @@ cmd_uninstall() {
         systemctl daemon-reload || true
         systemctl restart docker &>/dev/null || true
         print_success "Docker restarted"
-    else
-        ip route flush table 51820 &>/dev/null
     fi
     echo ""
 
@@ -1884,6 +2624,16 @@ cmd_install() {
     configure_lightning
     echo ""
 
+    # Resolve target tunnel interface up front so an already-active tunnel is stopped and tracked
+    WG_INTERFACE=$(basename "$(resolve_wg_target_path)" .conf)
+
+    # Any failure between the leak-proof stop and enable_services restores the previous tunnel
+    # (verified) before restarting the daemon, or keeps the daemon stopped (fail-closed).
+    trap rollback_failed_install EXIT
+
+    # Stop running Lightning daemon BEFORE any route or network changes to prevent clearnet leakage
+    stop_lightning_daemon_for_safe_restart
+
     # Step 5: Configure WireGuard
     print_step 5 6 "Configuring WireGuard..."
     configure_wireguard
@@ -1896,6 +2646,9 @@ cmd_install() {
         setup_docker_network
     fi
     echo ""
+
+    # enable_services has its own fail-closed handling once the new tunnel start is attempted
+    trap - EXIT
 
     # Step 6: Enable services
     print_step 6 6 "Enabling services..."
@@ -2528,7 +3281,7 @@ cmd_restart() {
         echo ""
 
         print_info "Stopping ${LN_IMPL} app for safe restart..."
-        stopped_containers=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
+        stopped_containers=$(get_lightning_docker_containers)
         
         if [[ -n "$stopped_containers" ]]; then
             docker stop ${stopped_containers} &>/dev/null

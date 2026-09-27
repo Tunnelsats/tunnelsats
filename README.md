@@ -2,6 +2,9 @@
 
 # TunnelSats: Hybrid Lightning Node Setup
 
+[![Syntax & Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/syntax.yml/badge.svg)](https://github.com/Tunnelsats/tunnelsats/actions/workflows/syntax.yml)
+[![Script Integrity](https://github.com/Tunnelsats/tunnelsats/actions/workflows/integrity.yml/badge.svg)](https://github.com/Tunnelsats/tunnelsats/actions/workflows/integrity.yml)
+
 > **Privacy-focused VPN tunnels for Lightning nodes.** Run your node hybrid (clearnet + Tor) without exposing your home IP.
 
 ---
@@ -81,33 +84,43 @@ sudo bash tunnelsats.sh uninstall
 
 ---
 
-## Development & Contribution
+## Development & Testing
 
-### Local Setup
+### Running Tests Locally
 
-This repository uses Git hooks to maintain script integrity. To set up your local development environment:
+All test suites can be executed locally in non-root environments:
 
-1.  **Initialize hooks**:
-    ```bash
-    chmod +x scripts/hooks-install.sh
-    ./scripts/hooks-install.sh
-    ```
-    This will automatically configure the `pre-commit` and `post-rewrite` hooks to keep the `scripts/tunnelsats.sh.sha256` file in sync.
+```bash
+# Verify shell script syntax
+find . -name "*.sh" -print0 | xargs -0 -I {} bash -n "{}"
 
----
+# Run automated test suites
+bash scripts/test_check_umbrel_version.sh
+bash scripts/test_ufw_check.sh
+bash scripts/test_ipv6_patch.sh
+bash scripts/test_sanitize_config.sh
+bash scripts/test_lifecycle_idempotency.sh
 
-## Development & Contribution
+# Verify script SHA256 integrity
+sha256sum -c scripts/tunnelsats.sh.sha256
+```
 
-### Local Setup
+### Remote CI/CD
 
-This repository uses Git hooks to maintain script integrity. To set up your local development environment:
+Automated CI status checks run on every push and pull request via [GitHub Actions](https://github.com/Tunnelsats/tunnelsats/actions):
+- **[Syntax & Automated Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/syntax.yml)**: Validates script syntax (`bash -n`) and executes all 5 automated test suites covering Umbrel version compatibility, UFW firewall handling, IPv6 route stripping, WireGuard configuration sanitization, and lifecycle/routing idempotency.
+- **[Script Integrity Verification](https://github.com/Tunnelsats/tunnelsats/actions/workflows/integrity.yml)**: Asserts that `scripts/tunnelsats.sh.sha256` strictly matches the contents of `scripts/tunnelsats.sh`.
 
-1.  **Initialize hooks**:
-    ```bash
-    chmod +x scripts/hooks-install.sh
-    ./scripts/hooks-install.sh
-    ```
-    This will automatically configure the `pre-commit` and `post-rewrite` hooks to keep the `scripts/tunnelsats.sh.sha256` file in sync.
+### Local Setup & Git Hooks
+
+This repository uses Git hooks to keep the SHA256 checksum in sync:
+
+1. **Initialize hooks**:
+   ```bash
+   chmod +x scripts/hooks-install.sh
+   ./scripts/hooks-install.sh
+   ```
+   This will automatically configure the `pre-commit` and `post-rewrite` hooks to keep the `scripts/tunnelsats.sh.sha256` file in sync.
 
 ---
 
