@@ -956,12 +956,12 @@ generate_tunnel_config() {
     local platform="$1" dir="$2"
     cat > "$dir/source.conf" <<'CONF'
 [Interface]
-PrivateKey = cHJpdmF0ZWtleXByaXZhdGVrZXlwcml2YXRla2V5MDA=
+PrivateKey = aaaaaa=
 Address = 10.9.0.2/32
 #VPNPort = 23456
 
 [Peer]
-PublicKey = cHVibGlja2V5cHVibGlja2V5cHVibGlja2V5cHViMDA=
+PublicKey = bbbbbb=
 Endpoint = de1.tunnelsats.com:51820
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
