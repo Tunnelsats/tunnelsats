@@ -19,6 +19,8 @@ node_user=""
 restarted_systemd_service=""
 stopped_docker_containers=""
 stopped_wireguard_interface=""
+# Lightning daemon container selected by setup_docker_network to own the tunnel IP (may be stopped)
+tunnel_target_container=""
 WG_CONFIG_BACKUP=""
 
 # Shared Lightning daemon container resolvers (used by the installer and the generated network monitor)
@@ -1580,6 +1582,7 @@ setup_docker_network() {
     if ! attach_container_to_tunnel_network "$target_cid"; then
         exit 1
     fi
+    tunnel_target_container="$target_cid"
 
     # Create Docker network monitor script with shared container resolver regex
     local container_regex
@@ -2062,28 +2065,49 @@ verify_installation() {
         exit 1
     fi
 
-    # If Lightning daemon containers were restarted (or resolved on Umbrel), verify that each one is running
-    # and connected to docker-tunnelsats with expected IP 10.9.9.9
+    # Verify the Lightning daemon container(s) on docker-tunnelsats:
+    # - containers the installer stopped and restarted must be running with live IP 10.9.9.9
+    # - the selected target that was already stopped before installation stays stopped and
+    #   only needs its static 10.9.9.9 attachment (it gets the tunnel IP when the user starts it)
     if [[ "$PLATFORM" == "umbrel" ]]; then
         if command -v docker >/dev/null 2>&1; then
-            local verify_cids="$stopped_docker_containers"
-            [[ -z "$verify_cids" ]] && verify_cids=$(get_lightning_docker_containers)
+            local target="$tunnel_target_container"
+            if [[ -z "$target" ]]; then
+                if ! target=$(select_tunnel_target_container); then
+                    exit 1
+                fi
+            fi
+            local verify_cids
+            verify_cids=$(printf '%s\n' $stopped_docker_containers $target | awk 'NF && !seen[$0]++')
             if [[ -z "$verify_cids" ]]; then
                 print_error "No Lightning daemon container found during verification"
                 exit 1
             fi
+            local cid
             for cid in $verify_cids; do
-                if ! docker ps -q --no-trunc | grep -q "^${cid}"; then
+                local restarted_by_installer=0
+                [[ " $(echo $stopped_docker_containers) " == *" ${cid} "* ]] && restarted_by_installer=1
+
+                if docker ps -q --no-trunc | grep -q "^${cid}"; then
+                    local container_ip
+                    container_ip=$(docker inspect -f '{{with index .NetworkSettings.Networks "docker-tunnelsats"}}{{.IPAddress}}{{end}}' "$cid" 2>/dev/null)
+                    if [[ "$container_ip" != "$TUNNEL_CONTAINER_IP" ]]; then
+                        print_error "Container (${cid}) is not attached to docker-tunnelsats with expected IP ${TUNNEL_CONTAINER_IP} (found: ${container_ip:-none})"
+                        exit 1
+                    fi
+                    print_success "Container (${cid}) verified running on docker-tunnelsats (${TUNNEL_CONTAINER_IP})"
+                elif [[ "$restarted_by_installer" -eq 1 ]]; then
                     print_error "Restarted container (${cid}) is not running"
                     exit 1
+                else
+                    local tunnel_state
+                    tunnel_state=$(docker inspect -f "$TUNNEL_NET_INSPECT_FMT" "$cid" 2>/dev/null || true)
+                    if [[ " $tunnel_state " != *" ${TUNNEL_CONTAINER_IP} "* ]]; then
+                        print_error "Stopped container (${cid}) is not attached to docker-tunnelsats with static IP ${TUNNEL_CONTAINER_IP}"
+                        exit 1
+                    fi
+                    print_success "Container (${cid}) attached to docker-tunnelsats (${TUNNEL_CONTAINER_IP}); it was stopped before installation and was left stopped"
                 fi
-                local container_ip
-                container_ip=$(docker inspect -f '{{with index .NetworkSettings.Networks "docker-tunnelsats"}}{{.IPAddress}}{{end}}' "$cid" 2>/dev/null)
-                if [[ "$container_ip" != "10.9.9.9" ]]; then
-                    print_error "Container (${cid}) is not attached to docker-tunnelsats with expected IP 10.9.9.9 (found: ${container_ip:-none})"
-                    exit 1
-                fi
-                print_success "Container (${cid}) verified running on docker-tunnelsats (10.9.9.9)"
             done
         fi
     elif [[ -n "$restarted_systemd_service" ]]; then

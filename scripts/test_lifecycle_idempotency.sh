@@ -1258,6 +1258,101 @@ EOF
 }
 test_uninstall_cleanup_preserves_foreign_routes
 
+# ---------------------------------------------------------------------------
+# TEST GROUP 12: Verification of an intentionally stopped Lightning daemon
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- Group 12: Verification Of Intentionally Stopped Daemon ---"
+
+# Docker mock for an Umbrel node whose LND container is stopped (not by the installer).
+# Network attachment state is persisted in $STATE so connect -> inspect is consistent.
+STOPPED_DAEMON_DOCKER_MOCK='
+docker() {
+    case "$1" in
+        network)
+            [[ "$2" == "ls" ]] && { echo "docker-tunnelsats"; return 0; }
+            if [[ "$2" == "connect" ]]; then echo "attached 10.9.9.9 " > "$STATE"; echo "DOCKER:$*" >> "$LOG"; fi
+            return 0 ;;
+        ps) [[ "$2" == "-a" ]] && echo "cid_stopped lightning_lnd_1"; return 0 ;;
+        inspect)
+            if [[ "$3" == *State.Running* ]]; then echo "false"; return 0; fi
+            if [[ "$3" == *IPAMConfig* ]]; then cat "$STATE" 2>/dev/null; return 0; fi
+            return 0 ;;
+        start|stop) echo "DOCKER:$*" >> "$LOG"; return 0 ;;
+    esac
+    return 0
+}'
+
+test_install_verifies_intentionally_stopped_daemon() {
+    local tmp log status
+    tmp=$(mktemp -d); log=$(mktemp)
+    set +e
+    TMPD="$tmp" STATE="$tmp/attach" MOCK="$STOPPED_DAEMON_DOCKER_MOCK" run_case "$log" <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+PLATFORM="umbrel"; LN_IMPL="lnd"; WG_INTERFACE="tunnelsatsv2"
+WG_DIR="$TMPD"; SYSTEMD_DIR="$TMPD"
+eval "$MOCK"
+ip() { return 0; }
+wg() { return 0; }
+systemctl() { return 0; }
+bash() { return 0; }
+stop_lightning_daemon_for_safe_restart
+setup_docker_network
+verify_installation
+EOF
+    status=$?
+    set -e
+    assert_status 0 "$status" "Install verification accepts an intentionally stopped daemon attached with static 10.9.9.9"
+    assert_log_contains "$log" "DOCKER:network connect --ip 10.9.9.9 docker-tunnelsats cid_stopped" "Stopped daemon is attached to docker-tunnelsats"
+    assert_log_not_contains "$log" "DOCKER:start" "Installer never starts a daemon that was stopped before installation"
+    rm -rf "$tmp" "$log"
+}
+test_install_verifies_intentionally_stopped_daemon
+
+test_verify_rejects_stopped_target_without_attachment() {
+    local tmp status
+    tmp=$(mktemp -d)
+    set +e
+    STATE="$tmp/attach" MOCK="$STOPPED_DAEMON_DOCKER_MOCK" run_case /dev/null <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+PLATFORM="umbrel"; LN_IMPL="lnd"; WG_INTERFACE="tunnelsatsv2"
+tunnel_target_container="cid_stopped"
+eval "$MOCK"
+wg() { return 0; }
+systemctl() { return 0; }
+verify_installation
+EOF
+    status=$?
+    set -e
+    assert_status 1 "$status" "Verification fails when the stopped target is not attached with 10.9.9.9"
+    rm -rf "$tmp"
+}
+test_verify_rejects_stopped_target_without_attachment
+
+test_verify_rejects_restarted_container_not_running() {
+    local status
+    set +e
+    run_case /dev/null <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+PLATFORM="umbrel"; LN_IMPL="lnd"; WG_INTERFACE="tunnelsatsv2"
+stopped_docker_containers="cid_restarted"; tunnel_target_container="cid_restarted"
+docker() {
+    case "$1" in
+        ps) return 0 ;;
+        inspect) echo "attached 10.9.9.9 "; return 0 ;;
+    esac
+    return 0
+}
+wg() { return 0; }
+systemctl() { return 0; }
+verify_installation
+EOF
+    status=$?
+    set -e
+    assert_status 1 "$status" "Verification still requires containers the installer restarted to be running"
+}
+test_verify_rejects_restarted_container_not_running
+
 echo ""
 echo "--------------------------------"
 echo "Passed: $pass_count"
