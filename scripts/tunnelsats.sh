@@ -1084,6 +1084,14 @@ configure_wireguard() {
         localNetworks="10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"
     fi
     
+    # Ownership-scoped table 51820 guard executed by the PostUp/PostDown hooks below
+    local route_guard
+    route_guard=$(route_guard_path)
+    if ! write_route_guard_script; then
+        print_error "Failed to write routing guard: ${route_guard}"
+        exit 1
+    fi
+
     # Apply network rules based on platform
     if [[ "$PLATFORM" == "umbrel" ]]; then
         print_info "Applying Docker network rules..."
@@ -1117,15 +1125,15 @@ configure_wireguard() {
 DNS = 8.8.8.8
 Table = off
 
+PostUp = $route_guard check %i $dockersubnet
 PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || break; done
 PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21821 from $dockersubnet table 51820 2>/dev/null || break; done
-PostUp = if [ \$(ip route show table 51820 2>/dev/null | grep -c blackhole) -gt 0 ]; then ip route del blackhole default metric 3 table 51820 2>/dev/null; fi
+PostUp = $route_guard clean %i
 
-PostUp = ip rule add from all table main suppress_prefixlength 0 priority 21820
-PostUp = ip rule add from $dockersubnet table 51820 priority 21821
-PostUp = ip route flush table 51820
 PostUp = ip route add blackhole default metric 3 table 51820
 PostUp = ip route add default dev %i metric 2 table 51820
+PostUp = ip rule add from all table main suppress_prefixlength 0 priority 21820
+PostUp = ip rule add from $dockersubnet table 51820 priority 21821
 PostUp = ip route add 10.9.0.0/24 dev %i proto kernel scope link; ping -c1 10.9.0.1
 
 PostUp = iptables -t nat -I PREROUTING -i %i -p tcp --dport $vpn_port -j DNAT --to-destination 10.9.9.9:9735
@@ -1135,6 +1143,7 @@ PostUp = iptables -I FORWARD -i $bridge_name -o %i -j ACCEPT
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
+PostUp = $route_guard release
 
 PostDown = iptables -t nat -D PREROUTING -i %i -p tcp --dport $vpn_port -j DNAT --to-destination 10.9.9.9:9735
 PostDown = iptables -D FORWARD -i %i -o $bridge_name -j ACCEPT
@@ -1142,7 +1151,7 @@ PostDown = iptables -D FORWARD -i $bridge_name -o %i -j ACCEPT
 
 PostDown = ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || true
 PostDown = ip rule del priority 21821 from $dockersubnet table 51820 2>/dev/null || true
-PostDown = ip route flush table 51820 2>/dev/null || true
+PostDown = $route_guard clean %i || true
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 "
         echo -e "$inputDocker" >> "$target_path"
@@ -1167,13 +1176,14 @@ FwMark = 0x2000000
 Table = off
 
 
+PostUp = $route_guard check %i
 PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || break; done
 PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21821 from all fwmark 0x1000000/0xff000000 table 51820 2>/dev/null || break; done
+PostUp = $route_guard clean %i
 
+PostUp = ip route add default dev %i table 51820;
 PostUp = ip rule add from all table main suppress_prefixlength 0 priority 21820
 PostUp = ip rule add from all fwmark 0x1000000/0xff000000 table 51820 priority 21821
-PostUp = ip route flush table 51820
-PostUp = ip route add default dev %i table 51820;
 PostUp = ip route add  10.9.0.0/24 dev %i  proto kernel scope link; ping -c1 10.9.0.1
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
@@ -1185,12 +1195,13 @@ PostUp = nft add chain ip %i mangle '{ type route hook output priority mangle -1
 PostUp = nft \"add chain ip %i nat { type nat hook postrouting priority srcnat -1; policy accept; } ; insert rule ip %i nat fib daddr type != local ip daddr != { $localNetworks } oifname != %i ct mark and 0xff000000 == 0x1000000 drop ; add rule ip %i nat oifname %i ct mark and 0xff000000 == 0x1000000 masquerade\"
 ${killswitchNonDocker}PostUp = nft \"add chain ip %i postroutingmangle { type filter hook postrouting priority mangle -1; policy accept; } ; add rule ip %i postroutingmangle meta mark and 0xff000000 == 0x1000000 ct mark set meta mark and 0x00ffffff xor 0x1000000\"
 PostUp = nft \"add chain ip %i input { type filter hook input priority filter -1; policy accept; } ; add rule ip %i input iifname %i ct state established,related counter accept ; add rule ip %i input iifname %i tcp dport != 9735 counter drop ; add rule ip %i input iifname %i udp dport != 9735 counter drop\"
+PostUp = $route_guard release
 
 
 PostDown = nft delete table ip %i
 PostDown = ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || true
 PostDown = ip rule del priority 21821 from all fwmark 0x1000000/0xff000000 table 51820 2>/dev/null || true
-PostDown = ip route flush table 51820 2>/dev/null || true
+PostDown = $route_guard clean %i || true
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 "
         echo -e "$inputNonDocker" >> "$target_path"
@@ -1288,12 +1299,12 @@ check_and_cleanup_routing_table() {
         done
     fi
 
-    # 2. Check for foreign routes in table 51820 not owned by TunnelSats or blackhole
+    # 2. Check for foreign routes in table 51820 (anything not owned by TunnelSats).
+    #    An unreadable table is unverified state and aborts (fail-closed).
     local foreign_routes=""
-    if [[ -n "$iface" ]]; then
-        foreign_routes=$(ip route show table 51820 2>/dev/null | grep -v "dev ${iface}\b" | grep -v "^blackhole" || true)
-    else
-        foreign_routes=$(ip route show table 51820 2>/dev/null | grep -v "^blackhole" || true)
+    if ! foreign_routes=$(ts_table51820_foreign_routes "$iface"); then
+        print_error "Routing table 51820 could not be verified. Aborting to prevent inconsistent routing."
+        exit 1
     fi
     if [[ -n "$foreign_routes" ]]; then
         print_error "Routing table 51820 contains routes owned by another interface/service:"
@@ -1302,8 +1313,21 @@ check_and_cleanup_routing_table() {
         exit 1
     fi
 
-    # 3. Clean up TunnelSats-owned policy rules. Rules are matched by priority AND full selector/table,
-    #    so foreign rules that happen to reuse priority 21820/21821 are never touched.
+    # 3./4. Remove TunnelSats-owned policy rules and routes only
+    if ! cleanup_owned_routing_state "$iface"; then
+        print_error "Failed to remove stale TunnelSats policy rules. Aborting to prevent inconsistent routing."
+        exit 1
+    fi
+}
+
+# Removes TunnelSats-owned policy rules and TunnelSats-owned routes in table 51820.
+# Never flushes the table and never touches foreign rules/routes, so it is also safe for uninstall
+# when another service uses table 51820. Returns 1 if an owned policy rule could not be removed.
+cleanup_owned_routing_state() {
+    local iface="${1:-$WG_INTERFACE}"
+
+    # Rules are matched by priority AND full selector/table,
+    # so foreign rules that happen to reuse priority 21820/21821 are never touched.
     local dsubnet="${dockersubnet:-10.9.9.0/25}"
     local dsubnet_re
     dsubnet_re=$(printf '%s' "$dsubnet" | sed 's/\./\\./g')
@@ -1321,13 +1345,149 @@ check_and_cleanup_routing_table() {
     delete_owned_ip_rule "from all fwmark 0x1000000/0xff000000 lookup 51820([[:space:]]|$)" \
         from all fwmark 0x1000000/0xff000000 table 51820 || rule_cleanup_failed=1
 
-    if [[ "$rule_cleanup_failed" -ne 0 ]]; then
-        print_error "Failed to remove stale TunnelSats policy rules. Aborting to prevent inconsistent routing."
-        exit 1
-    fi
+    # Routes: only the ones TunnelSats installs (never `ip route flush table 51820`)
+    ts_table51820_remove_owned "$iface"
 
-    # 4. Safe to flush table 51820 now that exclusive TunnelSats ownership is verified
-    ip route flush table 51820 &>/dev/null || true
+    [[ "$rule_cleanup_failed" -eq 0 ]]
+}
+
+# ---------------------------------------------------------------------------
+# OWNERSHIP-SCOPED ROUTING TABLE 51820 PRIMITIVES
+# These functions are embedded verbatim (declare -f) into the generated wg-quick route guard
+# (write_route_guard_script), so the installer and the runtime PostUp/PostDown hooks share one
+# implementation. Keep them self-contained: no globals, no print_* helpers.
+#
+# TunnelSats-owned routes in table 51820 are exactly:
+#   - the Docker kill-switch route "blackhole default metric 3"
+#   - routes via the TunnelSats WireGuard interface ("... dev <iface> ...")
+# Everything else in table 51820 belongs to another service and must never be removed.
+# ---------------------------------------------------------------------------
+
+# Prints the IPv4 routes of table 51820. A table that does not exist yet is reported as empty.
+# Returns 1 if the table cannot be read; callers must treat that as unverified and fail closed.
+ts_table51820_routes() {
+    local out rc
+    out=$(ip route show table 51820 2>&1) && rc=0 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        case "$out" in
+            *"FIB table does not exist"*) return 0 ;;
+        esac
+        echo "TunnelSats: unable to read routing table 51820: ${out}" >&2
+        return 1
+    fi
+    if [ -n "$out" ]; then
+        printf '%s\n' "$out"
+    fi
+    return 0
+}
+
+# Prints the routes in table 51820 that TunnelSats does not own ($1 = TunnelSats interface).
+# Returns 1 if the table cannot be read.
+ts_table51820_foreign_routes() {
+    local iface="$1" routes
+    routes=$(ts_table51820_routes) || return 1
+    [ -n "$routes" ] || return 0
+    printf '%s\n' "$routes" | awk -v ifc="$iface" '
+        NF == 0 { next }
+        NF == 4 && $1 == "blackhole" && $2 == "default" && $3 == "metric" && $4 == "3" { next }
+        {
+            for (i = 1; i < NF; i++) {
+                if ($i == "dev" && ifc != "" && $(i + 1) == ifc) { next }
+            }
+            print
+        }'
+}
+
+# Removes only the routes TunnelSats installs into table 51820. Never flushes the table.
+# Bounded loops; a missing route or device simply ends the loop.
+ts_table51820_remove_owned() {
+    local iface="$1" n
+    for n in 1 2 3 4 5 6 7 8 9 10; do
+        ip route del blackhole default metric 3 table 51820 2>/dev/null || break
+    done
+    if [ -n "$iface" ]; then
+        for n in 1 2 3 4 5 6 7 8 9 10; do
+            ip route del default dev "$iface" table 51820 2>/dev/null || break
+        done
+    fi
+    return 0
+}
+
+# Arms the emergency fail-closed drop for Lightning traffic while no verified tunnel exists:
+# host traffic in the TunnelSats cgroup and forwarded traffic from the Docker tunnel subnet ($1).
+ts_arm_failclosed() {
+    local subnet="${1:-10.9.9.0/25}"
+    if ! command -v nft >/dev/null 2>&1; then
+        echo "TunnelSats: nft not available; emergency fail-closed drop could not be armed" >&2
+        return 1
+    fi
+    nft add table ip tunnelsats_failclosed 2>/dev/null || true
+    nft "add chain ip tunnelsats_failclosed output { type filter hook output priority -100; policy accept; }" 2>/dev/null || true
+    nft "add rule ip tunnelsats_failclosed output meta cgroup 1118498 fib daddr type != local counter drop" 2>/dev/null || true
+    nft "add chain ip tunnelsats_failclosed forward { type filter hook forward priority -100; policy accept; }" 2>/dev/null || true
+    nft "add rule ip tunnelsats_failclosed forward ip saddr ${subnet} fib daddr type != local counter drop" 2>/dev/null || true
+    return 0
+}
+
+# Removes the emergency fail-closed drop once a tunnel is verified active.
+ts_release_failclosed() {
+    command -v nft >/dev/null 2>&1 || return 0
+    nft delete table ip tunnelsats_failclosed 2>/dev/null || true
+    return 0
+}
+
+route_guard_path() {
+    echo "${WG_DIR:-/etc/wireguard}/tunnelsats-route-guard.sh"
+}
+
+# Generates the route guard executed by the wg-quick PostUp/PostDown hooks:
+#   check IFACE [SUBNET]  first PostUp hook: refuse to start (exit 1) and arm the emergency
+#                         fail-closed drop if table 51820 holds foreign routes or cannot be read
+#   clean IFACE           remove only TunnelSats-owned routes from table 51820
+#   release               remove the emergency fail-closed drop (last PostUp hook)
+write_route_guard_script() {
+    local guard
+    guard=$(route_guard_path)
+    mkdir -p "$(dirname "$guard")" 2>/dev/null || true
+    {
+        echo '#!/bin/bash'
+        echo '# Generated by tunnelsats.sh - ownership-scoped management of routing table 51820.'
+        echo '# Never flushes table 51820; foreign routes are preserved and cause a fail-closed refusal.'
+        declare -f ts_table51820_routes ts_table51820_foreign_routes ts_table51820_remove_owned \
+            ts_arm_failclosed ts_release_failclosed
+        cat <<'GUARD'
+action="${1:-}"
+case "$action" in
+    check)
+        iface="${2:?interface required}"
+        if ! foreign=$(ts_table51820_foreign_routes "$iface"); then
+            ts_arm_failclosed "${3:-}" || true
+            echo "TunnelSats: routing table 51820 could not be verified; refusing to start ${iface} (Lightning traffic blocked)" >&2
+            exit 1
+        fi
+        if [ -n "$foreign" ]; then
+            ts_arm_failclosed "${3:-}" || true
+            echo "TunnelSats: routing table 51820 contains routes not owned by ${iface}; refusing to start (Lightning traffic blocked):" >&2
+            printf '%s\n' "$foreign" >&2
+            exit 1
+        fi
+        ;;
+    clean)
+        ts_table51820_remove_owned "${2:?interface required}"
+        ;;
+    release)
+        ts_release_failclosed
+        ;;
+    *)
+        echo "usage: $0 check IFACE [SUBNET] | clean IFACE | release" >&2
+        exit 2
+        ;;
+esac
+exit 0
+GUARD
+    } > "$guard" || return 1
+    chmod 755 "$guard" || return 1
+    return 0
 }
 
 stop_lightning_daemon_for_safe_restart() {
@@ -1782,22 +1942,14 @@ enable_services() {
     if out=$(systemctl start wg-quick@${WG_INTERFACE} 2>&1); then
         print_success "WireGuard service started"
         # Ensure any temporary emergency failclosed table is cleared once tunnel is active
-        if command -v nft >/dev/null 2>&1; then
-            nft delete table ip tunnelsats_failclosed 2>/dev/null || true
-        fi
+        ts_release_failclosed
     else
         print_error "Failed to start service:"
         echo "$out"
         
         # Arm emergency fail-closed drop in nftables if available to ensure no clearnet leakage
         # Covers both local host traffic (output) and forwarded Docker traffic (forward)
-        if command -v nft >/dev/null 2>&1; then
-            nft add table ip tunnelsats_failclosed 2>/dev/null || true
-            nft "add chain ip tunnelsats_failclosed output { type filter hook output priority -100; policy accept; }" 2>/dev/null || true
-            nft "add rule ip tunnelsats_failclosed output meta cgroup 1118498 fib daddr type != local counter drop" 2>/dev/null || true
-            nft "add chain ip tunnelsats_failclosed forward { type filter hook forward priority -100; policy accept; }" 2>/dev/null || true
-            nft "add rule ip tunnelsats_failclosed forward ip saddr 10.9.9.0/25 fib daddr type != local counter drop" 2>/dev/null || true
-        fi
+        ts_arm_failclosed "10.9.9.0/25" || true
 
         # Help user troubleshoot
         echo ""
@@ -2242,15 +2394,21 @@ cmd_uninstall() {
     nft delete table inet ${target_interface} &>/dev/null || true
     nft delete table ip tunnelsatsv2 &>/dev/null || true
     nft delete table inet tunnelsatsv2 &>/dev/null || true
+    # TunnelSats is being removed on purpose: drop any emergency fail-closed table it armed
+    ts_release_failclosed
     
     if [[ -f /etc/nftablespriortunnelsats.backup ]]; then
          mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf
          print_success "Restored original nftables.conf"
     fi
 
+    # Remove only TunnelSats-owned policy rules/routes; other users of table 51820 are preserved
+    if ! cleanup_owned_routing_state "$target_interface"; then
+        print_warning "Some TunnelSats policy rules could not be removed. Check 'ip rule show'."
+    fi
+
     if [[ $is_docker -eq 1 ]]; then
         print_info "Cleaning Docker network..."
-        check_and_cleanup_routing_table "$target_interface"
         
         # Disconnect containers from network
         docker inspect docker-tunnelsats 2>/dev/null | jq '.[].Containers' | grep Name | sed 's/[",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats % 2>/dev/null'
@@ -2262,8 +2420,6 @@ cmd_uninstall() {
         systemctl daemon-reload || true
         systemctl restart docker &>/dev/null || true
         print_success "Docker restarted"
-    else
-        check_and_cleanup_routing_table "$target_interface"
     fi
     echo ""
 
