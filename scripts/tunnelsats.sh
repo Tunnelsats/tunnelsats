@@ -1145,7 +1145,7 @@ PostUp = iptables -I FORWARD -i $bridge_name -o %i -j ACCEPT
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
 PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
-PostUp = $route_guard release
+PostUp = $route_guard release $dockersubnet
 
 PostDown = iptables -t nat -D PREROUTING -i %i -p tcp --dport $vpn_port -j DNAT --to-destination 10.9.9.9:9735
 PostDown = iptables -D FORWARD -i %i -o $bridge_name -j ACCEPT
@@ -1200,7 +1200,7 @@ PostUp = nft add chain ip %i mangle '{ type route hook output priority mangle -1
 PostUp = nft \"add chain ip %i nat { type nat hook postrouting priority srcnat -1; policy accept; } ; insert rule ip %i nat fib daddr type != local ip daddr != { $localNetworks } oifname != %i ct mark and 0xff000000 == 0x1000000 drop ; add rule ip %i nat oifname %i ct mark and 0xff000000 == 0x1000000 masquerade\"
 ${killswitchNonDocker}PostUp = nft \"add chain ip %i postroutingmangle { type filter hook postrouting priority mangle -1; policy accept; } ; add rule ip %i postroutingmangle meta mark and 0xff000000 == 0x1000000 ct mark set meta mark and 0x00ffffff xor 0x1000000\"
 PostUp = nft \"add chain ip %i input { type filter hook input priority filter -1; policy accept; } ; add rule ip %i input iifname %i ct state established,related counter accept ; add rule ip %i input iifname %i tcp dport != 9735 counter drop ; add rule ip %i input iifname %i udp dport != 9735 counter drop\"
-PostUp = $route_guard release
+PostUp = $route_guard release 10.9.9.0/25 $failclosed_host_uid
 
 
 PostDown = nft delete table ip %i
@@ -1333,7 +1333,7 @@ cleanup_owned_routing_state() {
 
     # Rules are matched by priority AND full selector/table,
     # so foreign rules that happen to reuse priority 21820/21821 are never touched.
-    local dsubnet="${dockersubnet:-10.9.9.0/25}"
+    local dsubnet="${dockersubnet:-$(resolve_failclosed_subnet)}"
     local dsubnet_re
     dsubnet_re=$(printf '%s' "$dsubnet" | sed 's/\./\\./g')
     local rule_cleanup_failed=0
@@ -1520,15 +1520,29 @@ ts_arm_failclosed() {
     return 1
 }
 
-# Removes the TunnelSats emergency blackhole rules: exactly "21818: from 10.9.9.0/25 blackhole"
-# (the TunnelSats Docker tunnel subnet) and "21819: from all uidrange N-N blackhole". Other rules on
-# those priorities are kept. Bounded; warns if one cannot be removed.
+# Removes the TunnelSats emergency blackhole rules: exactly "21818: from <subnet> blackhole"
+# ($1 = Docker tunnel subnet, default 10.9.9.0/25) and, when $2 is a valid non-root uid,
+# "21819: from all uidrange <uid>-<uid> blackhole". Foreign rules on those priorities (including
+# any foreign UID-range blackhole at 21819) are kept. Bounded; returns 1 if reading the policy
+# rules fails or if a TunnelSats emergency blackhole rule remains in place.
 ts_release_failclosed_rules() {
-    local n rules line prio sel pattern
-    pattern='^(21818:[[:space:]]+from 10\.9\.9\.0/25|21819:[[:space:]]+from all uidrange [0-9]+-[0-9]+)[[:space:]]+blackhole[[:space:]]*$'
+    local subnet="${1:-10.9.9.0/25}" host_uid="${2:-}" uid="" subnet_re pattern n rules line prio sel
+    case "$host_uid" in
+        ""|0|*[!0-9]*) uid="" ;;
+        *) uid="$host_uid" ;;
+    esac
+    subnet_re=$(printf '%s' "$subnet" | sed 's/[.]/\\./g')
+    if [ -n "$uid" ]; then
+        pattern="^(21818:[[:space:]]+from ${subnet_re}|21819:[[:space:]]+from all uidrange ${uid}-${uid})[[:space:]]+blackhole[[:space:]]*$"
+    else
+        pattern="^21818:[[:space:]]+from ${subnet_re}[[:space:]]+blackhole[[:space:]]*$"
+    fi
     for n in 1 2 3 4 5 6 7 8 9 10; do
-        rules=$(ip -4 rule show 2>/dev/null) || return 0
-        line=$(printf '%s\n' "$rules" | grep -E "$pattern" | head -n 1)
+        if ! rules=$(ip -4 rule show 2>/dev/null); then
+            echo "TunnelSats: ERROR: unable to read IPv4 policy rules while releasing emergency blackhole rules" >&2
+            return 1
+        fi
+        line=$(printf '%s\n' "$rules" | grep -E "$pattern" | head -n 1 || true)
         [ -n "$line" ] || return 0
         prio=${line%%:*}
         sel=$(printf '%s\n' "$line" | sed -E 's/^[0-9]+:[[:space:]]+//; s/[[:space:]]+blackhole[[:space:]]*$//; s/^from all uidrange /uidrange /')
@@ -1536,20 +1550,40 @@ ts_release_failclosed_rules() {
         # shellcheck disable=SC2086
         ip -4 rule del priority "$prio" $sel blackhole 2>/dev/null || break
     done
-    rules=$(ip -4 rule show 2>/dev/null) || return 0
+    if ! rules=$(ip -4 rule show 2>/dev/null); then
+        echo "TunnelSats: ERROR: unable to verify removal of emergency blackhole rules" >&2
+        return 1
+    fi
     if printf '%s\n' "$rules" | grep -Eq "$pattern"; then
-        echo "TunnelSats: WARNING: could not remove the emergency blackhole rule(s) at priority 21818/21819; Lightning traffic stays blocked until they are removed" >&2
+        echo "TunnelSats: ERROR: could not remove the emergency blackhole rule(s) at priority 21818/21819; Lightning traffic stays blocked until they are removed" >&2
+        return 1
     fi
     return 0
 }
 
 # Removes the emergency block (nft table and fallback rules) once a tunnel is verified active.
+# $1 = Docker tunnel subnet (default 10.9.9.0/25), $2 = host uid ("" on Docker).
+# Returns 1 if the emergency block could not be verified as removed.
 ts_release_failclosed() {
+    local subnet="${1:-10.9.9.0/25}" host_uid="${2:-}"
     if command -v nft >/dev/null 2>&1; then
         nft delete table ip tunnelsats_failclosed 2>/dev/null || true
+        if ts_failclosed_nft_verified "$subnet"; then
+            echo "TunnelSats: ERROR: could not remove emergency nft table ip tunnelsats_failclosed" >&2
+            return 1
+        fi
     fi
-    ts_release_failclosed_rules
-    return 0
+    ts_release_failclosed_rules "$subnet" "$host_uid"
+}
+
+# Docker tunnel subnet for ts_arm_failclosed / ts_release_failclosed: inspects docker-tunnelsats
+# on Docker platforms and falls back to 10.9.9.0/25.
+resolve_failclosed_subnet() {
+    local subnet=""
+    if [[ "$PLATFORM" == "umbrel" ]] && command -v docker >/dev/null 2>&1; then
+        subnet=$(docker network inspect "docker-tunnelsats" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null | awk '{print $1}')
+    fi
+    echo "${subnet:-10.9.9.0/25}"
 }
 
 # Host uid argument for ts_arm_failclosed: "" on Docker platforms (no host daemon to cover),
@@ -1581,7 +1615,8 @@ route_guard_path() {
 #                         exit 1 = refused, block armed and verified;
 #                         exit 3 = refused, neither nft nor the fallback could be armed
 #   clean IFACE           remove only TunnelSats-owned routes from table 51820
-#   release               remove the emergency fail-closed drop (last PostUp hook)
+#   release [SUBNET] [HOST_UID]
+#                         remove the emergency fail-closed block (last PostUp hook)
 # The guard is replaced atomically (temp file + rename): a failed write leaves the previous
 # guard in place, so a rolled-back config that calls it keeps working.
 write_route_guard_script() {
@@ -1626,10 +1661,10 @@ case "$action" in
         ts_table51820_remove_owned "${2:?interface required}"
         ;;
     release)
-        ts_release_failclosed
+        ts_release_failclosed "${2:-}" "${3:-}" || exit 1
         ;;
     *)
-        echo "usage: $0 check IFACE [SUBNET] [HOST_UID] | clean IFACE | release" >&2
+        echo "usage: $0 check IFACE [SUBNET] [HOST_UID] | clean IFACE | release [SUBNET] [HOST_UID]" >&2
         exit 2
         ;;
 esac
@@ -2092,17 +2127,23 @@ enable_services() {
     check_and_cleanup_routing_table "$WG_INTERFACE"
 
     print_info "Starting WireGuard..."
+    local failclosed_subnet failclosed_uid
+    failclosed_subnet=$(resolve_failclosed_subnet)
+    failclosed_uid=$(resolve_failclosed_host_uid)
     if out=$(systemctl start wg-quick@${WG_INTERFACE} 2>&1); then
         print_success "WireGuard service started"
-        # Ensure any temporary emergency failclosed table is cleared once tunnel is active
-        ts_release_failclosed
+        # Ensure any temporary emergency failclosed block is cleared once tunnel is active
+        if ! ts_release_failclosed "$failclosed_subnet" "$failclosed_uid"; then
+            print_error "Emergency fail-closed block could NOT be released after starting WireGuard."
+            exit 1
+        fi
     else
         print_error "Failed to start service:"
         echo "$out"
         
         # Arm the emergency fail-closed block (nft, or the blackhole ip rule fallback) so no
         # clearnet leak is possible. Covers local host traffic and forwarded Docker traffic.
-        if ! ts_arm_failclosed "10.9.9.0/25" "$(resolve_failclosed_host_uid)"; then
+        if ! ts_arm_failclosed "$failclosed_subnet" "$failclosed_uid"; then
             print_error "Emergency fail-closed block could NOT be armed (nft and the blackhole ip rule fallback both failed): Lightning traffic is NOT blocked. Keep the Lightning daemon stopped until the tunnel is up."
         fi
 
@@ -2570,8 +2611,10 @@ cmd_uninstall() {
     nft delete table inet ${target_interface} &>/dev/null || true
     nft delete table ip tunnelsatsv2 &>/dev/null || true
     nft delete table inet tunnelsatsv2 &>/dev/null || true
-    # TunnelSats is being removed on purpose: drop any emergency fail-closed table it armed
-    ts_release_failclosed
+    # TunnelSats is being removed on purpose: drop any emergency fail-closed block it armed
+    if ! ts_release_failclosed "$(resolve_failclosed_subnet)" "$(resolve_failclosed_host_uid)"; then
+        print_warning "Some emergency fail-closed rules could not be removed. Check 'ip -4 rule show'."
+    fi
     
     if [[ -f /etc/nftablespriortunnelsats.backup ]]; then
          mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf

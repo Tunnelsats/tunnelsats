@@ -970,10 +970,17 @@ CONF
 source "$SCRIPT_UNDER_TEST"
 PLATFORM="$PLATFORM_T"; LN_IMPL="lnd"; WG_DIR="$DIR_T"; CONFIG_FILE="$DIR_T/source.conf"
 # Optional: NODE_USER_T / NODE_UID_T model the detected node user and its uid (`id -u`).
+# Optional: DOCKER_SUBNET_T models a custom docker-tunnelsats subnet returned by docker network inspect.
 node_user="${NODE_USER_T:-}"
 id() { [[ "$1" == "-u" && -n "${NODE_UID_T:-}" ]] && { echo "$NODE_UID_T"; return 0; }; return 1; }
 resolve_wg_target_path() { echo "$DIR_T/tunnelsatsv2.conf"; }
-docker() { return 1; }
+docker() {
+    if [[ -n "${DOCKER_SUBNET_T:-}" && "$1 $2" == "network inspect" ]]; then
+        echo "${DOCKER_SUBNET_T} 6c3d330ad9f50000"
+        return 0
+    fi
+    return 1
+}
 ip() { [[ "$1" == "route" ]] && echo "192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.10"; return 0; }
 sysctl() { echo 0; }
 configure_wireguard
@@ -990,10 +997,11 @@ echo "IP:$*" >> "$HOOK_LOG"
 [[ "$1" == "-4" ]] && shift
 args="$*"
 # Blackhole policy rules live in $RULES in `ip -4 rule show` format ("21818:<TAB>from X blackhole").
-# IP_FAIL_RULE_ADD=1 makes every blackhole rule add fail (no permission / no policy routing).
+# IP_FAIL_RULE_ADD=1 / IP_FAIL_RULE_DEL=1 / IP_FAIL_RULE_SHOW=1 simulate kernel/permission failures.
 rules="${RULES:-/dev/null}"
 case "$args" in
     "rule show")
+        [[ "${IP_FAIL_RULE_SHOW:-0}" == 1 ]] && { echo "RTNETLINK answers: Operation not permitted" >&2; exit 2; }
         [[ -f "$rules" ]] && cat "$rules"
         exit 0 ;;
     "rule add "*" blackhole priority "*)
@@ -1010,6 +1018,7 @@ case "$args" in
         echo "$line" >> "$rules"
         exit 0 ;;
     "rule del priority "*" blackhole")
+        [[ "${IP_FAIL_RULE_DEL:-0}" == 1 ]] && { echo "RTNETLINK answers: Operation not permitted" >&2; exit 2; }
         set -- $args
         case "$5" in
             from) line="$4:"$'\t'"from $6 blackhole" ;;
@@ -1285,15 +1294,16 @@ test_failclosed_rule_fallback_docker() {
     assert_status 1 "$hook_status" "[Docker] Repeated refusal stays armed"
     assert_equals "1" "$(count_lines "$RULES" "21818:${TAB}from 10.9.9.0/25 blackhole")" "[Docker] Repeated refusal adds no duplicate blackhole rule"
 
-    # Tunnel comes up: our blackhole rule is released, foreign rules on the same priority survive
+    # Tunnel comes up: our blackhole rule is released, foreign rules on the same priorities survive
     unset NFT_FAIL_RULES
-    printf '21818:\tfrom 10.50.0.0/16 blackhole\n21818:\tfrom all lookup 100\n' >> "$RULES"
+    printf '21818:\tfrom 10.50.0.0/16 blackhole\n21818:\tfrom all lookup 100\n21819:\tfrom all uidrange 9999-9999 blackhole\n' >> "$RULES"
     rm -f "$ROUTES"; : > "$HOOK_LOG"
     replay_postup "$conf" "$bin"
     assert_status 0 "$hook_status" "[Docker] PostUp succeeds once table 51820 is free"
     assert_file_not_contains_line "$RULES" "21818:${TAB}from 10.9.9.0/25 blackhole" "[Docker] Successful PostUp releases the emergency blackhole rule"
     assert_file_contains_line "$RULES" "21818:${TAB}from 10.50.0.0/16 blackhole" "[Docker] Release keeps a foreign blackhole rule on priority 21818"
     assert_file_contains_line "$RULES" "21818:${TAB}from all lookup 100" "[Docker] Release keeps a foreign lookup rule on priority 21818"
+    assert_file_contains_line "$RULES" "21819:${TAB}from all uidrange 9999-9999 blackhole" "[Docker] Release keeps a foreign UID blackhole rule on priority 21819"
 
     unset HOOK_LOG ROUTES NFT_STATE RULES
     rm -rf "$dir" "$bin"
@@ -1307,6 +1317,7 @@ test_failclosed_rule_fallback_non_docker() {
     make_fake_net_bin "$bin"
     conf="$dir/tunnelsatsv2.conf"
     assert_log_contains "$conf" "check %i 10.9.9.0/25 4242" "[Non-Docker] Guard hook carries the node user's uid"
+    assert_log_contains "$conf" "release 10.9.9.0/25 4242" "[Non-Docker] Release hook carries the subnet and node user's uid"
     export HOOK_LOG="$dir/hooks.log" ROUTES="$dir/table51820" NFT_STATE="$dir/nft_failclosed" RULES="$dir/rules"
     export NFT_FAIL_RULES=1
     printf 'default dev wg1 scope link \n' > "$ROUTES"
@@ -1319,16 +1330,71 @@ test_failclosed_rule_fallback_non_docker() {
     replay_postup "$conf" "$bin"
     assert_equals "1" "$(count_lines "$RULES" "21819:${TAB}from all uidrange 4242-4242 blackhole")" "[Non-Docker] Repeated refusal adds no duplicate uid rule"
 
+    # Another service has its own UID-range blackhole at 21819: release must keep it
+    printf '21819:\tfrom all uidrange 9999-9999 blackhole\n' >> "$RULES"
     unset NFT_FAIL_RULES
     rm -f "$ROUTES"
     replay_postup "$conf" "$bin"
     assert_status 0 "$hook_status" "[Non-Docker] PostUp succeeds once table 51820 is free"
-    assert_file_not_contains_line "$RULES" "blackhole" "[Non-Docker] Successful PostUp releases both emergency blackhole rules"
+    assert_file_not_contains_line "$RULES" "21818:${TAB}from 10.9.9.0/25 blackhole" "[Non-Docker] Successful PostUp releases the TunnelSats subnet blackhole"
+    assert_file_not_contains_line "$RULES" "21819:${TAB}from all uidrange 4242-4242 blackhole" "[Non-Docker] Successful PostUp releases the TunnelSats node UID blackhole"
+    assert_file_contains_line "$RULES" "21819:${TAB}from all uidrange 9999-9999 blackhole" "[Non-Docker] Release preserves a foreign UID blackhole rule at priority 21819"
 
     unset HOOK_LOG ROUTES NFT_STATE RULES
     rm -rf "$dir" "$bin"
 }
 test_failclosed_rule_fallback_non_docker
+
+test_failclosed_rule_fallback_custom_subnet() {
+    local dir bin conf
+    dir=$(mktemp -d); bin=$(mktemp -d)
+    DOCKER_SUBNET_T="172.28.9.0/24" generate_tunnel_config umbrel "$dir"
+    make_fake_net_bin "$bin"
+    conf="$dir/tunnelsatsv2.conf"
+    assert_log_contains "$conf" "check %i 172.28.9.0/24" "[Custom Subnet] Guard check hook carries custom Docker subnet"
+    assert_log_contains "$conf" "release 172.28.9.0/24" "[Custom Subnet] Guard release hook carries custom Docker subnet"
+    export HOOK_LOG="$dir/hooks.log" ROUTES="$dir/table51820" NFT_STATE="$dir/nft_failclosed" RULES="$dir/rules"
+    export NFT_FAIL_RULES=1
+    printf 'default dev wg1 scope link \n' > "$ROUTES"
+
+    replay_postup "$conf" "$bin"
+    assert_status 1 "$hook_status" "[Custom Subnet] Refused PostUp arms fallback for custom subnet (exit 1)"
+    assert_file_contains_line "$RULES" "21818:${TAB}from 172.28.9.0/24 blackhole" "[Custom Subnet] Fallback blackholes custom Docker subnet"
+
+    unset NFT_FAIL_RULES
+    rm -f "$ROUTES"
+    replay_postup "$conf" "$bin"
+    assert_status 0 "$hook_status" "[Custom Subnet] PostUp succeeds once table 51820 is free"
+    assert_file_not_contains_line "$RULES" "21818:${TAB}from 172.28.9.0/24 blackhole" "[Custom Subnet] Successful PostUp releases custom subnet blackhole rule"
+
+    unset HOOK_LOG ROUTES NFT_STATE RULES
+    rm -rf "$dir" "$bin"
+}
+test_failclosed_rule_fallback_custom_subnet
+
+test_failclosed_release_failure_propagates() {
+    local dir bin conf
+    dir=$(mktemp -d); bin=$(mktemp -d)
+    generate_tunnel_config umbrel "$dir"
+    make_fake_net_bin "$bin"
+    conf="$dir/tunnelsatsv2.conf"
+    export HOOK_LOG="$dir/hooks.log" ROUTES="$dir/table51820" NFT_STATE="$dir/nft_failclosed" RULES="$dir/rules"
+    printf '21818:\tfrom 10.9.9.0/25 blackhole\n' > "$RULES"
+
+    export IP_FAIL_RULE_DEL=1
+    replay_postup "$conf" "$bin"
+    assert_status 1 "$hook_status" "[Release Failure] PostUp fails when emergency blackhole rule cannot be deleted"
+    unset IP_FAIL_RULE_DEL
+
+    export IP_FAIL_RULE_SHOW=1
+    replay_postup "$conf" "$bin"
+    assert_status 1 "$hook_status" "[Release Failure] PostUp fails when policy rules cannot be read during release"
+    unset IP_FAIL_RULE_SHOW
+
+    unset HOOK_LOG ROUTES NFT_STATE RULES
+    rm -rf "$dir" "$bin"
+}
+test_failclosed_release_failure_propagates
 
 test_failclosed_rule_fallback_unresolved_uid() {
     local dir bin conf
@@ -1391,13 +1457,15 @@ test_failclosed_rule_fallback_real_kernel() {
         ip route get 1.1.1.1 from 10.9.9.5 iif d0 >/dev/null 2>&1 && echo fwd=routed || echo fwd=blocked
         ip route get 192.168.77.2 >/dev/null 2>&1 && echo local=ok || echo local=broken
         ip -4 rule add uidrange 0-0 blackhole priority 21819
-        bash "$GUARD" release >/dev/null 2>&1
-        ip -4 rule show | grep -c "blackhole" | sed "s/^/left=/"
-        ip -4 rule show | grep -c "^21818:[[:space:]]*from all lookup 100" | sed "s/^/foreign=/"
+        bash "$GUARD" release 10.9.9.0/25 >/dev/null 2>&1
+        ip -4 rule show | grep -c "^21818:[[:space:]]*from 10.9.9.0/25 blackhole" | sed "s/^/left=/"
+        ip -4 rule show | grep -c "^21818:[[:space:]]*from all lookup 100" | sed "s/^/foreign_lookup=/"
+        ip -4 rule show | grep -c "^21819:[[:space:]]*from all uidrange 0-0 blackhole" | sed "s/^/foreign_uid=/"
+        ip -4 rule del priority 21819 uidrange 0-0 blackhole
         ip route get 1.1.1.1 from 10.9.9.5 iif d0 >/dev/null 2>&1 && echo fwd_after=routed || echo fwd_after=blocked
     ' 2>&1 | tr '\n' ' ')
-    assert_equals "fwd_before=routed guard=1 armed=1 fwd=blocked local=ok left=0 foreign=1 fwd_after=routed " "$out" \
-        "Real kernel: fallback blocks forwarded tunnel-subnet traffic, keeps local routes, and release removes only TunnelSats rules"
+    assert_equals "fwd_before=routed guard=1 armed=1 fwd=blocked local=ok left=0 foreign_lookup=1 foreign_uid=1 fwd_after=routed " "$out" \
+        "Real kernel: fallback blocks forwarded tunnel-subnet traffic, keeps local routes, and release removes only TunnelSats rules while preserving foreign rules"
     rm -rf "$dir" "$shim"
 }
 test_failclosed_rule_fallback_real_kernel
