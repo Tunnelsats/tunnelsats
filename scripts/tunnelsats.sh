@@ -1162,6 +1162,9 @@ PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
         print_info "Applying non-Docker network rules..."
         
         local killswitchNonDocker=""
+        # Node uid for the guard's blackhole ip rule fallback (emergency block without nft)
+        local failclosed_host_uid
+        failclosed_host_uid=$(resolve_failclosed_host_uid)
         # Enable cgroup-aware killswitch for all non-Docker systemd platforms
         if [[ "$PLATFORM" == "raspiblitz" || "$PLATFORM" == "baremetal" || "$PLATFORM" == "mynode" ]]; then
             # Cgroup-aware killswitch: Only drop if user is node_user AND packet is in the tunnelsats cgroup (1118498)
@@ -1178,7 +1181,7 @@ FwMark = 0x2000000
 Table = off
 
 
-PostUp = $route_guard check %i
+PostUp = $route_guard check %i 10.9.9.0/25 $failclosed_host_uid
 PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || break; done
 PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21821 from all fwmark 0x1000000/0xff000000 table 51820 2>/dev/null || break; done
 PostUp = $route_guard clean %i
@@ -1415,32 +1418,155 @@ ts_table51820_remove_owned() {
     return 0
 }
 
-# Arms the emergency fail-closed drop for Lightning traffic while no verified tunnel exists:
-# host traffic in the TunnelSats cgroup and forwarded traffic from the Docker tunnel subnet ($1).
-# Returns 1 unless every table/chain/rule was accepted by nft (callers must report that).
-ts_arm_failclosed() {
-    local subnet="${1:-10.9.9.0/25}" failed=0
+# Emergency fail-closed block for Lightning traffic while no verified tunnel exists (#205).
+# Primary: nft drop table "ip tunnelsats_failclosed" for host traffic in the TunnelSats cgroup and
+# forwarded traffic from the Docker tunnel subnet. Fallback when nft is missing or rejects a rule
+# (e.g. nf_tables failed to load at boot): blackhole policy rules that need no netfilter at all,
+# evaluated before the main table, so no Lightning traffic can take the main-table default route:
+#   21818: from <Docker tunnel subnet> blackhole    (forwarded container traffic)
+#   21819: uidrange <node uid> blackhole           (host Lightning daemon, non-Docker only)
+# Local destinations keep working through the local table (priority 0), like the nft drop's
+# "fib daddr type != local". Every state is verified with a real read (nft list / ip rule show)
+# before it is reported as armed.
+
+# $1 = Docker tunnel subnet. Succeeds only if a real read of the ruleset shows both drop rules.
+ts_failclosed_nft_verified() {
+    local subnet="$1" out subnet_re
+    command -v nft >/dev/null 2>&1 || return 1
+    out=$(nft list table ip tunnelsats_failclosed 2>/dev/null) || return 1
+    subnet_re=$(printf '%s' "$subnet" | sed 's/[.]/\\./g')
+    printf '%s\n' "$out" | grep -Eq 'meta cgroup 1118498 .*drop' || return 1
+    printf '%s\n' "$out" | grep -Eq "ip saddr ${subnet_re} .*drop" || return 1
+    return 0
+}
+
+# Arms the nft drop ($1 = Docker tunnel subnet). Returns 1 unless the drop is verified in place.
+ts_arm_failclosed_nft() {
+    local subnet="$1" failed=0
     if ! command -v nft >/dev/null 2>&1; then
-        echo "TunnelSats: nft not available; emergency fail-closed drop could NOT be armed" >&2
+        echo "TunnelSats: nft not available; nft emergency drop could NOT be armed" >&2
         return 1
     fi
+    # Already armed and verified (e.g. a repeated refusal): do not stack duplicate rules.
+    ts_failclosed_nft_verified "$subnet" && return 0
     nft add table ip tunnelsats_failclosed || failed=1
     nft "add chain ip tunnelsats_failclosed output { type filter hook output priority -100; policy accept; }" || failed=1
     nft "add rule ip tunnelsats_failclosed output meta cgroup 1118498 fib daddr type != local counter drop" || failed=1
     nft "add chain ip tunnelsats_failclosed forward { type filter hook forward priority -100; policy accept; }" || failed=1
     nft "add rule ip tunnelsats_failclosed forward ip saddr ${subnet} fib daddr type != local counter drop" || failed=1
     if [ "$failed" -ne 0 ]; then
-        echo "TunnelSats: nft rejected an emergency drop rule; emergency fail-closed drop could NOT be armed" >&2
+        echo "TunnelSats: nft rejected an emergency drop rule; nft emergency drop could NOT be armed" >&2
+        return 1
+    fi
+    if ! ts_failclosed_nft_verified "$subnet"; then
+        echo "TunnelSats: nft accepted the emergency drop but it is not in the ruleset; nft emergency drop could NOT be verified" >&2
         return 1
     fi
     return 0
 }
 
-# Removes the emergency fail-closed drop once a tunnel is verified active.
-ts_release_failclosed() {
-    command -v nft >/dev/null 2>&1 || return 0
-    nft delete table ip tunnelsats_failclosed 2>/dev/null || true
+# $1 = Docker tunnel subnet, $2 = host uid ("" when there is no host daemon to cover).
+# Succeeds only if a real read of the IPv4 policy rules shows every required blackhole rule.
+ts_failclosed_rules_verified() {
+    local subnet="$1" uid="$2" rules subnet_re
+    rules=$(ip -4 rule show 2>/dev/null) || return 1
+    subnet_re=$(printf '%s' "$subnet" | sed 's/[.]/\\./g')
+    printf '%s\n' "$rules" | grep -Eq "^21818:[[:space:]]+from ${subnet_re}[[:space:]]+blackhole[[:space:]]*$" || return 1
+    if [ -n "$uid" ]; then
+        printf '%s\n' "$rules" | grep -Eq "^21819:[[:space:]]+from all uidrange ${uid}-${uid}[[:space:]]+blackhole[[:space:]]*$" || return 1
+    fi
     return 0
+}
+
+# Arms the routing-policy fallback. $1 = Docker tunnel subnet, $2 = host uid:
+#   ""         Docker platform, only the subnet needs to be blocked;
+#   <uid>      non-Docker platform, the node user's uid is blocked too (never root);
+#   otherwise  non-Docker platform whose node uid is unknown: the host daemon cannot be
+#              covered, so this reports failure even though the subnet rule is armed.
+ts_arm_failclosed_rules() {
+    local subnet="$1" host_uid="$2" uid="" rules subnet_re
+    case "$host_uid" in
+        "") ;;
+        0|*[!0-9]*)
+            echo "TunnelSats: node user uid unknown or root (${host_uid}); the routing-policy fallback cannot cover the host Lightning daemon" >&2
+            uid="unusable" ;;
+        *) uid="$host_uid" ;;
+    esac
+    subnet_re=$(printf '%s' "$subnet" | sed 's/[.]/\\./g')
+    rules=$(ip -4 rule show 2>/dev/null) || rules=""
+    if ! printf '%s\n' "$rules" | grep -Eq "^21818:[[:space:]]+from ${subnet_re}[[:space:]]+blackhole[[:space:]]*$"; then
+        ip -4 rule add from "$subnet" blackhole priority 21818 || true
+    fi
+    if [ -n "$uid" ] && [ "$uid" != "unusable" ] && \
+        ! printf '%s\n' "$rules" | grep -Eq "^21819:[[:space:]]+from all uidrange ${uid}-${uid}[[:space:]]+blackhole[[:space:]]*$"; then
+        ip -4 rule add uidrange "${uid}-${uid}" blackhole priority 21819 || true
+    fi
+    [ "$uid" = "unusable" ] && return 1
+    ts_failclosed_rules_verified "$subnet" "$uid"
+}
+
+# Arms the emergency block ($1 = Docker tunnel subnet, $2 = host uid, see ts_arm_failclosed_rules).
+# Returns 1 unless nft or the routing-policy fallback is verified in place (callers must report that).
+ts_arm_failclosed() {
+    local subnet="${1:-10.9.9.0/25}" host_uid="${2:-}"
+    if ts_arm_failclosed_nft "$subnet"; then
+        return 0
+    fi
+    if ts_arm_failclosed_rules "$subnet" "$host_uid"; then
+        echo "TunnelSats: routing-policy fallback armed and verified (blackhole ip rules 21818/21819): Lightning traffic cannot use the main table" >&2
+        return 0
+    fi
+    echo "TunnelSats: routing-policy fallback could NOT be armed either" >&2
+    return 1
+}
+
+# Removes the TunnelSats emergency blackhole rules: exactly "21818: from 10.9.9.0/25 blackhole"
+# (the TunnelSats Docker tunnel subnet) and "21819: from all uidrange N-N blackhole". Other rules on
+# those priorities are kept. Bounded; warns if one cannot be removed.
+ts_release_failclosed_rules() {
+    local n rules line prio sel pattern
+    pattern='^(21818:[[:space:]]+from 10\.9\.9\.0/25|21819:[[:space:]]+from all uidrange [0-9]+-[0-9]+)[[:space:]]+blackhole[[:space:]]*$'
+    for n in 1 2 3 4 5 6 7 8 9 10; do
+        rules=$(ip -4 rule show 2>/dev/null) || return 0
+        line=$(printf '%s\n' "$rules" | grep -E "$pattern" | head -n 1)
+        [ -n "$line" ] || return 0
+        prio=${line%%:*}
+        sel=$(printf '%s\n' "$line" | sed -E 's/^[0-9]+:[[:space:]]+//; s/[[:space:]]+blackhole[[:space:]]*$//; s/^from all uidrange /uidrange /')
+        # $sel is two words on purpose ("from <subnet>" / "uidrange <a>-<b>").
+        # shellcheck disable=SC2086
+        ip -4 rule del priority "$prio" $sel blackhole 2>/dev/null || break
+    done
+    rules=$(ip -4 rule show 2>/dev/null) || return 0
+    if printf '%s\n' "$rules" | grep -Eq "$pattern"; then
+        echo "TunnelSats: WARNING: could not remove the emergency blackhole rule(s) at priority 21818/21819; Lightning traffic stays blocked until they are removed" >&2
+    fi
+    return 0
+}
+
+# Removes the emergency block (nft table and fallback rules) once a tunnel is verified active.
+ts_release_failclosed() {
+    if command -v nft >/dev/null 2>&1; then
+        nft delete table ip tunnelsats_failclosed 2>/dev/null || true
+    fi
+    ts_release_failclosed_rules
+    return 0
+}
+
+# Host uid argument for ts_arm_failclosed: "" on Docker platforms (no host daemon to cover),
+# the node user's uid on systemd platforms, or "unresolved" if it is unknown or root (the
+# fallback then reports that it cannot cover the host daemon instead of blocking root).
+resolve_failclosed_host_uid() {
+    if [[ "$PLATFORM" == "umbrel" ]]; then
+        echo ""
+        return 0
+    fi
+    local uid=""
+    [[ -n "$node_user" ]] && uid=$(id -u "$node_user" 2>/dev/null || true)
+    if [[ "$uid" =~ ^[0-9]+$ ]] && [[ "$uid" != "0" ]]; then
+        echo "$uid"
+    else
+        echo "unresolved"
+    fi
 }
 
 route_guard_path() {
@@ -1448,9 +1574,12 @@ route_guard_path() {
 }
 
 # Generates the route guard executed by the wg-quick PostUp/PostDown hooks:
-#   check IFACE [SUBNET]  first PostUp hook: if table 51820 holds foreign routes or cannot be
-#                         read, refuse to start and arm the emergency fail-closed drop.
-#                         exit 1 = refused, drop armed; exit 3 = refused, drop could NOT be armed
+#   check IFACE [SUBNET] [HOST_UID]
+#                         first PostUp hook: if table 51820 holds foreign routes or cannot be
+#                         read, refuse to start and arm the emergency fail-closed block (nft, or
+#                         the blackhole ip rule fallback; HOST_UID as in ts_arm_failclosed_rules).
+#                         exit 1 = refused, block armed and verified;
+#                         exit 3 = refused, neither nft nor the fallback could be armed
 #   clean IFACE           remove only TunnelSats-owned routes from table 51820
 #   release               remove the emergency fail-closed drop (last PostUp hook)
 # The guard is replaced atomically (temp file + rename): a failed write leaves the previous
@@ -1465,16 +1594,17 @@ write_route_guard_script() {
         echo '# Generated by tunnelsats.sh - ownership-scoped management of routing table 51820.'
         echo '# Never flushes table 51820; foreign routes are preserved and cause a fail-closed refusal.'
         declare -f ts_table51820_routes ts_table51820_foreign_routes ts_table51820_remove_owned \
-            ts_arm_failclosed ts_release_failclosed
+            ts_failclosed_nft_verified ts_arm_failclosed_nft ts_failclosed_rules_verified \
+            ts_arm_failclosed_rules ts_arm_failclosed ts_release_failclosed_rules ts_release_failclosed
         cat <<'GUARD'
 # Refuses the tunnel start ($1 = reason, $2 = optional details). Never returns.
 refuse_start() {
-    if ts_arm_failclosed "$subnet"; then
-        echo "TunnelSats: $1; refusing to start ${iface}. Emergency fail-closed drop armed: Lightning traffic is blocked." >&2
+    if ts_arm_failclosed "$subnet" "$host_uid"; then
+        echo "TunnelSats: $1; refusing to start ${iface}. Emergency fail-closed block armed and verified: Lightning traffic is blocked." >&2
         [ -n "${2:-}" ] && printf '%s\n' "$2" >&2
         exit 1
     fi
-    echo "TunnelSats: $1; refusing to start ${iface}. WARNING: emergency fail-closed drop could NOT be armed: Lightning traffic is NOT blocked. Stop the Lightning daemon until the tunnel is up." >&2
+    echo "TunnelSats: $1; refusing to start ${iface}. WARNING: emergency fail-closed block could NOT be armed (nft and the blackhole ip rule fallback both failed): Lightning traffic is NOT blocked. Stop the Lightning daemon until the tunnel is up." >&2
     [ -n "${2:-}" ] && printf '%s\n' "$2" >&2
     exit 3
 }
@@ -1484,6 +1614,7 @@ case "$action" in
     check)
         iface="${2:?interface required}"
         subnet="${3:-}"
+        host_uid="${4:-}"
         if ! foreign=$(ts_table51820_foreign_routes "$iface"); then
             refuse_start "routing table 51820 could not be verified"
         fi
@@ -1498,7 +1629,7 @@ case "$action" in
         ts_release_failclosed
         ;;
     *)
-        echo "usage: $0 check IFACE [SUBNET] | clean IFACE | release" >&2
+        echo "usage: $0 check IFACE [SUBNET] [HOST_UID] | clean IFACE | release" >&2
         exit 2
         ;;
 esac
@@ -1969,10 +2100,10 @@ enable_services() {
         print_error "Failed to start service:"
         echo "$out"
         
-        # Arm emergency fail-closed drop in nftables if available to ensure no clearnet leakage
-        # Covers both local host traffic (output) and forwarded Docker traffic (forward)
-        if ! ts_arm_failclosed "10.9.9.0/25"; then
-            print_error "Emergency fail-closed drop could NOT be armed: Lightning traffic is NOT blocked by nftables. Keep the Lightning daemon stopped until the tunnel is up."
+        # Arm the emergency fail-closed block (nft, or the blackhole ip rule fallback) so no
+        # clearnet leak is possible. Covers local host traffic and forwarded Docker traffic.
+        if ! ts_arm_failclosed "10.9.9.0/25" "$(resolve_failclosed_host_uid)"; then
+            print_error "Emergency fail-closed block could NOT be armed (nft and the blackhole ip rule fallback both failed): Lightning traffic is NOT blocked. Keep the Lightning daemon stopped until the tunnel is up."
         fi
 
         # Help user troubleshoot
