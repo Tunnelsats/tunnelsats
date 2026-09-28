@@ -1465,6 +1465,18 @@ ts_arm_failclosed_nft() {
     return 0
 }
 
+# Path to the state file recording emergency blackhole selectors TunnelSats has armed, so release
+# and uninstall can still remove a previously armed rule if the node account or subnet later changes.
+ts_failclosed_state_file() {
+    if [ -n "${WG_DIR:-}" ]; then
+        echo "${WG_DIR}/.tunnelsats-failclosed-rules"
+    elif [ "${0##*/}" = "tunnelsats-route-guard.sh" ] && [ "${0%/*}" != "$0" ]; then
+        echo "${0%/*}/.tunnelsats-failclosed-rules"
+    else
+        echo "/etc/wireguard/.tunnelsats-failclosed-rules"
+    fi
+}
+
 # $1 = Docker tunnel subnet, $2 = host uid ("" when there is no host daemon to cover).
 # Succeeds only if a real read of the IPv4 policy rules shows every required blackhole rule.
 ts_failclosed_rules_verified() {
@@ -1484,7 +1496,7 @@ ts_failclosed_rules_verified() {
 #   otherwise  non-Docker platform whose node uid is unknown: the host daemon cannot be
 #              covered, so this reports failure even though the subnet rule is armed.
 ts_arm_failclosed_rules() {
-    local subnet="$1" host_uid="$2" uid="" rules subnet_re
+    local subnet="$1" host_uid="$2" uid="" rules subnet_re state_file state_dir
     case "$host_uid" in
         "") ;;
         0|*[!0-9]*)
@@ -1492,6 +1504,14 @@ ts_arm_failclosed_rules() {
             uid="unusable" ;;
         *) uid="$host_uid" ;;
     esac
+    state_file=$(ts_failclosed_state_file)
+    state_dir=${state_file%/*}
+    if [ -d "$state_dir" ] && [ -w "$state_dir" ]; then
+        grep -qxF "from ${subnet}" "$state_file" 2>/dev/null || printf 'from %s\n' "$subnet" >> "$state_file" 2>/dev/null || true
+        if [ -n "$uid" ] && [ "$uid" != "unusable" ]; then
+            grep -qxF "uidrange ${uid}-${uid}" "$state_file" 2>/dev/null || printf 'uidrange %s-%s\n' "$uid" "$uid" >> "$state_file" 2>/dev/null || true
+        fi
+    fi
     subnet_re=$(printf '%s' "$subnet" | sed 's/[.]/\\./g')
     rules=$(ip -4 rule show 2>/dev/null) || rules=""
     if ! printf '%s\n' "$rules" | grep -Eq "^21818:[[:space:]]+from ${subnet_re}[[:space:]]+blackhole[[:space:]]*$"; then
@@ -1520,30 +1540,45 @@ ts_arm_failclosed() {
     return 1
 }
 
-# Removes the TunnelSats emergency blackhole rules: exactly "21818: from <subnet> blackhole"
-# ($1 = Docker tunnel subnet, default 10.9.9.0/25) and, when $2 is a valid non-root uid,
-# "21819: from all uidrange <uid>-<uid> blackhole". Foreign rules on those priorities (including
-# any foreign UID-range blackhole at 21819) are kept. Bounded; returns 1 if reading the policy
-# rules fails or if a TunnelSats emergency blackhole rule remains in place.
+# Removes the TunnelSats emergency blackhole rules: "21818: from <subnet> blackhole"
+# ($1 = Docker tunnel subnet, default 10.9.9.0/25), "21819: from all uidrange <uid>-<uid> blackhole"
+# when $2 is a valid non-root uid, plus any selectors recorded in ts_failclosed_state_file when the
+# fallback was armed (so a later UID/account removal or subnet change never strands an old rule).
+# Foreign rules on those priorities are kept. Bounded; returns 1 if reading the policy rules fails
+# or if a TunnelSats emergency blackhole rule remains in place.
 ts_release_failclosed_rules() {
-    local subnet="${1:-10.9.9.0/25}" host_uid="${2:-}" uid="" subnet_re pattern n rules line prio sel
+    local subnet="${1:-10.9.9.0/25}" host_uid="${2:-}" uid="" subnet_re clauses state_file entry entry_re pattern n rules line prio sel
     case "$host_uid" in
         ""|0|*[!0-9]*) uid="" ;;
         *) uid="$host_uid" ;;
     esac
     subnet_re=$(printf '%s' "$subnet" | sed 's/[.]/\\./g')
+    clauses="21818:[[:space:]]+from ${subnet_re}"
     if [ -n "$uid" ]; then
-        pattern="^(21818:[[:space:]]+from ${subnet_re}|21819:[[:space:]]+from all uidrange ${uid}-${uid})[[:space:]]+blackhole[[:space:]]*$"
-    else
-        pattern="^21818:[[:space:]]+from ${subnet_re}[[:space:]]+blackhole[[:space:]]*$"
+        clauses="${clauses}|21819:[[:space:]]+from all uidrange ${uid}-${uid}"
     fi
+    state_file=$(ts_failclosed_state_file)
+    if [ -f "$state_file" ]; then
+        while IFS= read -r entry || [ -n "$entry" ]; do
+            case "$entry" in
+                "from "[0-9]*.[0-9]*.[0-9]*.[0-9]*/*)
+                    entry_re=$(printf '%s' "${entry#from }" | sed 's/[.]/\\./g')
+                    clauses="${clauses}|21818:[[:space:]]+from ${entry_re}"
+                    ;;
+                "uidrange "[1-9][0-9]*-[1-9][0-9]*)
+                    clauses="${clauses}|21819:[[:space:]]+from all ${entry}"
+                    ;;
+            esac
+        done < "$state_file"
+    fi
+    pattern="^(${clauses})[[:space:]]+blackhole[[:space:]]*$"
     for n in 1 2 3 4 5 6 7 8 9 10; do
         if ! rules=$(ip -4 rule show 2>/dev/null); then
             echo "TunnelSats: ERROR: unable to read IPv4 policy rules while releasing emergency blackhole rules" >&2
             return 1
         fi
         line=$(printf '%s\n' "$rules" | grep -E "$pattern" | head -n 1 || true)
-        [ -n "$line" ] || return 0
+        [ -n "$line" ] || break
         prio=${line%%:*}
         sel=$(printf '%s\n' "$line" | sed -E 's/^[0-9]+:[[:space:]]+//; s/[[:space:]]+blackhole[[:space:]]*$//; s/^from all uidrange /uidrange /')
         # $sel is two words on purpose ("from <subnet>" / "uidrange <a>-<b>").
@@ -1558,6 +1593,7 @@ ts_release_failclosed_rules() {
         echo "TunnelSats: ERROR: could not remove the emergency blackhole rule(s) at priority 21818/21819; Lightning traffic stays blocked until they are removed" >&2
         return 1
     fi
+    rm -f "$state_file" 2>/dev/null || true
     return 0
 }
 
@@ -1629,8 +1665,9 @@ write_route_guard_script() {
         echo '# Generated by tunnelsats.sh - ownership-scoped management of routing table 51820.'
         echo '# Never flushes table 51820; foreign routes are preserved and cause a fail-closed refusal.'
         declare -f ts_table51820_routes ts_table51820_foreign_routes ts_table51820_remove_owned \
-            ts_failclosed_nft_verified ts_arm_failclosed_nft ts_failclosed_rules_verified \
-            ts_arm_failclosed_rules ts_arm_failclosed ts_release_failclosed_rules ts_release_failclosed
+            ts_failclosed_state_file ts_failclosed_nft_verified ts_arm_failclosed_nft \
+            ts_failclosed_rules_verified ts_arm_failclosed_rules ts_arm_failclosed \
+            ts_release_failclosed_rules ts_release_failclosed
         cat <<'GUARD'
 # Refuses the tunnel start ($1 = reason, $2 = optional details). Never returns.
 refuse_start() {

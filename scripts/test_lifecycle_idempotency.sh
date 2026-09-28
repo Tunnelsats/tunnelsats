@@ -1430,6 +1430,41 @@ EOF
 }
 test_resolve_failclosed_host_uid
 
+test_failclosed_release_after_uid_change_or_removal() {
+    local dir bin status
+    dir=$(mktemp -d); bin=$(mktemp -d)
+    NODE_USER_T=lnd NODE_UID_T=4242 generate_tunnel_config baremetal "$dir"
+    make_fake_net_bin "$bin"
+    export HOOK_LOG="$dir/hooks.log" ROUTES="$dir/table51820" NFT_STATE="$dir/nft_failclosed" RULES="$dir/rules"
+    export NFT_FAIL_RULES=1
+    printf 'default dev wg1 scope link \n' > "$ROUTES"
+
+    # Guard arms fallback for UID 4242; foreign UID 9999 also exists
+    replay_postup "$dir/tunnelsatsv2.conf" "$bin"
+    assert_status 1 "$hook_status" "[UID Change] Fallback armed for original UID 4242"
+    printf '21819:\tfrom all uidrange 9999-9999 blackhole\n' >> "$RULES"
+
+    # Later uninstall runs after the lnd account was removed (resolve_failclosed_host_uid -> unresolved)
+    unset NFT_FAIL_RULES
+    set +e
+    PATH="$bin:$PATH" WG_DIR="$dir" run_case /dev/null <<'EOF' >/dev/null 2>&1
+source "$SCRIPT_UNDER_TEST"
+PLATFORM=baremetal; node_user=deleted_user
+id() { return 1; }
+ts_release_failclosed "$(resolve_failclosed_subnet)" "$(resolve_failclosed_host_uid)"
+EOF
+    status=$?
+    set -e
+    assert_status 0 "$status" "[UID Change] Release succeeds during uninstall even after node account is removed"
+    assert_file_not_contains_line "$RULES" "21819:${TAB}from all uidrange 4242-4242 blackhole" "[UID Change] Previously armed UID 4242 blackhole is removed"
+    assert_file_not_contains_line "$RULES" "21818:${TAB}from 10.9.9.0/25 blackhole" "[UID Change] Previously armed subnet blackhole is removed"
+    assert_file_contains_line "$RULES" "21819:${TAB}from all uidrange 9999-9999 blackhole" "[UID Change] Foreign UID 9999 blackhole is still preserved"
+
+    unset HOOK_LOG ROUTES NFT_STATE RULES
+    rm -rf "$dir" "$bin"
+}
+test_failclosed_release_after_uid_change_or_removal
+
 # Real kernel: arm and release the fallback in an unprivileged network namespace and check that
 # the kernel really refuses to route Lightning traffic through the main table while it is armed.
 test_failclosed_rule_fallback_real_kernel() {
