@@ -1380,6 +1380,7 @@ test_failclosed_release_failure_propagates() {
     conf="$dir/tunnelsatsv2.conf"
     export HOOK_LOG="$dir/hooks.log" ROUTES="$dir/table51820" NFT_STATE="$dir/nft_failclosed" RULES="$dir/rules"
     printf '21818:\tfrom 10.9.9.0/25 blackhole\n' > "$RULES"
+    printf 'from 10.9.9.0/25\n' > "$dir/.tunnelsats-failclosed-rules"
 
     export IP_FAIL_RULE_DEL=1
     replay_postup "$conf" "$bin"
@@ -1439,7 +1440,21 @@ test_failclosed_release_after_uid_change_or_removal() {
     export NFT_FAIL_RULES=1
     printf 'default dev wg1 scope link \n' > "$ROUTES"
 
-    # Guard arms fallback for UID 4242; foreign UID 9999 also exists
+    # Case 1: UID 4242 blackhole already existed before TunnelSats armed -> not recorded or deleted on release
+    printf '21819:\tfrom all uidrange 4242-4242 blackhole\n' > "$RULES"
+    replay_postup "$dir/tunnelsatsv2.conf" "$bin"
+    assert_status 1 "$hook_status" "[Pre-existing UID] Fallback verified when UID 4242 rule already existed"
+    assert_file_not_contains_line "$dir/.tunnelsats-failclosed-rules" "uidrange 4242-4242" "[Pre-existing UID] Pre-existing UID 4242 rule is not claimed in state file"
+    unset NFT_FAIL_RULES
+    rm -f "$ROUTES"
+    replay_postup "$dir/tunnelsatsv2.conf" "$bin"
+    assert_status 0 "$hook_status" "[Pre-existing UID] PostUp release succeeds"
+    assert_file_contains_line "$RULES" "21819:${TAB}from all uidrange 4242-4242 blackhole" "[Pre-existing UID] Pre-existing UID 4242 blackhole rule is preserved on release"
+
+    # Case 2: TunnelSats itself arms UID 4242; foreign UID 9999 also exists
+    : > "$RULES"
+    export NFT_FAIL_RULES=1
+    printf 'default dev wg1 scope link \n' > "$ROUTES"
     replay_postup "$dir/tunnelsatsv2.conf" "$bin"
     assert_status 1 "$hook_status" "[UID Change] Fallback armed for original UID 4242"
     printf '21819:\tfrom all uidrange 9999-9999 blackhole\n' >> "$RULES"
