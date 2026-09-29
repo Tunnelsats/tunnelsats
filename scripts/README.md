@@ -27,7 +27,7 @@ We are iteratively validating `tunnelsats.sh` across various Node OS platforms. 
 | Hardware/Platform | Node OS              | OS Version         | Host Script (`tunnelsats.sh`) |                       Native App / Package                       |
 | :---------------- | :------------------- | :----------------- | :---------------------------: | :--------------------------------------------------------------: |
 | Raspberry Pi / PC | **Umbrel**           | umbrelOS 1.0+      |     N/A (Use Native App)      | ✅ Native Umbrel App (Community Store / Official Review Pending) |
-| Any Hardware      | **StartOS (Start9)** | 0.4.0+             |   N/A (Use Native Package)    |  ✅ Native `.s9pk` Package (Sideload / Community Store Pending)  |
+| Any Hardware      | **StartOS (Start9)** | 0.4.0+             |   N/A (Use Native Package)    |  🔜 Native `.s9pk` Package (coming soon, not yet released)  |
 | Raspberry Pi      | **RaspiBlitz**       | v1.11.x            |         ✅ Supported          |                               N/A                                |
 | PC / VPS          | **Bare Metal**       | Debian 12 / Ubuntu |         ✅ Supported          |                               N/A                                |
 | Pi / PC (x86)     | **myNode**           | v0.3.x             |        ⚠️ Experimental        |                               N/A                                |
