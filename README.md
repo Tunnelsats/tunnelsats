@@ -41,7 +41,7 @@ The Lightning Network needs **fast, reliable, discoverable** nodes for efficient
 | Platform                       | Type            | LND | CLN | Installation Method                                                                                                                |
 | :----------------------------- | :-------------- | :-: | :-: | :--------------------------------------------------------------------------------------------------------------------------------- |
 | **Umbrel** (umbrelOS 1.0+)     | Docker App      | ✅  | ✅  | **Native Umbrel App** ([Community App Store](https://github.com/Tunnelsats/ts-umbrel-app) / Official Review Pending)               |
-| **StartOS** (StartOS 0.4.0+)   | Service Package | ✅  | ✅  | **Native `.s9pk` Package** ([tunnelsats-startos repo](https://github.com/Tunnelsats/tunnelsats-startos) / Community Store Pending) |
+| **StartOS** (StartOS 0.4.0+)   | Service Package | ✅  | ✅  | 🔜 **Native `.s9pk` Package: coming soon** (not yet released, [launch status](https://github.com/Tunnelsats/tunnelsats-startos#readme); also supports Eclair) |
 | **RaspiBlitz** (v1.11+)        | Systemd         | ✅  | ✅  | Host Script (`tunnelsats.sh`)                                                                                                      |
 | **Bare Metal** (Debian/Ubuntu) | Systemd         | ✅  | ✅  | Host Script (`tunnelsats.sh`)                                                                                                      |
 | **myNode** (v0.3+)             | Systemd         | ⚠️  | ⚠️  | Host Script (`tunnelsats.sh` - Experimental)                                                                                       |
@@ -49,6 +49,7 @@ The Lightning Network needs **fast, reliable, discoverable** nodes for efficient
 > ℹ️ **Security Architecture Note**:
 > The `tunnelsats.sh` bash installer is designed for bare-metal / systemd nodes (RaspiBlitz, RaspiBolt, MiniBolt, myNode).
 > Due to the strict container sandboxing and security infrastructure of **Umbrel** and **StartOS**, manual host script execution is unsupported on those platforms — please use their respective native App / Service installations.
+> The new StartOS package is not released yet, and the earlier gateway-based StartOS setup is end-of-life; see the [tunnelsats-startos README](https://github.com/Tunnelsats/tunnelsats-startos#readme) for the launch status.
 
 See [scripts/README.md](./scripts/) for detailed compatibility info.
 
