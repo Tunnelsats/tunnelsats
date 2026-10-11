@@ -1,13 +1,16 @@
-Signing keys
+Signing & Encryption Keys
 
 blckbx.asc
 
 Fingerprint: `29F2 19C0 0090 BDC5 3C4F  268B D3FB 31DE 57E3 92C5`
+Encryption Subkey (`rsa4096 [E]`): `0C03 3892 B86F 1081 030D  DB4C A996 C3EA 14DB 32C2`
 
 ziggie1984.asc
 
-Fingerprint: `984C 429E 4FEB 9829 7E1E  E6FE 61D3 02CA 09A9 C7B5`
+Fingerprint: `CE06 3C98 5429 C836 86A0  EEAA 5D02 6A7C A427 BB0E`
+Encryption Subkey (`cv25519 [E]`): `9D92 475E 3797 E597 5323  DA89 1FEA 396B 6AB3 5DE0`
 
 hakuna.asc
 
 Fingerprint: `D921 FD3A 63A3 CBDB 6825  6BE8 E4FD 4678 71FA D97E`
+Encryption Subkey (`rsa3072 [E]`): `E12E 491D E8D5 C7E9 9045  5610 D09F E468 F3B5 A0E8`
