@@ -20,3 +20,5 @@ jobs:
         run: bash scripts/test_sanitize_config.sh
       - name: Test Lifecycle & Routing Idempotency
         run: bash scripts/test_lifecycle_idempotency.sh
+      - name: Test CLI Contract (non-interactive, JSON, detect)
+        run: bash scripts/test_cli_contract.sh

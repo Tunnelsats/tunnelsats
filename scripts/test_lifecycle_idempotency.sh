@@ -966,6 +966,10 @@ Endpoint = de1.tunnelsats.com:51820
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 CONF
+    # Optional: PORT_LINE_T replaces the forwarded port comment of the source config.
+    if [[ -n "${PORT_LINE_T:-}" ]]; then
+        sed -i "s|^#VPNPort = 23456\$|${PORT_LINE_T}|" "$dir/source.conf"
+    fi
     PLATFORM_T="$platform" DIR_T="$dir" run_case /dev/null <<'EOF' >/dev/null 2>&1
 source "$SCRIPT_UNDER_TEST"
 PLATFORM="$PLATFORM_T"; LN_IMPL="lnd"; WG_DIR="$DIR_T"; CONFIG_FILE="$DIR_T/source.conf"
@@ -1372,6 +1376,24 @@ test_failclosed_rule_fallback_custom_subnet() {
 }
 test_failclosed_rule_fallback_custom_subnet
 
+# The Docker DNAT rule uses the complete forwarded port; an invalid value is never truncated
+# (100000 used to become 10000) and falls back to 9735 like a missing port comment.
+test_docker_dnat_forwarded_port() {
+    local dir conf port_case port_line expected
+    for port_case in "#VPNPort = 23456|23456" "# Port Forwarding: 443|443" "# Port Forwarding: 100000|9735"; do
+        port_line="${port_case%|*}"
+        expected="${port_case#*|}"
+        dir=$(mktemp -d)
+        PORT_LINE_T="$port_line" generate_tunnel_config umbrel "$dir"
+        conf="$dir/tunnelsatsv2.conf"
+        assert_log_contains "$conf" "--dport ${expected} -j DNAT --to-destination 10.9.9.9:9735" \
+            "[Docker DNAT] '${port_line}' forwards port ${expected}"
+        assert_log_not_contains "$conf" "--dport 10000 " "[Docker DNAT] '${port_line}' is never truncated"
+        rm -rf "$dir"
+    done
+}
+test_docker_dnat_forwarded_port
+
 test_failclosed_release_failure_propagates() {
     local dir bin conf
     dir=$(mktemp -d); bin=$(mktemp -d)
@@ -1541,6 +1563,29 @@ EOF
     rm -rf "$dir"
 }
 test_failed_guard_rewrite_keeps_previous_guard
+
+test_guard_embeds_shared_ownership_filter() {
+    local dir out
+    dir=$(mktemp -d)
+    DIR_T="$dir" run_case /dev/null <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+WG_DIR="$DIR_T"
+write_route_guard_script
+EOF
+    # The guard must carry the filter itself (declare -f), so run only that function, standalone
+    out=$(env -i PATH="$PATH" bash -c 'eval "$(sed -n "/^ts_table51820_filter_foreign ()/,/^}/p" "$1")"
+        printf "default dev tunnelsatsv2 scope link\nblackhole default metric 3\n10.20.0.0/16 dev wg9 scope link\n" |
+            ts_table51820_filter_foreign tunnelsatsv2' _ "$dir/tunnelsats-route-guard.sh" 2>&1)
+    if [[ "$out" == "10.20.0.0/16 dev wg9 scope link" ]]; then
+        echo "PASS: Generated route guard embeds the shared ownership filter and it works without the installer"
+        pass_count=$((pass_count + 1))
+    else
+        echo "FAIL: Generated route guard embeds the shared ownership filter (got: ${out})"
+        fail_count=$((fail_count + 1))
+    fi
+    rm -rf "$dir"
+}
+test_guard_embeds_shared_ownership_filter
 
 # ---------------------------------------------------------------------------
 # TEST GROUP 11: Ownership-scoped installer/uninstaller route cleanup

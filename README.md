@@ -23,6 +23,8 @@
 
 👉 **[See full installation guide and compatibility matrix →](./scripts/)**
 
+Scripts and node platforms can run the installer without prompts (`--non-interactive`, `--platform`, `--impl`, `--yes`) and inspect a node read-only with `detect --json`; see [scripts/README.md](./scripts/README.md#non-interactive-use-scripts-and-node-platforms).
+
 ---
 
 ## Why Hybrid Mode?
@@ -101,6 +103,7 @@ bash scripts/test_ufw_check.sh
 bash scripts/test_ipv6_patch.sh
 bash scripts/test_sanitize_config.sh
 bash scripts/test_lifecycle_idempotency.sh
+bash scripts/test_cli_contract.sh   # needs python3 to validate JSON output
 
 # Verify script SHA256 integrity
 sha256sum -c scripts/tunnelsats.sh.sha256
@@ -109,7 +112,7 @@ sha256sum -c scripts/tunnelsats.sh.sha256
 ### Remote CI/CD
 
 Automated CI status checks run on every push and pull request via [GitHub Actions](https://github.com/Tunnelsats/tunnelsats/actions):
-- **[Syntax & Automated Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/syntax.yml)**: Validates script syntax (`bash -n`) and executes all 5 automated test suites covering Umbrel version compatibility, UFW firewall handling, IPv6 route stripping, WireGuard configuration sanitization, and lifecycle/routing idempotency.
+- **[Syntax & Automated Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/syntax.yml)**: Validates script syntax (`bash -n`) and executes all 6 automated test suites covering Umbrel version compatibility, UFW firewall handling, IPv6 route stripping, WireGuard configuration sanitization, lifecycle/routing idempotency, and the non-interactive/JSON CLI contract (including `detect` on fixture trees).
 - **[Script Integrity Verification](https://github.com/Tunnelsats/tunnelsats/actions/workflows/integrity.yml)**: Asserts that `scripts/tunnelsats.sh.sha256` strictly matches the contents of `scripts/tunnelsats.sh`.
 
 ### Local Setup & Git Hooks
