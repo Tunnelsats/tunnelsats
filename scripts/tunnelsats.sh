@@ -10,8 +10,12 @@ set -e  # Exit on error
 # GLOBAL VARIABLES
 # ---------------------------------------------------------------------------
 
-VERSION="3.1"
+VERSION="3.2"
+# Version of the machine-readable CLI contract (--json documents, exit codes, error codes).
+# Bumped only for incompatible changes; platforms such as RaspiBlitz pin it.
+TS_CONTRACT=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TS_SCRIPT_PATH="${SCRIPT_DIR}/${BASH_SOURCE[0]##*/}"
 CONFIG_FILE=""
 PLATFORM=""
 LN_IMPL=""
@@ -22,6 +26,34 @@ stopped_wireguard_interface=""
 # Lightning daemon container selected by setup_docker_network to own the tunnel IP (may be stopped)
 tunnel_target_container=""
 WG_CONFIG_BACKUP=""
+
+# Command line state (set by ts_parse_cli)
+TS_COMMAND=""
+TS_JSON=0
+TS_NONINTERACTIVE=0
+TS_OPT_YES=0
+TS_OPT_PLATFORM=""
+TS_OPT_IMPL=""
+TS_OPT_PACKAGES=""
+TS_WANT_HELP=0
+TS_USAGE_ERROR=""
+TS_OPTS_GIVEN=()
+TS_ARGV=()
+# Identifiers accepted by --platform and --impl (the values used internally for PLATFORM and LN_IMPL)
+TS_PLATFORMS="raspiblitz umbrel mynode baremetal"
+TS_IMPLS="lnd cln lit"
+# JSON output: the document goes to TS_OUT_FD (the original stdout, saved before logs move to stderr)
+TS_OUT_FD=1
+TS_JSON_EMITTED=0
+
+# Injection points for external commands and for the filesystem root of detection reads.
+# Defaults are the plain command names and the real root; tests point them at stubs and fixture trees.
+WG_BIN="${WG_BIN:-wg}"
+WG_QUICK_BIN="${WG_QUICK_BIN:-wg-quick}"
+NFT_BIN="${NFT_BIN:-nft}"
+IP_BIN="${IP_BIN:-ip}"
+SYSTEMCTL_BIN="${SYSTEMCTL_BIN:-systemctl}"
+TS_FS_ROOT="${TS_FS_ROOT:-}"
 
 # Shared Lightning daemon container resolvers (used by the installer and the generated network monitor)
 LND_CONTAINER_REGEX='(^|[[:space:]]|[-_])(lightning[-_])?lnd([-._]lnd)?([-._][0-9]+)?$'
@@ -94,6 +126,248 @@ print_info() {
 
 print_step() {
     echo -e "${BOLD}[$1/$2]${NC} $3" >&2
+}
+
+# No ANSI colours when NO_COLOR is set (https://no-color.org), in --json mode, or when stdout or
+# stderr is not a terminal. Called once by parse_args before anything is printed.
+ts_init_colors() {
+    if [[ -n "${NO_COLOR:-}" ]] || [[ "$TS_JSON" -eq 1 ]] || [[ ! -t 1 ]] || [[ ! -t 2 ]]; then
+        RED=''
+        GREEN=''
+        YELLOW=''
+        BLUE=''
+        BOLD=''
+        NC=''
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# CLI CONTRACT 1: NON-INTERACTIVE MODE, JSON OUTPUT AND ERROR CODES
+# --json prints exactly one JSON document on stdout; every human log goes to stderr.
+# Exit codes: 0 success, 1 failure, 2 usage error or interaction required.
+# Error codes: E_USAGE, E_JSON_UNSUPPORTED, E_INTERACTION_REQUIRED (exit 2),
+#              E_SHA256_UNAVAILABLE, E_INTERNAL (exit 1).
+# ---------------------------------------------------------------------------
+
+# Escapes $1 for use inside a JSON string literal and stores the result in TS_JSON_ESCAPED.
+# Works on bytes (C locale): quote and backslash are escaped, control characters become
+# \b \f \n \r \t or \u00XX, and every non-ASCII byte becomes \ufffd, so the document is always
+# valid ASCII JSON, even for hostile or non-UTF-8 input. Needs no external tool (no jq, no python).
+ts_json_escape() {
+    local LC_ALL=C
+    local s="$1" out="" ch code i
+    if [[ "$s" != *[![:print:]]* ]] && [[ "$s" != *[\"\\]* ]]; then
+        TS_JSON_ESCAPED="$s"
+        return 0
+    fi
+    for ((i = 0; i < ${#s}; i++)); do
+        ch="${s:i:1}"
+        case "$ch" in
+            '"') out+='\"' ;;
+            '\') out+='\\' ;;
+            $'\n') out+='\n' ;;
+            $'\r') out+='\r' ;;
+            $'\t') out+='\t' ;;
+            $'\b') out+='\b' ;;
+            $'\f') out+='\f' ;;
+            *)
+                if [[ "$ch" == [[:print:]] ]]; then
+                    out+="$ch"
+                elif [[ "$ch" == [[:cntrl:]] ]]; then
+                    printf -v code '%04x' "'$ch"
+                    out+="\\u${code}"
+                else
+                    out+='\ufffd'
+                fi
+                ;;
+        esac
+    done
+    TS_JSON_ESCAPED="$out"
+}
+
+# JSON value builders. Each one stores a JSON literal in TS_R (no subshells).
+ts_j_str() {
+    ts_json_escape "$1"
+    TS_R="\"${TS_JSON_ESCAPED}\""
+}
+
+ts_j_str_or_null() {
+    if [[ -n "$1" ]]; then
+        ts_j_str "$1"
+    else
+        TS_R="null"
+    fi
+}
+
+ts_j_int_or_null() {
+    if [[ "$1" =~ ^[0-9]{1,15}$ ]]; then
+        TS_R="$((10#$1))"
+    else
+        TS_R="null"
+    fi
+}
+
+ts_j_bool_or_null() {
+    case "$1" in
+        true|1) TS_R="true" ;;
+        false|0) TS_R="false" ;;
+        *) TS_R="null" ;;
+    esac
+}
+
+# Array of JSON literals: ts_j_arr "$lit1" "$lit2" ...
+ts_j_arr() {
+    local IFS=","
+    TS_R="[$*]"
+}
+
+# Object from pairs "<type>:<key>" "<value>". Types: s string, sn string (null if empty),
+# i integer (null if not a number), b boolean (null if unknown), r raw JSON literal.
+ts_j_obj() {
+    local out="" sep="" spec val
+    while [[ $# -ge 2 ]]; do
+        spec="$1"
+        val="$2"
+        shift 2
+        case "${spec%%:*}" in
+            s) ts_j_str "$val" ;;
+            sn) ts_j_str_or_null "$val" ;;
+            i) ts_j_int_or_null "$val" ;;
+            b) ts_j_bool_or_null "$val" ;;
+            *) TS_R="$val" ;;
+        esac
+        out+="${sep}\"${spec#*:}\":${TS_R}"
+        sep=","
+    done
+    TS_R="{${out}}"
+}
+
+# Error object: $1 = code, $2 = class, $3 = message, $4 = optional flag that answers a prompt.
+ts_j_error() {
+    if [[ -n "${4:-}" ]]; then
+        ts_j_obj s:code "$1" s:class "$2" s:message "$3" s:flag "$4"
+    else
+        ts_j_obj s:code "$1" s:class "$2" s:message "$3"
+    fi
+}
+
+# Prints the contract-1 document: $1 = exit code, $2 = errors array literal, $3 = extra members
+# (raw '"key":value' pairs, may be empty). Must run in the main shell: a document printed from a
+# subshell is not recorded, and the exit guard would then print a second one.
+ts_json_document() {
+    local rc="$1" errors="${2:-[]}" extra="${3:-}" ok="false" cmd ver doc
+    if [[ "$rc" -eq 0 ]]; then
+        ok="true"
+    fi
+    ts_j_str_or_null "$TS_COMMAND"
+    cmd="$TS_R"
+    ts_j_str "$VERSION"
+    ver="$TS_R"
+    doc="{\"contract\":${TS_CONTRACT},\"command\":${cmd},\"tool_version\":${ver},\"ok\":${ok},\"exit_code\":${rc},\"errors\":${errors}"
+    if [[ -n "$extra" ]]; then
+        doc+=",${extra}"
+    fi
+    doc+="}"
+    printf '%s\n' "$doc" >&"$TS_OUT_FD"
+    TS_JSON_EMITTED=1
+}
+
+# EXIT trap in --json mode: guarantees exactly one document even if a command aborts early.
+ts_json_exit_guard() {
+    local rc=$?
+    trap - EXIT
+    if [[ "$TS_JSON_EMITTED" -ne 1 ]]; then
+        if [[ "$rc" -eq 0 ]]; then
+            rc=1
+        fi
+        ts_j_error E_INTERNAL internal "'${TS_COMMAND}' ended without a result (exit code ${rc})"
+        ts_json_document "$rc" "[${TS_R}]"
+    fi
+    exit "$rc"
+}
+
+# Reports an error on stderr (and as the JSON document in --json mode) and exits.
+# $1 = exit code, $2 = error code, $3 = class, $4 = message, $5 = optional flag, $6 = optional hint.
+ts_fail() {
+    local rc="$1" code="$2" class="$3" message="$4" flag="${5:-}" hint="${6:-}" shown
+    # print_error uses echo -e: neutralise backslashes and control characters from user input
+    shown="${message//\\/\\\\}"
+    shown="${shown//[[:cntrl:]]/?}"
+    print_error "${shown} [${code}]"
+    if [[ -n "$hint" ]]; then
+        echo "$hint" >&2
+    fi
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        ts_j_error "$code" "$class" "$message" "$flag"
+        ts_json_document "$rc" "[${TS_R}]"
+    fi
+    exit "$rc"
+}
+
+ts_usage_error() {
+    ts_fail 2 E_USAGE usage "$1" "" "Run 'tunnelsats.sh help' for usage."
+}
+
+# Fails with E_INTERACTION_REQUIRED (exit 2): $1 = flag (with a value placeholder) that answers
+# the prompt, $2 = prompt text, $3 = optional reason.
+ts_interaction_required() {
+    local flag="$1" prompt="$2" reason="${3:-non-interactive mode never prompts}"
+    while [[ "$prompt" == *[[:space:]] ]]; do
+        prompt="${prompt%?}"
+    done
+    ts_fail 2 E_INTERACTION_REQUIRED interaction "Cannot answer \"${prompt}\": ${reason}. Pass ${flag}." "${flag%% *}"
+}
+
+# Fails in non-interactive mode before a selection menu is printed. $1 = flag, $2 = prompt.
+ts_require_interaction() {
+    if [[ "$TS_NONINTERACTIVE" -eq 1 ]]; then
+        ts_interaction_required "$1" "$2"
+    fi
+    return 0
+}
+
+# Reads the answer to an interactive prompt into the variable named $1.
+#   $2 = flag that answers the prompt without interaction (named in the error)
+#   $3 = prompt, shown exactly as before (read -p shows it only when stdin is a terminal)
+#   $4 = optional answer to use at end of input. Without it, end of input fails like a missing
+#        answer in non-interactive mode instead of silently aborting through set -e.
+# Non-interactive mode never reads: it fails with E_INTERACTION_REQUIRED (exit 2).
+# Piped answers keep working: a non-TTY stdin does not imply non-interactive mode.
+ts_ask() {
+    local __ts_var="$1" __ts_flag="$2" __ts_prompt="$3" __ts_reply=""
+    ts_require_interaction "$__ts_flag" "$__ts_prompt"
+    if ! read -r -p "$__ts_prompt" __ts_reply && [[ -z "$__ts_reply" ]]; then
+        if [[ $# -ge 4 ]]; then
+            print_warning "No answer received (end of input); using '${4}'"
+            __ts_reply="$4"
+        else
+            ts_interaction_required "$__ts_flag" "$__ts_prompt" "no answer received (end of input)"
+        fi
+    fi
+    printf -v "$__ts_var" '%s' "$__ts_reply"
+}
+
+# Yes/no confirmation answered by --yes: sets the variable named $1 to "y" when --yes was given,
+# otherwise asks $2 like ts_ask (and fails in non-interactive mode).
+ts_confirm() {
+    if [[ "$TS_OPT_YES" -eq 1 ]]; then
+        printf -v "$1" '%s' "y"
+        return 0
+    fi
+    ts_ask "$1" "--yes" "$2"
+}
+
+# Succeeds if word $1 is in the space-separated list $2.
+ts_in_list() {
+    local item
+    # $2 is split into words on purpose
+    # shellcheck disable=SC2086
+    for item in $2; do
+        if [[ "$item" == "$1" ]]; then
+            return 0
+        fi
+    done
+    return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -310,28 +584,73 @@ valid_ipv4() {
     return $stat
 }
 
-# Find active WireGuard config file
-# Supports both old (tunnelsatsv2.conf) and new (tunnelsats-*.conf) formats
-find_active_wg_config() {
-    # Check for old format first
-    if [[ -f /etc/wireguard/tunnelsatsv2.conf ]]; then
-        echo "/etc/wireguard/tunnelsatsv2.conf"
-        return 0
+# Installed TunnelSats WireGuard configs and the one in use. One rule for detect, status, restart
+# and uninstall, so they never pick different tunnels:
+#   1. an explicit config (--config) wins
+#   2. else <dir>/tunnelsatsv2.conf (the canonical name)
+#   3. else the only <dir>/tunnelsats-*.conf
+#   4. else nothing is picked: "ambiguous" (several candidates) or "none"
+# $1 = explicit config or "", $2 = filesystem root prefix (detect passes TS_FS_ROOT), $3 = WireGuard
+# directory below the root (default /etc/wireguard). Sets TS_WG_SELECTION (explicit, canonical,
+# single, ambiguous, none, permission_denied), TS_WG_SELECTED (path below the root, empty unless a
+# config is picked) and TS_WG_CANDIDATES (every TunnelSats config found, sorted byte-wise).
+ts_select_wg_config() {
+    local LC_ALL=C
+    local explicit="$1" root="${2:-}" wg_dir="${3:-/etc/wireguard}" entry name unreadable=0
+    local dir="${root}${wg_dir}"
+    TS_WG_SELECTION="none"
+    TS_WG_SELECTED=""
+    TS_WG_CANDIDATES=()
+    if [[ -e "$dir" ]] && { [[ ! -r "$dir" ]] || [[ ! -x "$dir" ]]; }; then
+        unreadable=1
     fi
-    
-    # Look for new format
-    local configs=($(find /etc/wireguard -name "tunnelsats-*.conf" -type f 2>/dev/null))
-    if [[ ${#configs[@]} -eq 1 ]]; then
-        echo "${configs[0]}"
-        return 0
-    elif [[ ${#configs[@]} -gt 1 ]]; then
-        # Multiple configs found - use the first one
-        echo "${configs[0]}"
-        return 0
+    # Glob results are sorted (byte-wise with LC_ALL=C); names must be valid interface names
+    for entry in "$dir"/tunnelsats-*.conf "$dir"/tunnelsatsv2.conf; do
+        name="${entry##*/}"
+        if [[ -f "$entry" ]] && [[ "$name" =~ ^tunnelsats(v2|-[A-Za-z0-9_=+.-]+)\.conf$ ]]; then
+            TS_WG_CANDIDATES+=("${wg_dir}/${name}")
+        fi
+    done
+    if [[ -n "$explicit" ]]; then
+        TS_WG_SELECTION="explicit"
+        TS_WG_SELECTED="$explicit"
+    elif [[ -f "${dir}/tunnelsatsv2.conf" ]]; then
+        TS_WG_SELECTION="canonical"
+        TS_WG_SELECTED="${wg_dir}/tunnelsatsv2.conf"
+    elif [[ "$unreadable" -eq 1 ]]; then
+        TS_WG_SELECTION="permission_denied"
+    elif [[ ${#TS_WG_CANDIDATES[@]} -eq 1 ]]; then
+        TS_WG_SELECTION="single"
+        TS_WG_SELECTED="${TS_WG_CANDIDATES[0]}"
+    elif [[ ${#TS_WG_CANDIDATES[@]} -gt 1 ]]; then
+        TS_WG_SELECTION="ambiguous"
     fi
-    
-    # No config found
-    return 1
+    return 0
+}
+
+# The installed config used by status and restart (ts_select_wg_config on ${WG_DIR:-/etc/wireguard}).
+# Several candidates are a question: it is asked like the install config selection and answered
+# by --config, so non-interactive mode fails with E_INTERACTION_REQUIRED before anything changes
+# and no command ever picks one of several tunnels on its own.
+# Sets TS_WG_RESOLVED; returns 1 if no TunnelSats config is installed.
+ts_resolve_wg_config() {
+    local selected=""
+    TS_WG_RESOLVED=""
+    ts_select_wg_config "$CONFIG_FILE" "" "${WG_DIR:-/etc/wireguard}"
+    case "$TS_WG_SELECTION" in
+        explicit|canonical|single)
+            TS_WG_RESOLVED="$TS_WG_SELECTED"
+            ;;
+        ambiguous)
+            print_warning "Several TunnelSats configs are installed and none is named tunnelsatsv2.conf."
+            selected=$(select_config_interactive "${TS_WG_CANDIDATES[@]}") || exit $?
+            TS_WG_RESOLVED="$selected"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    return 0
 }
 
 # Parse metadata from config file (supports old and new formats)
@@ -347,26 +666,63 @@ parse_config_metadata() {
     
     case "$field" in
         port)
-            # Handles variable whitespace: #VPNPort, # VPNPort, # Port Forwarding, etc.
-            local port=$(grep -E '^#\s*(VPNPort|Port Forwarding)' "$config_file" | head -1 | grep -oE '[0-9]{4,5}' | head -1)
+            # Old format: #VPNPort = 48049; website: # Port Forwarding: 24556; StartOS: # VPNPort: 31337
+            # The whole number after the label is returned, never truncated, and callers check the
+            # range 1-65535 (ts_normalize_port). A value that does not start with a digit is returned
+            # as written, so that it is reported as invalid instead of looking like a missing port.
+            local port=$(sed -nE 's/^[[:space:]]*#[[:space:]]*(VPNPort|Port Forwarding)[[:space:]]*[:=]?[[:space:]]*//Ip' "$config_file" | head -1 | sed -E 's/^([0-9]+)([^0-9.,].*)?$/\1/; s/[[:space:]]+$//')
             echo "$port"
             ;;
         expiry)
             # Old format: #ValidUntil (UTC time) = 2025-06-29T08:18:33.839Z
-            # New format: # Valid Until: 2026-01-07T...
-            local expiry=$(grep -E "#ValidUntil|# Valid Until:" "$config_file" | head -1 | sed 's/.*[=:] *//')
+            # Website, API and StartOS format: # Valid Until: 2026-01-07T08:18:33.839Z
+            # The label is matched explicitly, so the colons inside the timestamp are kept.
+            local expiry=$(sed -nE 's|^[[:space:]]*#[[:space:]]*Valid[[:space:]]*Until([[:space:]]*\(UTC time\))?[[:space:]]*[:=][[:space:]]*||Ip' "$config_file" | head -1 | sed -E 's/[[:space:]]+$//')
             echo "$expiry"
             ;;
         pubkey)
             # Old format: #myPubKey = 6gTYyE8eFW7579zIOlvEgehrhGb01SrqC5dgQupxlAU=
             # New format: # myPubKey: <user's-public-key>
-            local pubkey=$(grep -E "#myPubKey" "$config_file" | head -1 | sed 's/.*[=:] *//')
+            # A hint only: the key in use is derived from PrivateKey (ts_derive_wg_pubkey).
+            local pubkey=$(sed -nE 's|^[[:space:]]*#[[:space:]]*myPubKey[[:space:]]*[:=][[:space:]]*([A-Za-z0-9+/]{43}=).*|\1|Ip' "$config_file" | head -1)
             echo "$pubkey"
             ;;
         *)
             return 1
             ;;
     esac
+}
+
+# Prints port $1 as a plain decimal number if it is a valid port (1-65535); fails otherwise.
+# Leading zeros are accepted. Long digit strings are rejected before any arithmetic, so a huge
+# value cannot wrap around into the valid range.
+ts_normalize_port() {
+    if [[ "$1" =~ ^0*([1-9][0-9]{0,4})$ ]] && (( 10#${BASH_REMATCH[1]} <= 65535 )); then
+        echo "$((10#${BASH_REMATCH[1]}))"
+        return 0
+    fi
+    return 1
+}
+
+# Forwarded VPN port of config $1 for the installer: prints the port (1-65535), or nothing if the
+# config has no port comment. An invalid value is never truncated or used: it is reported with a
+# warning on stderr and treated like a missing comment.
+ts_config_vpn_port() {
+    local raw="" port="" shown=""
+    raw=$(parse_config_metadata "$1" port) || raw=""
+    if [[ -z "$raw" ]]; then
+        return 0
+    fi
+    if port=$(ts_normalize_port "$raw"); then
+        echo "$port"
+        return 0
+    fi
+    # print_warning uses echo -e: neutralise backslashes and control characters from the file
+    shown="${raw:0:32}"
+    shown="${shown//\\/\\\\}"
+    shown="${shown//[[:cntrl:]]/?}"
+    print_warning "Ignoring invalid forwarded port '${shown}' in ${1##*/} (expected 1-65535)"
+    return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -377,19 +733,19 @@ find_config_files() {
     local search_dir="${1:-.}"
     local found_files=()
     
-    # Priority 1: tunnelsats_*.conf files
+    # Priority 1: tunnelsats_*.conf files (sorted, so the selection menu is stable)
     while IFS= read -r -d '' file; do
         found_files+=("$file")
-    done < <(find "$search_dir" -maxdepth 1 -name "tunnelsats_*.conf" -type f -print0 2>/dev/null)
+    done < <(find "$search_dir" -maxdepth 1 -name "tunnelsats_*.conf" -type f -print0 2>/dev/null | LC_ALL=C sort -z)
     
     # Priority 2: If none found, look for any .conf files
     if [[ ${#found_files[@]} -eq 0 ]]; then
         while IFS= read -r -d '' file; do
             # Exclude system config files
-            if [[ ! "$file" =~ (nftables|sysctl|resolv)\\.conf$ ]]; then
+            if [[ ! "$file" =~ /(nftables|sysctl|resolv)\.conf$ ]]; then
                 found_files+=("$file")
             fi
-        done < <(find "$search_dir" -maxdepth 1 -name "*.conf" -type f -print0 2>/dev/null)
+        done < <(find "$search_dir" -maxdepth 1 -name "*.conf" -type f -print0 2>/dev/null | LC_ALL=C sort -z)
     fi
     
     # Return the array
@@ -408,7 +764,7 @@ select_config_interactive() {
     
     echo "" >&2
     # read -p prompts to stderr by default, but we need to ensure inputs don't clutter result
-    read -p "Select config [1-${#files[@]}]: " selection
+    ts_ask selection "--config <file>" "Select config [1-${#files[@]}]: "
     
     if [[ "$selection" =~ ^[0-9]+$ ]] && \
        [[ "$selection" -ge 1 ]] && \
@@ -455,9 +811,11 @@ detect_config_file() {
         return 0
         
     else
-        # Multiple configs - interactive selection
+        # Multiple configs - interactive selection (--config answers it). A failed selection
+        # (invalid answer, end of input, non-interactive mode) must stop here: this function runs
+        # in a command substitution, where set -e is not inherited.
         local selected
-        selected=$(select_config_interactive "${found_files[@]}")
+        selected=$(select_config_interactive "${found_files[@]}") || exit $?
         echo "$selected"
         return 0
     fi
@@ -480,7 +838,26 @@ Commands:
   uninstall                 Remove TunnelSats installation
   status                    Show subscription and connection status
   restart                   Restart the WireGuard tunnel interface
+  detect                    Read-only report: platform, Lightning units, existing
+                            install, config, capabilities, conflicts (no root needed)
+  version                   Show version, CLI contract and script sha256
   help                      Show this help message
+
+Options (accepted before or after the command):
+  --config <file>           WireGuard config to use (install, status, restart)
+  --platform <id>           raspiblitz, umbrel, mynode or baremetal
+                            (install, uninstall, status, restart)
+  --impl <id>               lnd, cln or lit (install, uninstall, status, restart)
+  --yes                     Answer yes to confirmation prompts
+  --remove-packages         uninstall: also remove nftables and wireguard-tools
+                            (and cgroup-tools)
+  --keep-packages           uninstall: keep system packages without asking
+  --non-interactive         Never prompt: a question that no option answers fails
+                            with exit code 2 before any change is made
+  --json                    One JSON document on stdout, logs on stderr
+                            (version, detect); implies --non-interactive
+
+Exit codes: 0 success, 1 failure, 2 usage error or interaction required
 
 Examples:
   # Run compatibility check first
@@ -492,6 +869,9 @@ Examples:
   # Install with specific config
   sudo bash tunnelsats.sh install --config tunnelsats_us-east.conf
   
+  # Install without prompts (for scripts and node platforms)
+  sudo bash tunnelsats.sh install --non-interactive --config tunnelsats_us-east.conf --platform raspiblitz --impl lnd
+  
   # Check status
   sudo bash tunnelsats.sh status
   
@@ -500,6 +880,9 @@ Examples:
 
   # Clean uninstall
   sudo bash tunnelsats.sh uninstall
+
+  # Inspect the node without changing anything
+  bash tunnelsats.sh detect --json
 
 For more information:
   Website: https://tunnelsats.com
@@ -650,31 +1033,61 @@ check_umbrel_version() {
     fi
 }
 
+# Platform markers in detection order: "<platform> <d|f> <path>" (directory or file).
+TS_PLATFORM_MARKERS=(
+    "raspiblitz d /home/admin/config.scripts"
+    "umbrel d /home/umbrel/umbrel"
+    "umbrel d /umbrel"
+    "umbrel f /usr/bin/umbrel"
+    "mynode d /usr/share/mynode"
+)
+
+# Prints the platform suggested by the first matching marker (nothing if none matches).
+# $1 = optional filesystem root prefix (detect passes TS_FS_ROOT).
+ts_guess_platform() {
+    local root="${1:-}" marker platform rest kind path
+    for marker in "${TS_PLATFORM_MARKERS[@]}"; do
+        platform="${marker%% *}"
+        rest="${marker#* }"
+        kind="${rest%% *}"
+        path="${rest#* }"
+        if { [[ "$kind" == "d" ]] && [[ -d "${root}${path}" ]]; } || { [[ "$kind" == "f" ]] && [[ -f "${root}${path}" ]]; }; then
+            echo "$platform"
+            return 0
+        fi
+    done
+    return 0
+}
+
 detect_platform() {
     local guess=""
-    if [[ -d /home/admin/config.scripts ]]; then
-        guess="raspiblitz"
-    elif [[ -d /home/umbrel/umbrel ]] || [[ -d /umbrel ]] || [[ -f /usr/bin/umbrel ]]; then
-        guess="umbrel"
-    elif [[ -d /usr/share/mynode ]]; then
-        guess="mynode"
+    guess=$(ts_guess_platform)
+
+    # --platform answers both questions below without interaction
+    if [[ -n "$TS_OPT_PLATFORM" ]]; then
+        if [[ -n "$guess" ]] && [[ "$guess" != "$TS_OPT_PLATFORM" ]]; then
+            print_warning "Using --platform ${TS_OPT_PLATFORM} (detected: ${guess})"
+        fi
+        PLATFORM="$TS_OPT_PLATFORM"
+        return 0
     fi
 
     if [[ -n "$guess" ]]; then
-        read -p "Detected Platform: ${guess}. Correct? [Y/n]: " use_guess
+        ts_ask use_guess "--platform <id>" "Detected Platform: ${guess}. Correct? [Y/n]: "
         if [[ "$use_guess" =~ ^[Yy]$ ]] || [[ -z "$use_guess" ]]; then
             PLATFORM="$guess"
             return 0
         fi
     fi
 
+    ts_require_interaction "--platform <id>" "Select [1-4]: "
     echo "What Lightning node package are you running?" >&2
     echo "  1) RaspiBlitz" >&2
     echo "  2) Umbrel" >&2
     echo "  3) myNode" >&2
     echo "  4) RaspiBolt / Bare Metal" >&2
     echo "" >&2
-    read -p "Select [1-4]: " answer
+    ts_ask answer "--platform <id>" "Select [1-4]: "
     
     case $answer in
         1) PLATFORM="raspiblitz" ;;
@@ -784,6 +1197,33 @@ attach_container_to_tunnel_network() {
 }
 
 
+# Succeeds if LIT runs in integrated mode (it manages its own LND).
+# $1 = optional filesystem root prefix (detect passes TS_FS_ROOT).
+ts_lit_integrated_mode() {
+    local root="${1:-}"
+    local s_file="${root}/etc/systemd/system/litd.service"
+    [[ ! -f "$s_file" ]] && s_file="${root}/etc/systemd/system/lit.service"
+    grep -qi "lnd-mode=integrated" "$s_file" 2>/dev/null || grep -qi "lnd-mode.*integrated" "${root}/etc/lit/lit.conf" 2>/dev/null || grep -qi "lnd-mode.*integrated" "${root}${HOME}/.lit/lit.conf" 2>/dev/null
+}
+
+# Prints the Lightning implementation suggested by systemd units (lnd, cln, lit or nothing).
+# $1 = optional filesystem root prefix (detect passes TS_FS_ROOT).
+ts_guess_ln_impl_systemd() {
+    local root="${1:-}"
+    local sd="${root}/etc/systemd/system"
+    if [[ -f "$sd/lnd.service" ]] || "$SYSTEMCTL_BIN" is-active --quiet lnd 2>/dev/null; then
+        echo "lnd"
+    elif [[ -f "$sd/lightningd.service" ]] || "$SYSTEMCTL_BIN" is-active --quiet lightningd 2>/dev/null; then
+        echo "cln"
+    elif [[ -f "$sd/litd.service" ]] || [[ -f "$sd/lit.service" ]] || "$SYSTEMCTL_BIN" is-active --quiet litd 2>/dev/null || "$SYSTEMCTL_BIN" is-active --quiet lit 2>/dev/null; then
+        # Verify if Integrated Mode
+        if ts_lit_integrated_mode "$root"; then
+            echo "lit"
+        fi
+    fi
+    return 0
+}
+
 detect_ln_implementation() {
     local guess=""
     if [[ "$PLATFORM" == "umbrel" ]]; then
@@ -797,20 +1237,20 @@ detect_ln_implementation() {
             guess="cln"
         fi
     else
-        if [[ -f /etc/systemd/system/lnd.service ]] || systemctl is-active --quiet lnd; then guess="lnd";
-        elif [[ -f /etc/systemd/system/lightningd.service ]] || systemctl is-active --quiet lightningd; then guess="cln";
-        elif [[ -f /etc/systemd/system/litd.service ]] || [[ -f /etc/systemd/system/lit.service ]] || systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
-            # Verify if Integrated Mode
-            local s_file="/etc/systemd/system/litd.service"
-            [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
-            if grep -qi "lnd-mode=integrated" "$s_file" 2>/dev/null || grep -qi "lnd-mode.*integrated" /etc/lit/lit.conf 2>/dev/null || grep -qi "lnd-mode.*integrated" "$HOME/.lit/lit.conf" 2>/dev/null; then
-                guess="lit"
-            fi
-        fi
+        guess=$(ts_guess_ln_impl_systemd)
     fi
 
     if [[ -n "$guess" ]]; then
-        read -p "Detected Implementation: ${guess^^}. Correct? [Y/n]: " use_guess
+        if [[ -n "$TS_OPT_IMPL" ]]; then
+            # --impl answers the confirmation: yes if it names the detected implementation
+            if [[ "$TS_OPT_IMPL" == "$guess" ]]; then
+                use_guess="Y"
+            else
+                use_guess="n"
+            fi
+        else
+            ts_ask use_guess "--impl <id>" "Detected Implementation: ${guess^^}. Correct? [Y/n]: "
+        fi
         if [[ "$use_guess" =~ ^[Yy]$ ]] || [[ -z "$use_guess" ]]; then
             LN_IMPL="$guess"
             # Detect node user for non-Docker
@@ -832,16 +1272,36 @@ detect_ln_implementation() {
         fi
     fi
 
-    echo "Which Lightning implementation do you want to tunnel?" >&2
-    echo "  1) LND" >&2
-    echo "  2) CLN (Core Lightning)" >&2
     local range="1-2"
     if [[ "$PLATFORM" == "baremetal" ]]; then
-        echo "  3) LIT (integrated mode)" >&2
         range="1-3"
     fi
-    echo "" >&2
-    read -p "Select [$range]: " choice
+    if [[ -n "$TS_OPT_IMPL" ]]; then
+        # --impl answers the selection exactly like the matching menu entry
+        if [[ -n "$guess" ]]; then
+            print_warning "Using --impl ${TS_OPT_IMPL} (detected: ${guess})"
+        fi
+        case "$TS_OPT_IMPL" in
+            lnd) choice="1" ;;
+            cln) choice="2" ;;
+            lit)
+                if [[ "$PLATFORM" != "baremetal" ]]; then
+                    ts_usage_error "--impl lit is only available on platform baremetal (platform: ${PLATFORM})"
+                fi
+                choice="3"
+                ;;
+        esac
+    else
+        ts_require_interaction "--impl <id>" "Select [$range]: "
+        echo "Which Lightning implementation do you want to tunnel?" >&2
+        echo "  1) LND" >&2
+        echo "  2) CLN (Core Lightning)" >&2
+        if [[ "$PLATFORM" == "baremetal" ]]; then
+            echo "  3) LIT (integrated mode)" >&2
+        fi
+        echo "" >&2
+        ts_ask choice "--impl <id>" "Select [$range]: "
+    fi
     
     case $choice in
         1) 
@@ -855,13 +1315,11 @@ detect_ln_implementation() {
         3) 
             if [[ "$PLATFORM" == "baremetal" ]]; then
                 LN_IMPL="lit"
-                local s_file="/etc/systemd/system/litd.service"
-                [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
                 
                 # Verify Integrated Mode or warn
-                if ! grep -qi "lnd-mode=integrated" "$s_file" 2>/dev/null && ! grep -qi "lnd-mode.*integrated" /etc/lit/lit.conf 2>/dev/null && ! grep -qi "lnd-mode.*integrated" "$HOME/.lit/lit.conf" 2>/dev/null; then
+                if ! ts_lit_integrated_mode; then
                     print_warning "LIT Integrated mode not detected in config."
-                    read -p "Are you sure LIT is managing its own LND? [y/N]: " lit_confirm
+                    ts_confirm lit_confirm "Are you sure LIT is managing its own LND? [y/N]: "
                     if [[ ! "$lit_confirm" =~ ^[Yy]$ ]]; then
                         print_info "Please restart and select LND instead."
                         exit 0
@@ -1116,8 +1574,8 @@ configure_wireguard() {
         local bridge_name
         [[ -z "$bridge_id" ]] && bridge_name="br-6c3d330ad9f5" || bridge_name="br-$bridge_id"
         
-        local vpn_port=$(parse_config_metadata "$target_path" port)
-        [[ -z "$vpn_port" ]] && vpn_port=9735 # fallback
+        local vpn_port=$(ts_config_vpn_port "$target_path")
+        [[ -z "$vpn_port" ]] && vpn_port=9735 # fallback (no valid port comment)
 
         local inputDocker="
 
@@ -1386,13 +1844,11 @@ ts_table51820_routes() {
     return 0
 }
 
-# Prints the routes in table 51820 that TunnelSats does not own ($1 = TunnelSats interface).
-# Returns 1 if the table cannot be read.
-ts_table51820_foreign_routes() {
-    local iface="$1" routes
-    routes=$(ts_table51820_routes) || return 1
-    [ -n "$routes" ] || return 0
-    printf '%s\n' "$routes" | awk -v ifc="$iface" '
+# Reads routes of table 51820 on stdin and prints those TunnelSats does not own ($1 = the
+# TunnelSats interface; with an empty $1 only the kill-switch blackhole counts as owned).
+# Shared by the route guard (embedded verbatim) and detect, so both judge ownership identically.
+ts_table51820_filter_foreign() {
+    awk -v ifc="$1" '
         NF == 0 { next }
         NF == 4 && $1 == "blackhole" && $2 == "default" && $3 == "metric" && $4 == "3" { next }
         {
@@ -1401,6 +1857,15 @@ ts_table51820_foreign_routes() {
             }
             print
         }'
+}
+
+# Prints the routes in table 51820 that TunnelSats does not own ($1 = TunnelSats interface).
+# Returns 1 if the table cannot be read.
+ts_table51820_foreign_routes() {
+    local iface="$1" routes
+    routes=$(ts_table51820_routes) || return 1
+    [ -n "$routes" ] || return 0
+    printf '%s\n' "$routes" | ts_table51820_filter_foreign "$iface"
 }
 
 # Removes only the routes TunnelSats installs into table 51820. Never flushes the table.
@@ -1676,7 +2141,7 @@ write_route_guard_script() {
         echo '#!/bin/bash'
         echo '# Generated by tunnelsats.sh - ownership-scoped management of routing table 51820.'
         echo '# Never flushes table 51820; foreign routes are preserved and cause a fail-closed refusal.'
-        declare -f ts_table51820_routes ts_table51820_foreign_routes ts_table51820_remove_owned \
+        declare -f ts_table51820_routes ts_table51820_filter_foreign ts_table51820_foreign_routes ts_table51820_remove_owned \
             ts_failclosed_state_file ts_record_failclosed_rule ts_failclosed_nft_verified \
             ts_arm_failclosed_nft ts_failclosed_rules_verified ts_arm_failclosed_rules \
             ts_arm_failclosed ts_release_failclosed_rules ts_release_failclosed
@@ -2391,9 +2856,9 @@ cmd_uninstall() {
     echo "  • Restore hybrid mode to Tor-only"
     echo ""
     
-    # Triple confirmation
+    # Triple confirmation (--yes answers it; nothing has been changed before this point)
     while true; do
-        read -p "CAUTION! Uninstalling TunnelSats will force your lightning process to stop. Do you really want to proceed? (Y/N) " answer
+        ts_confirm answer "CAUTION! Uninstalling TunnelSats will force your lightning process to stop. Do you really want to proceed? (Y/N) "
         case $answer in
             [yY]*) echo "> OK, proceeding..."; echo; break ;;
             [nN]*) echo "> Exiting process."; exit 1 ;;
@@ -2626,12 +3091,20 @@ cmd_uninstall() {
     # 5. Remove WireGuard Services
     print_step 4 6 "Removing WireGuard configuration..."
     
-    # Find any active TunnelSats interface to stop
-    local target_interface=$(find_active_wg_config | xargs basename 2>/dev/null | sed 's/\.conf//')
-    if [[ -z "$target_interface" ]]; then target_interface="tunnelsatsv2"; fi
+    # Every installed TunnelSats tunnel is removed: the configs found by ts_select_wg_config (the
+    # list detect, status and restart choose from). tunnelsatsv2 is cleaned up even without a config.
+    local -a target_interfaces=()
+    local target_interface wg_conf
+    ts_select_wg_config "" "" "${WG_DIR:-/etc/wireguard}"
+    for wg_conf in "${TS_WG_CANDIDATES[@]}"; do
+        target_interfaces+=("$(basename "$wg_conf" .conf)")
+    done
+    if [[ ${#target_interfaces[@]} -eq 0 ]]; then target_interfaces=("tunnelsatsv2"); fi
 
-    systemctl stop wg-quick@${target_interface} &>/dev/null || true
-    systemctl disable wg-quick@${target_interface} &>/dev/null || true
+    for target_interface in "${target_interfaces[@]}"; do
+        systemctl stop "wg-quick@${target_interface}" &>/dev/null || true
+        systemctl disable "wg-quick@${target_interface}" &>/dev/null || true
+    done
     
     if [[ -f /etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsats.service ]]; then
          systemctl stop wg-quick@tunnelsats &>/dev/null || true
@@ -2650,14 +3123,18 @@ cmd_uninstall() {
          rm -f /etc/systemd/system/tunnelsats-resolve-dns-wg.timer
     fi
 
-    rm -rf /etc/systemd/system/wg-quick@${target_interface}.service.d &>/dev/null
+    for target_interface in "${target_interfaces[@]}"; do
+        rm -rf "/etc/systemd/system/wg-quick@${target_interface}.service.d" &>/dev/null
+    done
     print_success "WireGuard services removed"
     echo ""
 
     # 6. NFTables Cleanup (All Platforms)
     print_step 5 6 "Cleaning network rules..."
-    nft delete table ip ${target_interface} &>/dev/null || true
-    nft delete table inet ${target_interface} &>/dev/null || true
+    for target_interface in "${target_interfaces[@]}"; do
+        nft delete table ip "${target_interface}" &>/dev/null || true
+        nft delete table inet "${target_interface}" &>/dev/null || true
+    done
     nft delete table ip tunnelsatsv2 &>/dev/null || true
     nft delete table inet tunnelsatsv2 &>/dev/null || true
     # TunnelSats is being removed on purpose: drop any emergency fail-closed block it armed
@@ -2671,9 +3148,11 @@ cmd_uninstall() {
     fi
 
     # Remove only TunnelSats-owned policy rules/routes; other users of table 51820 are preserved
-    if ! cleanup_owned_routing_state "$target_interface"; then
-        print_warning "Some TunnelSats policy rules could not be removed. Check 'ip rule show'."
-    fi
+    for target_interface in "${target_interfaces[@]}"; do
+        if ! cleanup_owned_routing_state "$target_interface"; then
+            print_warning "Some TunnelSats policy rules could not be removed. Check 'ip rule show'."
+        fi
+    done
 
     if [[ $is_docker -eq 1 ]]; then
         print_info "Cleaning Docker network..."
@@ -2694,16 +3173,18 @@ cmd_uninstall() {
     # UFW Rules Cleanup
     if command -v ufw >/dev/null 2>&1; then
         local ufw_marker_file
-        ufw_marker_file=$(ufw_rule_marker_file "$target_interface")
-        if [[ -f "$ufw_marker_file" ]]; then
-            print_info "Removing TunnelSats UFW rules..."
-            if ufw delete allow in on "${target_interface}" to any port 9735 proto tcp &>/dev/null; then
-                rm -f "$ufw_marker_file" &>/dev/null || true
-                print_success "Removed UFW rules for port 9735 on ${target_interface}"
-            else
-                print_error "Failed to remove UFW rules for port 9735 on ${target_interface}"
+        for target_interface in "${target_interfaces[@]}"; do
+            ufw_marker_file=$(ufw_rule_marker_file "$target_interface")
+            if [[ -f "$ufw_marker_file" ]]; then
+                print_info "Removing TunnelSats UFW rules..."
+                if ufw delete allow in on "${target_interface}" to any port 9735 proto tcp &>/dev/null; then
+                    rm -f "$ufw_marker_file" &>/dev/null || true
+                    print_success "Removed UFW rules for port 9735 on ${target_interface}"
+                else
+                    print_error "Failed to remove UFW rules for port 9735 on ${target_interface}"
+                fi
             fi
-        fi
+        done
     fi
     
     # 7. Restore Original Service Files
@@ -2729,13 +3210,26 @@ cmd_uninstall() {
         echo ""
     fi
     
-    # Optional Package Removal
-    echo "Do you want to uninstall system packages?"
-    if [[ $is_docker -eq 1 ]]; then
-        read -p "Remove nftables and wireguard-tools? (Y/N) " answer
-    else
-        read -p "Remove cgroup-tools, nftables and wireguard-tools? (Y/N) " answer
-    fi
+    # Optional Package Removal. This question comes after the removal steps above, so it never
+    # fails: --remove-packages or --keep-packages answer it, while non-interactive mode and end
+    # of input keep the packages (the safe answer).
+    case "$TS_OPT_PACKAGES" in
+        remove) answer="Y" ;;
+        keep) answer="N" ;;
+        *)
+            if [[ "$TS_NONINTERACTIVE" -eq 1 ]]; then
+                answer="N"
+                print_info "Non-interactive mode: keeping system packages (pass --remove-packages to remove them)"
+            else
+                echo "Do you want to uninstall system packages?"
+                if [[ $is_docker -eq 1 ]]; then
+                    ts_ask answer "--remove-packages" "Remove nftables and wireguard-tools? (Y/N) " "N"
+                else
+                    ts_ask answer "--remove-packages" "Remove cgroup-tools, nftables and wireguard-tools? (Y/N) " "N"
+                fi
+            fi
+            ;;
+    esac
     
     if [[ "$answer" =~ ^[Yy] ]]; then
          if [[ $is_docker -eq 1 ]]; then
@@ -2899,7 +3393,7 @@ cmd_install() {
     
     # Extract details for manual config
     local vpn_dns=$(grep "^Endpoint" "$CONFIG_FILE" | awk '{print $3}' | cut -d ':' -f 1)
-    local vpn_port=$(parse_config_metadata "$CONFIG_FILE" port)
+    local vpn_port=$(ts_config_vpn_port "$CONFIG_FILE")
     
     echo -e "${BOLD}CRITICAL: You must update your node configuration!${NC}"
     echo "Please copy the following settings into your configuration file."
@@ -2997,31 +3491,18 @@ cmd_status() {
     auto_detect_environment
     
     # 1. Active Config & WireGuard Status Check
+    # Same selection as detect and restart (--config, tunnelsatsv2.conf, the only tunnelsats-*.conf);
+    # several candidates are asked, never guessed
     local config_file
-    
-    # Use global CONFIG_FILE if set (via --config), otherwise auto-detect
-    if [[ -n "$CONFIG_FILE" ]]; then
-        config_file="$CONFIG_FILE"
-    else
-        config_file=$(find_active_wg_config)
+    if ! ts_resolve_wg_config; then
+        print_error "No TunnelSats configuration found."
+        echo "Expected locations:"
+        echo "  • /etc/wireguard/tunnelsatsv2.conf"
+        echo "  • /etc/wireguard/tunnelsats-*.conf"
+        echo "Pass --config <file> for a config with another name."
+        exit 1
     fi
-    
-    # If standard find fails, try explicit check
-    if [[ $? -ne 0 ]] || [[ -z "$config_file" ]]; then
-       # Derive interface from any active wg interface if possible
-       local active_interface=$(sudo wg show | grep "interface:" | head -n 1 | awk '{print $2}')
-       if [[ -n "$active_interface" ]]; then
-            config_file="/etc/wireguard/${active_interface}.conf"
-       fi
-       
-       if [[ ! -f "$config_file" ]]; then
-             print_error "No TunnelSats configuration or active interface found."
-             echo "Expected locations:"
-             echo "  • /etc/wireguard/tunnelsatsv2.conf"
-             echo "  • /etc/wireguard/tunnelsats-*.conf"
-             exit 1
-       fi
-    fi
+    config_file="$TS_WG_RESOLVED"
 
     # Extract interface name
     local interface_name=$(basename "$config_file" .conf)
@@ -3042,8 +3523,8 @@ cmd_status() {
     local transfer_tx=$(echo "$transfer" | awk '{print $5, $6}')
     
     # Parse Config File Metadata
-    local vpn_port=$(parse_config_metadata "$config_file" port)
-    local sub_end=$(grep -E '#ValidUntil|# Valid Until:' "$config_file" | head -1 | awk -F '[=:]' '{print $2}' | xargs)
+    local vpn_port=$(ts_config_vpn_port "$config_file")
+    local sub_end=$(parse_config_metadata "$config_file" expiry)
     # If endpoint missing from wg_output (tunnel down), try config
     if [[ -z "$endpoint" ]]; then
          endpoint=$(grep '^Endpoint' "$config_file" | awk '{print $3}' | cut -d ':' -f 1)
@@ -3459,20 +3940,15 @@ cmd_restart() {
     # 0. Auto-detect environment
     auto_detect_environment
     
-    # 1. Find Config/Interface
+    # 1. Find Config/Interface: same selection as detect and status (--config, tunnelsatsv2.conf,
+    # the only tunnelsats-*.conf). Several candidates are asked, never guessed, and a foreign
+    # WireGuard interface is never restarted.
     local config_file
-    config_file=$(find_active_wg_config)
-    
-    # Fallback logic if find fails but tunnel might be up
-    if [[ -z "$config_file" ]]; then
-       local active_interface=$(sudo wg show | grep "interface:" | head -n 1 | awk '{print $2}')
-       if [[ -n "$active_interface" ]]; then
-            config_file="/etc/wireguard/${active_interface}.conf"
-       else
-            print_error "No active TunnelSats configuration or interface found."
-            exit 1
-       fi
+    if ! ts_resolve_wg_config; then
+        print_error "No TunnelSats configuration found. Pass --config <file> for a config with another name."
+        exit 1
     fi
+    config_file="$TS_WG_RESOLVED"
     
     local interface_name=$(basename "$config_file" .conf)
     local stopped_containers=""
@@ -3496,7 +3972,7 @@ cmd_restart() {
         
         echo -e "${YELLOW}Umbrel detected. To ensure a leak-proof restart, we need to temporarily${NC}"
         echo -e "${YELLOW}stop your ${LN_IMPL} app containers.${NC}"
-        read -p "Do you want to proceed? [y/N]: " restart_confirm
+        ts_confirm restart_confirm "Do you want to proceed? [y/N]: "
         if [[ ! "$restart_confirm" =~ ^[Yy]$ ]]; then
             print_info "Restart aborted by user."
             exit 0
@@ -3513,7 +3989,9 @@ cmd_restart() {
     elif [[ "$PLATFORM" != "umbrel" ]] && [[ -n "$LN_IMPL" ]]; then
         echo -e "${YELLOW}Non-Docker setup detected. To ensure a leak-proof restart, it is${NC}"
         echo -e "${YELLOW}highly recommended to stop your node service temporarily.${NC}"
-        read -p "Stop ${service_name}.service for safe tunnel restart? [y/N]: " stop_confirm
+        # --yes stops the daemon (the leak-proof answer). Restarting without stopping it is only
+        # possible interactively; non-interactive mode without --yes fails before any change.
+        ts_confirm stop_confirm "Stop ${service_name}.service for safe tunnel restart? [y/N]: "
         if [[ "$stop_confirm" =~ ^[Yy]$ ]]; then
             print_info "Stopping ${service_name}.service..."
             if systemctl stop "${service_name}.service"; then
@@ -3572,72 +4050,1435 @@ cmd_restart() {
 }
 
 # ---------------------------------------------------------------------------
-# ARGUMENT PARSING
+# VERSION COMMAND
 # ---------------------------------------------------------------------------
 
-parse_args() {
-    local command=""
-    
-    # Parse command
-    if [[ $# -eq 0 ]]; then
-        cmd_help
-        exit 0
+# Prints the sha256 of the running script file; fails if it cannot be computed.
+ts_script_sha256() {
+    local file="$TS_SCRIPT_PATH" out=""
+    if [[ ! -f "$file" ]] || [[ ! -r "$file" ]]; then
+        return 1
     fi
-    
-    command="$1"
-    shift
-    
-    # Parse options for install command
-    if [[ "$command" == "install" ]]; then
-        while [[ $# -gt 0 ]]; do
-            case $1 in
-                --config)
-                    CONFIG_FILE="$2"
-                    shift 2
-                    ;;
-                *)
-                    print_error "Unknown option: $1"
-                    cmd_help
-                    exit 1
-                    ;;
-            esac
+    if command -v sha256sum >/dev/null 2>&1; then
+        out=$(sha256sum -b "$file" 2>/dev/null) || return 1
+    elif command -v shasum >/dev/null 2>&1; then
+        out=$(shasum -a 256 "$file" 2>/dev/null) || return 1
+    else
+        return 1
+    fi
+    out="${out%% *}"
+    if [[ ! "$out" =~ ^[0-9a-f]{64}$ ]]; then
+        return 1
+    fi
+    echo "$out"
+}
+
+cmd_version() {
+    local sha="" rc=0 errors="[]"
+    if ! sha=$(ts_script_sha256); then
+        sha=""
+        rc=1
+    fi
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        if [[ "$rc" -ne 0 ]]; then
+            ts_j_error E_SHA256_UNAVAILABLE operational "Could not compute the sha256 of the running script file"
+            errors="[${TS_R}]"
+        fi
+        ts_j_str_or_null "$sha"
+        ts_json_document "$rc" "$errors" "\"tool_sha256\":${TS_R}"
+    else
+        echo "tunnelsats.sh ${VERSION} (CLI contract ${TS_CONTRACT})"
+        if [[ -n "$sha" ]]; then
+            echo "sha256: ${sha}"
+        else
+            print_error "Could not compute the sha256 of the running script file [E_SHA256_UNAVAILABLE]"
+        fi
+    fi
+    exit "$rc"
+}
+
+# ---------------------------------------------------------------------------
+# DETECT COMMAND (read-only)
+# Reports platform hints, Lightning units, an existing TunnelSats install with its artifacts,
+# config facts, capabilities and conflicts. Strictly read-only: no writes anywhere (not even
+# temporary files, so no here-strings or here-documents), no network, no package or service
+# changes. Works without root: whatever cannot be read gets an explicit status such as
+# permission_denied instead of a guess. File reads are prefixed with TS_FS_ROOT and commands run
+# through WG_BIN, WG_QUICK_BIN, NFT_BIN, IP_BIN and SYSTEMCTL_BIN, so tests use fixture trees
+# and stubs.
+# ---------------------------------------------------------------------------
+
+TSD_ST=""
+TSD_UNREADABLE=0
+TSD_IFACES=" tunnelsatsv2 "
+TSD_PLATFORM_GUESS=""
+TSD_HINT_PLATFORM=()
+TSD_HINT_PATH=()
+TSD_HINT_STATUS=()
+TSD_LN_GUESS=""
+TSD_LN_IMPL=()
+TSD_LN_UNIT=()
+TSD_LN_FILE=()
+TSD_LN_ACTIVE=()
+TSD_LN_USER=()
+TSD_LN_PATH=()
+# systemd unit search path in precedence order (admin, runtime, local, vendor); first match wins
+TSD_UNIT_DIRS="/etc/systemd/system /run/systemd/system /usr/local/lib/systemd/system /usr/lib/systemd/system /lib/systemd/system"
+TSD_ART_ID=()
+TSD_ART_LOC=()
+TSD_ART_STATUS=()
+TSD_ART_DETAIL=()
+TSD_ART_SECRET=()
+TSD_T51820_STATUS=""
+TSD_T51820_FOREIGN=()
+TSD_INSTALL_KIND=""
+TSD_INSTALL_CANDIDATES=()
+TSD_EVIDENCE=()
+TSD_CONF_ID=()
+TSD_CONF_STATUS=()
+TSD_CONF_DETAIL=()
+TSD_CFG_SELECTION="none"
+TSD_CFG_CANDIDATES=()
+
+# Sets TSD_ST to present, absent or permission_denied for path $1 (below TS_FS_ROOT).
+ts_detect_path_status() {
+    local p="${TS_FS_ROOT}$1" dir
+    if [[ -e "$p" ]] || [[ -L "$p" ]]; then
+        TSD_ST="present"
+        return 0
+    fi
+    # Absent, or hidden behind a directory that may not be searched: check the nearest existing parent
+    dir="$p"
+    while [[ "$dir" == */* ]]; do
+        dir="${dir%/*}"
+        if [[ -z "$dir" ]]; then
+            break
+        fi
+        if [[ -e "$dir" ]]; then
+            if [[ -d "$dir" ]] && [[ ! -x "$dir" ]]; then
+                TSD_ST="permission_denied"
+                return 0
+            fi
+            break
+        fi
+    done
+    TSD_ST="absent"
+    return 0
+}
+
+# Sets TSD_ST to readable, absent or permission_denied for a file whose content is needed.
+ts_detect_read_status() {
+    ts_detect_path_status "$1"
+    if [[ "$TSD_ST" == "present" ]]; then
+        if [[ ! -f "${TS_FS_ROOT}$1" ]]; then
+            TSD_ST="absent"
+        elif [[ -r "${TS_FS_ROOT}$1" ]]; then
+            TSD_ST="readable"
+        else
+            TSD_ST="permission_denied"
+        fi
+    fi
+    return 0
+}
+
+# Records one artifact: $1 = id, $2 = location, $3 = status, $4 = detail, $5 = 1 if it holds keys.
+ts_detect_art() {
+    TSD_ART_ID+=("$1")
+    TSD_ART_LOC+=("$2")
+    TSD_ART_STATUS+=("$3")
+    TSD_ART_DETAIL+=("${4:-}")
+    TSD_ART_SECRET+=("${5:-0}")
+}
+
+# Records artifact $1 for path $2 ($3 = 1 if it holds keys).
+ts_detect_art_path() {
+    ts_detect_path_status "$2"
+    ts_detect_art "$1" "$2" "$TSD_ST" "" "${3:-0}"
+}
+
+# Records every entry of directory $2 matching glob $3 as artifact $1 ($4 = 1 if they hold keys),
+# or a single entry with the pattern when nothing matches or the directory cannot be listed.
+ts_detect_art_glob() {
+    local id="$1" dir="$2" pattern="$3" secret="${4:-0}" full="${TS_FS_ROOT}$2" entry found=0
+    ts_detect_path_status "$dir"
+    if [[ "$TSD_ST" == "present" ]] && { [[ ! -r "$full" ]] || [[ ! -x "$full" ]]; }; then
+        TSD_ST="permission_denied"
+    fi
+    if [[ "$TSD_ST" != "present" ]]; then
+        ts_detect_art "$id" "${dir}/${pattern}" "$TSD_ST" "" "$secret"
+        return 0
+    fi
+    # $pattern is unquoted on purpose: it is the glob to expand
+    # shellcheck disable=SC2086
+    for entry in "$full"/$pattern; do
+        if [[ -e "$entry" ]] || [[ -L "$entry" ]]; then
+            found=1
+            ts_detect_art "$id" "${entry#"$TS_FS_ROOT"}" "present" "" "$secret"
+        fi
+    done
+    if [[ "$found" -eq 0 ]]; then
+        ts_detect_art "$id" "${dir}/${pattern}" "absent" "" "$secret"
+    fi
+    return 0
+}
+
+# Adds evidence id $1 for the install classification (once).
+ts_detect_evidence() {
+    local item
+    for item in "${TSD_EVIDENCE[@]}"; do
+        if [[ "$item" == "$1" ]]; then
+            return 0
+        fi
+    done
+    TSD_EVIDENCE+=("$1")
+}
+
+ts_detect_conflict() {
+    TSD_CONF_ID+=("$1")
+    TSD_CONF_STATUS+=("$2")
+    TSD_CONF_DETAIL+=("${3:-}")
+}
+
+ts_valid_wg_key() {
+    [[ "$1" =~ ^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$ ]]
+}
+
+# Derives the WireGuard public key from private key $1 with "wg pubkey". The private key goes
+# through stdin (never an argument of an external command) and is never printed.
+ts_derive_wg_pubkey() {
+    local pub=""
+    pub=$(printf '%s\n' "$1" | "$WG_BIN" pubkey 2>/dev/null) || return 1
+    if ! ts_valid_wg_key "$pub"; then
+        return 1
+    fi
+    echo "$pub"
+}
+
+# Sets TSD_ST to the systemctl is-active state of unit $1 ("unavailable" without systemctl).
+ts_detect_unit_active() {
+    local out=""
+    if ! command -v "$SYSTEMCTL_BIN" >/dev/null 2>&1; then
+        TSD_ST="unavailable"
+        return 0
+    fi
+    out=$("$SYSTEMCTL_BIN" is-active "$1" 2>/dev/null) || true
+    out="${out%%$'\n'*}"
+    case "$out" in
+        active|inactive|failed|activating|deactivating|reloading|maintenance|refreshing) TSD_ST="$out" ;;
+        *) TSD_ST="unknown" ;;
+    esac
+    return 0
+}
+
+# Succeeds if systemd state $1 means that the unit runs (or is starting, stopping or reloading).
+ts_detect_unit_running() {
+    case "$1" in
+        active|activating|deactivating|reloading|refreshing) return 0 ;;
+    esac
+    return 1
+}
+
+# Succeeds if unit file $1 (below TS_FS_ROOT) is masked: systemd treats a symlink to /dev/null
+# (systemctl mask) and an empty unit file as masked, so the unit cannot be started.
+ts_detect_unit_masked() {
+    local p="${TS_FS_ROOT}$1" target=""
+    if [[ -L "$p" ]]; then
+        target=$(readlink "$p" 2>/dev/null) || target=""
+        if [[ "$target" == "/dev/null" ]]; then
+            return 0
+        fi
+    fi
+    [[ -f "$p" ]] && [[ ! -s "$p" ]]
+}
+
+ts_detect_platform() {
+    local marker platform rest
+    TSD_PLATFORM_GUESS=$(ts_guess_platform "$TS_FS_ROOT")
+    for marker in "${TS_PLATFORM_MARKERS[@]}"; do
+        platform="${marker%% *}"
+        rest="${marker#* }"
+        ts_detect_path_status "${rest#* }"
+        TSD_HINT_PLATFORM+=("$platform")
+        TSD_HINT_PATH+=("${rest#* }")
+        TSD_HINT_STATUS+=("$TSD_ST")
+    done
+}
+
+ts_detect_lightning() {
+    local entry impl unit dir found file_status user
+    # The guess is what the installer would detect (unit file in /etc/systemd/system or active unit)
+    TSD_LN_GUESS=$(ts_guess_ln_impl_systemd "$TS_FS_ROOT")
+    for entry in lnd:lnd.service cln:lightningd.service lit:litd.service lit:lit.service; do
+        impl="${entry%%:*}"
+        unit="${entry#*:}"
+        found=""
+        file_status="absent"
+        user=""
+        # Unit file in any unit directory: packages install them under /usr/lib/systemd/system
+        # $TSD_UNIT_DIRS is split into words on purpose
+        # shellcheck disable=SC2086
+        for dir in $TSD_UNIT_DIRS; do
+            ts_detect_path_status "${dir}/${unit}"
+            if [[ "$TSD_ST" == "present" ]]; then
+                found="${dir}/${unit}"
+                file_status="present"
+                # systemctl mask hides every other unit file of the same name
+                if ts_detect_unit_masked "$found"; then
+                    file_status="masked"
+                fi
+                break
+            fi
+            if [[ "$TSD_ST" == "permission_denied" ]]; then
+                file_status="permission_denied"
+            fi
         done
-        
-        # Verify configuration exists before proceeding (Early fail)
-        config_path=$(detect_config_file "$CONFIG_FILE") || exit 1
+        if [[ "$file_status" == "present" ]] && [[ -r "${TS_FS_ROOT}${found}" ]]; then
+            user=$(grep -Ei '^[[:space:]]*User[[:space:]]*=' "${TS_FS_ROOT}${found}" 2>/dev/null | head -n 1 | cut -d'=' -f2 | tr -d '[:space:]') || user=""
+            if [[ ! "$user" =~ ^[a-z_][a-z0-9_.-]{0,31}$ ]]; then
+                user=""
+            fi
+        fi
+        ts_detect_unit_active "$unit"
+        TSD_LN_IMPL+=("$impl")
+        TSD_LN_UNIT+=("$unit")
+        TSD_LN_FILE+=("$file_status")
+        TSD_LN_PATH+=("$found")
+        TSD_LN_ACTIVE+=("$TSD_ST")
+        TSD_LN_USER+=("$user")
+    done
+}
+
+# Lightning drop-in $1: v2 wrote Requires=, v3 writes Wants= for tunnelsats-create-cgroup.service.
+ts_detect_ln_dropin() {
+    local path="$1" detail=""
+    ts_detect_read_status "$path"
+    case "$TSD_ST" in
+        readable)
+            TSD_ST="present"
+            if grep -qE '^[[:space:]]*Requires[[:space:]]*=[[:space:]]*tunnelsats-create-cgroup\.service' "${TS_FS_ROOT}${path}" 2>/dev/null; then
+                detail="requires"
+            elif grep -qE '^[[:space:]]*Wants[[:space:]]*=[[:space:]]*tunnelsats-create-cgroup\.service' "${TS_FS_ROOT}${path}" 2>/dev/null; then
+                detail="wants"
+            else
+                detail="unrecognized"
+            fi
+            ;;
+        permission_denied)
+            ts_detect_path_status "$path"
+            if [[ "$TSD_ST" == "present" ]]; then
+                detail="unreadable"
+            fi
+            ;;
+    esac
+    ts_detect_art ln_dropin "$path" "$TSD_ST" "$detail"
+}
+
+# In-place edits of Lightning unit $1: cgexec in ExecStart, RaspiBlitz check commented out.
+ts_detect_ln_unit_edits() {
+    local path="$1"
+    ts_detect_read_status "$path"
+    case "$TSD_ST" in
+        absent) return 0 ;;
+        permission_denied)
+            ts_detect_art ln_unit_cgexec "$path" "permission_denied"
+            ts_detect_art ln_unit_check_disabled "$path" "permission_denied"
+            return 0
+            ;;
+    esac
+    if grep -qE '^[[:space:]]*ExecStart[[:space:]]*=.*cgexec' "${TS_FS_ROOT}${path}" 2>/dev/null; then
+        ts_detect_art ln_unit_cgexec "$path" "present"
+    else
+        ts_detect_art ln_unit_cgexec "$path" "absent"
+    fi
+    if grep -qE '^[[:space:]]*#[[:space:]]*ExecStartPre[[:space:]]*=.*(lnd|cl)\.check\.sh' "${TS_FS_ROOT}${path}" 2>/dev/null; then
+        ts_detect_art ln_unit_check_disabled "$path" "present"
+    else
+        ts_detect_art ln_unit_check_disabled "$path" "absent"
+    fi
+}
+
+ts_detect_ip_rules() {
+    local out="" rc=0 line st_main="absent" st_mark="absent" st_legacy="absent" st_failclosed="absent"
+    if ! command -v "$IP_BIN" >/dev/null 2>&1; then
+        st_main="unavailable"
+        st_mark="unavailable"
+        st_legacy="unavailable"
+        st_failclosed="unavailable"
+    else
+        out=$("$IP_BIN" -4 rule show 2>/dev/null) || rc=$?
+        if [[ "$rc" -ne 0 ]]; then
+            st_main="error"
+            st_mark="error"
+            st_legacy="error"
+            st_failclosed="error"
+        else
+            while IFS= read -r line; do
+                case "$line" in
+                    "21820:"*"from all lookup main suppress_prefixlength 0"*) st_main="present" ;;
+                    "21821:"*"lookup 51820"*) st_mark="present" ;;
+                    "21818:"*"blackhole"*|"21819:"*"blackhole"*) st_failclosed="present" ;;
+                    *"from all fwmark 0x1000000/0xff000000 lookup 51820"*) st_legacy="present" ;;
+                esac
+            done < <(printf '%s\n' "$out")
+        fi
+    fi
+    ts_detect_art ip_rule "ip -4 rule 21820 (lookup main suppress_prefixlength 0)" "$st_main"
+    ts_detect_art ip_rule "ip -4 rule 21821 (lookup 51820)" "$st_mark"
+    ts_detect_art ip_rule_legacy "ip -4 rule fwmark 0x1000000/0xff000000 lookup 51820 (other priority)" "$st_legacy"
+    ts_detect_art failclosed_rules "ip -4 rule 21818/21819 blackhole" "$st_failclosed"
+}
+
+ts_detect_nft_tables() {
+    local out="" rc=0 line found=0
+    if ! command -v "$NFT_BIN" >/dev/null 2>&1; then
+        ts_detect_art nft_table "nft tables" "unavailable"
+        return 0
+    fi
+    out=$("$NFT_BIN" list tables 2>&1) || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        if [[ "$EUID" -ne 0 ]] || [[ "$out" == *"Operation not permitted"* ]]; then
+            ts_detect_art nft_table "nft tables" "permission_denied" "listing tables needs root"
+        else
+            ts_detect_art nft_table "nft tables" "error"
+        fi
+        return 0
+    fi
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^table[[:space:]]+(ip|ip6|inet)[[:space:]]+(tunnelsats[A-Za-z0-9_.-]*)[[:space:]]*$ ]]; then
+            found=1
+            ts_detect_art nft_table "nft table ${BASH_REMATCH[1]} ${BASH_REMATCH[2]}" "present"
+        fi
+    done < <(printf '%s\n' "$out")
+    if [[ "$found" -eq 0 ]]; then
+        ts_detect_art nft_table "nft table tunnelsats*" "absent"
+    fi
+}
+
+ts_detect_wg_links() {
+    local out="" rc=0 line found=0
+    if ! command -v "$IP_BIN" >/dev/null 2>&1; then
+        ts_detect_art wg_interface "wireguard link tunnelsats*" "unavailable"
+        return 0
+    fi
+    out=$("$IP_BIN" -o link show type wireguard 2>/dev/null) || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        ts_detect_art wg_interface "wireguard link tunnelsats*" "error"
+        return 0
+    fi
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[0-9]+:[[:space:]]+(tunnelsats[A-Za-z0-9_.=+-]*)[:@] ]]; then
+            found=1
+            ts_detect_art wg_interface "wireguard link ${BASH_REMATCH[1]}" "present"
+        fi
+    done < <(printf '%s\n' "$out")
+    if [[ "$found" -eq 0 ]]; then
+        ts_detect_art wg_interface "wireguard link tunnelsats*" "absent"
+    fi
+}
+
+# Routes in table 51820, judged with the route guard's own filter (ts_table51820_filter_foreign):
+# the kill-switch blackhole and routes via the selected TunnelSats interface are owned, everything
+# else is foreign.
+ts_detect_table51820() {
+    local out="" rc=0 line owned=0 iface="" foreign="" total=0
+    TSD_T51820_FOREIGN=()
+    # Ownership follows the route guard: only the interface of the selected config (the same rule
+    # as status and restart) and the kill-switch blackhole are TunnelSats routes. Without any
+    # config, the interface a fresh install creates (tunnelsatsv2) is the one the guard would check.
+    ts_select_wg_config "" "$TS_FS_ROOT" "/etc/wireguard"
+    case "$TS_WG_SELECTION" in
+        canonical|single)
+            iface="${TS_WG_SELECTED##*/}"
+            iface="${iface%.conf}"
+            ;;
+        none) iface="tunnelsatsv2" ;;
+        *) iface="" ;;
+    esac
+    TSD_IFACES=" ${iface} "
+    if ! command -v "$IP_BIN" >/dev/null 2>&1; then
+        TSD_T51820_STATUS="unavailable"
+        ts_detect_art table_51820_route "ip -4 route table 51820" "unavailable"
+        return 0
+    fi
+    out=$("$IP_BIN" route show table 51820 2>&1) || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        if [[ "$out" != *"FIB table does not exist"* ]]; then
+            TSD_T51820_STATUS="error"
+            ts_detect_art table_51820_route "ip -4 route table 51820" "error"
+            return 0
+        fi
+        out=""
+    fi
+    while IFS= read -r line; do
+        if [[ -n "${line//[[:space:]]/}" ]]; then
+            total=$((total + 1))
+        fi
+    done < <(printf '%s\n' "$out")
+    foreign=$(printf '%s\n' "$out" | ts_table51820_filter_foreign "$iface")
+    while IFS= read -r line; do
+        if [[ -n "${line//[[:space:]]/}" ]]; then
+            TSD_T51820_FOREIGN+=("$line")
+        fi
+    done < <(printf '%s\n' "$foreign")
+    owned=$((total - ${#TSD_T51820_FOREIGN[@]}))
+    if [[ -z "$iface" ]] && [[ "${#TSD_T51820_FOREIGN[@]}" -gt 0 ]]; then
+        # Several configs (or an unreadable directory): which tunnel owns these routes cannot be
+        # decided, so the conflict check reports unknown instead of guessing either way
+        TSD_T51820_STATUS="selection_${TS_WG_SELECTION}"
+        TSD_T51820_FOREIGN=()
+    else
+        TSD_T51820_STATUS="ok"
+    fi
+    if [[ "$owned" -gt 0 ]]; then
+        ts_detect_art table_51820_route "ip -4 route table 51820" "present" "${owned} route(s) via TunnelSats"
+    else
+        ts_detect_art table_51820_route "ip -4 route table 51820" "absent"
+    fi
+}
+
+ts_detect_artifacts() {
+    local wg="/etc/wireguard" sd="/etc/systemd/system" name unit
+    # WireGuard configs and the sanitizer's backups hold the private key
+    ts_detect_art_path wg_config "${wg}/tunnelsatsv2.conf" 1
+    ts_detect_art_glob wg_config "$wg" "tunnelsats-*.conf" 1
+    ts_detect_art_glob wg_config_backup "$wg" "tunnelsats*.conf.bak.*" 1
+    # Route guard (since #204), helper scripts and state files
+    ts_detect_art_path route_guard_script "${wg}/tunnelsats-route-guard.sh"
+    for name in tunnelsats-create-cgroup.sh tunnelsats-splitting-processes.sh tunnelsats-resolve-dns-wg.sh tunnelsats-docker-network.sh; do
+        ts_detect_art_path helper_script "${wg}/${name}"
+    done
+    ts_detect_art_path failclosed_state "${wg}/.tunnelsats-failclosed-rules"
+    ts_detect_art_glob ufw_marker "$wg" ".tunnelsats-ufw-9735-*.created"
+    # systemd units, timers and drop-ins
+    for unit in tunnelsats-create-cgroup.service tunnelsats-splitting-processes.service \
+        tunnelsats-splitting-processes.timer tunnelsats-resolve-dns-wg.service \
+        tunnelsats-resolve-dns-wg.timer tunnelsats-docker-network.service tunnelsats-docker-network.timer; do
+        ts_detect_art_path unit "${sd}/${unit}"
+    done
+    ts_detect_art_glob wg_quick_enabled "${sd}/multi-user.target.wants" "wg-quick@tunnelsats*.service"
+    ts_detect_art_glob wg_quick_dropin "$sd" "wg-quick@tunnelsats*.service.d"
+    for unit in lnd.service lightningd.service litd.service lit.service; do
+        ts_detect_ln_dropin "${sd}/${unit}.d/tunnelsats-cgroup.conf"
+        ts_detect_ln_unit_edits "${sd}/${unit}"
+        ts_detect_art_path ln_unit_backup "${sd}/${unit}.bak"
+    done
+    ts_detect_art_path blitzapi_dropin "${sd}/blitzapi.service.d/tunnelsats-wg.conf"
+    ts_detect_art_path umbrel_killswitch_dropin "${sd}/umbrel.service.d/tunnelsats_killswitch.conf"
+    ts_detect_art_path umbrel_killswitch_dropin "${sd}/umbrel-startup.service.d/tunnelsats_killswitch.conf"
+    # Left behind by the v2 installer
+    ts_detect_art_path raspiblitz_check_renamed "/home/admin/config.scripts/lnd.check.bak"
+    ts_detect_art_path raspiblitz_check_renamed "/home/admin/config.scripts/cl.check.bak"
+    ts_detect_art_path nftables_conf_backup "/etc/nftablespriortunnelsats.backup"
+    # Kernel state (read-only queries)
+    ts_detect_ip_rules
+    ts_detect_nft_tables
+    ts_detect_wg_links
+    ts_detect_table51820
+}
+
+# Splits WireGuard Endpoint $1 into TSD_CFG_EP_HOST and TSD_CFG_EP_PORT; fails if it is invalid.
+ts_detect_parse_endpoint() {
+    local ep="$1" host="" port=""
+    local re_v6='^\[([0-9A-Fa-f:.]+)\]:([0-9]{1,5})$'
+    local re_host='^([A-Za-z0-9.-]{1,253}):([0-9]{1,5})$'
+    local re_name='^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$'
+    if [[ "$ep" =~ $re_v6 ]]; then
+        host="${BASH_REMATCH[1]}"
+        port="${BASH_REMATCH[2]}"
+    elif [[ "$ep" =~ $re_host ]]; then
+        host="${BASH_REMATCH[1]}"
+        port="${BASH_REMATCH[2]}"
+        if [[ ! "$host" =~ $re_name ]]; then
+            return 1
+        fi
+    else
+        return 1
+    fi
+    if (( 10#$port < 1 || 10#$port > 65535 )); then
+        return 1
+    fi
+    TSD_CFG_EP_HOST="$host"
+    TSD_CFG_EP_PORT="$((10#$port))"
+    return 0
+}
+
+# Facts from the WireGuard config in use. The private key is read into memory only to derive
+# the public key and is never printed.
+ts_detect_config() {
+    local i rel="" full line trimmed section="" key val privkey="" endpoint="" pub="" comment="" valid=""
+    local re_iso='^[0-9]{4}-[0-9]{2}-[0-9]{2}([T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]{1,9})?)?)?(Z|[+-][0-9]{2}(:?[0-9]{2})?)?$'
+    TSD_CFG_PATH=""
+    TSD_CFG_STATUS="absent"
+    TSD_CFG_IFACE=""
+    TSD_CFG_MARKER=""
+    TSD_CFG_MARKERS=0
+    TSD_CFG_EP_HOST=""
+    TSD_CFG_EP_PORT=""
+    TSD_CFG_EP_STATUS="not_read"
+    TSD_CFG_VPN_PORT=""
+    TSD_CFG_VPN_PORT_STATUS="not_read"
+    TSD_CFG_PUB=""
+    TSD_CFG_PUB_STATUS="not_read"
+    TSD_CFG_PUB_COMMENT=""
+    TSD_CFG_PUB_COMMENT_STATUS="not_read"
+    TSD_CFG_PUB_MATCH=""
+    TSD_CFG_VALID_UNTIL=""
+    TSD_CFG_VALID_UNTIL_STATUS="not_read"
+    TSD_CFG_HOOK_GUARD="not_read"
+    TSD_CFG_HOOK_KILLSWITCH="not_read"
+
+    # The config in use: the same rule as status, restart and uninstall (ts_select_wg_config).
+    # Several tunnelsats-*.conf without tunnelsatsv2.conf are ambiguous: no facts are read then.
+    ts_select_wg_config "" "$TS_FS_ROOT" "/etc/wireguard"
+    TSD_CFG_SELECTION="$TS_WG_SELECTION"
+    TSD_CFG_CANDIDATES=("${TS_WG_CANDIDATES[@]}")
+    case "$TS_WG_SELECTION" in
+        canonical|single) rel="$TS_WG_SELECTED" ;;
+        ambiguous)
+            TSD_CFG_STATUS="ambiguous"
+            return 0
+            ;;
+        permission_denied)
+            TSD_CFG_STATUS="permission_denied"
+            return 0
+            ;;
+        *) return 0 ;;
+    esac
+    TSD_CFG_PATH="$rel"
+    TSD_CFG_IFACE="${rel##*/}"
+    TSD_CFG_IFACE="${TSD_CFG_IFACE%.conf}"
+    ts_detect_read_status "$rel"
+    if [[ "$TSD_ST" != "readable" ]]; then
+        TSD_CFG_STATUS="$TSD_ST"
+        return 0
+    fi
+    TSD_CFG_STATUS="ok"
+    full="${TS_FS_ROOT}${rel}"
+    TSD_CFG_HOOK_GUARD="absent"
+    TSD_CFG_HOOK_KILLSWITCH="none"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%$'\r'}"
+        case "$line" in
+            "#Tunnelsats-Setupv2-Non-Docker"*|"#Tunnelsats-Setupv2-Docker"*)
+                TSD_CFG_MARKERS=$((TSD_CFG_MARKERS + 1))
+                if [[ -z "$TSD_CFG_MARKER" ]] && [[ "$line" == "#Tunnelsats-Setupv2-Docker"* ]]; then
+                    TSD_CFG_MARKER="docker"
+                elif [[ -z "$TSD_CFG_MARKER" ]]; then
+                    TSD_CFG_MARKER="non_docker"
+                fi
+                ;;
+        esac
+        trimmed="${line#"${line%%[![:space:]]*}"}"
+        if [[ "$trimmed" =~ ^\[([A-Za-z]+)\] ]]; then
+            section="${BASH_REMATCH[1],,}"
+            continue
+        fi
+        if [[ ! "$trimmed" =~ ^([A-Za-z]+)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            continue
+        fi
+        key="${BASH_REMATCH[1],,}"
+        val="${BASH_REMATCH[2]}"
+        case "$key" in
+            privatekey)
+                if [[ "$section" == "interface" ]] && [[ -z "$privkey" ]]; then
+                    privkey="${val%%[[:space:]#]*}"
+                fi
+                ;;
+            endpoint)
+                if [[ "$section" == "peer" ]] && [[ -z "$endpoint" ]]; then
+                    endpoint="${val%%[[:space:]#]*}"
+                fi
+                ;;
+            postup)
+                if [[ "$val" == *"tunnelsats-route-guard.sh"* ]]; then
+                    TSD_CFG_HOOK_GUARD="present"
+                fi
+                if [[ "$val" == *"skuid"* ]]; then
+                    if [[ "$val" == *"meta cgroup 1118498"* ]]; then
+                        TSD_CFG_HOOK_KILLSWITCH="skuid_cgroup"
+                    elif [[ "$TSD_CFG_HOOK_KILLSWITCH" != "skuid_cgroup" ]]; then
+                        TSD_CFG_HOOK_KILLSWITCH="skuid_only"
+                    fi
+                fi
+                ;;
+        esac
+    done < "$full"
+
+    if [[ -z "$endpoint" ]]; then
+        TSD_CFG_EP_STATUS="missing"
+    elif ts_detect_parse_endpoint "$endpoint"; then
+        TSD_CFG_EP_STATUS="ok"
+    else
+        TSD_CFG_EP_STATUS="invalid"
+    fi
+
+    # Forwarded VPN port from "# Port Forwarding: N" (or "#VPNPort = N"). The complete value is
+    # checked: 100000 is invalid (not 10000) and 80 is valid (not missing).
+    TSD_CFG_VPN_PORT=$(parse_config_metadata "$full" port) || TSD_CFG_VPN_PORT=""
+    if [[ -z "$TSD_CFG_VPN_PORT" ]]; then
+        TSD_CFG_VPN_PORT_STATUS="missing"
+    elif TSD_CFG_VPN_PORT=$(ts_normalize_port "$TSD_CFG_VPN_PORT"); then
+        TSD_CFG_VPN_PORT_STATUS="ok"
+    else
+        TSD_CFG_VPN_PORT=""
+        TSD_CFG_VPN_PORT_STATUS="invalid"
+    fi
+
+    # Public key in use: derived from PrivateKey, never taken from a comment
+    if [[ -z "$privkey" ]]; then
+        TSD_CFG_PUB_STATUS="no_private_key"
+    elif ! ts_valid_wg_key "$privkey"; then
+        TSD_CFG_PUB_STATUS="invalid_private_key"
+    elif ! command -v "$WG_BIN" >/dev/null 2>&1; then
+        TSD_CFG_PUB_STATUS="wg_unavailable"
+    elif pub=$(ts_derive_wg_pubkey "$privkey"); then
+        TSD_CFG_PUB="$pub"
+        TSD_CFG_PUB_STATUS="derived"
+    else
+        TSD_CFG_PUB_STATUS="derive_failed"
+    fi
+    privkey=""
+
+    # The myPubKey comment is only a hint and can be stale
+    comment=$(parse_config_metadata "$full" pubkey) || comment=""
+    if [[ -z "$comment" ]]; then
+        TSD_CFG_PUB_COMMENT_STATUS="missing"
+    elif ts_valid_wg_key "$comment"; then
+        TSD_CFG_PUB_COMMENT="$comment"
+        TSD_CFG_PUB_COMMENT_STATUS="ok"
+        if [[ -n "$TSD_CFG_PUB" ]] && [[ "$TSD_CFG_PUB" == "$comment" ]]; then
+            TSD_CFG_PUB_MATCH="true"
+        elif [[ -n "$TSD_CFG_PUB" ]]; then
+            TSD_CFG_PUB_MATCH="false"
+        fi
+    else
+        TSD_CFG_PUB_COMMENT_STATUS="invalid"
+    fi
+
+    # Valid Until is a display hint; the TunnelSats API is the source of truth
+    valid=$(parse_config_metadata "$full" expiry) || valid=""
+    if [[ -z "$valid" ]]; then
+        TSD_CFG_VALID_UNTIL_STATUS="missing"
+    elif [[ "$valid" =~ $re_iso ]]; then
+        TSD_CFG_VALID_UNTIL="$valid"
+        TSD_CFG_VALID_UNTIL_STATUS="ok"
+    else
+        TSD_CFG_VALID_UNTIL_STATUS="invalid"
+    fi
+}
+
+# Classifies the existing install (R2 7.5). The newest generation with positive evidence wins:
+# legacy_v3_post_204 (route guard, #204), legacy_v3_pre_204, legacy_v2. "unknown" lists the
+# kinds the readable evidence cannot tell apart; "none" requires that nothing was unreadable.
+ts_detect_install_kind() {
+    local i id status detail any_present=0 any_unreadable=0 v2=0 v3=0 pre=0 post=0
+    TSD_EVIDENCE=()
+    for i in "${!TSD_ART_ID[@]}"; do
+        id="${TSD_ART_ID[$i]}"
+        status="${TSD_ART_STATUS[$i]}"
+        detail="${TSD_ART_DETAIL[$i]}"
+        case "$status" in
+            present) any_present=1 ;;
+            permission_denied|error) any_unreadable=1; continue ;;
+            *) continue ;;
+        esac
+        case "$id" in
+            raspiblitz_check_renamed) v2=1; ts_detect_evidence v2_check_script_renamed ;;
+            umbrel_killswitch_dropin) v2=1; ts_detect_evidence v2_umbrel_killswitch ;;
+            nftables_conf_backup) v2=1; ts_detect_evidence v2_nftables_conf_backup ;;
+            ln_dropin)
+                if [[ "$detail" == "requires" ]]; then
+                    v2=1
+                    ts_detect_evidence v2_dropin_requires
+                elif [[ "$detail" == "wants" ]]; then
+                    v3=1
+                    ts_detect_evidence v3_dropin_wants
+                fi
+                ;;
+            ln_unit_check_disabled) v3=1; ts_detect_evidence v3_check_disabled_in_unit ;;
+            ufw_marker) v3=1; ts_detect_evidence v3_ufw_marker ;;
+            route_guard_script) post=1; ts_detect_evidence route_guard_script ;;
+            wg_config_backup) post=1; ts_detect_evidence config_backup_copies ;;
+            failclosed_state|failclosed_rules) post=1; ts_detect_evidence failclosed_block ;;
+            ip_rule) post=1; ts_detect_evidence rule_priorities_21820_21821 ;;
+            ip_rule_legacy) pre=1; ts_detect_evidence legacy_rule_selectors ;;
+            nft_table)
+                if [[ "${TSD_ART_LOC[$i]}" == *"tunnelsats_failclosed"* ]]; then
+                    post=1
+                    ts_detect_evidence failclosed_block
+                fi
+                ;;
+        esac
+    done
+    if [[ "$TSD_CFG_STATUS" == "ok" ]]; then
+        if [[ "$TSD_CFG_HOOK_KILLSWITCH" == "skuid_only" ]]; then
+            v2=1
+            ts_detect_evidence v2_killswitch_uid_only
+        elif [[ "$TSD_CFG_HOOK_KILLSWITCH" == "skuid_cgroup" ]]; then
+            v3=1
+            ts_detect_evidence v3_killswitch_uid_cgroup
+        fi
+        if [[ "$TSD_CFG_HOOK_GUARD" == "present" ]]; then
+            post=1
+            ts_detect_evidence route_guard_hook
+        elif [[ -n "$TSD_CFG_MARKER" ]]; then
+            pre=1
+            ts_detect_evidence config_without_route_guard
+        fi
+    fi
+
+    if [[ "$post" -eq 1 ]]; then
+        TSD_INSTALL_KIND="legacy_v3_post_204"
+        TSD_INSTALL_CANDIDATES=(legacy_v3_post_204)
+    elif [[ "$v3" -eq 1 ]] && [[ "$pre" -eq 1 ]]; then
+        TSD_INSTALL_KIND="legacy_v3_pre_204"
+        TSD_INSTALL_CANDIDATES=(legacy_v3_pre_204)
+    elif [[ "$v3" -eq 1 ]]; then
+        TSD_INSTALL_KIND="unknown"
+        TSD_INSTALL_CANDIDATES=(legacy_v3_pre_204 legacy_v3_post_204)
+    elif [[ "$v2" -eq 1 ]]; then
+        TSD_INSTALL_KIND="legacy_v2"
+        TSD_INSTALL_CANDIDATES=(legacy_v2)
+    elif [[ "$pre" -eq 1 ]]; then
+        TSD_INSTALL_KIND="unknown"
+        TSD_INSTALL_CANDIDATES=(legacy_v2 legacy_v3_pre_204)
+    elif [[ "$any_present" -eq 1 ]]; then
+        TSD_INSTALL_KIND="unknown"
+        TSD_INSTALL_CANDIDATES=(legacy_v2 legacy_v3_pre_204 legacy_v3_post_204)
+    elif [[ "$any_unreadable" -eq 1 ]]; then
+        TSD_INSTALL_KIND="unknown"
+        TSD_INSTALL_CANDIDATES=(none legacy_v2 legacy_v3_pre_204 legacy_v3_post_204)
+    else
+        TSD_INSTALL_KIND="none"
+        TSD_INSTALL_CANDIDATES=(none)
+    fi
+}
+
+ts_detect_capabilities() {
+    local out="" path dev mountpoint fstype options rest
+    TSD_CAP_WG="missing"
+    TSD_CAP_WG_VERSION=""
+    TSD_CAP_WG_QUICK="missing"
+    TSD_CAP_WG_UNIT="absent"
+    TSD_CAP_NFT="missing"
+    TSD_CAP_NFT_VERSION=""
+    TSD_CAP_SYSTEMD="missing"
+    TSD_CAP_SYSTEMD_VERSION=""
+    TSD_CAP_CG2="unknown"
+    TSD_CAP_CG2_MP=""
+    TSD_CAP_NETCLS="unknown"
+    TSD_CAP_NETCLS_MP=""
+    TSD_CAP_KERNEL=""
+    if command -v "$WG_BIN" >/dev/null 2>&1; then
+        TSD_CAP_WG="present"
+        out=$("$WG_BIN" --version 2>/dev/null) || out=""
+        if [[ "$out" =~ v([0-9]+(\.[0-9]+)+) ]]; then
+            TSD_CAP_WG_VERSION="${BASH_REMATCH[1]}"
+        fi
+    fi
+    if command -v "$WG_QUICK_BIN" >/dev/null 2>&1; then
+        TSD_CAP_WG_QUICK="present"
+    fi
+    for path in /lib/systemd/system/wg-quick@.service /usr/lib/systemd/system/wg-quick@.service /etc/systemd/system/wg-quick@.service; do
+        ts_detect_path_status "$path"
+        if [[ "$TSD_ST" == "present" ]]; then
+            TSD_CAP_WG_UNIT="present"
+            break
+        fi
+        if [[ "$TSD_ST" == "permission_denied" ]]; then
+            TSD_CAP_WG_UNIT="permission_denied"
+        fi
+    done
+    if command -v "$NFT_BIN" >/dev/null 2>&1; then
+        TSD_CAP_NFT="present"
+        out=$("$NFT_BIN" --version 2>/dev/null) || out=""
+        if [[ "$out" =~ v([0-9]+(\.[0-9]+)+) ]]; then
+            TSD_CAP_NFT_VERSION="${BASH_REMATCH[1]}"
+        fi
+    fi
+    if command -v "$SYSTEMCTL_BIN" >/dev/null 2>&1; then
+        TSD_CAP_SYSTEMD="present"
+        out=$("$SYSTEMCTL_BIN" --version 2>/dev/null) || out=""
+        if [[ "$out" =~ ^systemd[[:space:]]+([0-9]+) ]]; then
+            TSD_CAP_SYSTEMD_VERSION="${BASH_REMATCH[1]}"
+        fi
+    fi
+    # cgroup hierarchies from the mount table (no cgroup is created or modified)
+    if [[ -r "${TS_FS_ROOT}/proc/mounts" ]]; then
+        TSD_CAP_CG2="not_mounted"
+        TSD_CAP_NETCLS="not_mounted"
+        while read -r dev mountpoint fstype options rest; do
+            if [[ "$fstype" == "cgroup2" ]] && [[ -z "$TSD_CAP_CG2_MP" ]]; then
+                TSD_CAP_CG2="mounted"
+                TSD_CAP_CG2_MP="$mountpoint"
+            elif [[ "$fstype" == "cgroup" ]] && [[ ",${options}," == *",net_cls,"* ]] && [[ -z "$TSD_CAP_NETCLS_MP" ]]; then
+                TSD_CAP_NETCLS="mounted"
+                TSD_CAP_NETCLS_MP="$mountpoint"
+            fi
+        done < "${TS_FS_ROOT}/proc/mounts"
+    fi
+    out=$(uname -r 2>/dev/null) || out=""
+    if [[ "$out" =~ ^[A-Za-z0-9._+~-]{1,64}$ ]]; then
+        TSD_CAP_KERNEL="$out"
+    fi
+}
+
+ts_detect_conflicts() {
+    local out="" rc=0 line i impls="" units="" unreadable="" count=0 file="" value="" lines="" blitz_conf_st=""
+    local re_port="^[[:space:]]*lndPort=[\"']?([0-9]+)[\"']?[[:space:]]*\$"
+
+    # Routes in table 51820 that TunnelSats does not own: install and the route guard refuse to start
+    local t51820_iface="${TSD_IFACES// /}"
+    if [[ "$TSD_T51820_STATUS" == "ok" ]] && [[ "${#TSD_T51820_FOREIGN[@]}" -gt 0 ]]; then
+        ts_detect_conflict table_51820_foreign_routes detected "${#TSD_T51820_FOREIGN[@]} route(s) not via ${t51820_iface}, first: ${TSD_T51820_FOREIGN[0]}"
+    elif [[ "$TSD_T51820_STATUS" == "ok" ]]; then
+        ts_detect_conflict table_51820_foreign_routes not_detected "${t51820_iface:+judged against ${t51820_iface}}${t51820_iface:-no routes besides the kill-switch blackhole}"
+    elif [[ "$TSD_T51820_STATUS" == selection_* ]]; then
+        ts_detect_conflict table_51820_foreign_routes unknown "config selection ${TSD_T51820_STATUS#selection_}: the owning interface cannot be decided"
+    else
+        ts_detect_conflict table_51820_foreign_routes unknown "$TSD_T51820_STATUS"
+    fi
+
+    # Tailscale exit node: its default route in table 52 is looked up before the TunnelSats rules
+    if ! command -v "$IP_BIN" >/dev/null 2>&1; then
+        ts_detect_conflict tailscale_exit_node unknown "unavailable"
+    else
+        out=$("$IP_BIN" route show table 52 2>&1) || rc=$?
+        if [[ "$rc" -ne 0 ]] && [[ "$out" != *"FIB table does not exist"* ]]; then
+            ts_detect_conflict tailscale_exit_node unknown "error"
+        elif [[ "$rc" -eq 0 ]] && printf '%s\n' "$out" | grep -qE '^(default|0\.0\.0\.0/0)[[:space:]]'; then
+            ts_detect_conflict tailscale_exit_node detected "default route in table 52"
+        else
+            ts_detect_conflict tailscale_exit_node not_detected
+        fi
+    fi
+
+    # nftables.service enabled: its boot-time ruleset load can flush the TunnelSats tables
+    ts_detect_path_status "/etc/systemd/system/sysinit.target.wants/nftables.service"
+    case "$TSD_ST" in
+        present)
+            out="nftables.service is enabled"
+            ts_detect_read_status "/etc/nftables.conf"
+            if [[ "$TSD_ST" == "readable" ]] && grep -qE '^[[:space:]]*flush[[:space:]]+ruleset' "${TS_FS_ROOT}/etc/nftables.conf" 2>/dev/null; then
+                out+="; /etc/nftables.conf flushes the whole ruleset"
+            fi
+            ts_detect_conflict nftables_service_enabled detected "$out"
+            ;;
+        absent) ts_detect_conflict nftables_service_enabled not_detected ;;
+        *) ts_detect_conflict nftables_service_enabled unknown "$TSD_ST" ;;
+    esac
+
+    # More than one Lightning implementation: only one can receive the forwarded port 9735. An
+    # implementation counts if its unit file exists in any unit directory or if its unit runs
+    # (packaged units live under /usr/lib/systemd/system, generated units have no file at all).
+    # A masked unit (file status masked) cannot start, so it only counts while it still runs.
+    for i in "${!TSD_LN_UNIT[@]}"; do
+        if [[ "${TSD_LN_FILE[$i]}" == "present" ]] || ts_detect_unit_running "${TSD_LN_ACTIVE[$i]}"; then
+            units+="${units:+, }${TSD_LN_UNIT[$i]} (${TSD_LN_ACTIVE[$i]})"
+            if [[ "$impls" != *" ${TSD_LN_IMPL[$i]} "* ]]; then
+                impls+=" ${TSD_LN_IMPL[$i]} "
+                count=$((count + 1))
+            fi
+        elif [[ "${TSD_LN_FILE[$i]}" == "permission_denied" ]]; then
+            unreadable+="${unreadable:+, }${TSD_LN_UNIT[$i]}"
+        fi
+    done
+    if [[ "$count" -gt 1 ]]; then
+        ts_detect_conflict multiple_ln_implementations detected "$units"
+    elif [[ -n "$unreadable" ]]; then
+        # A stopped implementation could be installed in a unit directory that cannot be read
+        ts_detect_conflict multiple_ln_implementations unknown "unit file location not readable: ${unreadable}"
+    else
+        ts_detect_conflict multiple_ln_implementations not_detected "$units"
+    fi
+
+    # RaspiBlitz: a custom lndPort moves LND away from 9735, where the server forwards to
+    for file in /mnt/hdd/app-data/raspiblitz.conf /mnt/hdd/raspiblitz.conf; do
+        ts_detect_read_status "$file"
+        if [[ "$TSD_ST" != "absent" ]]; then
+            break
+        fi
+    done
+    blitz_conf_st="$TSD_ST"
+    case "$TSD_ST" in
+        absent)
+            # raspiblitz.conf lives on the data drive, which may not be mounted (yet)
+            if [[ "$TSD_PLATFORM_GUESS" == "raspiblitz" ]]; then
+                ts_detect_conflict raspiblitz_custom_lnd_port unknown "raspiblitz.conf not found"
+            else
+                ts_detect_conflict raspiblitz_custom_lnd_port not_applicable
+            fi
+            ;;
+        readable)
+            value=""
+            while IFS= read -r line || [[ -n "$line" ]]; do
+                if [[ "$line" =~ $re_port ]]; then
+                    value="${BASH_REMATCH[1]}"
+                fi
+            done < "${TS_FS_ROOT}${file}"
+            if [[ -n "$value" ]] && [[ "$value" != "9735" ]]; then
+                ts_detect_conflict raspiblitz_custom_lnd_port detected "lndPort=${value}"
+            else
+                ts_detect_conflict raspiblitz_custom_lnd_port not_detected
+            fi
+            ;;
+        *) ts_detect_conflict raspiblitz_custom_lnd_port unknown "$TSD_ST" ;;
+    esac
+
+    # RaspiBlitz: custom-installs.sh runs on every provisioning and may re-apply an old setup
+    ts_detect_read_status "/mnt/hdd/app-data/custom-installs.sh"
+    case "$TSD_ST" in
+        absent)
+            if [[ "$blitz_conf_st" != "absent" ]]; then
+                ts_detect_conflict raspiblitz_custom_installs not_detected
+            elif [[ "$TSD_PLATFORM_GUESS" == "raspiblitz" ]]; then
+                ts_detect_conflict raspiblitz_custom_installs unknown "raspiblitz.conf not found"
+            else
+                ts_detect_conflict raspiblitz_custom_installs not_applicable
+            fi
+            ;;
+        readable)
+            lines=$(grep -niE 'tunnelsats' "${TS_FS_ROOT}/mnt/hdd/app-data/custom-installs.sh" 2>/dev/null | cut -d: -f1 | head -n 20 | tr '\n' ',') || lines=""
+            lines="${lines%,}"
+            if [[ -n "$lines" ]]; then
+                ts_detect_conflict raspiblitz_custom_installs detected "lines ${lines}"
+            else
+                ts_detect_conflict raspiblitz_custom_installs not_detected
+            fi
+            ;;
+        *) ts_detect_conflict raspiblitz_custom_installs unknown "$TSD_ST" ;;
+    esac
+}
+
+ts_detect_render_json() {
+    local i privileged="false" platform_j ln_j arts_j cand_j ev_j install_j config_j caps_j conf_j
+    local ep_j port_j pub_j comment_j valid_j hooks_j wg_j nft_j sd_j cg2_j netcls_j cand_cfg_j
+    local -a items=()
+    if [[ "$EUID" -eq 0 ]]; then
+        privileged="true"
+    fi
+
+    for i in "${!TSD_HINT_PLATFORM[@]}"; do
+        ts_j_obj s:platform "${TSD_HINT_PLATFORM[$i]}" s:path "${TSD_HINT_PATH[$i]}" s:status "${TSD_HINT_STATUS[$i]}"
+        items+=("$TS_R")
+    done
+    ts_j_arr "${items[@]}"
+    ts_j_obj sn:guess "$TSD_PLATFORM_GUESS" r:evidence "$TS_R"
+    platform_j="$TS_R"
+
+    items=()
+    for i in "${!TSD_LN_IMPL[@]}"; do
+        ts_j_obj s:impl "${TSD_LN_IMPL[$i]}" s:unit "${TSD_LN_UNIT[$i]}" s:file "${TSD_LN_FILE[$i]}" sn:path "${TSD_LN_PATH[$i]}" s:active "${TSD_LN_ACTIVE[$i]}" sn:user "${TSD_LN_USER[$i]}"
+        items+=("$TS_R")
+    done
+    ts_j_arr "${items[@]}"
+    ts_j_obj sn:guess "$TSD_LN_GUESS" r:units "$TS_R"
+    ln_j="$TS_R"
+
+    items=()
+    for i in "${!TSD_ART_ID[@]}"; do
+        ts_j_obj s:id "${TSD_ART_ID[$i]}" s:location "${TSD_ART_LOC[$i]}" s:status "${TSD_ART_STATUS[$i]}" sn:detail "${TSD_ART_DETAIL[$i]}" b:contains_secrets "${TSD_ART_SECRET[$i]}"
+        items+=("$TS_R")
+    done
+    ts_j_arr "${items[@]}"
+    arts_j="$TS_R"
+    items=()
+    for i in "${TSD_INSTALL_CANDIDATES[@]}"; do
+        ts_j_str "$i"
+        items+=("$TS_R")
+    done
+    ts_j_arr "${items[@]}"
+    cand_j="$TS_R"
+    items=()
+    for i in "${TSD_EVIDENCE[@]}"; do
+        ts_j_str "$i"
+        items+=("$TS_R")
+    done
+    ts_j_arr "${items[@]}"
+    ev_j="$TS_R"
+    ts_j_obj s:kind "$TSD_INSTALL_KIND" r:candidates "$cand_j" r:evidence "$ev_j" r:artifacts "$arts_j"
+    install_j="$TS_R"
+
+    ts_j_obj sn:host "$TSD_CFG_EP_HOST" i:port "$TSD_CFG_EP_PORT" s:status "$TSD_CFG_EP_STATUS"
+    ep_j="$TS_R"
+    ts_j_obj i:value "$TSD_CFG_VPN_PORT" s:status "$TSD_CFG_VPN_PORT_STATUS"
+    port_j="$TS_R"
+    ts_j_obj sn:value "$TSD_CFG_PUB" s:status "$TSD_CFG_PUB_STATUS" s:source "private_key"
+    pub_j="$TS_R"
+    ts_j_obj sn:value "$TSD_CFG_PUB_COMMENT" s:status "$TSD_CFG_PUB_COMMENT_STATUS" b:matches_derived "$TSD_CFG_PUB_MATCH"
+    comment_j="$TS_R"
+    ts_j_obj sn:value "$TSD_CFG_VALID_UNTIL" s:status "$TSD_CFG_VALID_UNTIL_STATUS"
+    valid_j="$TS_R"
+    ts_j_obj s:route_guard "$TSD_CFG_HOOK_GUARD" s:killswitch "$TSD_CFG_HOOK_KILLSWITCH"
+    hooks_j="$TS_R"
+    items=()
+    for i in "${TSD_CFG_CANDIDATES[@]}"; do
+        ts_j_str "$i"
+        items+=("$TS_R")
+    done
+    ts_j_arr "${items[@]}"
+    cand_cfg_j="$TS_R"
+    ts_j_obj sn:path "$TSD_CFG_PATH" s:status "$TSD_CFG_STATUS" s:selection "$TSD_CFG_SELECTION" r:candidates "$cand_cfg_j" \
+        sn:interface "$TSD_CFG_IFACE" sn:marker "$TSD_CFG_MARKER" \
+        i:marker_count "$TSD_CFG_MARKERS" r:endpoint "$ep_j" r:vpn_port "$port_j" r:public_key "$pub_j" \
+        r:public_key_comment "$comment_j" r:valid_until "$valid_j" r:hooks "$hooks_j"
+    config_j="$TS_R"
+
+    ts_j_obj s:status "$TSD_CAP_WG" sn:version "$TSD_CAP_WG_VERSION" s:wg_quick "$TSD_CAP_WG_QUICK" s:wg_quick_unit "$TSD_CAP_WG_UNIT"
+    wg_j="$TS_R"
+    ts_j_obj s:status "$TSD_CAP_NFT" sn:version "$TSD_CAP_NFT_VERSION"
+    nft_j="$TS_R"
+    ts_j_obj s:status "$TSD_CAP_SYSTEMD" i:version "$TSD_CAP_SYSTEMD_VERSION"
+    sd_j="$TS_R"
+    ts_j_obj s:status "$TSD_CAP_CG2" sn:mountpoint "$TSD_CAP_CG2_MP"
+    cg2_j="$TS_R"
+    ts_j_obj s:status "$TSD_CAP_NETCLS" sn:mountpoint "$TSD_CAP_NETCLS_MP"
+    netcls_j="$TS_R"
+    ts_j_obj r:wireguard_tools "$wg_j" r:nft "$nft_j" r:systemd "$sd_j" r:cgroup_v2 "$cg2_j" r:net_cls_v1 "$netcls_j" sn:kernel_release "$TSD_CAP_KERNEL"
+    caps_j="$TS_R"
+
+    items=()
+    for i in "${!TSD_CONF_ID[@]}"; do
+        ts_j_obj s:id "${TSD_CONF_ID[$i]}" s:status "${TSD_CONF_STATUS[$i]}" sn:detail "${TSD_CONF_DETAIL[$i]}"
+        items+=("$TS_R")
+    done
+    ts_j_arr "${items[@]}"
+    conf_j="$TS_R"
+
+    ts_json_document 0 "[]" "\"privileged\":${privileged},\"unreadable_items\":${TSD_UNREADABLE},\"platform\":${platform_j},\"lightning\":${ln_j},\"install\":${install_j},\"config\":${config_j},\"capabilities\":${caps_j},\"conflicts\":${conf_j}"
+}
+
+ts_detect_render_human() {
+    local i shown
+    print_header "Detect (read-only)"
+    echo -e "${BOLD}Platform${NC}"
+    print_line
+    echo "  Guess:            ${TSD_PLATFORM_GUESS:-none}"
+    for i in "${!TSD_HINT_PLATFORM[@]}"; do
+        if [[ "${TSD_HINT_STATUS[$i]}" != "absent" ]]; then
+            echo "  Evidence:         ${TSD_HINT_PATH[$i]} (${TSD_HINT_PLATFORM[$i]}, ${TSD_HINT_STATUS[$i]})"
+        fi
+    done
+    echo ""
+    echo -e "${BOLD}Lightning${NC}"
+    print_line
+    echo "  Guess:            ${TSD_LN_GUESS:-none}"
+    for i in "${!TSD_LN_UNIT[@]}"; do
+        if [[ "${TSD_LN_FILE[$i]}" != "absent" ]] || ts_detect_unit_running "${TSD_LN_ACTIVE[$i]}"; then
+            echo "  ${TSD_LN_UNIT[$i]}: file ${TSD_LN_FILE[$i]}${TSD_LN_PATH[$i]:+ (${TSD_LN_PATH[$i]})}, ${TSD_LN_ACTIVE[$i]}${TSD_LN_USER[$i]:+, user ${TSD_LN_USER[$i]}}"
+        fi
+    done
+    echo ""
+    echo -e "${BOLD}Existing TunnelSats install${NC}"
+    print_line
+    echo "  Kind:             ${TSD_INSTALL_KIND}"
+    if [[ "$TSD_INSTALL_KIND" == "unknown" ]]; then
+        echo "  Candidates:       ${TSD_INSTALL_CANDIDATES[*]}"
+    fi
+    echo "  Evidence:         ${TSD_EVIDENCE[*]:-none}"
+    for i in "${!TSD_ART_ID[@]}"; do
+        if [[ "${TSD_ART_STATUS[$i]}" != "absent" ]]; then
+            shown="${TSD_ART_LOC[$i]//[[:cntrl:]]/?}"
+            printf '  %-18s %-26s %s%s\n' "${TSD_ART_STATUS[$i]}" "${TSD_ART_ID[$i]}" "$shown" "${TSD_ART_DETAIL[$i]:+ (${TSD_ART_DETAIL[$i]})}"
+        fi
+    done
+    echo ""
+    echo -e "${BOLD}WireGuard config${NC}"
+    print_line
+    if [[ "$TSD_CFG_STATUS" == "ok" ]]; then
+        echo "  Path:             ${TSD_CFG_PATH} (interface ${TSD_CFG_IFACE}, marker ${TSD_CFG_MARKER:-none})"
+        echo "  Endpoint:         ${TSD_CFG_EP_HOST:-?}${TSD_CFG_EP_PORT:+:${TSD_CFG_EP_PORT}} (${TSD_CFG_EP_STATUS})"
+        echo "  VPN port:         ${TSD_CFG_VPN_PORT:-?} (${TSD_CFG_VPN_PORT_STATUS})"
+        echo "  Public key:       ${TSD_CFG_PUB:-?} (${TSD_CFG_PUB_STATUS}, from PrivateKey)"
+        echo "  Key comment:      ${TSD_CFG_PUB_COMMENT:-?} (${TSD_CFG_PUB_COMMENT_STATUS}${TSD_CFG_PUB_MATCH:+, matches derived key: ${TSD_CFG_PUB_MATCH}})"
+        echo "  Valid until:      ${TSD_CFG_VALID_UNTIL:-?} (${TSD_CFG_VALID_UNTIL_STATUS}, hint only)"
+    else
+        echo "  Status:           ${TSD_CFG_STATUS}${TSD_CFG_PATH:+ (${TSD_CFG_PATH})}"
+    fi
+    echo "  Selection:        ${TSD_CFG_SELECTION}${TSD_CFG_CANDIDATES[0]:+ (candidates: ${TSD_CFG_CANDIDATES[*]})}"
+    echo ""
+    echo -e "${BOLD}Capabilities${NC}"
+    print_line
+    echo "  wireguard-tools:  ${TSD_CAP_WG}${TSD_CAP_WG_VERSION:+ ${TSD_CAP_WG_VERSION}} (wg-quick ${TSD_CAP_WG_QUICK}, unit template ${TSD_CAP_WG_UNIT})"
+    echo "  nftables:         ${TSD_CAP_NFT}${TSD_CAP_NFT_VERSION:+ ${TSD_CAP_NFT_VERSION}}"
+    echo "  systemd:          ${TSD_CAP_SYSTEMD}${TSD_CAP_SYSTEMD_VERSION:+ ${TSD_CAP_SYSTEMD_VERSION}}"
+    echo "  cgroup v2:        ${TSD_CAP_CG2}${TSD_CAP_CG2_MP:+ (${TSD_CAP_CG2_MP})}"
+    echo "  net_cls (v1):     ${TSD_CAP_NETCLS}${TSD_CAP_NETCLS_MP:+ (${TSD_CAP_NETCLS_MP})}"
+    echo "  Kernel:           ${TSD_CAP_KERNEL:-unknown}"
+    echo ""
+    echo -e "${BOLD}Conflicts${NC}"
+    print_line
+    for i in "${!TSD_CONF_ID[@]}"; do
+        shown="${TSD_CONF_DETAIL[$i]//[[:cntrl:]]/?}"
+        echo "  ${TSD_CONF_ID[$i]}: ${TSD_CONF_STATUS[$i]}${shown:+ (${shown})}"
+    done
+    echo ""
+    if [[ "$TSD_UNREADABLE" -gt 0 ]]; then
+        print_warning "${TSD_UNREADABLE} item(s) could not be read. Run as root for a complete report."
+    fi
+}
+
+cmd_detect() {
+    local i
+    TS_FS_ROOT="${TS_FS_ROOT%/}"
+    ts_detect_platform
+    ts_detect_lightning
+    ts_detect_artifacts
+    ts_detect_config
+    ts_detect_install_kind
+    ts_detect_capabilities
+    ts_detect_conflicts
+    # Items that could not be read: unreadable locations, plus files that exist but cannot be read
+    TSD_UNREADABLE=0
+    for i in "${!TSD_ART_STATUS[@]}"; do
+        if [[ "${TSD_ART_STATUS[$i]}" == "permission_denied" ]] || [[ "${TSD_ART_STATUS[$i]}" == "error" ]] || \
+            [[ "${TSD_ART_DETAIL[$i]}" == "unreadable" ]]; then
+            TSD_UNREADABLE=$((TSD_UNREADABLE + 1))
+        elif [[ "$TSD_CFG_STATUS" == "permission_denied" ]] && [[ "${TSD_ART_ID[$i]}" == "wg_config" ]] && \
+            [[ "${TSD_ART_LOC[$i]}" == "$TSD_CFG_PATH" ]]; then
+            TSD_UNREADABLE=$((TSD_UNREADABLE + 1))
+        fi
+    done
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        ts_detect_render_json
+    else
+        ts_detect_render_human
+    fi
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# ARGUMENT PARSING
+# Options are global: they are accepted before or after the command word.
+# ---------------------------------------------------------------------------
+
+# Prints the canonical name of command word $1 (aliases included), nothing if it is unknown.
+ts_canonical_command() {
+    case "$1" in
+        install) echo "install" ;;
+        pre-check|precheck|check) echo "pre-check" ;;
+        uninstall|remove) echo "uninstall" ;;
+        status) echo "status" ;;
+        restart) echo "restart" ;;
+        detect) echo "detect" ;;
+        version) echo "version" ;;
+        help) echo "help" ;;
+    esac
+    return 0
+}
+
+# Succeeds if option $2 applies to command $1.
+ts_option_supported() {
+    case "$2" in
+        --non-interactive|--yes|--json) return 0 ;;
+        --config) [[ "$1" == "install" || "$1" == "status" || "$1" == "restart" ]] ;;
+        --platform|--impl) [[ "$1" == "install" || "$1" == "uninstall" || "$1" == "status" || "$1" == "restart" ]] ;;
+        --remove-packages|--keep-packages) [[ "$1" == "uninstall" ]] ;;
+        *) return 1 ;;
+    esac
+}
+
+# Keeps the first usage problem found while parsing (reported by parse_args).
+ts_usage_note() {
+    if [[ -z "$TS_USAGE_ERROR" ]]; then
+        TS_USAGE_ERROR="$1"
+    fi
+    return 0
+}
+
+# Parses the command line into the TS_* variables without printing or exiting.
+ts_parse_cli() {
+    local word="" opt value
+    TS_ARGV=("$@")
+    TS_COMMAND=""
+    TS_JSON=0
+    TS_NONINTERACTIVE=0
+    TS_OPT_YES=0
+    TS_OPT_PLATFORM=""
+    TS_OPT_IMPL=""
+    TS_OPT_PACKAGES=""
+    TS_WANT_HELP=0
+    TS_USAGE_ERROR=""
+    TS_OPTS_GIVEN=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --non-interactive)
+                TS_NONINTERACTIVE=1
+                TS_OPTS_GIVEN+=("$1")
+                ;;
+            --json)
+                TS_JSON=1
+                TS_OPTS_GIVEN+=("$1")
+                ;;
+            --yes)
+                TS_OPT_YES=1
+                TS_OPTS_GIVEN+=("$1")
+                ;;
+            --remove-packages|--keep-packages)
+                value="${1#--}"
+                value="${value%-packages}"
+                if [[ -n "$TS_OPT_PACKAGES" ]] && [[ "$TS_OPT_PACKAGES" != "$value" ]]; then
+                    ts_usage_note "--remove-packages and --keep-packages cannot be combined"
+                fi
+                TS_OPT_PACKAGES="$value"
+                TS_OPTS_GIVEN+=("$1")
+                ;;
+            --config|--platform|--impl)
+                opt="$1"
+                if [[ $# -lt 2 ]] || [[ -z "$2" ]] || [[ "$2" == -* ]]; then
+                    ts_usage_note "${opt} requires a value"
+                    TS_OPTS_GIVEN+=("$opt")
+                    shift
+                    continue
+                fi
+                value="$2"
+                if [[ " ${TS_OPTS_GIVEN[*]} " == *" ${opt} "* ]]; then
+                    ts_usage_note "${opt} given more than once"
+                fi
+                case "$opt" in
+                    --config) CONFIG_FILE="$value" ;;
+                    --platform)
+                        if ! ts_in_list "$value" "$TS_PLATFORMS"; then
+                            ts_usage_note "Invalid --platform '${value}' (expected: ${TS_PLATFORMS// /, })"
+                        fi
+                        TS_OPT_PLATFORM="$value"
+                        ;;
+                    --impl)
+                        if ! ts_in_list "$value" "$TS_IMPLS"; then
+                            ts_usage_note "Invalid --impl '${value}' (expected: ${TS_IMPLS// /, })"
+                        fi
+                        TS_OPT_IMPL="$value"
+                        ;;
+                esac
+                TS_OPTS_GIVEN+=("$opt")
+                shift 2
+                continue
+                ;;
+            -h|--help)
+                TS_WANT_HELP=1
+                ;;
+            -*)
+                ts_usage_note "Unknown option: $1"
+                ;;
+            *)
+                if [[ -z "$word" ]]; then
+                    word="$1"
+                else
+                    ts_usage_note "Unexpected argument: $1"
+                fi
+                ;;
+        esac
+        shift
+    done
+    if [[ "$TS_WANT_HELP" -eq 1 ]]; then
+        word="help"
+    fi
+    if [[ -n "$word" ]]; then
+        TS_COMMAND=$(ts_canonical_command "$word")
+        if [[ -z "$TS_COMMAND" ]]; then
+            ts_usage_note "Unknown command: ${word}"
+            TS_COMMAND="$word"
+        fi
+    fi
+    # A JSON consumer cannot answer prompts
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        TS_NONINTERACTIVE=1
+    fi
+    return 0
+}
+
+# Rejects options the command does not use, and --json where it is not supported yet.
+ts_validate_cli() {
+    local opt
+    for opt in "${TS_OPTS_GIVEN[@]}"; do
+        if ! ts_option_supported "$TS_COMMAND" "$opt"; then
+            ts_usage_error "${opt} is not supported by '${TS_COMMAND}'"
+        fi
+    done
+    if [[ "$TS_JSON" -eq 1 ]] && [[ "$TS_COMMAND" != "version" ]] && [[ "$TS_COMMAND" != "detect" ]]; then
+        ts_fail 2 E_JSON_UNSUPPORTED usage "'${TS_COMMAND}' does not support --json yet (supported: version, detect)"
+    fi
+    return 0
+}
+
+parse_args() {
+    ts_parse_cli "$@"
+    ts_init_colors
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        # Anything printed to stdout from here on is a log and goes to stderr; the JSON document
+        # goes to the original stdout, kept on file descriptor 3
+        exec 3>&1 1>&2
+        TS_OUT_FD=3
+        trap ts_json_exit_guard EXIT
+    fi
+
+    if [[ -n "$TS_USAGE_ERROR" ]]; then
+        ts_usage_error "$TS_USAGE_ERROR"
+    fi
+    if [[ -z "$TS_COMMAND" ]]; then
+        if [[ ${#TS_ARGV[@]} -eq 0 ]]; then
+            cmd_help
+            exit 0
+        fi
+        ts_usage_error "Missing command"
+    fi
+    ts_validate_cli
+    
+    # Verify configuration exists before proceeding (Early fail)
+    if [[ "$TS_COMMAND" == "install" ]]; then
+        config_path=$(detect_config_file "$CONFIG_FILE") || exit $?
         CONFIG_FILE="$config_path"
     fi
     
     # Dispatch command
-    case "$command" in
+    case "$TS_COMMAND" in
         install)
-            check_root "$@"
+            check_root "${TS_ARGV[@]}"
             cmd_install
             ;;
-        pre-check|precheck|check)
-            check_root "$@"
+        pre-check)
+            check_root "${TS_ARGV[@]}"
             cmd_pre_check
             ;;
-        uninstall|remove)
-            check_root "$@"
+        uninstall)
+            check_root "${TS_ARGV[@]}"
             cmd_uninstall
             ;;
         status)
-            check_root "$@"
+            check_root "${TS_ARGV[@]}"
+            if [[ -n "$CONFIG_FILE" ]] && [[ ! -f "$CONFIG_FILE" ]]; then
+                print_error "Config file not found: $CONFIG_FILE"
+                exit 1
+            fi
+            # Explicit --platform / --impl take precedence over auto-detection
+            PLATFORM="$TS_OPT_PLATFORM"
+            LN_IMPL="$TS_OPT_IMPL"
             cmd_status
             ;;
         restart)
-            check_root "$@"
+            check_root "${TS_ARGV[@]}"
+            if [[ -n "$CONFIG_FILE" ]]; then
+                # wg-quick@<name> always reads <WireGuard dir>/<name>.conf: only an installed config fits
+                if [[ ! -f "$CONFIG_FILE" ]]; then
+                    print_error "Config file not found: $CONFIG_FILE"
+                    exit 1
+                fi
+                if [[ "$(cd "$(dirname "$CONFIG_FILE")" && pwd -P)" != "$(cd "${WG_DIR:-/etc/wireguard}" 2>/dev/null && pwd -P)" ]]; then
+                    ts_usage_error "restart --config must name an installed config in ${WG_DIR:-/etc/wireguard}"
+                fi
+            fi
+            PLATFORM="$TS_OPT_PLATFORM"
+            LN_IMPL="$TS_OPT_IMPL"
             cmd_restart
             ;;
-        help|-h|--help)
-            cmd_help
+        detect)
+            cmd_detect
             ;;
-        *)
-            print_error "Unknown command: $command"
-            echo ""
+        version)
+            cmd_version
+            ;;
+        help)
             cmd_help
-            exit 1
             ;;
     esac
 }
