@@ -87,6 +87,20 @@ sudo bash tunnelsats.sh uninstall
 
 ---
 
+## Managed mode for bare-metal nodes (preview)
+
+Managed mode is an opt-in alternative for bare-metal systemd nodes. Its kill switch stays armed across tunnel restarts, reboots and package upgrades. When the subscription ends or the VPN server is unreachable, Lightning keeps running over Tor and the local network; only clearnet pauses until the tunnel is back.
+
+```bash
+sudo bash tunnelsats.sh install --managed baremetal --config tunnelsats_<server>.conf
+sudo tunnelsats verify
+sudo tunnelsats uninstall --managed
+```
+
+Requirements, how it works and what `verify` reports: [docs/managed-mode.md](docs/managed-mode.md).
+
+---
+
 ## Development & Testing
 
 ### Running Tests Locally
@@ -103,16 +117,20 @@ bash scripts/test_ufw_check.sh
 bash scripts/test_ipv6_patch.sh
 bash scripts/test_sanitize_config.sh
 bash scripts/test_lifecycle_idempotency.sh
-bash scripts/test_cli_contract.sh   # needs python3 to validate JSON output
+bash scripts/test_cli_contract.sh        # needs python3 to validate JSON output
+bash scripts/test_managed_dataplane.sh   # managed mode against fixture trees and stubs
 
 # Verify script SHA256 integrity
 sha256sum -c scripts/tunnelsats.sh.sha256
 ```
 
+`scripts/test_dataplane_kernel.sh` runs managed mode against a real kernel (nftables, policy routing, WireGuard, cgroups, systemd). It changes the host, so it only runs as root with `TS_KERNEL_TEST=1` on a disposable VM; CI runs it on GitHub's runners.
+
 ### Remote CI/CD
 
 Automated CI status checks run on every push and pull request via [GitHub Actions](https://github.com/Tunnelsats/tunnelsats/actions):
-- **[Syntax & Automated Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/syntax.yml)**: Validates script syntax (`bash -n`) and executes all 6 automated test suites covering Umbrel version compatibility, UFW firewall handling, IPv6 route stripping, WireGuard configuration sanitization, lifecycle/routing idempotency, and the non-interactive/JSON CLI contract (including `detect` on fixture trees).
+- **[Syntax & Automated Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/syntax.yml)**: Validates script syntax (`bash -n`) and executes all 7 automated test suites covering Umbrel version compatibility, UFW firewall handling, IPv6 route stripping, WireGuard configuration sanitization, lifecycle/routing idempotency, the non-interactive/JSON CLI contract (including `detect` on fixture trees), and managed mode.
+- **[Kernel Dataplane Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/kernel.yml)**: Runs managed mode on Ubuntu 22.04 and 24.04 runners against the real kernel: install, verify, tunnel loss, boot order, package upgrades, child processes, a removed kill switch table, failed arming behind the emergency block (with the local network kept, and a routing rule that bypasses it), a damaged install record, ruleset flushes, strict reverse-path filtering and uninstall.
 - **[Script Integrity Verification](https://github.com/Tunnelsats/tunnelsats/actions/workflows/integrity.yml)**: Asserts that `scripts/tunnelsats.sh.sha256` strictly matches the contents of `scripts/tunnelsats.sh`.
 
 ### Local Setup & Git Hooks

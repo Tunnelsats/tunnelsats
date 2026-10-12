@@ -35,6 +35,13 @@ TS_OPT_YES=0
 TS_OPT_PLATFORM=""
 TS_OPT_IMPL=""
 TS_OPT_PACKAGES=""
+# Managed mode: --managed [profile], --uid-backstop (install), --no-probe (verify)
+TS_OPT_MANAGED=0
+TS_OPT_PROFILE=""
+TS_OPT_UID_BACKSTOP=0
+TS_OPT_NO_PROBE=0
+# managed-arm --fallback-uid <uid>: the Lightning uid, from the kill switch unit's ExecStart
+TS_OPT_FALLBACK_UID=""
 TS_WANT_HELP=0
 TS_USAGE_ERROR=""
 TS_OPTS_GIVEN=()
@@ -53,6 +60,11 @@ WG_QUICK_BIN="${WG_QUICK_BIN:-wg-quick}"
 NFT_BIN="${NFT_BIN:-nft}"
 IP_BIN="${IP_BIN:-ip}"
 SYSTEMCTL_BIN="${SYSTEMCTL_BIN:-systemctl}"
+SYSTEMD_RUN_BIN="${SYSTEMD_RUN_BIN:-systemd-run}"
+GETENT_BIN="${GETENT_BIN:-getent}"
+CURL_BIN="${CURL_BIN:-curl}"
+UNSHARE_BIN="${UNSHARE_BIN:-unshare}"
+PERL_BIN="${PERL_BIN:-perl}"
 TS_FS_ROOT="${TS_FS_ROOT:-}"
 
 # Shared Lightning daemon container resolvers (used by the installer and the generated network monitor)
@@ -912,9 +924,17 @@ Usage: sudo bash tunnelsats.sh [COMMAND] [OPTIONS]
 Commands:
   install                   Install WireGuard VPN configuration
   install --config <file>   Install with specific config file
+  install --managed baremetal
+                            Managed mode (preview) for bare-metal systemd nodes: a
+                            persistent kill switch that does not depend on the
+                            tunnel, and Lightning in its own systemd slice
   pre-check                 Check system compatibility
   uninstall                 Remove TunnelSats installation
+  uninstall --managed       Remove a managed install exactly as it was installed
   status                    Show subscription and connection status
+  verify                    Check the managed dataplane: kernel state plus probes
+                            from inside the Lightning slice (on a standard install:
+                            tunnel and kill switch facts, verdict "unmanaged")
   restart                   Restart the WireGuard tunnel interface
   detect                    Read-only report: platform, Lightning units, existing
                             install, config, capabilities, conflicts (no root needed)
@@ -930,12 +950,20 @@ Options (accepted before or after the command):
   --remove-packages         uninstall: also remove nftables and wireguard-tools
                             (and cgroup-tools)
   --keep-packages           uninstall: keep system packages without asking
+  --managed [profile]       install (profile baremetal), uninstall: managed mode
+  --uid-backstop            install --managed: also route the Lightning user's
+                            traffic into the tunnel by uid (see docs/managed-mode.md)
+  --no-probe                verify: kernel checks only, no network probes
   --non-interactive         Never prompt: a question that no option answers fails
                             with exit code 2 before any change is made
-  --json                    One JSON document on stdout, logs on stderr
-                            (version, detect); implies --non-interactive
+  --json                    One JSON document on stdout, logs on stderr (version,
+                            detect, verify, install and uninstall --managed);
+                            implies --non-interactive
 
 Exit codes: 0 success, 1 failure, 2 usage error or interaction required
+            verify and managed mode also use 3 not installed, 4 unsafe,
+            5 degraded (kill switch holds, tunnel down), 6 capability missing,
+            7 refused, 8 invalid config, 9 unmanaged (verify on a standard install)
 
 Examples:
   # Run compatibility check first
@@ -950,6 +978,10 @@ Examples:
   # Install without prompts (for scripts and node platforms)
   sudo bash tunnelsats.sh install --non-interactive --config tunnelsats_us-east.conf --platform raspiblitz --impl lnd
   
+  # Managed mode on a bare-metal node (preview), then check it
+  sudo bash tunnelsats.sh install --managed baremetal --config tunnelsats_us-east.conf
+  sudo tunnelsats verify
+
   # Check status
   sudo bash tunnelsats.sh status
   
@@ -965,6 +997,7 @@ Examples:
 For more information:
   Website: https://tunnelsats.com
   Guide: https://tunnelsats.com/guide
+  Managed mode: https://github.com/Tunnelsats/tunnelsats/blob/main/docs/managed-mode.md
   Support: https://tunnelsats.com/join-telegram
 
 EOF
@@ -2101,6 +2134,7 @@ ts_arm_failclosed() {
 # touched, while rules TunnelSats armed are removed even if the tunnel subnet or node UID later
 # changed or was removed. Returns 1 if policy rules cannot be read or an owned rule remains.
 ts_release_failclosed_rules() {
+
     local state_file entry entry_re clauses="" pattern n rules line prio sel
     if ! rules=$(ip -4 rule show 2>/dev/null); then
         echo "TunnelSats: ERROR: unable to read IPv4 policy rules while releasing emergency blackhole rules" >&2
@@ -4067,8 +4101,9 @@ cmd_restart() {
     elif [[ "$PLATFORM" != "umbrel" ]] && [[ -n "$LN_IMPL" ]]; then
         echo -e "${YELLOW}Non-Docker setup detected. To ensure a leak-proof restart, it is${NC}"
         echo -e "${YELLOW}highly recommended to stop your node service temporarily.${NC}"
-        # --yes stops the daemon (the leak-proof answer). Restarting without stopping it is only
-        # possible interactively; non-interactive mode without --yes fails before any change.
+        # --yes stops the daemon, which keeps clearnet traffic blocked during the restart.
+        # Restarting without stopping it is only possible interactively; non-interactive mode
+        # without --yes fails before any change.
         ts_confirm stop_confirm "Stop ${service_name}.service for safe tunnel restart? [y/N]: "
         if [[ "$stop_confirm" =~ ^[Yy]$ ]]; then
             print_info "Stopping ${service_name}.service..."
@@ -4212,6 +4247,7 @@ TSD_T51820_FOREIGN=()
 TSD_INSTALL_KIND=""
 TSD_INSTALL_CANDIDATES=()
 TSD_EVIDENCE=()
+TSD_MANAGED_STATE=""
 TSD_CONF_ID=()
 TSD_CONF_STATUS=()
 TSD_CONF_DETAIL=()
@@ -4594,7 +4630,8 @@ ts_detect_table51820() {
     done < <(printf '%s\n' "$out")
     foreign=$(printf '%s\n' "$out" | ts_table51820_filter_foreign "$iface")
     while IFS= read -r line; do
-        if [[ -n "${line//[[:space:]]/}" ]]; then
+        # The managed kill switch blackhole is a TunnelSats route as well
+        if [[ -n "${line//[[:space:]]/}" ]] && ! ts_m_is_blackhole_line "$line"; then
             TSD_T51820_FOREIGN+=("$line")
         fi
     done < <(printf '%s\n' "$foreign")
@@ -4647,6 +4684,16 @@ ts_detect_artifacts() {
     ts_detect_art_path raspiblitz_check_renamed "/home/admin/config.scripts/lnd.check.bak"
     ts_detect_art_path raspiblitz_check_renamed "/home/admin/config.scripts/cl.check.bak"
     ts_detect_art_path nftables_conf_backup "/etc/nftablespriortunnelsats.backup"
+    # Managed mode (install --managed): inventory, units, drop-ins, script copy, attestation
+    ts_detect_art_path managed_inventory "$TS_M_INVENTORY"
+    for unit in "$TS_M_SLICE_UNIT" "$TS_M_KILLSWITCH_UNIT" "$TS_M_VERIFIER_UNIT" "$TS_M_TIMER_UNIT"; do
+        ts_detect_art_path managed_unit "${sd}/${unit}"
+    done
+    for unit in lnd.service lightningd.service litd.service lit.service; do
+        ts_detect_art_path managed_ln_dropin "${sd}/${unit}.d/${TS_M_DROPIN_NAME}"
+    done
+    ts_detect_art_path managed_script "$TS_M_BIN"
+    ts_detect_art_path managed_attestation "$TS_M_ATTEST"
     # Kernel state (read-only queries)
     ts_detect_ip_rules
     ts_detect_nft_tables
@@ -4845,12 +4892,14 @@ ts_detect_config() {
     fi
 }
 
-# Classifies the existing install (R2 7.5). The newest generation with positive evidence wins:
-# legacy_v3_post_204 (route guard, #204), legacy_v3_pre_204, legacy_v2. "unknown" lists the
-# kinds the readable evidence cannot tell apart; "none" requires that nothing was unreadable.
+# Classifies the existing install (R2 7.5). A managed install (its inventory) comes first; otherwise
+# the newest generation with positive evidence wins: legacy_v3_post_204 (route guard, #204),
+# legacy_v3_pre_204, legacy_v2. "unknown" lists the kinds the readable evidence cannot tell apart;
+# "none" requires that nothing was unreadable.
 ts_detect_install_kind() {
-    local i id status detail any_present=0 any_unreadable=0 v2=0 v3=0 pre=0 post=0
+    local i id status detail any_present=0 any_unreadable=0 v2=0 v3=0 pre=0 post=0 managed=0 managed_art=0
     TSD_EVIDENCE=()
+    TSD_MANAGED_STATE=""
     for i in "${!TSD_ART_ID[@]}"; do
         id="${TSD_ART_ID[$i]}"
         status="${TSD_ART_STATUS[$i]}"
@@ -4861,6 +4910,8 @@ ts_detect_install_kind() {
             *) continue ;;
         esac
         case "$id" in
+            managed_inventory) managed=1; ts_detect_evidence managed_inventory ;;
+            managed_unit|managed_ln_dropin|managed_script|managed_attestation) managed_art=1; ts_detect_evidence managed_artifacts ;;
             raspiblitz_check_renamed) v2=1; ts_detect_evidence v2_check_script_renamed ;;
             umbrel_killswitch_dropin) v2=1; ts_detect_evidence v2_umbrel_killswitch ;;
             nftables_conf_backup) v2=1; ts_detect_evidence v2_nftables_conf_backup ;;
@@ -4905,7 +4956,15 @@ ts_detect_install_kind() {
         fi
     fi
 
-    if [[ "$post" -eq 1 ]]; then
+    if [[ "$managed" -eq 1 ]]; then
+        TSD_INSTALL_KIND="managed"
+        TSD_INSTALL_CANDIDATES=(managed)
+        TSD_MANAGED_STATE=$(ts_m_inventory_state)
+    elif [[ "$managed_art" -eq 1 ]]; then
+        # Managed units or files without the inventory that lists them
+        TSD_INSTALL_KIND="unknown"
+        TSD_INSTALL_CANDIDATES=(managed)
+    elif [[ "$post" -eq 1 ]]; then
         TSD_INSTALL_KIND="legacy_v3_post_204"
         TSD_INSTALL_CANDIDATES=(legacy_v3_post_204)
     elif [[ "$v3" -eq 1 ]] && [[ "$pre" -eq 1 ]]; then
@@ -5174,7 +5233,7 @@ ts_detect_render_json() {
     done
     ts_j_arr "${items[@]}"
     ev_j="$TS_R"
-    ts_j_obj s:kind "$TSD_INSTALL_KIND" r:candidates "$cand_j" r:evidence "$ev_j" r:artifacts "$arts_j"
+    ts_j_obj s:kind "$TSD_INSTALL_KIND" sn:managed_state "$TSD_MANAGED_STATE" r:candidates "$cand_j" r:evidence "$ev_j" r:artifacts "$arts_j"
     install_j="$TS_R"
 
     ts_j_obj sn:host "$TSD_CFG_EP_HOST" i:port "$TSD_CFG_EP_PORT" s:status "$TSD_CFG_EP_STATUS"
@@ -5252,6 +5311,9 @@ ts_detect_render_human() {
     echo "  Kind:             ${TSD_INSTALL_KIND}"
     if [[ "$TSD_INSTALL_KIND" == "unknown" ]]; then
         echo "  Candidates:       ${TSD_INSTALL_CANDIDATES[*]}"
+    fi
+    if [[ -n "$TSD_MANAGED_STATE" ]]; then
+        echo "  Managed state:    ${TSD_MANAGED_STATE}"
     fi
     echo "  Evidence:         ${TSD_EVIDENCE[*]:-none}"
     for i in "${!TSD_ART_ID[@]}"; do
@@ -5331,6 +5393,7 @@ cmd_detect() {
 # ---------------------------------------------------------------------------
 
 # Prints the canonical name of command word $1 (aliases included), nothing if it is unknown.
+# managed-arm, managed-disarm and managed-verify are internal verbs of the managed units.
 ts_canonical_command() {
     case "$1" in
         install) echo "install" ;;
@@ -5338,9 +5401,11 @@ ts_canonical_command() {
         uninstall|remove) echo "uninstall" ;;
         status) echo "status" ;;
         restart) echo "restart" ;;
+        verify) echo "verify" ;;
         detect) echo "detect" ;;
         version) echo "version" ;;
         help) echo "help" ;;
+        managed-arm|managed-disarm|managed-verify) echo "$1" ;;
     esac
     return 0
 }
@@ -5352,6 +5417,10 @@ ts_option_supported() {
         --config) [[ "$1" == "install" || "$1" == "status" || "$1" == "restart" ]] ;;
         --platform|--impl) [[ "$1" == "install" || "$1" == "uninstall" || "$1" == "status" || "$1" == "restart" ]] ;;
         --remove-packages|--keep-packages) [[ "$1" == "uninstall" ]] ;;
+        --managed) [[ "$1" == "install" || "$1" == "uninstall" ]] ;;
+        --uid-backstop) [[ "$1" == "install" ]] ;;
+        --no-probe) [[ "$1" == "verify" ]] ;;
+        --fallback-uid) [[ "$1" == "managed-arm" ]] ;;
         *) return 1 ;;
     esac
 }
@@ -5375,6 +5444,11 @@ ts_parse_cli() {
     TS_OPT_PLATFORM=""
     TS_OPT_IMPL=""
     TS_OPT_PACKAGES=""
+    TS_OPT_MANAGED=0
+    TS_OPT_PROFILE=""
+    TS_OPT_UID_BACKSTOP=0
+    TS_OPT_NO_PROBE=0
+    TS_OPT_FALLBACK_UID=""
     TS_WANT_HELP=0
     TS_USAGE_ERROR=""
     TS_OPTS_GIVEN=()
@@ -5391,6 +5465,39 @@ ts_parse_cli() {
             --yes)
                 TS_OPT_YES=1
                 TS_OPTS_GIVEN+=("$1")
+                ;;
+            --managed)
+                # The profile value is optional (uninstall --managed); only a profile word is taken
+                if [[ "$TS_OPT_MANAGED" -eq 1 ]]; then
+                    ts_usage_note "--managed given more than once"
+                fi
+                TS_OPT_MANAGED=1
+                TS_OPTS_GIVEN+=("$1")
+                if [[ $# -ge 2 ]] && ts_in_list "$2" "$TS_M_PROFILE_WORDS"; then
+                    TS_OPT_PROFILE="$2"
+                    shift 2
+                    continue
+                fi
+                ;;
+            --uid-backstop)
+                TS_OPT_UID_BACKSTOP=1
+                TS_OPTS_GIVEN+=("$1")
+                ;;
+            --no-probe)
+                TS_OPT_NO_PROBE=1
+                TS_OPTS_GIVEN+=("$1")
+                ;;
+            --fallback-uid)
+                if [[ $# -lt 2 ]] || [[ ! "$2" =~ ^[1-9][0-9]*$ ]]; then
+                    ts_usage_note "--fallback-uid requires a positive uid"
+                    TS_OPTS_GIVEN+=("$1")
+                    shift
+                    continue
+                fi
+                TS_OPT_FALLBACK_UID="$2"
+                TS_OPTS_GIVEN+=("$1")
+                shift 2
+                continue
                 ;;
             --remove-packages|--keep-packages)
                 value="${1#--}"
@@ -5473,13 +5580,40 @@ ts_validate_cli() {
             ts_usage_error "${opt} is not supported by '${TS_COMMAND}'"
         fi
     done
-    if [[ "$TS_JSON" -eq 1 ]] && [[ "$TS_COMMAND" != "version" ]] && [[ "$TS_COMMAND" != "detect" ]]; then
-        ts_fail 2 E_JSON_UNSUPPORTED usage "'${TS_COMMAND}' does not support --json yet (supported: version, detect)"
+    if [[ "$TS_OPT_MANAGED" -eq 1 ]]; then
+        for opt in "${TS_OPTS_GIVEN[@]}"; do
+            case "$TS_COMMAND:$opt" in
+                uninstall:--platform|uninstall:--impl|uninstall:--remove-packages|uninstall:--keep-packages)
+                    ts_usage_error "${opt} is not used by 'uninstall --managed' (the inventory records what to remove; packages stay)"
+                    ;;
+            esac
+        done
+    elif [[ "$TS_OPT_UID_BACKSTOP" -eq 1 ]]; then
+        ts_usage_error "--uid-backstop requires --managed"
+    fi
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        case "$TS_COMMAND" in
+            version|detect|verify) ;;
+            install|uninstall)
+                if [[ "$TS_OPT_MANAGED" -ne 1 ]]; then
+                    ts_fail 2 E_JSON_UNSUPPORTED usage "'${TS_COMMAND}' does not support --json yet (supported: version, detect, verify, install --managed, uninstall --managed)"
+                fi
+                ;;
+            *)
+                ts_fail 2 E_JSON_UNSUPPORTED usage "'${TS_COMMAND}' does not support --json yet (supported: version, detect, verify, install --managed, uninstall --managed)"
+                ;;
+        esac
     fi
     return 0
 }
 
 parse_args() {
+    # Internal verb of verify's probes: runs inside a transient unit of the slice, takes positional
+    # arguments and prints plain lines
+    if [[ "${1:-}" == "managed-probe" ]]; then
+        shift
+        ts_m_cmd_probe "$@"
+    fi
     ts_parse_cli "$@"
     ts_init_colors
     if [[ "$TS_JSON" -eq 1 ]]; then
@@ -5501,7 +5635,34 @@ parse_args() {
         ts_usage_error "Missing command"
     fi
     ts_validate_cli
-    
+
+    # Internal verbs of the managed units (they log to the journal through stderr)
+    case "$TS_COMMAND" in
+        managed-arm|managed-disarm|managed-verify)
+            if [[ "$EUID" -ne 0 ]]; then
+                echo "TunnelSats: ${TS_COMMAND} must run as root" >&2
+                exit 1
+            fi
+            case "$TS_COMMAND" in
+                managed-arm) ts_m_cmd_arm ;;
+                managed-disarm) ts_m_cmd_disarm ;;
+                managed-verify) ts_m_cmd_verifier ;;
+            esac
+            ;;
+    esac
+
+    # A managed install is changed only by the managed commands
+    if [[ "$TS_OPT_MANAGED" -ne 1 ]] && ts_m_inventory_present; then
+        case "$TS_COMMAND" in
+            install)
+                ts_fail 7 E_MANAGED_PRESENT refused "A managed install is present; run 'tunnelsats.sh uninstall --managed' first"
+                ;;
+            uninstall)
+                ts_fail 7 E_MANAGED_PRESENT refused "A managed install is present; remove it with 'tunnelsats.sh uninstall --managed'"
+                ;;
+        esac
+    fi
+
     # Verify configuration exists before proceeding (Early fail)
     if [[ "$TS_COMMAND" == "install" ]]; then
         config_path=$(detect_config_file "$CONFIG_FILE") || exit $?
@@ -5511,6 +5672,9 @@ parse_args() {
     # Dispatch command
     case "$TS_COMMAND" in
         install)
+            if [[ "$TS_OPT_MANAGED" -eq 1 ]]; then
+                cmd_install_managed
+            fi
             check_root "${TS_ARGV[@]}"
             cmd_install
             ;;
@@ -5519,11 +5683,21 @@ parse_args() {
             cmd_pre_check
             ;;
         uninstall)
+            if [[ "$TS_OPT_MANAGED" -eq 1 ]]; then
+                cmd_uninstall_managed
+            fi
             check_root "${TS_ARGV[@]}"
             cmd_uninstall
             ;;
+        verify)
+            cmd_verify
+            ;;
         status)
             check_root "${TS_ARGV[@]}"
+            # A managed install is checked through its kernel state, never from configuration
+            if ts_m_inventory_present; then
+                cmd_verify
+            fi
             if [[ -n "$CONFIG_FILE" ]] && [[ ! -f "$CONFIG_FILE" ]]; then
                 print_error "Config file not found: $CONFIG_FILE"
                 exit 1
@@ -5535,6 +5709,10 @@ parse_args() {
             ;;
         restart)
             check_root "${TS_ARGV[@]}"
+            # Managed: only the tunnel restarts; the kill switch units and rules stay as they are
+            if ts_m_inventory_present; then
+                ts_m_cmd_restart
+            fi
             if [[ -n "$CONFIG_FILE" ]]; then
                 # wg-quick@<name> always reads <WireGuard dir>/<name>.conf: only an installed config fits
                 if [[ ! -f "$CONFIG_FILE" ]]; then
@@ -5564,6 +5742,3714 @@ parse_args() {
             cmd_help
             ;;
     esac
+}
+
+# ---------------------------------------------------------------------------
+# MANAGED DATAPLANE (preview): install --managed baremetal, verify, uninstall --managed
+#
+# The tunneled Lightning unit runs in a persistent systemd slice (tunnelsats.slice, set by a
+# drop-in, so the unit file itself is never edited). A persistent nftables table marks the
+# connections the slice opens (socket cgroupv2) and the connections that arrive through the
+# tunnel (conntrack mark). Marked packets are routed into table 51820, which always holds a
+# blackhole default route and holds "default dev tunnelsatsv2" only while wg-quick has the tunnel
+# up; marked packets that would leave through another interface to a non-local, non-LAN address
+# are dropped. None of this depends on wg-quick: tunnelsats-killswitch.service loads it before
+# Lightning starts, and tunnelsats-verifier.timer checks it every 30 seconds and re-arms it on drift.
+#
+# Kernel constraints that shape the ruleset (probed on real kernels):
+#   - "socket cgroupv2" is accepted only in the prerouting, input and output hooks, so slice
+#     matching happens in output;
+#   - oifname in later output chains still names the device chosen before the mark-based reroute,
+#     so decisions about the outgoing interface happen in postrouting, keyed on the packet or
+#     conntrack mark set in output;
+#   - "nft -c" does not prove that the kernel accepts a ruleset. The capability probe and the
+#     expected-ruleset listing therefore load the real ruleset into a throwaway network namespace,
+#     which leaves the host's datapath untouched.
+#
+# Pure renderers (ts_m_render_*) only print text. Paths are prefixed with TS_FS_ROOT and commands
+# run through the injectable *_BIN variables, so unit tests run these production functions against
+# fixture trees and stub commands.
+# ---------------------------------------------------------------------------
+
+TS_M_IFACE="tunnelsatsv2"
+TS_M_SLICE="tunnelsats.slice"
+TS_M_NFT_TABLE="tunnelsats"
+TS_M_MARK="0x01000000"
+TS_M_MASK="0xff000000"
+TS_M_KEEP="0x00ffffff"
+TS_M_WG_FWMARK="0x02000000"
+TS_M_RT_TABLE="51820"
+TS_M_PRIO_MAIN="21820"
+TS_M_PRIO_MARK="21821"
+TS_M_PRIO_UID="21822"
+TS_M_LN_PORT="9735"
+TS_M_BLACKHOLE_METRIC="4294967295"
+TS_M_LAN4="10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16"
+TS_M_LAN6="::1/128, fc00::/7, fe80::/10"
+# Subnet argument of the shared emergency helpers (ts_arm_failclosed_rules); bare metal sends no
+# traffic from it, the uid rule is what covers the Lightning daemon
+TS_M_EMERGENCY_SUBNET="10.9.9.0/25"
+# Profiles install --managed accepts, and the words --managed recognises as a profile value
+TS_M_PROFILES="baremetal"
+TS_M_PROFILE_WORDS="baremetal raspiblitz umbrel mynode"
+TS_M_BIN="/usr/local/sbin/tunnelsats"
+TS_M_UNIT_DIR="/etc/systemd/system"
+TS_M_SLICE_UNIT="tunnelsats.slice"
+TS_M_KILLSWITCH_UNIT="tunnelsats-killswitch.service"
+TS_M_VERIFIER_UNIT="tunnelsats-verifier.service"
+TS_M_TIMER_UNIT="tunnelsats-verifier.timer"
+TS_M_WG_UNIT="wg-quick@tunnelsatsv2.service"
+TS_M_DROPIN_NAME="tunnelsats-managed.conf"
+TS_M_STATE_DIR="/etc/tunnelsats"
+TS_M_INVENTORY="/etc/tunnelsats/managed.json"
+TS_M_RUN_DIR="/run/tunnelsats"
+TS_M_ATTEST="/run/tunnelsats/attest.json"
+TS_M_LOCK="/run/tunnelsats/lock"
+TS_M_LIFECYCLE_LOCK="/run/tunnelsats/lifecycle.lock"
+TS_M_RULESET_FILE="/run/tunnelsats/ruleset.nft"
+TS_M_VERIFIER_STATE="/run/tunnelsats/verifier.state"
+TS_M_EMERGENCY6_STATE="/run/tunnelsats/emergency6.rules"
+# Local networks the emergency block keeps for the node uid (priority 21817, before its
+# blackholes), and the record of the exemption rules TunnelSats added
+TS_M_EMERGENCY_LAN_PRIO="21817"
+TS_M_EMERGENCY_LAN4="10.0.0.0/8 100.64.0.0/10 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16"
+TS_M_EMERGENCY_LAN6="fc00::/7 fe80::/10"
+TS_M_EMERGENCY_LAN_STATE="/run/tunnelsats/emergency-lan.rules"
+TS_M_WG_DIR="/etc/wireguard"
+TS_M_WG_CONF="/etc/wireguard/tunnelsatsv2.conf"
+TS_M_CGROUP_ROOT="/sys/fs/cgroup"
+TS_M_HANDSHAKE_MAX_AGE=180
+# Lightning units managed mode can tunnel: "<impl>:<unit>"
+TS_M_LN_UNITS="lnd:lnd.service cln:lightningd.service lit:litd.service lit:lit.service"
+
+# Inventory and install state (ts_m_inventory_read, install --managed). The inventory is written
+# ahead of every change: state "installing" with the planned files first, each file's sha256 right
+# after it is written, then state "installed" before any unit starts. Removal sets "removing" before
+# its first change and keeps the inventory, with the items that remained, until everything is gone.
+TS_M_INV_STATE=""
+TS_M_INV_PROFILE=""
+TS_M_INV_IMPL=""
+TS_M_INV_UNIT=""
+TS_M_INV_USER=""
+TS_M_INV_UID=""
+TS_M_INV_BACKSTOP=0
+TS_M_INV_REMAINING=()
+TS_M_FILES=()
+TS_M_FILE_SHA=()
+TS_M_CREATED_DIRS=()
+TS_M_ENABLED_UNITS=()
+TS_M_ERROR=""
+TS_M_DRIFT=()
+# Lightning units of other implementations found next to the tunneled one (not tunneled)
+TS_M_OTHER_UNITS=()
+# Command line of the Lightning unit's ExecStart (ts_m_execstart_args)
+TS_M_EXEC_ARGV=()
+TS_M_EXEC_REASON=""
+
+# Succeeds when the process runs as root. Managed commands call it first (tests replace it).
+ts_m_require_root() {
+    if [[ "$EUID" -ne 0 ]]; then
+        ts_fail 2 E_NOT_ROOT usage "'${TS_COMMAND}' must be run as root (sudo)"
+    fi
+    return 0
+}
+
+# Owner uid expected for managed state files (tests replace it with their own uid).
+ts_m_expected_owner() {
+    echo 0
+}
+
+# Writes stdin to file $1 atomically (temporary file in the same directory, then rename) with
+# mode $2. Returns 1 on failure and leaves no temporary file behind.
+ts_m_write_file() {
+    local dest="$1" mode="$2" tmp
+    tmp=$(mktemp "${dest%/*}/.tunnelsats.XXXXXX") || return 1
+    if ! cat > "$tmp" || ! chmod "$mode" "$tmp" || ! mv -f "$tmp" "$dest"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    return 0
+}
+
+# Prints the sha256 of file $1.
+ts_m_sha256() {
+    local out
+    out=$(sha256sum -b "$1" 2>/dev/null) || return 1
+    echo "${out%% *}"
+}
+
+# Creates directory $1 (below TS_FS_ROOT) with mode $2 unless it exists. It is recorded in
+# TS_M_CREATED_DIRS, and in the inventory once that exists, before it is created, so removal
+# deletes it again (only when it is empty by then).
+ts_m_ensure_dir() {
+    local rel="$1" mode="$2" d listed=0
+    if [[ -d "${TS_FS_ROOT}${rel}" ]]; then
+        return 0
+    fi
+    for d in "${TS_M_CREATED_DIRS[@]}"; do
+        if [[ "$d" == "$rel" ]]; then
+            listed=1
+        fi
+    done
+    if [[ "$listed" -eq 0 ]]; then
+        TS_M_CREATED_DIRS+=("$rel")
+        if [[ -f "${TS_FS_ROOT}${TS_M_INVENTORY}" ]] && ! ts_m_inventory_write; then
+            return 1
+        fi
+    fi
+    mkdir -m "$mode" "${TS_FS_ROOT}${rel}"
+}
+
+# Records sha256 $2 (empty if unknown) for file $1 at its planned entry in TS_M_FILES and
+# TS_M_FILE_SHA, or appends the file if it was not planned.
+ts_m_record_file() {
+    local rel="$1" sha="$2" i
+    for i in "${!TS_M_FILES[@]}"; do
+        if [[ "${TS_M_FILES[$i]}" == "$rel" ]]; then
+            TS_M_FILE_SHA[$i]="$sha"
+            return 0
+        fi
+    done
+    TS_M_FILES+=("$rel")
+    TS_M_FILE_SHA+=("$sha")
+}
+
+# Writes stdin to file $1 (below TS_FS_ROOT) with mode $2, records its sha256 and rewrites the
+# inventory. The file is recorded right after the write, so a failing checksum still leaves it in
+# the record and removal deletes it. Must run in the installing shell (never as the right-hand
+# side of a pipeline, where the record would be lost).
+ts_m_install_file() {
+    local rel="$1" mode="$2" sha=""
+    ts_m_write_file "${TS_FS_ROOT}${rel}" "$mode" || return 1
+    sha=$(ts_m_sha256 "${TS_FS_ROOT}${rel}") || sha=""
+    ts_m_record_file "$rel" "$sha"
+    if [[ -z "$sha" ]]; then
+        return 1
+    fi
+    ts_m_inventory_write
+}
+
+# Creates /run/tunnelsats (root 0755) for the attestation, the lock and the verifier state.
+ts_m_ensure_run_dir() {
+    local d="${TS_FS_ROOT}${TS_M_RUN_DIR}"
+    if [[ ! -d "$d" ]]; then
+        mkdir -p "$d" || return 1
+    fi
+    chmod 0755 "$d"
+}
+
+# Serializes changes to the kill switch (arm, disarm, verifier re-arm, removal) on file descriptor
+# 9 until ts_m_unlock or the end of the process. Never held while starting units that take it.
+ts_m_lock() {
+    ts_m_ensure_run_dir || return 1
+    exec 9>"${TS_FS_ROOT}${TS_M_LOCK}" || return 1
+    flock -w 60 9
+}
+
+ts_m_unlock() {
+    exec 9>&-
+}
+
+# Serializes install --managed and uninstall --managed on file descriptor 8 until the process
+# ends. It never waits: while another of these commands holds it, the command refuses with E_BUSY
+# (exit 7) before it reads or changes anything. The units never take this lock, so the kill switch
+# lock (ts_m_lock) stays available to everything they run. Uninstall removes the lock file only as
+# its very last step.
+ts_m_lifecycle_lock() {
+    if ! ts_m_ensure_run_dir || ! exec 8>"${TS_FS_ROOT}${TS_M_LIFECYCLE_LOCK}"; then
+        ts_fail 1 E_INTERNAL operational "Cannot open ${TS_M_LIFECYCLE_LOCK}"
+    fi
+    if ! flock -n 8; then
+        ts_fail 7 E_BUSY refused "Another managed install or uninstall is running; try again when it has finished"
+    fi
+    return 0
+}
+
+# Removes the lifecycle lock file and /run/tunnelsats (only if nothing else is in it) when a
+# lifecycle command stops while no managed install exists, so a refused command leaves nothing.
+ts_m_lifecycle_cleanup() {
+    if ts_m_inventory_present; then
+        return 0
+    fi
+    rm -f "${TS_FS_ROOT}${TS_M_LIFECYCLE_LOCK}"
+    rmdir "${TS_FS_ROOT}${TS_M_RUN_DIR}" 2>/dev/null || true
+}
+
+# Prints the current boot id; fails if it cannot be read.
+ts_m_boot_id() {
+    local id=""
+    id=$(cat "${TS_FS_ROOT}/proc/sys/kernel/random/boot_id" 2>/dev/null) || return 1
+    if [[ ! "$id" =~ ^[0-9a-f-]{36}$ ]]; then
+        return 1
+    fi
+    echo "$id"
+}
+
+# Prints the cgroup id (inode number) of the slice; fails while the slice has no cgroup.
+ts_m_slice_cgroup_id() {
+    local p="${TS_FS_ROOT}${TS_M_CGROUP_ROOT}/${TS_M_SLICE}" id=""
+    if [[ ! -d "$p" ]]; then
+        return 1
+    fi
+    id=$(stat -c %i "$p" 2>/dev/null) || return 1
+    if [[ ! "$id" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+    echo "$id"
+}
+
+# Succeeds if the kernel has an IPv6 stack (no ipv6.disable=1); IPv6 rules and routes are managed then.
+ts_m_ipv6_available() {
+    [[ -e "${TS_FS_ROOT}/proc/net/if_inet6" ]]
+}
+
+ts_m_inventory_present() {
+    [[ -e "${TS_FS_ROOT}${TS_M_INVENTORY}" ]]
+}
+
+# ---------------------------------------------------------------------------
+# Managed mode: renderers (print only)
+# ---------------------------------------------------------------------------
+
+# Prints the kill switch ruleset as one nft transaction ("add table", "delete table", then the
+# full definition): if the kernel refuses any rule, nothing is committed and the previous table
+# stays armed. $1 = cgroup v2 path of the slice (default tunnelsats.slice), $2 = its level below
+# the cgroup root (default 1); the capability probe and unit tests pass another existing cgroup.
+#   pre   connections that arrive through the tunnel get the TunnelSats conntrack mark, and their
+#         packets carry it as packet mark, so reverse-path filtering with src_valid_mark=1 on the
+#         tunnel accepts the replies of tunneled connections (strict rp_filter)
+#   out   new connections of the slice to non-local, non-LAN IPv4 addresses get the conntrack mark;
+#         their packets and every packet of a marked connection get the packet mark, and the mark
+#         change reroutes them into table 51820. The tunnel's own UDP (FwMark) is left alone.
+#   out6  the slice uses IPv6 only for loopback, link-local and ULA (the tunnel carries IPv4)
+#   kill  marked packets that would leave through another interface to a non-local, non-LAN
+#         address are dropped (oifname is final only in postrouting)
+#   nat   marked packets that leave through the tunnel get the tunnel address as source
+#   in    the tunnel accepts replies and the Lightning port only
+ts_m_render_ruleset() {
+    local slice="${1:-$TS_M_SLICE}" level="${2:-1}"
+    local iface="$TS_M_IFACE" mark="$TS_M_MARK" mask="$TS_M_MASK" keep="$TS_M_KEEP"
+    local sock setmark_ct setmark_pkt
+    if [[ ! "$slice" =~ ^[A-Za-z0-9_.@:-]+(/[A-Za-z0-9_.@:-]+)*$ ]] || [[ ! "$level" =~ ^[1-9]$ ]]; then
+        return 1
+    fi
+    sock="socket cgroupv2 level ${level} \"${slice}\""
+    setmark_ct="ct mark set ct mark and ${keep} or ${mark}"
+    setmark_pkt="meta mark set meta mark and ${keep} or ${mark}"
+    cat <<EOF
+add table inet ${TS_M_NFT_TABLE}
+delete table inet ${TS_M_NFT_TABLE}
+table inet ${TS_M_NFT_TABLE} {
+	set lan4 {
+		type ipv4_addr
+		flags interval
+		elements = { ${TS_M_LAN4} }
+	}
+	set lan6 {
+		type ipv6_addr
+		flags interval
+		elements = { ${TS_M_LAN6} }
+	}
+	chain pre {
+		type filter hook prerouting priority mangle; policy accept;
+		iifname "${iface}" ct state new ${setmark_ct}
+		iifname "${iface}" ct mark and ${mask} == ${mark} ${setmark_pkt}
+	}
+	chain out {
+		type route hook output priority mangle; policy accept;
+		meta mark and ${mask} == ${TS_M_WG_FWMARK} return
+		ct state new ${sock} fib daddr type != local ip daddr != @lan4 ${setmark_ct}
+		${sock} fib daddr type != local ip daddr != @lan4 ${setmark_pkt}
+		ct mark and ${mask} == ${mark} ${setmark_pkt}
+	}
+	chain out6 {
+		type filter hook output priority filter; policy accept;
+		${sock} ip6 daddr != @lan6 counter drop
+	}
+	chain kill {
+		type filter hook postrouting priority filter; policy accept;
+		meta mark and ${mask} == ${mark} oifname != "${iface}" fib daddr type != local ip daddr != @lan4 counter drop
+		ct mark and ${mask} == ${mark} oifname != "${iface}" fib daddr type != local ip daddr != @lan4 counter drop
+	}
+	chain nat {
+		type nat hook postrouting priority srcnat; policy accept;
+		oifname "${iface}" meta mark and ${mask} == ${mark} masquerade
+	}
+	chain in {
+		type filter hook input priority filter - 1; policy accept;
+		iifname "${iface}" ct state established,related accept
+		iifname "${iface}" tcp dport ${TS_M_LN_PORT} accept
+		iifname "${iface}" counter drop
+	}
+}
+EOF
+}
+
+ts_m_render_unit_header() {
+    echo "# Generated by tunnelsats.sh (managed mode). Removed by: tunnelsats.sh uninstall --managed"
+}
+
+ts_m_render_slice_unit() {
+    ts_m_render_unit_header
+    cat <<'EOF'
+[Unit]
+Description=TunnelSats slice for the tunneled Lightning daemon
+
+[Slice]
+EOF
+}
+
+# $1 = Lightning unit, which starts after the kill switch.
+# The kill switch unit; $1 = the Lightning unit, $2 = its uid. ExecStart carries the uid
+# (--fallback-uid), so managed-arm can still arm the emergency block for it when the install record
+# cannot be read.
+ts_m_render_killswitch_unit() {
+    local fallback=""
+    if [[ "${2:-}" =~ ^[1-9][0-9]*$ ]]; then
+        fallback=" --fallback-uid ${2}"
+    fi
+    ts_m_render_unit_header
+    cat <<EOF
+[Unit]
+Description=TunnelSats kill switch (nftables table, policy rules, table-51820 blackhole)
+After=nftables.service
+Before=$1 ${TS_M_WG_UNIT}
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Runs inside the slice and keeps it active, so the slice's cgroup (and the id the rules hold)
+# stays the same while member units restart
+Slice=${TS_M_SLICE}
+ExecStart=${TS_M_BIN} managed-arm${fallback}
+# Stopping removes only the attestation; the kill switch stays armed
+ExecStop=${TS_M_BIN} managed-disarm
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+ts_m_render_verifier_service() {
+    ts_m_render_unit_header
+    cat <<EOF
+[Unit]
+Description=TunnelSats verifier (re-arms the kill switch on drift)
+After=${TS_M_KILLSWITCH_UNIT}
+
+[Service]
+Type=oneshot
+ExecStart=${TS_M_BIN} managed-verify
+EOF
+}
+
+ts_m_render_verifier_timer() {
+    ts_m_render_unit_header
+    cat <<'EOF'
+[Unit]
+Description=TunnelSats verifier every 30 seconds
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+# Drop-in for the Lightning unit: runs it inside the slice and requires the kill switch unit, so
+# Lightning starts only after managed-arm succeeded, which it does only when Lightning's clearnet
+# traffic is tunneled (kill switch armed) or blocked (emergency block in effect). Nothing restarts
+# the kill switch unit after install (the verifier re-arms directly), so Requires= stops or restarts
+# Lightning only when an operator stops or restarts that unit. Deliberately not ordered after the
+# tunnel, so a boot never waits for the VPN server or DNS; the kill switch blocks clearnet traffic
+# of the slice while the tunnel is down.
+ts_m_render_ln_dropin() {
+    ts_m_render_unit_header
+    cat <<EOF
+[Unit]
+Requires=${TS_M_KILLSWITCH_UNIT}
+After=${TS_M_KILLSWITCH_UNIT}
+
+[Service]
+Slice=${TS_M_SLICE}
+EOF
+}
+
+ts_m_render_wg_dropin() {
+    ts_m_render_unit_header
+    cat <<EOF
+[Unit]
+Wants=${TS_M_KILLSWITCH_UNIT}
+After=${TS_M_KILLSWITCH_UNIT}
+
+[Service]
+Restart=on-failure
+RestartSec=30
+Environment=WG_ENDPOINT_RESOLUTION_RETRIES=5
+EOF
+}
+
+# Prints the managed tunnel config from the sanitized subscription config in file $1. DNS lines
+# are dropped (lookups keep using the system resolver). wg-quick only sets the per-interface
+# src_valid_mark (strict reverse-path filtering then accepts tunneled replies) and adds or removes
+# the tunnel route in table 51820 (PreDown: while the interface still exists; marked traffic then
+# ends in the blackhole); the kill switch and the policy rules are not part of wg-quick.
+ts_m_render_wg_config() {
+    awk '{ l = tolower($0); sub(/^[[:space:]]+/, "", l) } l ~ /^dns[[:space:]]*=/ { next } { print }' "$1" || return 1
+    cat <<EOF
+
+#Tunnelsats-Managed (generated by tunnelsats.sh install --managed)
+[Interface]
+Table = off
+FwMark = 0x2000000
+PostUp = sysctl -q -w net.ipv4.conf.%i.src_valid_mark=1
+PostUp = ip route replace default dev %i table ${TS_M_RT_TABLE}
+PreDown = ip route del default dev %i table ${TS_M_RT_TABLE} || true
+EOF
+}
+
+# Attestation: written only after the kill switch was read back. $1 boot id, $2 profile, $3 impl,
+# $4 unit, $5 slice cgroup id, $6 uid backstop (0|1), $7 time of writing.
+ts_m_render_attestation() {
+    ts_j_obj i:schema 1 s:boot_id "$1" r:armed true s:profile "$2" s:impl "$3" s:unit "$4" \
+        s:slice "$TS_M_SLICE" i:slice_cgroup_id "$5" s:table "inet ${TS_M_NFT_TABLE}" \
+        b:uid_backstop "$6" s:version "$VERSION" s:written_at "$7"
+    printf '%s\n' "$TS_R"
+}
+
+# Inventory: everything install --managed writes and enables, so uninstall --managed removes
+# exactly that. Uses TS_M_INV_*, TS_M_FILES/TS_M_FILE_SHA, TS_M_CREATED_DIRS, TS_M_ENABLED_UNITS
+# and $1 = time of writing. One value per line, so the reader needs no JSON parser. While the
+# state is "installing", a planned file that is not written yet has sha256 null.
+ts_m_render_inventory() {
+    local i items=() sq="'"
+    printf '{\n'
+    printf '  "schema": 1,\n'
+    ts_j_str "$TS_M_INV_STATE"; printf '  "state": %s,\n' "$TS_R"
+    ts_j_str "$TS_M_INV_PROFILE"; printf '  "profile": %s,\n' "$TS_R"
+    ts_j_str "$TS_M_INV_IMPL"; printf '  "impl": %s,\n' "$TS_R"
+    ts_j_str "$TS_M_INV_UNIT"; printf '  "unit": %s,\n' "$TS_R"
+    ts_j_str "$TS_M_INV_USER"; printf '  "node_user": %s,\n' "$TS_R"
+    ts_j_int_or_null "$TS_M_INV_UID"; printf '  "node_uid": %s,\n' "$TS_R"
+    ts_j_bool_or_null "$TS_M_INV_BACKSTOP"; printf '  "uid_backstop": %s,\n' "$TS_R"
+    ts_j_str "$TS_M_IFACE"; printf '  "iface": %s,\n' "$TS_R"
+    ts_j_str "$VERSION"; printf '  "tool_version": %s,\n' "$TS_R"
+    ts_j_str "$1"; printf '  "written_at": %s,\n' "$TS_R"
+    for i in "${!TS_M_FILES[@]}"; do
+        ts_j_obj s:path "${TS_M_FILES[$i]}" sn:sha256 "${TS_M_FILE_SHA[$i]:-}"
+        items+=("$TS_R")
+    done
+    ts_m_print_inventory_list files "${items[@]}"
+    items=()
+    for i in "${!TS_M_CREATED_DIRS[@]}"; do
+        ts_j_str "${TS_M_CREATED_DIRS[$i]}"
+        items+=("$TS_R")
+    done
+    ts_m_print_inventory_list dirs_created "${items[@]}"
+    items=()
+    for i in "${!TS_M_ENABLED_UNITS[@]}"; do
+        ts_j_str "${TS_M_ENABLED_UNITS[$i]}"
+        items+=("$TS_R")
+    done
+    ts_m_print_inventory_list units_enabled "${items[@]}"
+    # What a failed removal left (state "removing"); informational, for the repeated uninstall
+    if [[ ${#TS_M_INV_REMAINING[@]} -gt 0 ]]; then
+        items=()
+        for i in "${!TS_M_INV_REMAINING[@]}"; do
+            ts_j_str "${TS_M_INV_REMAINING[$i]//[\"\\]/$sq}"
+            items+=("$TS_R")
+        done
+        ts_m_print_inventory_list remaining "${items[@]}"
+    fi
+    # Node configs are never edited in managed mode (the operator adds the hybrid settings)
+    printf '  "node_config": []\n'
+    printf '}\n'
+}
+
+# Prints inventory list $1 with the JSON values $2..., one per line.
+ts_m_print_inventory_list() {
+    printf '  "%s": [\n' "$1"
+    shift
+    while [[ $# -gt 0 ]]; do
+        if [[ $# -gt 1 ]]; then
+            printf '    %s,\n' "$1"
+        else
+            printf '    %s\n' "$1"
+        fi
+        shift
+    done
+    printf '  ],\n'
+}
+
+# Succeeds if $1 is a path managed mode may have written: removal never follows anything else,
+# even from a modified inventory.
+ts_m_inventory_path_ok() {
+    local p="$1"
+    if [[ "$p" == *".."* ]] || [[ "$p" == *"//"* ]] || [[ ! "$p" =~ ^/[A-Za-z0-9_.@/:-]+$ ]]; then
+        return 1
+    fi
+    case "$p" in
+        "$TS_M_BIN"|"$TS_M_WG_CONF"|"$TS_M_STATE_DIR"|"$TS_M_WG_DIR") return 0 ;;
+        "${TS_M_UNIT_DIR}/${TS_M_SLICE_UNIT}"|"${TS_M_UNIT_DIR}/${TS_M_KILLSWITCH_UNIT}") return 0 ;;
+        "${TS_M_UNIT_DIR}/${TS_M_VERIFIER_UNIT}"|"${TS_M_UNIT_DIR}/${TS_M_TIMER_UNIT}") return 0 ;;
+        "${TS_M_UNIT_DIR}/${TS_M_WG_UNIT}.d"|"${TS_M_UNIT_DIR}/${TS_M_WG_UNIT}.d/${TS_M_DROPIN_NAME}") return 0 ;;
+        "${TS_M_UNIT_DIR}"/lnd.service.d|"${TS_M_UNIT_DIR}"/lightningd.service.d) return 0 ;;
+        "${TS_M_UNIT_DIR}"/litd.service.d|"${TS_M_UNIT_DIR}"/lit.service.d) return 0 ;;
+        "${TS_M_UNIT_DIR}"/lnd.service.d/"${TS_M_DROPIN_NAME}"|"${TS_M_UNIT_DIR}"/lightningd.service.d/"${TS_M_DROPIN_NAME}") return 0 ;;
+        "${TS_M_UNIT_DIR}"/litd.service.d/"${TS_M_DROPIN_NAME}"|"${TS_M_UNIT_DIR}"/lit.service.d/"${TS_M_DROPIN_NAME}") return 0 ;;
+    esac
+    return 1
+}
+
+# Reads the inventory into TS_M_INV_* (TS_M_INV_STATE: installing, installed or removing;
+# TS_M_INV_REMAINING: what a failed removal left), TS_M_FILES and TS_M_FILE_SHA (empty for a planned
+# file not written yet), TS_M_CREATED_DIRS and TS_M_ENABLED_UNITS. Every value is validated; returns
+# 1 (with TS_M_ERROR) if the file is missing, unreadable or holds anything unexpected.
+ts_m_inventory_read() {
+    local f="${TS_FS_ROOT}${TS_M_INVENTORY}" line section="" key val path sha
+    TS_M_INV_STATE=""
+    TS_M_INV_PROFILE=""
+    TS_M_INV_IMPL=""
+    TS_M_INV_UNIT=""
+    TS_M_INV_USER=""
+    TS_M_INV_UID=""
+    TS_M_INV_BACKSTOP=0
+    TS_M_INV_REMAINING=()
+    TS_M_FILES=()
+    TS_M_FILE_SHA=()
+    TS_M_CREATED_DIRS=()
+    TS_M_ENABLED_UNITS=()
+    TS_M_ERROR=""
+    if [[ ! -f "$f" ]] || [[ ! -r "$f" ]]; then
+        TS_M_ERROR="inventory ${TS_M_INVENTORY} missing or unreadable"
+        return 1
+    fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^\ \ \"([a-z_]+)\":\ \[$ ]]; then
+            section="${BASH_REMATCH[1]}"
+            continue
+        fi
+        if [[ "$line" =~ ^\ \ \]\,?$ ]]; then
+            section=""
+            continue
+        fi
+        if [[ -n "$section" ]]; then
+            case "$section" in
+                files)
+                    if [[ ! "$line" =~ ^\ +\{\"path\":\"([^\"\\]+)\",\"sha256\":(\"([0-9a-f]{64})\"|null)\}\,?$ ]]; then
+                        TS_M_ERROR="inventory holds an unexpected file entry"
+                        return 1
+                    fi
+                    path="${BASH_REMATCH[1]}"
+                    sha="${BASH_REMATCH[3]}"
+                    if ! ts_m_inventory_path_ok "$path"; then
+                        TS_M_ERROR="inventory lists an unexpected file: ${path}"
+                        return 1
+                    fi
+                    TS_M_FILES+=("$path")
+                    TS_M_FILE_SHA+=("$sha")
+                    ;;
+                dirs_created)
+                    if [[ ! "$line" =~ ^\ +\"([^\"\\]+)\"\,?$ ]]; then
+                        TS_M_ERROR="inventory holds an unexpected directory entry"
+                        return 1
+                    fi
+                    path="${BASH_REMATCH[1]}"
+                    if ! ts_m_inventory_path_ok "$path"; then
+                        TS_M_ERROR="inventory lists an unexpected directory: ${path}"
+                        return 1
+                    fi
+                    TS_M_CREATED_DIRS+=("$path")
+                    ;;
+                units_enabled)
+                    if [[ ! "$line" =~ ^\ +\"([^\"\\]+)\"\,?$ ]]; then
+                        TS_M_ERROR="inventory holds an unexpected unit entry"
+                        return 1
+                    fi
+                    case "${BASH_REMATCH[1]}" in
+                        "$TS_M_KILLSWITCH_UNIT"|"$TS_M_TIMER_UNIT"|"$TS_M_WG_UNIT") TS_M_ENABLED_UNITS+=("${BASH_REMATCH[1]}") ;;
+                        *)
+                            TS_M_ERROR="inventory lists an unexpected unit: ${BASH_REMATCH[1]}"
+                            return 1
+                            ;;
+                    esac
+                    ;;
+                remaining)
+                    if [[ ! "$line" =~ ^\ +\"([^\"\\]*)\"\,?$ ]]; then
+                        TS_M_ERROR="inventory holds an unexpected remaining entry"
+                        return 1
+                    fi
+                    TS_M_INV_REMAINING+=("${BASH_REMATCH[1]}")
+                    ;;
+            esac
+            continue
+        fi
+        if [[ "$line" =~ ^\ \ \"([a-z_]+)\":\ (.*)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            val="${BASH_REMATCH[2]%,}"
+            if [[ "$val" =~ ^\"([^\"\\]*)\"$ ]]; then
+                val="${BASH_REMATCH[1]}"
+            fi
+            case "$key" in
+                state) TS_M_INV_STATE="$val" ;;
+                profile) TS_M_INV_PROFILE="$val" ;;
+                impl) TS_M_INV_IMPL="$val" ;;
+                unit) TS_M_INV_UNIT="$val" ;;
+                node_user) TS_M_INV_USER="$val" ;;
+                node_uid) TS_M_INV_UID="$val" ;;
+                uid_backstop)
+                    if [[ "$val" == "true" ]]; then
+                        TS_M_INV_BACKSTOP=1
+                    fi
+                    ;;
+            esac
+        fi
+    done < "$f"
+    case "$TS_M_INV_STATE" in
+        installing|installed|removing) ;;
+        *)
+            TS_M_ERROR="inventory ${TS_M_INVENTORY} holds an unknown state (${TS_M_INV_STATE:-none})"
+            return 1
+            ;;
+    esac
+    if ! ts_in_list "$TS_M_INV_PROFILE" "$TS_M_PROFILES" || ! ts_in_list "$TS_M_INV_IMPL" "$TS_IMPLS" || \
+        ! ts_in_list "${TS_M_INV_IMPL}:${TS_M_INV_UNIT}" "$TS_M_LN_UNITS" || \
+        [[ ! "$TS_M_INV_USER" =~ ^[a-z_][a-z0-9_.-]{0,31}$ ]] || [[ ! "$TS_M_INV_UID" =~ ^[1-9][0-9]{0,9}$ ]]; then
+        TS_M_ERROR="inventory ${TS_M_INVENTORY} holds invalid values"
+        return 1
+    fi
+    return 0
+}
+
+# Prints the state the inventory records (installing, installed or removing); "unknown" if it
+# cannot be read (detect runs without root, and the inventory is root-only).
+ts_m_inventory_state() {
+    local f="${TS_FS_ROOT}${TS_M_INVENTORY}" line=""
+    if [[ ! -r "$f" ]]; then
+        echo "unknown"
+        return 0
+    fi
+    line=$(grep -m 1 -E '^  "state": "(installing|installed|removing)",?$' "$f" 2>/dev/null) || line=""
+    case "$line" in
+        *'"installing"'*) echo "installing" ;;
+        *'"installed"'*) echo "installed" ;;
+        *'"removing"'*) echo "removing" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+# Writes the inventory (root 0600) from the current TS_M_* state.
+ts_m_inventory_write() {
+    ts_m_render_inventory "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | ts_m_write_file "${TS_FS_ROOT}${TS_M_INVENTORY}" 0600
+}
+
+# ---------------------------------------------------------------------------
+# Managed mode: kernel state (kill switch, policy rules, table-51820 blackhole, emergency block)
+# ---------------------------------------------------------------------------
+
+ts_m_rule_prio() {
+    case "$1" in
+        main) echo "$TS_M_PRIO_MAIN" ;;
+        mark) echo "$TS_M_PRIO_MARK" ;;
+        uid) echo "$TS_M_PRIO_UID" ;;
+    esac
+}
+
+# Selector of policy rule $1 (main, mark, uid) exactly as "ip rule show" prints it; $2 = node uid.
+ts_m_rule_selector() {
+    case "$1" in
+        main) echo "from all lookup main suppress_prefixlength 0" ;;
+        mark) echo "from all fwmark 0x1000000/0xff000000 lookup ${TS_M_RT_TABLE}" ;;
+        uid) echo "from all uidrange ${2}-${2} lookup ${TS_M_RT_TABLE}" ;;
+    esac
+}
+
+# Prints how often the rule "<priority $2>: <selector $3>" appears in the "ip rule show" listing $1.
+ts_m_rule_count() {
+    local listing="$1" prio="$2" sel="$3" line rest n=0
+    while IFS= read -r line; do
+        if [[ "$line" != "${prio}:"* ]]; then
+            continue
+        fi
+        rest="${line#"${prio}":}"
+        rest="${rest#"${rest%%[![:space:]]*}"}"
+        rest="${rest%"${rest##*[![:space:]]}"}"
+        if [[ "$rest" == "$sel" ]]; then
+            n=$((n + 1))
+        fi
+    done < <(printf '%s\n' "$listing")
+    echo "$n"
+}
+
+# Adds policy rule $2 (main, mark, uid) for IPv$1 unless it is present; $3 = node uid.
+ts_m_rule_ensure() {
+    local fam="$1" name="$2" uid="${3:-}" prio sel listing
+    prio=$(ts_m_rule_prio "$name")
+    sel=$(ts_m_rule_selector "$name" "$uid")
+    listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null) || return 1
+    if [[ "$(ts_m_rule_count "$listing" "$prio" "$sel")" -gt 0 ]]; then
+        return 0
+    fi
+    # $sel is a list of selector words on purpose
+    # shellcheck disable=SC2086
+    "$IP_BIN" "-${fam}" rule add $sel priority "$prio"
+}
+
+# Deletes every copy of policy rule $2 for IPv$1 (bounded); returns 1 if a copy remains.
+ts_m_rule_delete() {
+    local fam="$1" name="$2" uid="${3:-}" prio sel listing n
+    prio=$(ts_m_rule_prio "$name")
+    sel=$(ts_m_rule_selector "$name" "$uid")
+    for n in 1 2 3 4 5 6 7 8 9 10; do
+        listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null) || return 1
+        if [[ "$(ts_m_rule_count "$listing" "$prio" "$sel")" -eq 0 ]]; then
+            return 0
+        fi
+        # shellcheck disable=SC2086
+        "$IP_BIN" "-${fam}" rule del $sel priority "$prio" 2>/dev/null || return 1
+    done
+    return 1
+}
+
+# Prints the routes of table 51820 for IPv$1 (nothing if the table does not exist); returns 1 if
+# the table cannot be read.
+ts_m_table_routes() {
+    local fam="$1" out="" rc=0
+    out=$("$IP_BIN" "-${fam}" route show table "$TS_M_RT_TABLE" 2>&1) || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        case "$out" in
+            *"FIB table does not exist"*) return 0 ;;
+        esac
+        return 1
+    fi
+    if [[ -n "$out" ]]; then
+        printf '%s\n' "$out"
+    fi
+    return 0
+}
+
+# Succeeds if route line $1 is the kill switch blackhole (IPv6 lists it with "dev lo" and "pref").
+ts_m_is_blackhole_line() {
+    [[ "$1" =~ ^blackhole[[:space:]]+default([[:space:]]+dev[[:space:]]+lo)?[[:space:]]+metric[[:space:]]+${TS_M_BLACKHOLE_METRIC}([[:space:]]|$) ]]
+}
+
+# Succeeds if route line $1 is the tunnel route that wg-quick adds while the tunnel is up.
+ts_m_is_tunnel_route_line() {
+    [[ "$1" =~ ^default[[:space:]]+dev[[:space:]]+${TS_M_IFACE}([[:space:]]|$) ]]
+}
+
+# Prints how many kill switch blackholes table 51820 holds for IPv$1; fails if it cannot be read.
+ts_m_blackhole_count() {
+    local routes line n=0
+    routes=$(ts_m_table_routes "$1") || return 1
+    while IFS= read -r line; do
+        if ts_m_is_blackhole_line "$line"; then
+            n=$((n + 1))
+        fi
+    done < <(printf '%s\n' "$routes")
+    echo "$n"
+}
+
+ts_m_blackhole_ensure() {
+    local n
+    n=$(ts_m_blackhole_count "$1") || return 1
+    if [[ "$n" -gt 0 ]]; then
+        return 0
+    fi
+    "$IP_BIN" "-${1}" route add blackhole default metric "$TS_M_BLACKHOLE_METRIC" table "$TS_M_RT_TABLE"
+}
+
+ts_m_blackhole_delete() {
+    local n i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        n=$(ts_m_blackhole_count "$1") || return 1
+        if [[ "$n" -eq 0 ]]; then
+            return 0
+        fi
+        "$IP_BIN" "-${1}" route del blackhole default metric "$TS_M_BLACKHOLE_METRIC" table "$TS_M_RT_TABLE" 2>/dev/null || return 1
+    done
+    return 1
+}
+
+ts_m_nft_live_listing() {
+    "$NFT_BIN" list table inet "$TS_M_NFT_TABLE" 2>/dev/null
+}
+
+# Prints the listing the kernel produces for ruleset file $1 when it is loaded into a throwaway
+# network namespace: the expected form for this nft and kernel version, compared with the live
+# table. The host's tables are not touched.
+ts_m_nft_reference_listing() {
+    "$UNSHARE_BIN" --net -- /bin/sh -c '"$1" -f "$2" >/dev/null && "$1" list table inet "$3"' \
+        sh "$NFT_BIN" "$1" "$TS_M_NFT_TABLE" 2>/dev/null
+}
+
+# Normalizes an nft listing for comparison: counter values are dropped and whitespace collapses.
+ts_m_nft_normalize() {
+    sed -E 's/counter packets [0-9]+ bytes [0-9]+/counter/g' | tr -s '[:space:]' ' ' | sed -E 's/^ //; s/ $//'
+}
+
+# Compares the kernel with the expected kill switch and sets TS_M_DRIFT to the findings (empty when
+# everything matches): the live nftables table against the listing of ruleset file $1 loaded into a
+# throwaway network namespace, the policy rules (uid rule if $2 = 1, for node uid $3) and the
+# table-51820 blackholes, for IPv4 and (if the kernel has it) IPv6.
+ts_m_kernel_readback() {
+    local rsfile="$1" backstop="$2" uid="$3" live="" ref="" fam listing name n
+    TS_M_DRIFT=()
+    live=$(ts_m_nft_live_listing) || live=""
+    if [[ -z "$live" ]]; then
+        TS_M_DRIFT+=("nft table inet ${TS_M_NFT_TABLE} is missing")
+    else
+        ref=$(ts_m_nft_reference_listing "$rsfile") || ref=""
+        if [[ -z "$ref" ]]; then
+            TS_M_DRIFT+=("the expected ruleset could not be loaded for comparison (is ${TS_M_SLICE} active?)")
+        elif [[ "$(printf '%s\n' "$live" | ts_m_nft_normalize)" != "$(printf '%s\n' "$ref" | ts_m_nft_normalize)" ]]; then
+            TS_M_DRIFT+=("nft table inet ${TS_M_NFT_TABLE} differs from the expected ruleset")
+        fi
+    fi
+    for fam in 4 6; do
+        if [[ "$fam" == "6" ]] && ! ts_m_ipv6_available; then
+            continue
+        fi
+        if ! listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null); then
+            TS_M_DRIFT+=("IPv${fam} policy rules cannot be read")
+        else
+            for name in main mark uid; do
+                if [[ "$name" == "uid" ]] && [[ "$backstop" != "1" ]]; then
+                    continue
+                fi
+                n=$(ts_m_rule_count "$listing" "$(ts_m_rule_prio "$name")" "$(ts_m_rule_selector "$name" "$uid")")
+                if [[ "$n" -ne 1 ]]; then
+                    TS_M_DRIFT+=("IPv${fam} rule $(ts_m_rule_prio "$name") is present ${n} times")
+                fi
+            done
+        fi
+        if ! n=$(ts_m_blackhole_count "$fam"); then
+            TS_M_DRIFT+=("IPv${fam} table ${TS_M_RT_TABLE} cannot be read")
+        elif [[ "$n" -ne 1 ]]; then
+            TS_M_DRIFT+=("IPv${fam} blackhole in table ${TS_M_RT_TABLE} is present ${n} times")
+        fi
+    done
+    return 0
+}
+
+# Arms the kill switch and attests it: loads the ruleset as one transaction, adds the missing
+# policy rules and table-51820 blackholes (IPv4 and IPv6), reads everything back and only then
+# writes the attestation. $1 profile, $2 impl, $3 unit, $4 node uid, $5 uid backstop (0|1).
+# Returns 1 with TS_M_ERROR set if a step or the read-back fails; no attestation is written then.
+ts_m_killswitch_apply() {
+    local profile="$1" impl="$2" unit="$3" uid="$4" backstop="$5" rsfile fam err="" id boot doc
+    TS_M_ERROR=""
+    if ! ts_m_ensure_run_dir; then
+        TS_M_ERROR="cannot create ${TS_M_RUN_DIR}"
+        return 1
+    fi
+    rsfile="${TS_FS_ROOT}${TS_M_RULESET_FILE}"
+    if ! ts_m_render_ruleset > "$rsfile"; then
+        TS_M_ERROR="cannot write ${TS_M_RULESET_FILE}"
+        return 1
+    fi
+    if ! err=$("$NFT_BIN" -f "$rsfile" 2>&1); then
+        err="${err//$'\n'/ }"
+        TS_M_ERROR="nft refused the kill switch ruleset (the previous table, if any, stays loaded): ${err:0:400}"
+        return 1
+    fi
+    for fam in 4 6; do
+        if [[ "$fam" == "6" ]] && ! ts_m_ipv6_available; then
+            continue
+        fi
+        if ! ts_m_rule_ensure "$fam" main || ! ts_m_rule_ensure "$fam" mark; then
+            TS_M_ERROR="cannot add the IPv${fam} policy rules ${TS_M_PRIO_MAIN} and ${TS_M_PRIO_MARK}"
+            return 1
+        fi
+        if [[ "$backstop" == "1" ]] && ! ts_m_rule_ensure "$fam" uid "$uid"; then
+            TS_M_ERROR="cannot add the IPv${fam} uid backstop rule ${TS_M_PRIO_UID}"
+            return 1
+        fi
+        if ! ts_m_blackhole_ensure "$fam"; then
+            TS_M_ERROR="cannot add the IPv${fam} blackhole to table ${TS_M_RT_TABLE}"
+            return 1
+        fi
+    done
+    ts_m_kernel_readback "$rsfile" "$backstop" "$uid"
+    if [[ ${#TS_M_DRIFT[@]} -gt 0 ]]; then
+        TS_M_ERROR="read-back failed: ${TS_M_DRIFT[*]}"
+        return 1
+    fi
+    if ! id=$(ts_m_slice_cgroup_id); then
+        TS_M_ERROR="${TS_M_SLICE} has no cgroup"
+        return 1
+    fi
+    if ! boot=$(ts_m_boot_id); then
+        TS_M_ERROR="cannot read the boot id"
+        return 1
+    fi
+    doc=$(ts_m_render_attestation "$boot" "$profile" "$impl" "$unit" "$id" "$backstop" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+    if ! printf '%s\n' "$doc" | ts_m_write_file "${TS_FS_ROOT}${TS_M_ATTEST}" 0644; then
+        TS_M_ERROR="cannot write ${TS_M_ATTEST}"
+        return 1
+    fi
+    return 0
+}
+
+# Removes the attestation only; the kill switch stays armed (ExecStop of the kill switch unit).
+ts_m_killswitch_disarm() {
+    rm -f "${TS_FS_ROOT}${TS_M_ATTEST}"
+}
+
+# Removes exactly what ts_m_killswitch_apply creates: the nftables table, the policy rules
+# (including the uid rule of node uid $1, if given) and the blackholes, for IPv4 and IPv6, and the
+# attestation. Foreign rules and routes are never touched. Returns 1 with TS_M_ERROR naming what is
+# still present.
+ts_m_killswitch_remove() {
+    local uid="${1:-}" fam left=() n
+    TS_M_ERROR=""
+    rm -f "${TS_FS_ROOT}${TS_M_ATTEST}" "${TS_FS_ROOT}${TS_M_RULESET_FILE}"
+    if ts_m_nft_live_listing >/dev/null; then
+        "$NFT_BIN" delete table inet "$TS_M_NFT_TABLE" 2>/dev/null || true
+    fi
+    if ts_m_nft_live_listing >/dev/null; then
+        left+=("nft table inet ${TS_M_NFT_TABLE}")
+    fi
+    for fam in 4 6; do
+        if ! ts_m_rule_delete "$fam" main; then
+            left+=("IPv${fam} rule ${TS_M_PRIO_MAIN}")
+        fi
+        if ! ts_m_rule_delete "$fam" mark; then
+            left+=("IPv${fam} rule ${TS_M_PRIO_MARK}")
+        fi
+        if [[ -n "$uid" ]] && ! ts_m_rule_delete "$fam" uid "$uid"; then
+            left+=("IPv${fam} rule ${TS_M_PRIO_UID}")
+        fi
+        if ! ts_m_blackhole_delete "$fam"; then
+            left+=("IPv${fam} blackhole in table ${TS_M_RT_TABLE}")
+        fi
+    done
+    if [[ ${#left[@]} -gt 0 ]]; then
+        TS_M_ERROR="still present: ${left[*]}"
+        return 1
+    fi
+    return 0
+}
+
+# Emergency block for managed mode: blackhole policy rules for the node uid at priority 21819
+# (IPv4 through the shared ts_arm_failclosed_rules, IPv6 here). They are evaluated before table
+# main, so every route of that uid to the internet ends in a blackhole: Lightning clearnet traffic
+# stops, and bitcoind loses its internet peers if it runs under the same uid. Loopback keeps working
+# through table local (Tor SOCKS and control port, local RPC), and exemptions at priority 21817 keep
+# the local network (ts_m_emergency_lan_arm). The block is armed when the kill switch cannot be
+# armed and released only after a successful re-arm and read-back. The net_cls-based nft emergency
+# table is never used in managed mode: slice processes do not carry its classid.
+ts_m_emergency6_selector() {
+    echo "from all uidrange ${1}-${1} blackhole"
+}
+
+# Selector of the local network exemption for range $1 and node uid $2, as "ip rule show" prints it.
+# "lookup main suppress_prefixlength 0" lets only specific (on-link or explicitly routed) routes of
+# table main through; a destination that only the default route would reach falls through to the
+# blackhole.
+ts_m_emergency_lan_selector() {
+    echo "from all to ${1} uidrange ${2}-${2} lookup main suppress_prefixlength 0"
+}
+
+# Succeeds if rule selector $1 (as "ip rule show" prints it) is a local network exemption of the
+# emergency block, for any uid.
+ts_m_is_emergency_lan_rule() {
+    local sel="$1" range rest r
+    sel="${sel#"${sel%%[![:space:]]*}"}"
+    sel="${sel%"${sel##*[![:space:]]}"}"
+    if [[ "$sel" != "from all to "* ]]; then
+        return 1
+    fi
+    rest="${sel#from all to }"
+    range="${rest%% *}"
+    rest="${rest#"$range" }"
+    if [[ ! "$rest" =~ ^uidrange\ ([0-9]+)-([0-9]+)\ lookup\ main\ suppress_prefixlength\ 0$ ]] || \
+        [[ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[2]}" ]]; then
+        return 1
+    fi
+    for r in $TS_M_EMERGENCY_LAN4 $TS_M_EMERGENCY_LAN6; do
+        if [[ "$range" == "$r" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Prints the ranges of IP family $1 that the emergency block keeps reachable (nothing for IPv6
+# when the host has none).
+ts_m_emergency_lan_ranges() {
+    if [[ "$1" == "4" ]]; then
+        echo "$TS_M_EMERGENCY_LAN4"
+    elif ts_m_ipv6_available; then
+        echo "$TS_M_EMERGENCY_LAN6"
+    fi
+}
+
+# Adds the local network exemptions for node uid $1 that are missing and records each one it
+# added, once. Arming again (the verifier does on every run while the block holds) adds nothing,
+# so there are never more than 5 IPv4 and 2 IPv6 exemptions per uid. Best effort: the block's
+# safety rests on its blackholes, a missing exemption only costs that local network (verify
+# reports it as emergency_lan).
+ts_m_emergency_lan_arm() {
+    local uid="$1" fam range listing state="${TS_FS_ROOT}${TS_M_EMERGENCY_LAN_STATE}"
+    for fam in 4 6; do
+        listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null) || continue
+        for range in $(ts_m_emergency_lan_ranges "$fam"); do
+            if [[ "$(ts_m_rule_count "$listing" "$TS_M_EMERGENCY_LAN_PRIO" "$(ts_m_emergency_lan_selector "$range" "$uid")")" -gt 0 ]]; then
+                continue
+            fi
+            if ! "$IP_BIN" "-${fam}" rule add to "$range" uidrange "${uid}-${uid}" lookup main suppress_prefixlength 0 priority "$TS_M_EMERGENCY_LAN_PRIO" 2>/dev/null; then
+                continue
+            fi
+            if grep -qxF "${fam} ${range} ${uid}" "$state" 2>/dev/null; then
+                # Added back after another tool removed it: it is recorded already
+                continue
+            fi
+            if ! ts_m_ensure_run_dir || ! printf '%s %s %s\n' "$fam" "$range" "$uid" >> "$state"; then
+                # Unrecorded, it could not be released later: take it back
+                "$IP_BIN" "-${fam}" rule del to "$range" uidrange "${uid}-${uid}" lookup main suppress_prefixlength 0 priority "$TS_M_EMERGENCY_LAN_PRIO" 2>/dev/null || true
+            fi
+        done
+    done
+    return 0
+}
+
+# Prints "<missing> <total>": how many of the local network exemptions for node uid $1 are missing.
+ts_m_emergency_lan_missing() {
+    local uid="$1" fam range listing missing=0 total=0
+    for fam in 4 6; do
+        listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null) || listing=""
+        for range in $(ts_m_emergency_lan_ranges "$fam"); do
+            total=$((total + 1))
+            if [[ "$(ts_m_rule_count "$listing" "$TS_M_EMERGENCY_LAN_PRIO" "$(ts_m_emergency_lan_selector "$range" "$uid")")" -eq 0 ]]; then
+                missing=$((missing + 1))
+            fi
+        done
+    done
+    echo "$missing $total"
+}
+
+# Removes the local network exemptions TunnelSats recorded; keeps the record of any that remain.
+# Returns 1 if one remains.
+ts_m_emergency_lan_release() {
+    local state="${TS_FS_ROOT}${TS_M_EMERGENCY_LAN_STATE}" fam range uid listing n failed=0 keep=()
+    if [[ ! -f "$state" ]]; then
+        return 0
+    fi
+    while read -r fam range uid <&3; do
+        if [[ ! "$fam" =~ ^[46]$ ]] || [[ ! "$uid" =~ ^[1-9][0-9]*$ ]] || [[ -z "$range" ]]; then
+            continue
+        fi
+        if [[ "$fam" == "6" ]] && ! ts_m_ipv6_available; then
+            continue
+        fi
+        for n in 1 2 3 4 5; do
+            listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null) || break
+            if [[ "$(ts_m_rule_count "$listing" "$TS_M_EMERGENCY_LAN_PRIO" "$(ts_m_emergency_lan_selector "$range" "$uid")")" -eq 0 ]]; then
+                break
+            fi
+            "$IP_BIN" "-${fam}" rule del to "$range" uidrange "${uid}-${uid}" lookup main suppress_prefixlength 0 priority "$TS_M_EMERGENCY_LAN_PRIO" 2>/dev/null || break
+        done
+        listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null) || listing="unreadable"
+        if [[ "$listing" == "unreadable" ]] || \
+            [[ "$(ts_m_rule_count "$listing" "$TS_M_EMERGENCY_LAN_PRIO" "$(ts_m_emergency_lan_selector "$range" "$uid")")" -gt 0 ]]; then
+            failed=1
+            keep+=("${fam} ${range} ${uid}")
+        fi
+    done 3< "$state"
+    if [[ ${#keep[@]} -eq 0 ]]; then
+        rm -f "$state"
+    else
+        printf '%s\n' "${keep[@]}" > "$state" 2>/dev/null || true
+    fi
+    [[ "$failed" -eq 0 ]]
+}
+
+# Arms the emergency block for node uid $1 (blackholes, then the local network exemptions);
+# succeeds only if the blackholes are verified in place.
+ts_m_emergency_arm() {
+    local uid="$1" listing state
+    if [[ ! "$uid" =~ ^[1-9][0-9]*$ ]]; then
+        return 1
+    fi
+    if ! ts_arm_failclosed_rules "$TS_M_EMERGENCY_SUBNET" "$uid"; then
+        return 1
+    fi
+    if ts_m_ipv6_available; then
+        listing=$("$IP_BIN" -6 rule show 2>/dev/null) || return 1
+        if [[ "$(ts_m_rule_count "$listing" 21819 "$(ts_m_emergency6_selector "$uid")")" -eq 0 ]]; then
+            "$IP_BIN" -6 rule add uidrange "${uid}-${uid}" blackhole priority 21819 || return 1
+            state="${TS_FS_ROOT}${TS_M_EMERGENCY6_STATE}"
+            if ! ts_m_ensure_run_dir || ! printf 'uidrange %s-%s\n' "$uid" "$uid" > "$state"; then
+                "$IP_BIN" -6 rule del uidrange "${uid}-${uid}" blackhole priority 21819 2>/dev/null || true
+                return 1
+            fi
+        fi
+    fi
+    ts_m_emergency_lan_arm "$uid"
+    ts_m_emergency_verified "$uid"
+}
+
+# Succeeds if the emergency block for node uid $1 is completely in place (IPv4 and IPv6).
+ts_m_emergency_verified() {
+    local uid="$1" listing
+    ts_failclosed_rules_verified "$TS_M_EMERGENCY_SUBNET" "$uid" || return 1
+    if ts_m_ipv6_available; then
+        listing=$("$IP_BIN" -6 rule show 2>/dev/null) || return 1
+        if [[ "$(ts_m_rule_count "$listing" 21819 "$(ts_m_emergency6_selector "$uid")")" -eq 0 ]]; then
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# Succeeds if any emergency rule for node uid $1 is present.
+ts_m_emergency_present() {
+    local uid="$1" listing
+    listing=$("$IP_BIN" -4 rule show 2>/dev/null) || return 0
+    if printf '%s\n' "$listing" | grep -Eq "^21819:[[:space:]]+from all uidrange ${uid}-${uid}[[:space:]]+blackhole[[:space:]]*$"; then
+        return 0
+    fi
+    if ts_m_ipv6_available; then
+        listing=$("$IP_BIN" -6 rule show 2>/dev/null) || return 0
+        if [[ "$(ts_m_rule_count "$listing" 21819 "$(ts_m_emergency6_selector "$uid")")" -gt 0 ]]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Succeeds if a Tailscale exit node (default route in table 52) is active.
+ts_m_tailscale_exit_node() {
+    local out=""
+    out=$("$IP_BIN" route show table 52 2>/dev/null) || return 1
+    printf '%s\n' "$out" | grep -qE '^(default|0\.0\.0\.0/0)[[:space:]]'
+}
+
+# Prints the rules of another tool in listing $2 ("ip -<fam> rule show" of family $1) that come
+# before priority $3, one per line as "IPv<fam> rule before <$3>: <rule>"; $4 = 1 while a Tailscale
+# exit node is active. Not listed: the local rule at 0, Tailscale's rules (5200-5299) while no exit
+# node is active, and TunnelSats's own emergency rules (the local network exemptions at 21817, the
+# blackholes at 21818 and 21819). Meant for priorities up to 21820, below TunnelSats's other rules.
+ts_m_rules_before() {
+    local fam="$1" listing="$2" before="$3" exit_node="$4" line prio
+    while IFS= read -r line; do
+        prio="${line%%:*}"
+        if [[ ! "$prio" =~ ^[0-9]+$ ]] || [[ "$prio" -ge "$before" ]]; then
+            continue
+        fi
+        if [[ "$prio" -eq 0 ]] && [[ "$line" =~ ^0:[[:space:]]+from\ all\ lookup\ local[[:space:]]*$ ]]; then
+            continue
+        fi
+        if [[ "$prio" -eq "$TS_M_EMERGENCY_LAN_PRIO" ]] && ts_m_is_emergency_lan_rule "${line#*:}"; then
+            continue
+        fi
+        if [[ "$prio" -eq 21818 || "$prio" -eq 21819 ]] && [[ "$line" =~ [[:space:]]blackhole[[:space:]]*$ ]]; then
+            continue
+        fi
+        if [[ "$prio" -ge 5200 ]] && [[ "$prio" -le 5299 ]] && [[ "$exit_node" -eq 0 ]]; then
+            continue
+        fi
+        echo "IPv${fam} rule before ${before}: ${line//$'\t'/ }"
+    done < <(printf '%s\n' "$listing")
+}
+
+# Prints the rules of another tool before priority $1 in both families (IPv6 where available), as
+# ts_m_rules_before does. A family whose rules cannot be read is printed as "IPv<fam> rules cannot
+# be read" and makes it return 1.
+ts_m_foreign_rules_before() {
+    local before="$1" fam listing exit_node=0 rc=0
+    if ts_m_tailscale_exit_node; then
+        exit_node=1
+    fi
+    for fam in 4 6; do
+        if [[ "$fam" == "6" ]] && ! ts_m_ipv6_available; then
+            continue
+        fi
+        if ! listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null); then
+            echo "IPv${fam} rules cannot be read"
+            rc=1
+            continue
+        fi
+        ts_m_rules_before "$fam" "$listing" "$before" "$exit_node"
+    done
+    return "$rc"
+}
+
+# Succeeds if the emergency block for node uid $1 is in effect: its rules are verified (IPv4, and
+# IPv6 where available) and no rule of another tool comes before them (priority 21818) in either
+# family, where it could route the node's traffic around the blackholes. Otherwise sets TS_M_ERROR
+# to the reason, naming such rules, and TS_M_EMERG_FAIL to "incomplete" (rules missing) or
+# "bypassed" (a rule of another tool before them). verify, managed-arm and the verifier all decide
+# "blocked" by this predicate alone.
+ts_m_emergency_effective() {
+    local uid="$1" before=""
+    TS_M_EMERG_FAIL=""
+    if ! ts_m_emergency_verified "$uid"; then
+        TS_M_ERROR="not all of its rules (priority 21818 and 21819) are in place"
+        TS_M_EMERG_FAIL="incomplete"
+        return 1
+    fi
+    before=$(ts_m_foreign_rules_before 21818) || true
+    if [[ -n "$before" ]]; then
+        TS_M_ERROR="${before//$'\n'/; }"
+        TS_M_EMERG_FAIL="bypassed"
+        return 1
+    fi
+    return 0
+}
+
+# Removes the emergency rules TunnelSats recorded (IPv4 state file of the shared helpers, IPv6
+# state and the local network exemptions in /run/tunnelsats). Returns 1 if one remains.
+ts_m_emergency_release() {
+    local uid="$1" state="${TS_FS_ROOT}${TS_M_EMERGENCY6_STATE}" n listing failed=0 fam r ranges
+    ts_release_failclosed_rules || failed=1
+    ts_m_emergency_lan_release || failed=1
+    if [[ -f "$state" ]] && ts_m_ipv6_available; then
+        rm -f "$state"
+    fi
+    for fam in 4 6; do
+        if [[ "$fam" == "6" ]] && ! ts_m_ipv6_available; then continue; fi
+        for n in 1 2 3 4 5; do
+            listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null) || { failed=1; break; }
+            local to_del=()
+            if [[ "$fam" == "4" ]] && [[ "$(ts_m_rule_count "$listing" 21818 "from ${TS_M_EMERGENCY_SUBNET} blackhole")" -gt 0 ]]; then
+                to_del+=("$IP_BIN -4 rule del priority 21818 from ${TS_M_EMERGENCY_SUBNET} blackhole")
+            fi
+            if [[ "$(ts_m_rule_count "$listing" 21819 "$(ts_m_emergency6_selector "$uid")")" -gt 0 ]]; then
+                to_del+=("$IP_BIN -${fam} rule del priority 21819 uidrange ${uid}-${uid} blackhole")
+            fi
+            if [[ "$fam" == "4" ]]; then ranges="$TS_M_EMERGENCY_LAN4"; else ranges="$TS_M_EMERGENCY_LAN6"; fi
+            for r in $ranges; do
+                if [[ "$(ts_m_rule_count "$listing" "$TS_M_EMERGENCY_LAN_PRIO" "$(ts_m_emergency_lan_selector "$r" "$uid")")" -gt 0 ]]; then
+                    to_del+=("$IP_BIN -${fam} rule del to $r uidrange ${uid}-${uid} lookup main suppress_prefixlength 0 priority $TS_M_EMERGENCY_LAN_PRIO")
+                fi
+            done
+            if [[ ${#to_del[@]} -eq 0 ]]; then break; fi
+            for cmd in "${to_del[@]}"; do
+                $cmd 2>/dev/null || failed=1
+            done
+        done
+        listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null) || { failed=1; continue; }
+        if [[ "$fam" == "4" ]] && [[ "$(ts_m_rule_count "$listing" 21818 "from ${TS_M_EMERGENCY_SUBNET} blackhole")" -gt 0 ]]; then failed=1; fi
+        if [[ "$(ts_m_rule_count "$listing" 21819 "$(ts_m_emergency6_selector "$uid")")" -gt 0 ]]; then failed=1; fi
+        if [[ "$fam" == "4" ]]; then ranges="$TS_M_EMERGENCY_LAN4"; else ranges="$TS_M_EMERGENCY_LAN6"; fi
+        for r in $ranges; do
+            if [[ "$(ts_m_rule_count "$listing" "$TS_M_EMERGENCY_LAN_PRIO" "$(ts_m_emergency_lan_selector "$r" "$uid")")" -gt 0 ]]; then failed=1; fi
+        done
+    done
+    [[ "$failed" -eq 0 ]]
+}
+
+# ---------------------------------------------------------------------------
+# Managed mode: internal verbs run by the units (managed-arm, managed-disarm, managed-verify) and
+# by verify's probes (managed-probe). They log to stderr, which systemd sends to the journal.
+# ---------------------------------------------------------------------------
+
+ts_m_log() {
+    echo "TunnelSats: $*" >&2
+}
+
+# Records verifier state $1 (armed, failclosed, damaged, unprotected) and logs message $2 only
+# when the state changes, so a steady state never repeats itself in the journal.
+ts_m_state_change() {
+    local new="$1" msg="$2" f="${TS_FS_ROOT}${TS_M_VERIFIER_STATE}" old=""
+    old=$(cat "$f" 2>/dev/null) || old=""
+    if [[ "$old" != "$new" ]]; then
+        ts_m_log "$msg"
+        if ts_m_ensure_run_dir; then
+            printf '%s\n' "$new" > "$f" 2>/dev/null || true
+        fi
+    fi
+    return 0
+}
+
+# Fail-closed path when the kill switch cannot be armed: removes the attestation and arms the
+# emergency block for the node uid. $1 = reason. Succeeds only if the block is in effect
+# (ts_m_emergency_effective). Otherwise it logs the unprotected state, sets TS_M_ERROR to why and
+# returns 1: the block could not be armed, or a rule of another tool routes around it (the block
+# stays armed then; it still covers what that rule does not).
+ts_m_failclose() {
+    ts_m_killswitch_disarm
+    local current_user current_uid=""
+    current_user=$(ts_m_unit_prop "$TS_M_INV_UNIT" User) || current_user=""
+    if [[ -n "$current_user" ]]; then
+        current_uid=$(id -u "$current_user" 2>/dev/null || true)
+    fi
+    if [[ -n "$current_uid" ]] && [[ "$current_uid" != "$TS_M_INV_UID" ]]; then
+        "$SYSTEMCTL_BIN" stop "$TS_M_INV_UNIT" >/dev/null 2>&1 || true
+        TS_M_ERROR="the ${TS_M_INV_UNIT} user changed to uid ${current_uid}"
+        ts_m_state_change unprotected "$1; ${TS_M_ERROR}. ${TS_M_INV_UNIT} stopped until the kill switch is armed again."
+        return 1
+    fi
+    if ! ts_m_emergency_arm "$TS_M_INV_UID"; then
+        TS_M_ERROR="the emergency block could not be armed either"
+        ts_m_state_change unprotected "$1; ${TS_M_ERROR}. Stop ${TS_M_INV_UNIT} until the kill switch is armed again."
+        return 1
+    fi
+    if ! ts_m_emergency_effective "$TS_M_INV_UID"; then
+        TS_M_ERROR="the emergency block is armed but not in effect: ${TS_M_ERROR}"
+        ts_m_state_change unprotected "$1; ${TS_M_ERROR}. Stop ${TS_M_INV_UNIT} until the kill switch is armed again or that rule is gone."
+        return 1
+    fi
+    ts_m_state_change failclosed "$1; emergency block armed for uid ${TS_M_INV_UID}: Lightning clearnet traffic is blocked, Tor keeps working"
+    return 0
+}
+
+# Arms (or re-arms) the kill switch for the inventory and, after a successful read-back, releases
+# an emergency block left from an earlier failure. $1 = what triggered it (for the log).
+ts_m_rearm() {
+    local why="$1"
+    if ! ts_m_killswitch_apply "$TS_M_INV_PROFILE" "$TS_M_INV_IMPL" "$TS_M_INV_UNIT" "$TS_M_INV_UID" "$TS_M_INV_BACKSTOP"; then
+        return 1
+    fi
+    if ts_m_emergency_present "$TS_M_INV_UID"; then
+        if ts_m_emergency_release "$TS_M_INV_UID"; then
+            ts_m_log "emergency block released"
+        else
+            ts_m_log "kill switch armed, but an emergency rule (priority 21817-21819) could not be removed"
+        fi
+    elif ! ts_m_emergency_lan_release; then
+        ts_m_log "kill switch armed, but a local network exemption (priority ${TS_M_EMERGENCY_LAN_PRIO}) could not be removed"
+    fi
+    if [[ -n "$why" ]]; then
+        ts_m_log "$why; kill switch re-armed and verified"
+    fi
+    ts_m_state_change armed "kill switch armed and verified (slice ${TS_M_SLICE}, table inet ${TS_M_NFT_TABLE})"
+    return 0
+}
+
+# Prints the Lightning uid that the kill switch unit's ExecStart carries (--fallback-uid), nothing
+# if there is none.
+ts_m_fallback_uid() {
+    local out="" re='argv\[\]=[^;]*[[:space:]]--fallback-uid[[:space:]]+([1-9][0-9]*)([[:space:]]|;|$)'
+    if ! out=$(ts_m_unit_prop "$TS_M_KILLSWITCH_UNIT" ExecStart); then
+        return 1
+    fi
+    if [[ "$out" =~ $re ]]; then
+        echo "${BASH_REMATCH[1]}"
+    fi
+    return 0
+}
+
+# managed-arm while the install record cannot be read ($1 = why): the kill switch cannot be armed
+# without it, but the emergency block can, for the Lightning uid that the unit's ExecStart carries
+# ($2, --fallback-uid). Exits 0 when that block is in effect, so Lightning starts with its internet
+# clearnet traffic blocked (Tor and the local network keep working); exits 1 otherwise. Nothing is
+# released while the record is unreadable.
+ts_m_arm_damaged() {
+    local why="$1" uid="$2"
+    if [[ ! "$uid" =~ ^[1-9][0-9]*$ ]]; then
+        ts_m_log "${why}; the kill switch cannot be armed and Lightning does not start"
+        exit 1
+    fi
+    if ! ts_m_lock; then
+        ts_m_log "cannot take ${TS_M_LOCK}; arming the emergency block without it"
+    fi
+    ts_m_killswitch_disarm
+    if ! ts_m_emergency_arm "$uid"; then
+        ts_m_log "install record unreadable (${why}); the emergency block for uid ${uid} could not be armed either; Lightning does not start"
+        exit 1
+    fi
+    if ! ts_m_emergency_effective "$uid"; then
+        ts_m_log "install record unreadable (${why}); the emergency block for uid ${uid} is armed but not in effect: ${TS_M_ERROR}; Lightning does not start"
+        exit 1
+    fi
+    ts_m_log "install record unreadable (${why}); emergency block armed for uid ${uid}: Lightning starts with clearnet traffic blocked, Tor and the local network keep working"
+    exit 0
+}
+
+# managed-arm: ExecStart of tunnelsats-killswitch.service, which the Lightning unit requires. Exits 0
+# when Lightning's clearnet traffic is either tunneled (kill switch armed, read back and attested) or
+# blocked (emergency block in effect, ts_m_emergency_effective; attestation absent), so Lightning may
+# start; the verifier keeps trying to re-arm and releases the block after a successful re-arm. With
+# an unreadable install record it falls back to the emergency block for --fallback-uid
+# (ts_m_arm_damaged). Exits 1 when neither protection is in place: Lightning does not start, and the
+# journal says why on every attempt.
+ts_m_cmd_arm() {
+    if ! ts_m_inventory_read; then
+        ts_m_arm_damaged "$TS_M_ERROR" "${TS_OPT_FALLBACK_UID:-}"
+    fi
+    if ! ts_m_lock; then
+        ts_m_log "cannot take ${TS_M_LOCK}; the kill switch was not armed"
+        if ts_m_failclose "kill switch lock unavailable"; then
+            exit 0
+        fi
+        ts_m_log "${TS_M_ERROR}; Lightning does not start"
+        exit 1
+    fi
+    if ts_m_rearm ""; then
+        exit 0
+    fi
+    if ts_m_failclose "kill switch could not be armed: ${TS_M_ERROR}"; then
+        exit 0
+    fi
+    ts_m_log "${TS_M_ERROR}; Lightning does not start"
+    exit 1
+}
+
+# managed-disarm: ExecStop of tunnelsats-killswitch.service. Removes the attestation only.
+ts_m_cmd_disarm() {
+    if ts_m_lock; then
+        ts_m_killswitch_disarm
+    else
+        rm -f "${TS_FS_ROOT}${TS_M_ATTEST}"
+    fi
+    exit 0
+}
+
+# managed-verify: run by tunnelsats-verifier.timer every 30 seconds. Checks the table, the policy
+# rules, the blackholes, the slice id and the attestation; re-arms on drift; logs only changes.
+# If re-arming fails, it removes the attestation and arms the emergency block; when a rule of
+# another tool routes around that block, it logs the unprotected state, naming the rule.
+# managed-verify while the install record cannot be read ($1 = why), for fallback uid $2: keeps the
+# emergency block for that uid in place (arming what is missing), releases nothing, and logs the
+# state once.
+ts_m_verify_damaged() {
+    local why="$1" uid="$2"
+    if ! ts_m_lock; then
+        ts_m_log "cannot take ${TS_M_LOCK}; check skipped"
+        exit 1
+    fi
+    ts_m_killswitch_disarm
+    if ! ts_m_emergency_arm "$uid"; then
+        ts_m_state_change unprotected "install record unreadable (${why}); the emergency block for uid ${uid} could not be armed. Stop the Lightning unit until the install record is restored."
+        exit 1
+    fi
+    if ! ts_m_emergency_effective "$uid"; then
+        ts_m_state_change unprotected "install record unreadable (${why}); the emergency block for uid ${uid} is armed but not in effect: ${TS_M_ERROR}"
+        exit 1
+    fi
+    ts_m_state_change damaged "install record unreadable (${why}); emergency block active for uid ${uid}"
+    exit 0
+}
+
+ts_m_cmd_verifier() {
+    local drift=() cur="" why="" fallback=""
+    if ! ts_m_inventory_read; then
+        why="$TS_M_ERROR"
+        if ! fallback=$(ts_m_fallback_uid); then
+            ts_m_state_change unprotected "${why}; systemctl timeout, cannot verify fallback uid"
+            exit 1
+        fi
+        if [[ -z "$fallback" ]]; then
+            ts_m_state_change unprotected "${why}; the verifier cannot check the kill switch"
+            exit 1
+        fi
+        ts_m_verify_damaged "$why" "$fallback"
+    fi
+    if ! ts_m_lock; then
+        ts_m_log "cannot take ${TS_M_LOCK}; check skipped"
+        exit 1
+    fi
+    if ts_m_ensure_run_dir && ts_m_render_ruleset > "${TS_FS_ROOT}${TS_M_RULESET_FILE}"; then
+        ts_m_kernel_readback "${TS_FS_ROOT}${TS_M_RULESET_FILE}" "$TS_M_INV_BACKSTOP" "$TS_M_INV_UID"
+        drift=("${TS_M_DRIFT[@]}")
+    else
+        drift=("cannot write ${TS_M_RULESET_FILE}")
+    fi
+    ts_m_read_attestation
+    if [[ "$TS_M_ATT_STATUS" != "valid" ]]; then
+        drift+=("attestation ${TS_M_ATT_STATUS//_/ }")
+    else
+        cur=$(ts_m_slice_cgroup_id) || cur=""
+        if [[ "$cur" != "$TS_M_ATT_SLICE_ID" ]]; then
+            drift+=("slice id changed from ${TS_M_ATT_SLICE_ID} to ${cur:-none}")
+        fi
+    fi
+    if [[ ${#drift[@]} -eq 0 ]] && ! ts_m_emergency_present "$TS_M_INV_UID"; then
+        ts_m_state_change armed "kill switch armed and verified (slice ${TS_M_SLICE}, table inet ${TS_M_NFT_TABLE})"
+        exit 0
+    fi
+    if [[ ${#drift[@]} -eq 0 ]]; then
+        drift=("emergency block present")
+    fi
+    if ts_m_rearm "drift detected (${drift[*]})"; then
+        exit 0
+    fi
+    if ts_m_failclose "drift detected (${drift[*]}) and re-arming failed: ${TS_M_ERROR}"; then
+        exit 0
+    fi
+    exit 1
+}
+
+# Prints the address an echo service returns for curl arguments "$@" (the URL last); nothing if
+# there is no answer or the answer is not an IP address.
+ts_m_probe_fetch() {
+    local out=""
+    out=$("$CURL_BIN" -s --connect-timeout 4 --max-time 6 "$@" 2>/dev/null) || return 0
+    out="${out//[[:space:]]/}"
+    if valid_ipv4 "$out" || [[ "$out" =~ ^[0-9A-Fa-f]{0,4}(:[0-9A-Fa-f]{0,4}){2,7}$ ]]; then
+        echo "$out"
+    fi
+    return 0
+}
+
+# The perl helper of ts_m_probe_send (perl-base is part of every Debian and Ubuntu system). Sends
+# one UDP datagram to address ARGV[1] (family ARGV[0], 4 or 6), port 9 (discard), the socket bound
+# to interface ARGV[2] unless "-", and prints one word: "sent", the errno name of an immediate
+# failure (perl's Errno names do not depend on the locale or the architecture) or "error:<stage>".
+TS_M_PROBE_PERL='
+use strict; use warnings;
+use Socket qw(AF_INET AF_INET6 SOCK_DGRAM SOL_SOCKET inet_pton pack_sockaddr_in pack_sockaddr_in6);
+use Errno ();
+my ($fam, $ip, $dev) = @ARGV;
+sub errname {
+    for my $n (qw(EPERM EACCES EINVAL ENETUNREACH EHOSTUNREACH)) { return $n if $!{$n} }
+    for my $n (sort keys %!) { return $n if $!{$n} }
+    return "error:errno-" . ($! + 0);
+}
+my $af = $fam eq "6" ? AF_INET6 : AF_INET;
+my $addr = inet_pton($af, $ip);
+if (!defined $addr) { print "error:address\n"; exit 0 }
+socket(my $s, $af, SOCK_DGRAM, 0) or do { print "error:socket-", lc(errname()), "\n"; exit 0 };
+if ($dev ne "-") {
+    my $opt = eval { Socket::SO_BINDTODEVICE() } // 25;
+    setsockopt($s, SOL_SOCKET, $opt, pack("Z*", $dev)) or do { print "error:bind-", lc(errname()), "\n"; exit 0 };
+}
+my $sa = $fam eq "6" ? pack_sockaddr_in6(9, $addr) : pack_sockaddr_in(9, $addr);
+if (defined send($s, "tunnelsats-verify", 0, $sa)) { print "sent\n" } else { print errname(), "\n" }
+'
+
+# Sends one UDP datagram from this process to address $2 (IP family $1), port 9, bound to interface
+# $3 unless "-" (see TS_M_PROBE_PERL). Prints "sent", an errno name such as EPERM, or
+# "error:<reason>" when the helper cannot run.
+ts_m_probe_send() {
+    local fam="$1" ip="$2" iface="$3" out=""
+    if ! command -v "$PERL_BIN" >/dev/null 2>&1; then
+        echo "error:no-perl"
+        return 0
+    fi
+    out=$("$PERL_BIN" -e "$TS_M_PROBE_PERL" "$fam" "$ip" "$iface" 2>/dev/null) || out=""
+    if [[ "$out" =~ ^(sent|E[A-Z0-9]+|error:[a-z0-9-]+)$ ]]; then
+        echo "$out"
+    else
+        echo "error:helper"
+    fi
+}
+
+# Classifies a result word of ts_m_probe_send. "blocked": an immediate local error, the datagram
+# never left the host (EPERM from an nft drop such as the kill chain or the IPv6 drop; EINVAL,
+# EHOSTUNREACH or EACCES from a blackhole, unreachable or prohibit route or rule; ENETUNREACH: no
+# route). "left": the datagram was sent. "error": anything else, the probe cannot tell.
+ts_m_probe_classify() {
+    case "$1" in
+        sent) echo "left" ;;
+        EPERM|EINVAL|ENETUNREACH|EHOSTUNREACH|EACCES) echo "blocked" ;;
+        *) echo "error" ;;
+    esac
+}
+
+# managed-probe <mode> ...: runs inside a transient unit of the slice, started by verify. The first
+# line names the cgroup the probe runs in, so verify can confirm it ran inside the slice.
+#   egress4 URL...           "answer <url> <address|->" for each URL (IPv4 echo services, curl)
+#   send 4|6 IFACE|- IP      "send <ip> <word>" (see ts_m_probe_send): one UDP datagram to IP port 9,
+#                            the socket bound to IFACE unless "-"
+ts_m_cmd_probe() {
+    local mode="${1:-}" url cg="" fam iface ip
+    cg=$(sed -n 's/^0:://p' /proc/self/cgroup 2>/dev/null | head -n 1) || cg=""
+    echo "cgroup ${cg:-unknown}"
+    case "$mode" in
+        egress4)
+            if ! command -v "$CURL_BIN" >/dev/null 2>&1; then
+                echo "error ${CURL_BIN} not found"
+                exit 0
+            fi
+            shift
+            for url in "$@"; do
+                echo "answer ${url} $(ts_m_probe_fetch -4 "$url" | head -n 1 | grep . || echo -)"
+            done
+            ;;
+        send)
+            fam="${2:-}"
+            iface="${3:-}"
+            ip="${4:-}"
+            if [[ "$fam" != "4" ]] && [[ "$fam" != "6" ]] || [[ -z "$iface" ]] || [[ -z "$ip" ]]; then
+                echo "usage: managed-probe send 4|6 IFACE|- IP" >&2
+                exit 2
+            fi
+            echo "send ${ip} $(ts_m_probe_send "$fam" "$ip" "$iface")"
+            ;;
+        *)
+            echo "usage: managed-probe egress4 URL... | send 4|6 IFACE|- IP" >&2
+            exit 2
+            ;;
+    esac
+    exit 0
+}
+
+# Reads the attestation into TS_M_ATT_STATUS (valid, missing, invalid, other_boot, not_armed,
+# not_root_owned), TS_M_ATT_SLICE_ID and TS_M_ATT_BACKSTOP.
+ts_m_read_attestation() {
+    local f="${TS_FS_ROOT}${TS_M_ATTEST}" doc="" owner="" boot=""
+    TS_M_ATT_STATUS="missing"
+    TS_M_ATT_SLICE_ID=""
+    TS_M_ATT_BACKSTOP=""
+    if [[ ! -f "$f" ]]; then
+        return 0
+    fi
+    owner=$(stat -c %u "$f" 2>/dev/null) || owner=""
+    if [[ "$owner" != "$(ts_m_expected_owner)" ]]; then
+        TS_M_ATT_STATUS="not_root_owned"
+        return 0
+    fi
+    doc=$(head -c 4096 "$f" 2>/dev/null) || doc=""
+    boot=$(ts_m_boot_id) || boot=""
+    if [[ ! "$doc" =~ \"schema\":1[,}] ]] || [[ ! "$doc" =~ \"slice_cgroup_id\":([0-9]+)[,}] ]]; then
+        TS_M_ATT_STATUS="invalid"
+        return 0
+    fi
+    TS_M_ATT_SLICE_ID="${BASH_REMATCH[1]}"
+    if [[ "$doc" =~ \"uid_backstop\":(true|false)[,}] ]]; then
+        TS_M_ATT_BACKSTOP="${BASH_REMATCH[1]}"
+    fi
+    if [[ -z "$boot" ]] || [[ "$doc" != *"\"boot_id\":\"${boot}\""* ]]; then
+        TS_M_ATT_STATUS="other_boot"
+    elif [[ "$doc" != *'"armed":true'* ]]; then
+        TS_M_ATT_STATUS="not_armed"
+    else
+        TS_M_ATT_STATUS="valid"
+    fi
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# Managed mode: Lightning unit and node config (read-only helpers)
+# ---------------------------------------------------------------------------
+
+# Prints property $2 of unit $1 ("systemctl show --value"); empty if systemd cannot tell.
+ts_m_unit_prop() {
+    "$SYSTEMCTL_BIN" show -p "$2" --value "$1" 2>/dev/null
+}
+
+# Reads the command line of the single ExecStart of unit $1 ("systemctl show": "{ path=... ;
+# argv[]=<arguments> ; ignore_errors=... }") into TS_M_EXEC_ARGV, one argument per element. Fails if
+# there is no ExecStart, more than one, or the field cannot be found.
+ts_m_execstart_tokens() {
+    local raw marker='argv[]=' rest
+    TS_M_EXEC_ARGV=()
+    raw=$(ts_m_unit_prop "$1" ExecStart)
+    if [[ "$raw" != *"$marker"* ]]; then
+        return 1
+    fi
+    rest="${raw#*"$marker"}"
+    if [[ "$rest" == *"$marker"* ]] || [[ "$rest" != *" ; ignore_errors="* ]]; then
+        return 1
+    fi
+    rest="${rest%% ; ignore_errors=*}"
+    read -r -a TS_M_EXEC_ARGV <<< "$rest"
+    if [[ ${#TS_M_EXEC_ARGV[@]} -eq 0 ]]; then
+        return 1
+    fi
+    return 0
+}
+
+# Like ts_m_execstart_tokens, and succeeds only if the arguments can be checked reliably. Fails with
+# TS_M_EXEC_REASON when the command line cannot be read, when a shell or a script runs (it can add
+# arguments of its own) or when it uses $VAR or ${VAR} (systemd fills those in from Environment= or
+# EnvironmentFile= when the unit starts).
+ts_m_execstart_args() {
+    local unit="$1" exe head=""
+    TS_M_EXEC_REASON=""
+    if ! ts_m_execstart_tokens "$unit"; then
+        TS_M_EXEC_REASON="the command line (ExecStart) of ${unit} cannot be read"
+        return 1
+    fi
+    if [[ "${TS_M_EXEC_ARGV[*]}" == *'$'* ]]; then
+        TS_M_EXEC_REASON="the command line (ExecStart) of ${unit} takes values from environment variables (\$VAR or \${VAR})"
+        return 1
+    fi
+    exe="${TS_M_EXEC_ARGV[0]}"
+    case "${exe##*/}" in
+        sh|bash|dash|zsh|ksh|mksh|ash|busybox)
+            TS_M_EXEC_REASON="the command line (ExecStart) of ${unit} runs through a shell (${exe})"
+            return 1
+            ;;
+    esac
+    if [[ -f "${TS_FS_ROOT}${exe}" ]]; then
+        head=$(head -c 2 "${TS_FS_ROOT}${exe}" 2>/dev/null) || head=""
+        if [[ "$head" == "#!" ]]; then
+            TS_M_EXEC_REASON="the command line (ExecStart) of ${unit} runs the script ${exe}, which can add arguments"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# Prints the arguments of the first ExecStart of unit $1, one per line.
+ts_m_unit_execstart_argv() {
+    ts_m_execstart_tokens "$1" || return 1
+    printf '%s\n' "${TS_M_EXEC_ARGV[@]}"
+}
+
+# Prints the home directory of user $1.
+ts_m_user_home() {
+    local entry home
+    entry=$("$GETENT_BIN" passwd "$1" 2>/dev/null) || return 1
+    home=$(printf '%s\n' "$entry" | head -n 1 | cut -d: -f6)
+    if [[ "$home" != /* ]]; then
+        return 1
+    fi
+    echo "$home"
+}
+
+# Finds the Lightning config files of unit $2 (implementation $1): the path given in ExecStart
+# (--configfile, --conf, --lnddir, --lightning-dir, --lit-dir), else the default below the home of
+# the unit's User. Sets TS_M_NC_FILES (files that exist and can be read) and TS_M_NC_REASON (why
+# nothing usable was found). Read-only.
+ts_m_node_config_files() {
+    local impl="$1" unit="$2" arg prev="" conf="" dir="" user home candidates=() f
+    TS_M_NC_FILES=()
+    TS_M_NC_REASON=""
+    while IFS= read -r arg; do
+        case "$prev" in
+            --configfile|-C) conf="$arg" ;;
+            --conf) conf="$arg" ;;
+            --lnddir|--lightning-dir|--lit-dir) dir="$arg" ;;
+        esac
+        case "$arg" in
+            --configfile=*) conf="${arg#*=}" ;;
+            --conf=*) conf="${arg#*=}" ;;
+            --lnddir=*|--lightning-dir=*|--lit-dir=*) dir="${arg#*=}" ;;
+        esac
+        prev="$arg"
+    done < <(ts_m_unit_execstart_argv "$unit" || true)
+    if [[ -z "$conf" ]] && [[ -z "$dir" ]]; then
+        user=$(ts_m_unit_prop "$unit" User)
+        if [[ -z "$user" ]] || ! home=$(ts_m_user_home "$user"); then
+            TS_M_NC_REASON="the config location is unknown (no path in ExecStart and no home directory for User=${user:-root})"
+            return 0
+        fi
+        case "$impl" in
+            lnd) dir="${home}/.lnd" ;;
+            cln) dir="${home}/.lightning" ;;
+            lit) dir="${home}/.lit" ;;
+        esac
+    fi
+    if [[ -n "$conf" ]]; then
+        candidates=("$conf")
+    else
+        case "$impl" in
+            lnd) candidates=("${dir}/lnd.conf") ;;
+            cln) candidates=("${dir}/config" "${dir}/bitcoin/config") ;;
+            lit) candidates=("${dir}/lit.conf") ;;
+        esac
+    fi
+    for f in "${candidates[@]}"; do
+        if [[ "$f" != /* ]] || [[ "$f" == *'$'* ]]; then
+            TS_M_NC_REASON="the config path ${f} cannot be resolved"
+            continue
+        fi
+        if [[ -f "${TS_FS_ROOT}${f}" ]] && [[ -r "${TS_FS_ROOT}${f}" ]]; then
+            TS_M_NC_FILES+=("$f")
+        elif [[ -e "${TS_FS_ROOT}${f}" ]]; then
+            TS_M_NC_REASON="${f} cannot be read"
+        fi
+    done
+    if [[ ${#TS_M_NC_FILES[@]} -eq 0 ]] && [[ -z "$TS_M_NC_REASON" ]]; then
+        TS_M_NC_REASON="no config file found (${candidates[*]})"
+    fi
+    return 0
+}
+
+# Prints the active (uncommented) settings of config file $1 as "<line number>|<key>|<value>",
+# keys lowercased; a bare flag has an empty value.
+ts_m_config_settings() {
+    awk '
+        { sub(/\r$/, "") }
+        {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            if (line == "" || line ~ /^[#;]/ || line ~ /^\[/) next
+            key = line; val = ""
+            eq = index(line, "=")
+            if (eq > 0) { key = substr(line, 1, eq - 1); val = substr(line, eq + 1) }
+            sub(/[[:space:]]+$/, "", key); sub(/^[[:space:]]+/, "", val); sub(/[[:space:]]+$/, "", val)
+            print NR "|" tolower(key) "|" val
+        }' "$1" 2>/dev/null
+}
+
+# Succeeds if CLN addr value $1 stays off the clearnet: a loopback address, a Tor address (onion,
+# autotor:, statictor:) or a local socket path.
+ts_m_cln_addr_private() {
+    local v="${1,,}" host
+    case "$v" in
+        autotor:*|statictor:*|/*) return 0 ;;
+    esac
+    if [[ "$v" =~ \.onion(:[0-9]+)?$ ]]; then
+        return 0
+    fi
+    host="$v"
+    if [[ "$host" =~ ^(.*):[0-9]{1,5}$ ]]; then
+        host="${BASH_REMATCH[1]}"
+    fi
+    case "$host" in
+        localhost|127.*|"[::1]"|::1) return 0 ;;
+    esac
+    return 1
+}
+
+# Succeeds if setting $2 (key lowercased) with value $3 is a TunnelSats clearnet setting for
+# implementation $1: for LND and LIT externalhosts or tor.skip-proxy-for-clearnet-targets as a bare
+# flag, true or 1 (LIT also with the lnd. prefix); for CLN bind-addr=0.0.0.0:9735, an addr that is
+# not loopback or Tor (it binds and announces), an announce-addr that is not an onion address, or
+# always-use-proxy=false|0.
+ts_m_nc_setting_hit() {
+    local impl="$1" key="$2" val="$3"
+    if [[ "$impl" == "lit" ]]; then
+        key="${key#lnd.}"
+    fi
+    case "${impl}:${key}" in
+        lnd:externalhosts|lit:externalhosts)
+            if [[ -n "$val" ]]; then
+                return 0
+            fi
+            ;;
+        lnd:tor.skip-proxy-for-clearnet-targets|lit:tor.skip-proxy-for-clearnet-targets)
+            case "${val,,}" in
+                ""|true|1) return 0 ;;
+            esac
+            ;;
+        cln:bind-addr)
+            case "$val" in
+                0.0.0.0:9735|:9735|"[::]:9735") return 0 ;;
+            esac
+            ;;
+        cln:addr)
+            # addr binds and announces: anything but loopback, Tor or a local socket
+            if [[ -n "$val" ]] && ! ts_m_cln_addr_private "$val"; then
+                return 0
+            fi
+            ;;
+        cln:announce-addr)
+            if [[ -n "$val" ]] && [[ ! "${val,,}" =~ \.onion(:[0-9]+)?$ ]]; then
+                return 0
+            fi
+            ;;
+        cln:always-use-proxy)
+            case "${val,,}" in
+                false|0) return 0 ;;
+            esac
+            ;;
+    esac
+    return 1
+}
+
+# Reports TunnelSats clearnet settings given on the command line (TS_M_EXEC_ARGV) of unit $2
+# (implementation $1): --key=value, a bare --flag, or --key value for settings that take a value.
+# Adds "<unit> ExecStart: --<key>[=<value>]" to TS_M_NC_LINES.
+ts_m_execstart_clearnet() {
+    local impl="$1" unit="$2" i n="${#TS_M_EXEC_ARGV[@]}" arg key val
+    for (( i = 1; i < n; i++ )); do
+        arg="${TS_M_EXEC_ARGV[$i]}"
+        if [[ "$arg" != --?* ]]; then
+            continue
+        fi
+        key="${arg#--}"
+        val=""
+        if [[ "$key" == *=* ]]; then
+            val="${key#*=}"
+            key="${key%%=*}"
+        else
+            case "${impl}:${key,,}" in
+                lnd:externalhosts|lit:externalhosts|lit:lnd.externalhosts|cln:bind-addr|cln:addr|cln:announce-addr|cln:always-use-proxy)
+                    if (( i + 1 < n )) && [[ "${TS_M_EXEC_ARGV[$((i + 1))]}" != --* ]]; then
+                        i=$((i + 1))
+                        val="${TS_M_EXEC_ARGV[$i]}"
+                    fi
+                    ;;
+            esac
+        fi
+        key="${key,,}"
+        if ts_m_nc_setting_hit "$impl" "$key" "$val"; then
+            TS_M_NC_LINES+=("${unit} ExecStart: --${key}${val:+=${val}}")
+        fi
+    done
+}
+
+# Reports active TunnelSats clearnet settings of the Lightning unit $2 (implementation $1), in its
+# config file and on its command line (ExecStart); see ts_m_nc_setting_hit. Sets TS_M_NC_STATUS to
+# clearnet (settings found), unknown (config missing or unreadable, or a command line that cannot be
+# checked reliably: shell, script, $VAR) or clean, TS_M_NC_LINES to "<file>:<line>:<setting>" and
+# "<unit> ExecStart: <argument>", and TS_M_NC_REASON. Read-only; the bare-metal guard reuses it.
+ts_m_node_config_clearnet() {
+    local impl="$1" unit="$2" f entry num key val exec_ok=1
+    TS_M_NC_STATUS="unknown"
+    TS_M_NC_LINES=()
+    ts_m_node_config_files "$impl" "$unit"
+    for f in "${TS_M_NC_FILES[@]}"; do
+        while IFS= read -r entry; do
+            num="${entry%%|*}"
+            entry="${entry#*|}"
+            key="${entry%%|*}"
+            val="${entry#*|}"
+            if ts_m_nc_setting_hit "$impl" "$key" "$val"; then
+                TS_M_NC_LINES+=("${f}:${num}:${key}=${val}")
+            fi
+        done < <(ts_m_config_settings "${TS_FS_ROOT}${f}")
+    done
+    # The command line counts like the config file; one that cannot be checked makes it unknown
+    if ts_m_execstart_args "$unit"; then
+        ts_m_execstart_clearnet "$impl" "$unit"
+    else
+        exec_ok=0
+        if [[ ${#TS_M_NC_FILES[@]} -eq 0 ]] && [[ -n "$TS_M_NC_REASON" ]]; then
+            TS_M_NC_REASON="${TS_M_NC_REASON}; ${TS_M_EXEC_REASON}"
+        else
+            TS_M_NC_REASON="$TS_M_EXEC_REASON"
+        fi
+    fi
+    if [[ ${#TS_M_NC_LINES[@]} -gt 0 ]]; then
+        TS_M_NC_STATUS="clearnet"
+    elif [[ ${#TS_M_NC_FILES[@]} -eq 0 ]] || [[ "$exec_ok" -eq 0 ]]; then
+        TS_M_NC_STATUS="unknown"
+    else
+        TS_M_NC_STATUS="clean"
+    fi
+    return 0
+}
+
+# Prints the TCP ports of the non-loopback Lightning listen addresses set in the node config of
+# unit $2 (implementation $1): LND/LIT listen, CLN addr and bind-addr. Nothing if none is set.
+ts_m_node_config_listen_ports() {
+    local impl="$1" unit="$2" f entry key val host port
+    ts_m_node_config_files "$impl" "$unit"
+    for f in "${TS_M_NC_FILES[@]}"; do
+        while IFS= read -r entry; do
+            entry="${entry#*|}"
+            key="${entry%%|*}"
+            val="${entry#*|}"
+            case "$impl:$key" in
+                lnd:listen|lit:listen|lit:lnd.listen|cln:addr|cln:bind-addr) ;;
+                *) continue ;;
+            esac
+            if [[ ! "$val" =~ ^(.*):([0-9]{1,5})$ ]]; then
+                continue
+            fi
+            host="${BASH_REMATCH[1]}"
+            port="${BASH_REMATCH[2]}"
+            case "$host" in
+                localhost|127.*|"[::1]"|::1) continue ;;
+            esac
+            echo "$port"
+        done < <(ts_m_config_settings "${TS_FS_ROOT}${f}")
+    done
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# Managed mode: install --managed baremetal
+# ---------------------------------------------------------------------------
+
+# Succeeds on a unified cgroup v2 hierarchy mounted at /sys/fs/cgroup.
+ts_m_cgroup2_unified() {
+    local dev mp fs rest
+    if [[ ! -f "${TS_FS_ROOT}${TS_M_CGROUP_ROOT}/cgroup.controllers" ]]; then
+        return 1
+    fi
+    while read -r dev mp fs rest; do
+        if [[ "$mp" == "$TS_M_CGROUP_ROOT" ]]; then
+            if [[ "$fs" == "cgroup2" ]]; then
+                return 0
+            fi
+            return 1
+        fi
+    done < "${TS_FS_ROOT}/proc/mounts"
+    return 1
+}
+
+# Prints "<kind>|<evidence>|<ids of the artifacts found>" of an existing TunnelSats install, using
+# detect's read-only classification (runs in a subshell, so detect's globals stay untouched).
+ts_m_existing_install() {
+    (
+        found=" "
+        ts_detect_artifacts
+        ts_detect_config
+        ts_detect_install_kind
+        for i in "${!TSD_ART_ID[@]}"; do
+            case "${TSD_ART_STATUS[$i]}" in
+                absent|unavailable) continue ;;
+            esac
+            if [[ "$found" != *" ${TSD_ART_ID[$i]} "* ]]; then
+                found+="${TSD_ART_ID[$i]} "
+            fi
+        done
+        found="${found# }"
+        echo "${TSD_INSTALL_KIND}|${TSD_EVIDENCE[*]}|${found% }"
+    )
+}
+
+# Picks the Lightning unit among lnd.service, lightningd.service, litd.service and lit.service
+# (LoadState=loaded). With --impl, the unit of that implementation; it must be the only candidate
+# (litd.service and lit.service both belong to lit). Without --impl, exactly one unit may be
+# loaded. Units of other implementations may stay installed: they are not tunneled and are listed
+# in TS_M_OTHER_UNITS. Sets TS_M_IMPL and TS_M_UNIT.
+ts_m_select_ln_unit() {
+    local entry impl unit state loaded=() impls=() picked=() picked_impl=""
+    TS_M_OTHER_UNITS=()
+    for entry in $TS_M_LN_UNITS; do
+        impl="${entry%%:*}"
+        unit="${entry#*:}"
+        state=$(ts_m_unit_prop "$unit" LoadState)
+        if [[ "$state" == "loaded" ]]; then
+            loaded+=("$unit")
+            impls+=("$impl")
+        fi
+    done
+    if [[ -n "$TS_OPT_IMPL" ]]; then
+        for entry in "${!loaded[@]}"; do
+            if [[ "${impls[$entry]}" == "$TS_OPT_IMPL" ]]; then
+                picked+=("${loaded[$entry]}")
+                picked_impl="${impls[$entry]}"
+            else
+                TS_M_OTHER_UNITS+=("${loaded[$entry]}")
+            fi
+        done
+        if [[ ${#picked[@]} -eq 0 ]]; then
+            ts_fail 7 E_LN_UNIT refused "--impl ${TS_OPT_IMPL}: no unit of this implementation is installed (found: ${loaded[*]:-none})"
+        fi
+        if [[ ${#picked[@]} -gt 1 ]]; then
+            ts_fail 7 E_LN_UNIT refused "--impl ${TS_OPT_IMPL}: several units are installed (${picked[*]}); managed mode tunnels exactly one"
+        fi
+        TS_M_IMPL="$picked_impl"
+        TS_M_UNIT="${picked[0]}"
+        return 0
+    fi
+    if [[ ${#loaded[@]} -eq 0 ]]; then
+        ts_fail 7 E_LN_UNIT refused "No Lightning unit found (lnd.service, lightningd.service, litd.service or lit.service)"
+    fi
+    if [[ ${#loaded[@]} -gt 1 ]]; then
+        ts_fail 7 E_LN_UNIT refused "Several Lightning units are installed (${loaded[*]}); choose the one to tunnel with --impl"
+    fi
+    TS_M_IMPL="${impls[0]}"
+    TS_M_UNIT="${loaded[0]}"
+}
+
+# Sets TS_M_USER and TS_M_UID for the Lightning unit: a dedicated non-root user is required, since
+# the uid backstop and the emergency block select the daemon's traffic by uid.
+ts_m_select_ln_user() {
+    local user dyn entry uid
+    user=$(ts_m_unit_prop "$TS_M_UNIT" User)
+    dyn=$(ts_m_unit_prop "$TS_M_UNIT" DynamicUser)
+    if [[ "$dyn" == "yes" ]]; then
+        ts_fail 7 E_LN_USER refused "${TS_M_UNIT} uses DynamicUser=; managed mode needs a fixed, non-root User="
+    fi
+    if [[ -z "$user" ]] || [[ "$user" == "root" ]] || [[ "$user" == "0" ]]; then
+        ts_fail 7 E_LN_USER refused "${TS_M_UNIT} runs as root; managed mode needs a dedicated, non-root User="
+    fi
+    entry=$("$GETENT_BIN" passwd "$user" 2>/dev/null | head -n 1) || entry=""
+    uid=$(printf '%s\n' "$entry" | cut -d: -f3)
+    if [[ ! "$uid" =~ ^[1-9][0-9]*$ ]]; then
+        ts_fail 7 E_LN_USER refused "User=${user} of ${TS_M_UNIT} is unknown or root"
+    fi
+    TS_M_USER=$(printf '%s\n' "$entry" | cut -d: -f1)
+    TS_M_UID="$uid"
+    if [[ ! "$TS_M_USER" =~ ^[a-z_][a-z0-9_.-]{0,31}$ ]]; then
+        ts_fail 7 E_LN_USER refused "User=${user} of ${TS_M_UNIT} has an unsupported name"
+    fi
+}
+
+# Every check that can refuse the install before anything changes.
+ts_m_install_preflight() {
+    local guess existing kind evidence found listing line ports p port_ok=0 fam
+    guess=$(ts_guess_platform "$TS_FS_ROOT")
+    if [[ -n "$TS_OPT_PLATFORM" ]] && [[ "$TS_OPT_PLATFORM" != "baremetal" ]]; then
+        ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Managed mode supports bare-metal systemd nodes only for now (--platform ${TS_OPT_PLATFORM})"
+    fi
+    if [[ -n "$guess" ]]; then
+        ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Managed mode supports bare-metal systemd nodes only for now (detected: ${guess})"
+    fi
+    if [[ ! -d "${TS_FS_ROOT}/run/systemd/system" ]]; then
+        ts_fail 6 E_SYSTEMD_MISSING capability "systemd is not running as PID 1"
+    fi
+    if ! ts_m_cgroup2_unified; then
+        ts_fail 6 E_CGROUP_V2_MISSING capability "A unified cgroup v2 hierarchy at ${TS_M_CGROUP_ROOT} is required"
+    fi
+    if ! command -v "$PERL_BIN" >/dev/null 2>&1; then
+        ts_fail 6 E_DEPENDENCY_MISSING capability "perl is missing; verify's kill switch and IPv6 probes need it (Debian and Ubuntu ship it as perl-base)"
+    fi
+    if ts_m_inventory_present; then
+        ts_fail 7 E_MANAGED_PRESENT refused "A managed install already exists (complete, interrupted or partly removed); run 'tunnelsats.sh uninstall --managed' first"
+    fi
+    existing=$(ts_m_existing_install) || existing="unknown||"
+    kind="${existing%%|*}"
+    existing="${existing#*|}"
+    evidence="${existing%%|*}"
+    found="${existing#*|}"
+    if [[ "$found" == "wg_config" ]] && [[ -e "${TS_FS_ROOT}${TS_M_WG_CONF}" ]]; then
+        ts_fail 7 E_CONFIG_PRESENT refused "${TS_M_WG_CONF} already exists, without any other trace of a TunnelSats install. If it is left from a previous install, run 'tunnelsats.sh uninstall' first; if it is your own file, move it elsewhere and pass it with --config (managed mode installs its own copy)."
+    fi
+    if [[ "$kind" != "none" ]]; then
+        ts_fail 7 E_LEGACY_INSTALL refused "An existing TunnelSats install was found (${kind}; evidence: ${evidence:-${found:-none}}). Run 'tunnelsats.sh uninstall' first; taking over an existing install comes in a later version."
+    fi
+    ts_m_select_ln_unit
+    ts_m_select_ln_user
+    listing=$("$IP_BIN" route show table 52 2>&1) || listing=""
+    if printf '%s\n' "$listing" | grep -qE '^(default|0\.0\.0\.0/0)[[:space:]]'; then
+        ts_fail 7 E_TAILSCALE_EXIT_NODE refused "A Tailscale exit node is active (default route in table 52); its rules come before the TunnelSats rules"
+    fi
+    for fam in 4 6; do
+        if [[ "$fam" == "6" ]] && ! ts_m_ipv6_available; then
+            continue
+        fi
+        if ! listing=$(ts_m_table_routes "$fam"); then
+            ts_fail 1 E_KERNEL_STATE operational "IPv${fam} routing table ${TS_M_RT_TABLE} cannot be read"
+        fi
+        if [[ -n "$listing" ]]; then
+            ts_fail 7 E_TABLE_51820_IN_USE refused "IPv${fam} routing table ${TS_M_RT_TABLE} is in use: ${listing%%$'\n'*}"
+        fi
+        if ! listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null); then
+            ts_fail 1 E_KERNEL_STATE operational "IPv${fam} policy rules cannot be read"
+        fi
+        while IFS= read -r line; do
+            case "$line" in
+                21818:*|21819:*|21820:*|21821:*|21822:*)
+                    ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv${fam} policy rule priority ${line%%:*} is in use: ${line}"
+                    ;;
+            esac
+        done < <(printf '%s\n' "$listing")
+    done
+    ports=$(ts_m_node_config_listen_ports "$TS_M_IMPL" "$TS_M_UNIT")
+    if [[ -n "$ports" ]]; then
+        for p in $ports; do
+            if [[ "$p" == "$TS_M_LN_PORT" ]]; then
+                port_ok=1
+            fi
+        done
+        if [[ "$port_ok" -eq 0 ]]; then
+            ts_fail 7 E_LN_PORT refused "Lightning listens on port(s) $(echo $ports); the TunnelSats server forwards to ${TS_M_LN_PORT}"
+        fi
+    fi
+    if [[ ! -f "$TS_SCRIPT_PATH" ]] || [[ ! -r "$TS_SCRIPT_PATH" ]]; then
+        ts_fail 2 E_USAGE usage "Run tunnelsats.sh from a file (not through a pipe): managed mode installs a copy of it"
+    fi
+    return 0
+}
+
+# Sanitizes the subscription config into a private temporary directory and checks what the
+# managed tunnel needs. Sets TS_M_SANITIZED. Refuses with E_CONFIG_INVALID (exit 8).
+ts_m_install_validate_config() {
+    local line section="" key val priv="" pub="" addr=0 endpoint="" allowed=0 ips ip
+    if [[ -z "$CONFIG_FILE" ]] || [[ ! -f "$CONFIG_FILE" ]]; then
+        ts_fail 8 E_CONFIG_INVALID input "WireGuard config not found: ${CONFIG_FILE:-none}"
+    fi
+    TS_M_TMP_DIR=$(mktemp -d) || ts_fail 1 E_INTERNAL operational "Cannot create a temporary directory"
+    chmod 0700 "$TS_M_TMP_DIR"
+    TS_M_SANITIZED="${TS_M_TMP_DIR}/sanitized.conf"
+    if ! sanitize_wireguard_config "$CONFIG_FILE" "$TS_M_SANITIZED" >&2; then
+        ts_fail 8 E_CONFIG_INVALID input "The WireGuard config could not be sanitized (PrivateKey and Endpoint are required)"
+    fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%$'\r'}"
+        line="${line#"${line%%[![:space:]]*}"}"
+        if [[ "$line" =~ ^\[([A-Za-z]+)\] ]]; then
+            section="${BASH_REMATCH[1],,}"
+            continue
+        fi
+        if [[ ! "$line" =~ ^([A-Za-z]+)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            continue
+        fi
+        key="${BASH_REMATCH[1],,}"
+        val="${BASH_REMATCH[2]%%#*}"
+        val="${val%"${val##*[![:space:]]}"}"
+        case "$section:$key" in
+            interface:privatekey) priv="$val" ;;
+            interface:address) addr=1 ;;
+            peer:publickey) pub="$val" ;;
+            peer:endpoint) endpoint="$val" ;;
+            peer:allowedips)
+                ips="${val//,/ }"
+                for ip in $ips; do
+                    if [[ "$ip" == "0.0.0.0/0" ]]; then
+                        allowed=1
+                    fi
+                done
+                ;;
+        esac
+    done < "$TS_M_SANITIZED"
+    if ! ts_valid_wg_key "$priv" || ! ts_valid_wg_key "$pub"; then
+        ts_fail 8 E_CONFIG_INVALID input "The WireGuard config needs a valid PrivateKey and peer PublicKey"
+    fi
+    if [[ "$addr" -eq 0 ]]; then
+        ts_fail 8 E_CONFIG_INVALID input "The WireGuard config has no Address"
+    fi
+    if ! ts_detect_parse_endpoint "$endpoint"; then
+        ts_fail 8 E_CONFIG_INVALID input "The WireGuard config has no valid Endpoint (host:port)"
+    fi
+    if [[ "$allowed" -eq 0 ]]; then
+        ts_fail 8 E_CONFIG_INVALID input "AllowedIPs must include 0.0.0.0/0, so the tunnel carries every destination"
+    fi
+    return 0
+}
+
+# Installs wireguard-tools, nftables and curl (verify's probes) when missing; managed mode never
+# installs resolvconf or cgroup-tools.
+ts_m_install_packages() {
+    local missing=0 tpl=0 p
+    for p in /lib/systemd/system/wg-quick@.service /usr/lib/systemd/system/wg-quick@.service /etc/systemd/system/wg-quick@.service; do
+        if [[ -f "${TS_FS_ROOT}${p}" ]]; then
+            tpl=1
+        fi
+    done
+    if ! command -v "$WG_BIN" >/dev/null 2>&1 || ! command -v "$WG_QUICK_BIN" >/dev/null 2>&1 || [[ "$tpl" -eq 0 ]] || \
+        ! command -v "$NFT_BIN" >/dev/null 2>&1 || ! command -v "$CURL_BIN" >/dev/null 2>&1; then
+        missing=1
+    fi
+    if [[ "$missing" -eq 0 ]]; then
+        return 0
+    fi
+    print_info "Installing wireguard-tools, nftables and curl..."
+    if ! apt-get update -qq >/dev/null 2>&1 || ! apt-get install -yqq wireguard-tools nftables curl >/dev/null 2>&1; then
+        ts_fail 6 E_DEPENDENCY_MISSING capability "Installing wireguard-tools, nftables and curl failed"
+    fi
+    return 0
+}
+
+# Checks the commands managed mode runs (after the package step).
+ts_m_check_tools() {
+    local c
+    for c in "$WG_BIN" "$WG_QUICK_BIN" "$NFT_BIN" "$SYSTEMCTL_BIN" "$SYSTEMD_RUN_BIN" "$UNSHARE_BIN" "$CURL_BIN" "$GETENT_BIN" flock sysctl sha256sum install; do
+        if ! command -v "$c" >/dev/null 2>&1; then
+            ts_fail 6 E_DEPENDENCY_MISSING capability "Required command not found: ${c}"
+        fi
+    done
+    return 0
+}
+
+# Loads the complete kill switch ruleset into a throwaway network namespace, with a cgroup that
+# exists now in place of the slice: proves that this kernel accepts every expression and hook
+# combination (socket cgroupv2 among them) without changing the host. Fails with E_CAPABILITY_MISSING.
+ts_m_capability_probe() {
+    local cg="" probe err="" rc=0
+    cg=$(sed -n 's|^0::/\([^/]\{1,\}\).*|\1|p' "${TS_FS_ROOT}/proc/self/cgroup" 2>/dev/null | head -n 1) || cg=""
+    if [[ -z "$cg" ]] || [[ ! -d "${TS_FS_ROOT}${TS_M_CGROUP_ROOT}/${cg}" ]]; then
+        cg="system.slice"
+    fi
+    probe="${TS_M_TMP_DIR}/probe.nft"
+    if ! ts_m_render_ruleset "$cg" 1 > "$probe"; then
+        ts_fail 1 E_INTERNAL operational "Cannot render the probe ruleset"
+    fi
+    err=$("$UNSHARE_BIN" --net -- "$NFT_BIN" -f "$probe" 2>&1) || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        err="${err//$'\n'/ }"
+        ts_fail 6 E_CAPABILITY_MISSING capability "This kernel or nft does not accept the kill switch ruleset (socket cgroupv2 needs Linux 5.13+): ${err:0:300}"
+    fi
+    return 0
+}
+
+# Prints the files install writes, in the order it writes them: the planned file list of the
+# write-ahead inventory.
+ts_m_planned_files() {
+    printf '%s\n' "$TS_M_BIN" "${TS_M_UNIT_DIR}/${TS_M_SLICE_UNIT}" "${TS_M_UNIT_DIR}/${TS_M_KILLSWITCH_UNIT}" \
+        "${TS_M_UNIT_DIR}/${TS_M_VERIFIER_UNIT}" "${TS_M_UNIT_DIR}/${TS_M_TIMER_UNIT}" \
+        "${TS_M_UNIT_DIR}/${TS_M_UNIT}.d/${TS_M_DROPIN_NAME}" "${TS_M_UNIT_DIR}/${TS_M_WG_UNIT}.d/${TS_M_DROPIN_NAME}" \
+        "$TS_M_WG_CONF"
+}
+
+# Plans the install for the write-ahead inventory: every file install writes (sha256 still
+# unknown) and every directory it will have to create.
+ts_m_install_plan() {
+    local p
+    TS_M_FILES=()
+    TS_M_FILE_SHA=()
+    TS_M_CREATED_DIRS=()
+    TS_M_ENABLED_UNITS=()
+    while IFS= read -r p; do
+        TS_M_FILES+=("$p")
+        TS_M_FILE_SHA+=("")
+    done < <(ts_m_planned_files)
+    for p in "$TS_M_STATE_DIR" "${TS_M_UNIT_DIR}/${TS_M_UNIT}.d" "${TS_M_UNIT_DIR}/${TS_M_WG_UNIT}.d" "$TS_M_WG_DIR"; do
+        if [[ ! -d "${TS_FS_ROOT}${p}" ]]; then
+            TS_M_CREATED_DIRS+=("$p")
+        fi
+    done
+}
+
+# Writes the script copy, units, drop-ins and tunnel config. The inventory comes first (state
+# "installing", every planned file and directory), so even an interrupted install leaves a record
+# that uninstall --managed follows; each file's sha256 is recorded right after it is written. The
+# recorder runs in this shell (input through process substitution, never a pipeline, which would
+# run it in a subshell and lose the record).
+ts_m_install_files() {
+    local unit_dir="$TS_M_UNIT_DIR" dropin_dir="${TS_M_UNIT_DIR}/${TS_M_UNIT}.d" wg_dropin_dir="${TS_M_UNIT_DIR}/${TS_M_WG_UNIT}.d"
+    local tmp sha_src="" sha_dst=""
+    ts_m_install_plan
+    TS_M_INV_STATE="installing"
+    ts_m_ensure_dir "$TS_M_STATE_DIR" 0755 || return 1
+    ts_m_inventory_write || return 1
+    # Script copy (atomic: temporary file in the target directory, then rename)
+    tmp=$(mktemp "${TS_FS_ROOT}${TS_M_BIN%/*}/.tunnelsats.XXXXXX") || return 1
+    if ! install -m 0755 "$TS_SCRIPT_PATH" "$tmp" || ! mv -f "$tmp" "${TS_FS_ROOT}${TS_M_BIN}"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    sha_src=$(ts_m_sha256 "$TS_SCRIPT_PATH") || sha_src=""
+    sha_dst=$(ts_m_sha256 "${TS_FS_ROOT}${TS_M_BIN}") || sha_dst=""
+    ts_m_record_file "$TS_M_BIN" "$sha_dst"
+    if [[ -z "$sha_dst" ]] || [[ "$sha_src" != "$sha_dst" ]] || ! ts_m_inventory_write; then
+        return 1
+    fi
+    ts_m_install_file "${unit_dir}/${TS_M_SLICE_UNIT}" 0644 < <(ts_m_render_slice_unit) || return 1
+    ts_m_install_file "${unit_dir}/${TS_M_KILLSWITCH_UNIT}" 0644 < <(ts_m_render_killswitch_unit "$TS_M_UNIT" "$TS_M_INV_UID") || return 1
+    ts_m_install_file "${unit_dir}/${TS_M_VERIFIER_UNIT}" 0644 < <(ts_m_render_verifier_service) || return 1
+    ts_m_install_file "${unit_dir}/${TS_M_TIMER_UNIT}" 0644 < <(ts_m_render_verifier_timer) || return 1
+    ts_m_ensure_dir "$dropin_dir" 0755 || return 1
+    ts_m_install_file "${dropin_dir}/${TS_M_DROPIN_NAME}" 0644 < <(ts_m_render_ln_dropin) || return 1
+    ts_m_ensure_dir "$wg_dropin_dir" 0755 || return 1
+    ts_m_install_file "${wg_dropin_dir}/${TS_M_DROPIN_NAME}" 0644 < <(ts_m_render_wg_dropin) || return 1
+    ts_m_ensure_dir "$TS_M_WG_DIR" 0700 || return 1
+    ts_m_install_file "$TS_M_WG_CONF" 0600 < <(ts_m_render_wg_config "$TS_M_SANITIZED") || return 1
+    return 0
+}
+
+# Prints the files only managed mode creates, one per line. Install refuses while any of them
+# exists (detect reports each one), so removal deletes them even when the record misses one.
+# The tunnel config is not among them: it is removed only when the record lists it.
+ts_m_fixed_files() {
+    local entry
+    printf '%s\n' "$TS_M_BIN" "${TS_M_UNIT_DIR}/${TS_M_SLICE_UNIT}" "${TS_M_UNIT_DIR}/${TS_M_KILLSWITCH_UNIT}" \
+        "${TS_M_UNIT_DIR}/${TS_M_VERIFIER_UNIT}" "${TS_M_UNIT_DIR}/${TS_M_TIMER_UNIT}" \
+        "${TS_M_UNIT_DIR}/${TS_M_WG_UNIT}.d/${TS_M_DROPIN_NAME}"
+    for entry in $TS_M_LN_UNITS; do
+        printf '%s\n' "${TS_M_UNIT_DIR}/${entry#*:}.d/${TS_M_DROPIN_NAME}"
+    done
+}
+
+# Keeps the inventory for a repeated uninstall --managed: state "removing" and the items in
+# TS_M_REMAINING. Adds the inventory itself to TS_M_REMAINING if it cannot be written.
+ts_m_keep_removal_record() {
+    if [[ ! -d "${TS_FS_ROOT}${TS_M_STATE_DIR}" ]]; then
+        return 0
+    fi
+    TS_M_INV_STATE="removing"
+    TS_M_INV_REMAINING=("${TS_M_REMAINING[@]}")
+    if ! ts_m_inventory_write; then
+        TS_M_REMAINING+=("${TS_M_INVENTORY} could not be updated")
+    fi
+}
+
+# Removes the managed dataplane recorded in TS_M_* (inventory or a partial install) plus the
+# files only managed mode creates. The inventory says "removing" before the first change. Order:
+# the Lightning drop-in, units, kernel state and the emergency block, files, runtime files. Then
+# everything is read back from the file system and from systemd. Only when nothing remains go the
+# script copy, the inventory, the directories install created and, last, the runtime state with the
+# emergency records; otherwise the inventory stays (state "removing", with the items that remained),
+# together with the script copy and the emergency records, so uninstall --managed can be repeated
+# once the cause is fixed. Sets TS_M_REMAINING to whatever could not be removed.
+ts_m_remove_dataplane() {
+    local i rel unit frag active paths known
+    local -a files=()
+    TS_M_REMAINING=()
+    mapfile -t files < <(ts_m_fixed_files)
+    for i in "${!TS_M_FILES[@]}"; do
+        known=0
+        for rel in "${files[@]}"; do
+            if [[ "$rel" == "${TS_M_FILES[$i]}" ]]; then
+                known=1
+            fi
+        done
+        if [[ "$known" -eq 0 ]]; then
+            files+=("${TS_M_FILES[$i]}")
+        fi
+    done
+    # 0. The record says "removing" before anything is removed
+    if [[ -f "${TS_FS_ROOT}${TS_M_INVENTORY}" ]]; then
+        TS_M_INV_STATE="removing"
+        TS_M_INV_REMAINING=()
+        if ! ts_m_inventory_write; then
+            TS_M_REMAINING+=("${TS_M_INVENTORY} could not be updated")
+        fi
+    fi
+    # 1. Lightning drop-in, so the next start of the unit is outside the slice
+    for rel in "${files[@]}"; do
+        if [[ "$rel" == "${TS_M_UNIT_DIR}/"*.service.d/"${TS_M_DROPIN_NAME}" ]] && [[ "$rel" != *"${TS_M_WG_UNIT}.d/"* ]]; then
+            rm -f "${TS_FS_ROOT}${rel}"
+        fi
+    done
+    "$SYSTEMCTL_BIN" daemon-reload >/dev/null 2>&1 || true
+    # 2. Units: tunnel, verifier, kill switch (its ExecStop removes the attestation), then the slice
+    for unit in "$TS_M_WG_UNIT" "$TS_M_TIMER_UNIT" "$TS_M_VERIFIER_UNIT" "$TS_M_KILLSWITCH_UNIT" "$TS_M_SLICE_UNIT"; do
+        "$SYSTEMCTL_BIN" stop "$unit" >/dev/null 2>&1 || true
+    done
+    for unit in "${TS_M_ENABLED_UNITS[@]}"; do
+        "$SYSTEMCTL_BIN" disable "$unit" >/dev/null 2>&1 || true
+    done
+    # 3. Kernel state and the emergency block (its records go only with the rules)
+    if ts_m_lock; then
+        if ! ts_m_killswitch_remove "${TS_M_INV_UID:-}"; then
+            TS_M_REMAINING+=("$TS_M_ERROR")
+        fi
+        if [[ -n "${TS_M_INV_UID:-}" ]] && ts_m_emergency_present "$TS_M_INV_UID"; then
+            if ! ts_m_emergency_release "$TS_M_INV_UID"; then
+                TS_M_REMAINING+=("emergency rules at priority 21817-21819")
+            fi
+        elif ! ts_m_emergency_lan_release; then
+            TS_M_REMAINING+=("emergency local network rules at priority ${TS_M_EMERGENCY_LAN_PRIO}")
+        fi
+        ts_m_unlock
+    else
+        TS_M_REMAINING+=("${TS_M_LOCK} could not be taken; kernel state not removed")
+    fi
+    # 4. Files except the script copy, runtime files except the emergency records, units reloaded
+    for rel in "${files[@]}"; do
+        if [[ "$rel" != "$TS_M_BIN" ]]; then
+            rm -f "${TS_FS_ROOT}${rel}"
+        fi
+    done
+    rm -f "${TS_FS_ROOT}${TS_M_ATTEST}" "${TS_FS_ROOT}${TS_M_RULESET_FILE}" "${TS_FS_ROOT}${TS_M_VERIFIER_STATE}"
+    "$SYSTEMCTL_BIN" daemon-reload >/dev/null 2>&1 || true
+    for unit in "$TS_M_WG_UNIT" "$TS_M_TIMER_UNIT" "$TS_M_VERIFIER_UNIT" "$TS_M_KILLSWITCH_UNIT" "$TS_M_SLICE_UNIT"; do
+        "$SYSTEMCTL_BIN" reset-failed "$unit" >/dev/null 2>&1 || true
+    done
+    # 5. Read back: no file left, systemd no longer knows the managed units, and the Lightning
+    # unit no longer loads the drop-in (its next start is outside the slice)
+    for rel in "${files[@]}"; do
+        if [[ "$rel" != "$TS_M_BIN" ]] && [[ -e "${TS_FS_ROOT}${rel}" ]]; then
+            TS_M_REMAINING+=("$rel")
+        fi
+    done
+    for unit in "$TS_M_KILLSWITCH_UNIT" "$TS_M_TIMER_UNIT" "$TS_M_WG_UNIT"; do
+        for rel in "${TS_FS_ROOT}${TS_M_UNIT_DIR}"/*.wants/"$unit"; do
+            if [[ -L "$rel" ]] || [[ -e "$rel" ]]; then
+                TS_M_REMAINING+=("${rel#"$TS_FS_ROOT"}")
+            fi
+        done
+    done
+    # systemd loads a slice even without a unit file (LoadState stays "loaded"), so the test is
+    # "no unit file and inactive" rather than LoadState=not-found
+    for unit in "$TS_M_SLICE_UNIT" "$TS_M_KILLSWITCH_UNIT" "$TS_M_VERIFIER_UNIT" "$TS_M_TIMER_UNIT"; do
+        frag=$(ts_m_unit_prop "$unit" FragmentPath)
+        active=$(ts_m_unit_prop "$unit" ActiveState)
+        if [[ -n "$frag" ]] || [[ "$active" != "inactive" ]]; then
+            TS_M_REMAINING+=("${unit} (systemd: ${frag:-no unit file}, ${active:-state unknown})")
+        fi
+    done
+    if [[ -n "${TS_M_INV_UNIT:-}" ]]; then
+        paths=$(ts_m_unit_prop "$TS_M_INV_UNIT" DropInPaths)
+        if [[ "$paths" == *"/${TS_M_DROPIN_NAME}"* ]]; then
+            TS_M_REMAINING+=("${TS_M_INV_UNIT} still loads ${TS_M_DROPIN_NAME}")
+        fi
+    fi
+    if [[ ${#TS_M_REMAINING[@]} -gt 0 ]]; then
+        ts_m_keep_removal_record
+        return 0
+    fi
+    # 6. Nothing else remains: the script copy, then the record and the directories install created
+    # (only if empty by now, newest first)
+    rm -f "${TS_FS_ROOT}${TS_M_BIN}"
+    if [[ -e "${TS_FS_ROOT}${TS_M_BIN}" ]]; then
+        TS_M_REMAINING+=("$TS_M_BIN")
+        ts_m_keep_removal_record
+        return 0
+    fi
+    rm -f "${TS_FS_ROOT}${TS_M_INVENTORY}"
+    for (( i = ${#TS_M_CREATED_DIRS[@]} - 1; i >= 0; i-- )); do
+        rmdir "${TS_FS_ROOT}${TS_M_CREATED_DIRS[$i]}" 2>/dev/null || true
+    done
+    if [[ -e "${TS_FS_ROOT}${TS_M_INVENTORY}" ]]; then
+        TS_M_REMAINING+=("$TS_M_INVENTORY")
+        return 0
+    fi
+    # 7. Runtime state last, the lifecycle lock file with it: no other install or uninstall can take
+    # a fresh lock while this removal still runs
+    rm -rf "${TS_FS_ROOT}${TS_M_RUN_DIR}"
+    return 0
+}
+
+TS_M_ROLLBACK_ARMED=0
+TS_M_TMP_DIR=""
+
+# EXIT trap of install --managed: removes the temporary copy of the config (it holds the private
+# key) and, after a failure, everything the install created so far. Keeps the JSON contract.
+ts_m_install_exit_trap() {
+    local rc=$?
+    trap - EXIT
+    if [[ -n "$TS_M_TMP_DIR" ]]; then
+        rm -rf "$TS_M_TMP_DIR"
+    fi
+    if [[ "$rc" -ne 0 ]] && [[ "$TS_M_ROLLBACK_ARMED" -eq 1 ]]; then
+        print_warning "Install failed; removing what it created so far..."
+        ts_m_remove_dataplane
+        if [[ ${#TS_M_REMAINING[@]} -gt 0 ]]; then
+            print_error "Could not remove: ${TS_M_REMAINING[*]}. The inventory keeps the record: fix the cause, then run 'tunnelsats.sh uninstall --managed'."
+        fi
+    fi
+    if [[ "$rc" -ne 0 ]]; then
+        ts_m_lifecycle_cleanup
+    fi
+    if [[ "$TS_JSON" -eq 1 ]] && [[ "$TS_JSON_EMITTED" -ne 1 ]]; then
+        if [[ "$rc" -eq 0 ]]; then
+            rc=1
+        fi
+        ts_j_error E_INTERNAL internal "'${TS_COMMAND}' ended without a result (exit code ${rc})"
+        ts_json_document "$rc" "[${TS_R}]"
+    fi
+    exit "$rc"
+}
+
+# Fails the install after changes started (the EXIT trap rolls them back). $1 = error code, $2 = message.
+ts_m_install_abort() {
+    ts_fail 1 "$1" operational "$2"
+}
+
+cmd_install_managed() {
+    local answer="" ln_was_active=0 ln_restarted=0 tunnel_started=0 rc=0 out
+    ts_m_require_root
+    case "$TS_OPT_PROFILE" in
+        baremetal) ;;
+        raspiblitz|umbrel|mynode)
+            ts_fail 7 E_PROFILE_UNSUPPORTED refused "Managed mode supports the baremetal profile only for now (requested: ${TS_OPT_PROFILE})"
+            ;;
+        *) ts_usage_error "--managed requires a profile for install (baremetal)" ;;
+    esac
+    ts_m_lifecycle_lock
+    if [[ "$TS_JSON" -ne 1 ]]; then
+        print_header "Managed Install (preview)"
+    fi
+    trap ts_m_install_exit_trap EXIT
+    ts_m_install_preflight
+    ts_m_install_validate_config
+    if command -v "$NFT_BIN" >/dev/null 2>&1 && command -v "$UNSHARE_BIN" >/dev/null 2>&1; then
+        ts_m_capability_probe
+    fi
+    print_info "Platform: baremetal, Lightning: ${TS_M_UNIT} (user ${TS_M_USER}), uid backstop: $([[ "$TS_OPT_UID_BACKSTOP" -eq 1 ]] && echo on || echo off)"
+    if [[ ${#TS_M_OTHER_UNITS[@]} -gt 0 ]]; then
+        print_warning "Also installed: ${TS_M_OTHER_UNITS[*]}. Managed mode tunnels ${TS_M_UNIT} only; the other units are not tunneled."
+    fi
+    ts_confirm answer "Install the managed dataplane and restart ${TS_M_UNIT} inside ${TS_M_SLICE}? [y/N]: "
+    if [[ ! "$answer" =~ ^[Yy] ]]; then
+        ts_fail 1 E_ABORTED operational "Install aborted; nothing was changed"
+    fi
+    ts_m_install_packages
+    ts_m_check_tools
+    ts_m_capability_probe
+
+    TS_M_INV_PROFILE="baremetal"
+    TS_M_INV_IMPL="$TS_M_IMPL"
+    TS_M_INV_UNIT="$TS_M_UNIT"
+    TS_M_INV_USER="$TS_M_USER"
+    TS_M_INV_UID="$TS_M_UID"
+    TS_M_INV_BACKSTOP="$TS_OPT_UID_BACKSTOP"
+    TS_M_FILES=()
+    TS_M_FILE_SHA=()
+    TS_M_CREATED_DIRS=()
+    TS_M_ENABLED_UNITS=()
+    TS_M_ROLLBACK_ARMED=1
+
+    # Write-ahead: the inventory (state "installing") is on disk before the first change and is
+    # updated before each further one, so an interrupted install leaves a complete record
+    print_info "Writing units, drop-ins and the tunnel config..."
+    if ! ts_m_install_files; then
+        ts_m_install_abort E_WRITE_FAILED "Writing the managed files failed"
+    fi
+    rm -rf "$TS_M_TMP_DIR"
+    TS_M_TMP_DIR=""
+    if ! "$SYSTEMCTL_BIN" daemon-reload; then
+        ts_m_install_abort E_SYSTEMD "systemctl daemon-reload failed"
+    fi
+    for out in "$TS_M_KILLSWITCH_UNIT" "$TS_M_TIMER_UNIT" "$TS_M_WG_UNIT"; do
+        TS_M_ENABLED_UNITS+=("$out")
+        if ! ts_m_inventory_write; then
+            ts_m_install_abort E_WRITE_FAILED "Writing the inventory failed"
+        fi
+        if ! "$SYSTEMCTL_BIN" enable "$out" >/dev/null 2>&1; then
+            ts_m_install_abort E_SYSTEMD "systemctl enable ${out} failed"
+        fi
+    done
+    # Units start only once the inventory says "installed"
+    TS_M_INV_STATE="installed"
+    if ! ts_m_inventory_write; then
+        ts_m_install_abort E_WRITE_FAILED "Writing the inventory failed"
+    fi
+
+    print_info "Arming the kill switch..."
+    if ! "$SYSTEMCTL_BIN" start "$TS_M_KILLSWITCH_UNIT"; then
+        ts_m_install_abort E_KILLSWITCH "The kill switch could not be armed (see: journalctl -u ${TS_M_KILLSWITCH_UNIT})"
+    fi
+    ts_m_read_attestation
+    if [[ "$TS_M_ATT_STATUS" != "valid" ]]; then
+        ts_m_install_abort E_KILLSWITCH "The kill switch unit ran, but the attestation is ${TS_M_ATT_STATUS//_/ }"
+    fi
+    print_success "Kill switch armed and attested"
+
+    print_info "Starting the tunnel..."
+    if "$SYSTEMCTL_BIN" start "$TS_M_WG_UNIT"; then
+        tunnel_started=1
+        print_success "${TS_M_WG_UNIT} started"
+    else
+        print_warning "${TS_M_WG_UNIT} did not start yet; it retries every 30 s and the kill switch blocks clearnet traffic meanwhile"
+    fi
+    local ln_state
+    ln_state=$(ts_m_unit_prop "$TS_M_UNIT" ActiveState)
+    if [[ "$ln_state" == "active" ]] || [[ "$ln_state" == "activating" ]] || [[ "$ln_state" == "reloading" ]] || [[ "$ln_state" == "deactivating" ]]; then
+        ln_was_active=1
+        print_info "Restarting ${TS_M_UNIT} inside ${TS_M_SLICE}..."
+        if "$SYSTEMCTL_BIN" restart "$TS_M_UNIT"; then
+            ln_restarted=1
+        else
+            rc=1
+            print_error "${TS_M_UNIT} did not restart; the managed dataplane stays installed (see: journalctl -u ${TS_M_UNIT})"
+        fi
+    fi
+    if ! "$SYSTEMCTL_BIN" start "$TS_M_TIMER_UNIT"; then
+        rc=1
+        print_error "${TS_M_TIMER_UNIT} did not start"
+    fi
+    TS_M_ROLLBACK_ARMED=0
+    trap - EXIT
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        trap ts_json_exit_guard EXIT
+    fi
+
+    ts_m_node_config_clearnet "$TS_M_IMPL" "$TS_M_UNIT"
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        local errors="[]" items=() other_j
+        if [[ "$rc" -ne 0 ]]; then
+            ts_j_error E_PARTIAL operational "Installed, but ${TS_M_UNIT} or ${TS_M_TIMER_UNIT} did not start"
+            errors="[${TS_R}]"
+        fi
+        for out in "${TS_M_OTHER_UNITS[@]}"; do
+            ts_j_str "$out"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        other_j="$TS_R"
+        ts_j_obj b:managed true s:profile baremetal s:impl "$TS_M_IMPL" s:unit "$TS_M_UNIT" s:node_user "$TS_M_USER" \
+            b:uid_backstop "$TS_OPT_UID_BACKSTOP" s:iface "$TS_M_IFACE" s:slice "$TS_M_SLICE" \
+            b:tunnel_started "$tunnel_started" b:ln_was_active "$ln_was_active" b:ln_restarted "$ln_restarted" \
+            s:node_config "$TS_M_NC_STATUS" r:other_ln_units "$other_j"
+        ts_json_document "$rc" "$errors" "${TS_R:1:${#TS_R}-2}"
+        exit "$rc"
+    fi
+    echo ""
+    print_line
+    print_success "Managed dataplane installed (preview)"
+    print_line
+    echo ""
+    echo "Check it at any time with: sudo tunnelsats verify"
+    echo ""
+    if [[ "$TS_M_NC_STATUS" != "clearnet" ]]; then
+        local vpn_dns vpn_port
+        vpn_dns=$(sed -nE 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*([^:[:space:]]+):.*/\1/Ip' "${TS_FS_ROOT}${TS_M_WG_CONF}" | head -n 1)
+        vpn_port=$(ts_config_vpn_port "${TS_FS_ROOT}${TS_M_WG_CONF}")
+        echo -e "${BOLD}Next: add the hybrid settings to your node configuration, then restart ${TS_M_UNIT}:${NC}"
+        echo ""
+        LN_IMPL="$TS_M_IMPL" PLATFORM="baremetal" node_user="$TS_M_USER" print_node_config_instructions "$vpn_dns" "$vpn_port" "install"
+        echo ""
+        echo "   sudo systemctl restart ${TS_M_UNIT}"
+        echo ""
+    fi
+    exit "$rc"
+}
+
+# ---------------------------------------------------------------------------
+# Managed mode: uninstall --managed, status and restart on a managed install
+# ---------------------------------------------------------------------------
+
+cmd_uninstall_managed() {
+    local answer="" ln_was_active=0 ln_started=0 reason="" rc=0 i
+    ts_m_require_root
+    if ! ts_m_inventory_present; then
+        ts_fail 3 E_NOT_INSTALLED not_installed "No managed install found (${TS_M_INVENTORY})"
+    fi
+    ts_m_lifecycle_lock
+    if ! ts_m_inventory_present; then
+        # Another uninstall finished between the check and the lock
+        ts_m_lifecycle_cleanup
+        ts_fail 3 E_NOT_INSTALLED not_installed "No managed install found (${TS_M_INVENTORY})"
+    fi
+    if ! ts_m_inventory_read; then
+        ts_fail 1 E_INVENTORY operational "$TS_M_ERROR"
+    fi
+    if [[ -n "$TS_OPT_PROFILE" ]] && [[ "$TS_OPT_PROFILE" != "$TS_M_INV_PROFILE" ]]; then
+        ts_fail 2 E_USAGE usage "The managed install uses profile ${TS_M_INV_PROFILE}, not ${TS_OPT_PROFILE}"
+    fi
+    if [[ "$TS_JSON" -ne 1 ]]; then
+        print_header "Managed Uninstall"
+    fi
+    ts_confirm answer "Stop ${TS_M_INV_UNIT} and remove the managed dataplane? [y/N]: "
+    if [[ ! "$answer" =~ ^[Yy] ]]; then
+        ts_fail 1 E_ABORTED operational "Uninstall aborted; nothing was changed"
+    fi
+    if [[ "$(ts_m_unit_prop "$TS_M_INV_UNIT" ActiveState)" == "active" ]]; then
+        ln_was_active=1
+        print_info "Stopping ${TS_M_INV_UNIT} (it is still inside the slice and protected)..."
+        if ! "$SYSTEMCTL_BIN" stop "$TS_M_INV_UNIT"; then
+            ts_fail 1 E_LN_STOP operational "${TS_M_INV_UNIT} could not be stopped; nothing was removed"
+        fi
+    fi
+    print_info "Removing the managed dataplane..."
+    ts_m_remove_dataplane
+    if [[ ${#TS_M_REMAINING[@]} -gt 0 ]]; then
+        rc=1
+        print_error "Could not remove: ${TS_M_REMAINING[*]}"
+        print_info "The inventory keeps the record (state removing): fix the cause, then run 'tunnelsats.sh uninstall --managed' again."
+    else
+        print_success "Managed dataplane removed"
+    fi
+
+    # The node config is the operator's: Lightning starts again only if it holds no TunnelSats
+    # clearnet settings, because outside the slice they would use the regular internet connection
+    ts_m_node_config_clearnet "$TS_M_INV_IMPL" "$TS_M_INV_UNIT"
+    if [[ "$ln_was_active" -eq 1 ]] && [[ "$TS_M_NC_STATUS" != "clean" ]] && [[ "$TS_NONINTERACTIVE" -ne 1 ]] && [[ "$rc" -eq 0 ]]; then
+        for i in 1 2 3; do
+            ts_m_uninstall_print_lines
+            ts_ask answer "--yes" "Remove these settings now, then press Enter to check again (or type 'skip'): " "skip"
+            if [[ "$answer" == "skip" ]]; then
+                break
+            fi
+            ts_m_node_config_clearnet "$TS_M_INV_IMPL" "$TS_M_INV_UNIT"
+            if [[ "$TS_M_NC_STATUS" == "clean" ]]; then
+                break
+            fi
+        done
+    fi
+    if [[ "$ln_was_active" -eq 0 ]]; then
+        reason="not_running_before"
+    elif [[ "$rc" -ne 0 ]]; then
+        reason="removal_incomplete"
+    elif [[ "$TS_M_NC_STATUS" == "clean" ]]; then
+        if "$SYSTEMCTL_BIN" start "$TS_M_INV_UNIT"; then
+            ln_started=1
+            print_success "${TS_M_INV_UNIT} started (outside the slice; the node config holds no TunnelSats clearnet settings)"
+        else
+            rc=1
+            reason="start_failed"
+            print_error "${TS_M_INV_UNIT} did not start (see: journalctl -u ${TS_M_INV_UNIT})"
+        fi
+    else
+        reason="node_config_${TS_M_NC_STATUS}"
+        print_warning "${TS_M_INV_UNIT} stays stopped: without the tunnel, its clearnet settings would use the regular internet connection."
+        ts_m_uninstall_print_lines
+        "$SYSTEMCTL_BIN" disable "$TS_M_INV_UNIT" >/dev/null 2>&1 || true
+        echo "The unit was disabled to prevent an unprotected start on reboot." >&2
+        echo "Once clean, enable and start it with: sudo systemctl enable --now ${TS_M_INV_UNIT}" >&2
+    fi
+
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        local items=() errors="[]" remaining_j lines_j action_j="null"
+        for i in "${TS_M_REMAINING[@]}"; do
+            ts_j_str "$i"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        remaining_j="$TS_R"
+        if [[ "$ln_was_active" -eq 1 ]] && [[ "$ln_started" -eq 0 ]] && [[ "$TS_M_NC_STATUS" != "clean" ]]; then
+            items=()
+            for i in "${TS_M_NC_LINES[@]}"; do
+                ts_j_str "$i"
+                items+=("$TS_R")
+            done
+            ts_j_arr "${items[@]}"
+            lines_j="$TS_R"
+            ts_j_obj s:reason "$reason" sn:detail "$TS_M_NC_REASON" r:lines "$lines_j" s:then "systemctl start ${TS_M_INV_UNIT}"
+            action_j="$TS_R"
+        fi
+        if [[ "$rc" -ne 0 ]]; then
+            ts_j_error E_UNINSTALL_INCOMPLETE operational "Uninstall did not complete: ${TS_M_REMAINING[*]:-${reason}}. The inventory keeps the record; run 'tunnelsats.sh uninstall --managed' again once the cause is fixed"
+            errors="[${TS_R}]"
+        fi
+        ts_j_obj b:managed true s:unit "$TS_M_INV_UNIT" r:remaining "$remaining_j" b:ln_was_active "$ln_was_active" \
+            b:ln_started "$ln_started" s:node_config "$TS_M_NC_STATUS" r:action_required "$action_j"
+        ts_json_document "$rc" "$errors" "${TS_R:1:${#TS_R}-2}"
+    fi
+    exit "$rc"
+}
+
+# Prints the TunnelSats clearnet settings found in the node config or on the unit's command line
+# (or why they could not be checked).
+ts_m_uninstall_print_lines() {
+    local l
+    if [[ "$TS_M_NC_STATUS" == "unknown" ]]; then
+        echo "The Lightning settings could not be checked: ${TS_M_NC_REASON}." >&2
+        echo "Make sure neither the node config nor the command line (ExecStart) of ${TS_M_INV_UNIT} holds TunnelSats clearnet settings (LND: externalhosts, tor.skip-proxy-for-clearnet-targets; CLN: bind-addr=0.0.0.0:9735, addr or announce-addr with a clearnet address, always-use-proxy=false)." >&2
+        return 0
+    fi
+    echo "Remove these TunnelSats settings (node config, or the command line of ${TS_M_INV_UNIT}):" >&2
+    for l in "${TS_M_NC_LINES[@]}"; do
+        echo "  ${l}" >&2
+    done
+}
+
+# restart on a managed install: restarts only the tunnel; the kill switch keeps clearnet traffic
+# blocked meanwhile, so Lightning keeps running.
+ts_m_cmd_restart() {
+    print_header "Restarting TunnelSats (managed)"
+    print_info "Restarting ${TS_M_WG_UNIT}; the kill switch stays armed and keeps clearnet traffic blocked until the tunnel is back."
+    if "$SYSTEMCTL_BIN" restart "$TS_M_WG_UNIT"; then
+        print_success "${TS_M_WG_UNIT} restarted"
+    else
+        print_error "${TS_M_WG_UNIT} did not restart"
+        journalctl -n 10 -u "$TS_M_WG_UNIT" --no-pager >&2 || true
+        exit 1
+    fi
+    echo "Check the tunnel with: sudo tunnelsats verify"
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Managed mode: verify [--json] [--no-probe]
+# Checks the kernel state and, unless --no-probe, probes from inside the slice. Verdicts:
+#   protected (exit 0)  every check passes
+#   degraded  (exit 5)  the kill switch holds and clearnet traffic is blocked, but the tunnel does
+#                       not carry traffic (down, no handshake), or the emergency block is in effect
+#                       (verified, no rule of another tool before it) and no probe got through
+#   unsafe    (exit 4)  anything else; a check that cannot run counts as unsafe
+#   unmanaged (exit 9)  a standard install: its kill switch is part of the tunnel; verify reports
+#                       the checks that apply and never rates it protected or unsafe
+# Configuration alone is never enough for "protected": every verdict rests on kernel state.
+# The kill switch probe sends one datagram to the VPN server, which must be stopped on this host;
+# the echo services and the IPv6 probe follow only when every kernel check of the unsafe class and
+# the kill switch probe passed, so no probe shows the node's address to anyone new.
+# ---------------------------------------------------------------------------
+
+TS_V_ID=()
+TS_V_CLASS=()
+TS_V_RESULT=()
+TS_V_DETAIL=()
+TS_V_GOT_THROUGH=0
+TS_V_EMERGENCY_STATE="none"
+# action_required of the verify document (raw JSON), set when the operator has to act
+TS_V_ACTION_J="null"
+TS_V_ACTION_TEXT=""
+
+# Records check $1 with class $2 (unsafe or degraded, the class a failure falls into), result $3
+# (pass, fail, skip) and detail $4.
+ts_v_add() {
+    TS_V_ID+=("$1")
+    TS_V_CLASS+=("$2")
+    TS_V_RESULT+=("$3")
+    TS_V_DETAIL+=("$4")
+}
+
+# An install that was interrupted (state "installing") or an uninstall that did not complete
+# (state "removing") is never rated protected.
+ts_v_check_state() {
+    case "$TS_M_INV_STATE" in
+        installed)
+            ts_v_add install_state unsafe pass "installed"
+            ;;
+        removing)
+            ts_v_add install_state unsafe fail "an uninstall did not complete (state removing); run 'tunnelsats.sh uninstall --managed' again"
+            ;;
+        *)
+            ts_v_add install_state unsafe fail "the install did not complete (state ${TS_M_INV_STATE:-unknown}); run 'tunnelsats.sh uninstall --managed', then install again"
+            ;;
+    esac
+}
+
+ts_v_check_attest() {
+    local cur=""
+    ts_m_read_attestation
+    cur=$(ts_m_slice_cgroup_id) || cur=""
+    if [[ "$TS_M_ATT_STATUS" != "valid" ]]; then
+        ts_v_add attest unsafe fail "attestation ${TS_M_ATT_STATUS//_/ }"
+    elif [[ -z "$cur" ]] || [[ "$cur" != "$TS_M_ATT_SLICE_ID" ]]; then
+        ts_v_add attest unsafe fail "attested slice id ${TS_M_ATT_SLICE_ID} differs from the current one (${cur:-none})"
+    else
+        ts_v_add attest unsafe pass "armed for this boot, slice id ${cur}"
+    fi
+}
+
+ts_v_check_nft() {
+    local live="" ref="" rsfile
+    live=$(ts_m_nft_live_listing) || live=""
+    if [[ -z "$live" ]]; then
+        ts_v_add nft_killswitch unsafe fail "table inet ${TS_M_NFT_TABLE} is missing"
+        return 0
+    fi
+    rsfile=$(mktemp) || rsfile=""
+    if [[ -n "$rsfile" ]] && ts_m_render_ruleset > "$rsfile"; then
+        ref=$(ts_m_nft_reference_listing "$rsfile") || ref=""
+    fi
+    rm -f "$rsfile"
+    if [[ -z "$ref" ]]; then
+        ts_v_add nft_killswitch unsafe fail "the expected ruleset could not be loaded for comparison"
+    elif [[ "$(printf '%s\n' "$live" | ts_m_nft_normalize)" == "$(printf '%s\n' "$ref" | ts_m_nft_normalize)" ]]; then
+        ts_v_add nft_killswitch unsafe pass "table inet ${TS_M_NFT_TABLE} matches the expected ruleset"
+    else
+        ts_v_add nft_killswitch unsafe fail "table inet ${TS_M_NFT_TABLE} differs from the expected ruleset"
+    fi
+}
+
+ts_v_check_slice() {
+    local cur="" live="" named=0 line
+    if ! cur=$(ts_m_slice_cgroup_id); then
+        ts_v_add slice_id unsafe fail "${TS_M_SLICE} has no cgroup"
+        return 0
+    fi
+    live=$(ts_m_nft_live_listing) || live=""
+    while IFS= read -r line; do
+        if [[ "$line" == *"socket cgroupv2 level 1 \"${TS_M_SLICE}\""* ]]; then
+            named=$((named + 1))
+        fi
+    done < <(printf '%s\n' "$live")
+    if [[ "$named" -ne 3 ]]; then
+        ts_v_add slice_id unsafe fail "the rules name ${TS_M_SLICE} ${named} of 3 times (a stale cgroup id is listed as a number)"
+    elif [[ -n "$TS_M_ATT_SLICE_ID" ]] && [[ "$cur" != "$TS_M_ATT_SLICE_ID" ]]; then
+        ts_v_add slice_id unsafe fail "slice id ${cur} differs from the attested ${TS_M_ATT_SLICE_ID}"
+    else
+        ts_v_add slice_id unsafe pass "${TS_M_SLICE} id ${cur}, named by all 3 slice rules"
+    fi
+}
+
+# The emergency block, checked only while any of its rules is present. $1 = 1 if it is in effect
+# (ts_m_emergency_effective), $2 = the reason it is not. A block that is present but not in effect
+# (incomplete, or a rule of another tool routes around it) is unsafe while it is the protection, so
+# verify never reports clearnet traffic as blocked then. While the kill switch table matches
+# (nft_killswitch, checked before), such rules are leftovers the verifier removes after its re-arm,
+# as during a release: degraded. A rule of another tool before them comes before the kill switch's
+# rules as well, and ip_rules reports it as unsafe.
+ts_v_check_emergency() {
+    if [[ "$1" -eq 1 ]]; then
+        ts_v_add emergency_block unsafe pass "in effect for uid ${TS_M_INV_UID} (priority 21818 and 21819), no rule of another tool before it"
+    elif ts_v_passed nft_killswitch; then
+        ts_v_add emergency_block degraded fail "present for uid ${TS_M_INV_UID} but not in effect: ${2}; the kill switch is armed, and the verifier removes these rules"
+    else
+        ts_v_add emergency_block unsafe fail "present for uid ${TS_M_INV_UID} but not in effect: ${2}"
+    fi
+}
+
+# The local network exemptions of the emergency block for node uid $1 (checked with the block).
+# Missing ones cost only that local network, never safety: class degraded.
+ts_v_check_emergency_lan() {
+    local counts missing total
+    counts=$(ts_m_emergency_lan_missing "$1")
+    missing="${counts%% *}"
+    total="${counts##* }"
+    if [[ "$missing" -eq 0 ]]; then
+        ts_v_add emergency_lan degraded pass "the local network stays reachable (${total} exemptions at priority ${TS_M_EMERGENCY_LAN_PRIO})"
+    else
+        ts_v_add emergency_lan degraded fail "${missing} of ${total} local network exemptions at priority ${TS_M_EMERGENCY_LAN_PRIO} are missing: Lightning cannot reach those local networks"
+    fi
+}
+
+ts_v_check_rules() {
+    local fam listing name n line problems=() exit_node=0
+    if ts_m_tailscale_exit_node; then
+        exit_node=1
+    fi
+    for fam in 4 6; do
+        if [[ "$fam" == "6" ]] && ! ts_m_ipv6_available; then
+            continue
+        fi
+        if ! listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null); then
+            problems+=("IPv${fam} rules cannot be read")
+            continue
+        fi
+        for name in main mark uid; do
+            if [[ "$name" == "uid" ]] && [[ "$TS_M_INV_BACKSTOP" != "1" ]]; then
+                continue
+            fi
+            n=$(ts_m_rule_count "$listing" "$(ts_m_rule_prio "$name")" "$(ts_m_rule_selector "$name" "$TS_M_INV_UID")")
+            if [[ "$n" -ne 1 ]]; then
+                problems+=("IPv${fam} rule $(ts_m_rule_prio "$name") present ${n} times")
+            fi
+        done
+        # Rules of other tools before 21820 (the emergency block is checked on its own)
+        while IFS= read -r line; do
+            if [[ -n "$line" ]]; then
+                problems+=("$line")
+            fi
+        done < <(ts_m_rules_before "$fam" "$listing" "$TS_M_PRIO_MAIN" "$exit_node")
+    done
+    if [[ ${#problems[@]} -eq 0 ]]; then
+        ts_v_add ip_rules unsafe pass "${TS_M_PRIO_MAIN} and ${TS_M_PRIO_MARK}$([[ "$TS_M_INV_BACKSTOP" == "1" ]] && echo " and ${TS_M_PRIO_UID}") present, nothing unexpected before them"
+    else
+        ts_v_add ip_rules unsafe fail "$(IFS=';'; echo "${problems[*]}")"
+    fi
+}
+
+ts_v_check_table() {
+    local fam routes line bh tun other iface_up=0 problems=() route_missing=0 missing_msg
+    if "$IP_BIN" link show dev "$TS_M_IFACE" >/dev/null 2>&1; then
+        iface_up=1
+    fi
+    for fam in 4 6; do
+        if [[ "$fam" == "6" ]] && ! ts_m_ipv6_available; then
+            continue
+        fi
+        if ! routes=$(ts_m_table_routes "$fam"); then
+            problems+=("IPv${fam} table cannot be read")
+            continue
+        fi
+        bh=0
+        tun=0
+        other=0
+        while IFS= read -r line; do
+            if [[ -z "${line//[[:space:]]/}" ]]; then
+                continue
+            fi
+            if ts_m_is_blackhole_line "$line"; then
+                bh=$((bh + 1))
+            elif [[ "$fam" == "4" ]] && ts_m_is_tunnel_route_line "$line"; then
+                tun=$((tun + 1))
+            else
+                other=$((other + 1))
+            fi
+        done < <(printf '%s\n' "$routes")
+        if [[ "$bh" -ne 1 ]]; then
+            problems+=("IPv${fam} blackhole present ${bh} times")
+        fi
+        if [[ "$other" -gt 0 ]]; then
+            problems+=("IPv${fam} table holds ${other} foreign route(s)")
+        fi
+        if [[ "$fam" == "4" ]] && [[ "$iface_up" -eq 1 ]] && [[ "$tun" -eq 0 ]]; then
+            route_missing=1
+        fi
+    done
+    missing_msg="${TS_M_IFACE} is up but its route in table ${TS_M_RT_TABLE} is missing"
+    if [[ ${#problems[@]} -gt 0 ]]; then
+        # Any problem other than the missing tunnel route (either family) is unsafe
+        if [[ "$route_missing" -eq 1 ]]; then
+            problems+=("$missing_msg")
+        fi
+        ts_v_add table_51820 unsafe fail "$(IFS=';'; echo "${problems[*]}")"
+    elif [[ "$route_missing" -eq 1 ]]; then
+        # Only the tunnel route is missing: marked traffic ends in the blackhole, nothing leaves
+        # outside the tunnel
+        ts_v_add table_51820 degraded fail "$missing_msg"
+    elif [[ "$iface_up" -eq 1 ]]; then
+        ts_v_add table_51820 unsafe pass "blackhole present, default dev ${TS_M_IFACE} while the tunnel is up"
+    else
+        ts_v_add table_51820 unsafe pass "blackhole present, tunnel route absent while the tunnel is down"
+    fi
+}
+
+ts_v_check_dropin() {
+    local paths slice want="${TS_M_UNIT_DIR}/${TS_M_INV_UNIT}.d/${TS_M_DROPIN_NAME}"
+    paths=$(ts_m_unit_prop "$TS_M_INV_UNIT" DropInPaths)
+    slice=$(ts_m_unit_prop "$TS_M_INV_UNIT" Slice)
+    if [[ " ${paths} " != *" ${want} "* ]]; then
+        ts_v_add ln_dropin unsafe fail "${want} is not loaded for ${TS_M_INV_UNIT}"
+    elif [[ "$slice" != "$TS_M_SLICE" ]]; then
+        ts_v_add ln_dropin unsafe fail "${TS_M_INV_UNIT} is configured for slice ${slice:-unknown}"
+    else
+        ts_v_add ln_dropin unsafe pass "drop-in loaded, Slice=${TS_M_SLICE}"
+    fi
+}
+
+ts_v_check_membership() {
+    local state cg dir pid path total=0 outside=0 f
+    state=$(ts_m_unit_prop "$TS_M_INV_UNIT" ActiveState)
+    if [[ "$state" != "active" ]] && [[ "$state" != "reloading" ]]; then
+        ts_v_add ln_membership degraded fail "${TS_M_INV_UNIT} is ${state:-unknown}"
+        return 0
+    fi
+    cg=$(ts_m_unit_prop "$TS_M_INV_UNIT" ControlGroup)
+    if [[ "$cg" != "/${TS_M_SLICE}/"* ]]; then
+        ts_v_add ln_membership unsafe fail "${TS_M_INV_UNIT} runs in ${cg:-an unknown cgroup}, outside ${TS_M_SLICE}"
+        return 0
+    fi
+    dir="${TS_FS_ROOT}${TS_M_CGROUP_ROOT}${cg}"
+    while IFS= read -r f; do
+        while IFS= read -r pid; do
+            if [[ ! "$pid" =~ ^[0-9]+$ ]]; then
+                continue
+            fi
+            path=$(sed -n 's/^0:://p' "${TS_FS_ROOT}/proc/${pid}/cgroup" 2>/dev/null | head -n 1) || path=""
+            if [[ -z "$path" ]]; then
+                # The process ended between the two reads
+                continue
+            fi
+            total=$((total + 1))
+            if [[ "$path" != "/${TS_M_SLICE}/"* ]]; then
+                outside=$((outside + 1))
+            fi
+        done < "$f"
+    done < <(find "$dir" -name cgroup.procs -type f 2>/dev/null)
+    if [[ "$total" -eq 0 ]]; then
+        ts_v_add ln_membership unsafe fail "no processes found in ${cg}"
+    elif [[ "$outside" -gt 0 ]]; then
+        ts_v_add ln_membership unsafe fail "${outside} of ${total} process(es) of ${TS_M_INV_UNIT} run outside ${TS_M_SLICE}"
+    else
+        ts_v_add ln_membership unsafe pass "${total} process(es), all under /${TS_M_SLICE}/"
+    fi
+}
+
+# Runs probe "$@" (see ts_m_cmd_probe) in a transient unit of the slice; $1 = user ("" for root).
+ts_v_run_probe() {
+    local user="$1"
+    shift
+    local -a args=(--quiet --wait --pipe --collect "--slice=${TS_M_SLICE}" -p RuntimeMaxSec=60)
+    if [[ -n "$user" ]]; then
+        args+=("--uid=${user}")
+    fi
+    "$SYSTEMD_RUN_BIN" "${args[@]}" "$TS_M_BIN" managed-probe "$@" </dev/null 2>/dev/null
+}
+
+# Prints the result for key $2 (an echo URL or a probe address) in probe output $1: the last word of
+# its "answer" or "send" line. Fails if the probe did not run inside the slice or reported nothing.
+ts_v_probe_answer() {
+    local out="$1" key="$2" line cg=""
+    while IFS= read -r line; do
+        case "$line" in
+            "cgroup "*) cg="${line#cgroup }" ;;
+        esac
+    done < <(printf '%s\n' "$out")
+    if [[ "$cg" != "/${TS_M_SLICE}/"* ]]; then
+        return 1
+    fi
+    while IFS= read -r line; do
+        if [[ "$line" == "answer ${key} "* ]] || [[ "$line" == "send ${key} "* ]]; then
+            echo "${line##* }"
+            return 0
+        fi
+    done < <(printf '%s\n' "$out")
+    return 1
+}
+
+# Resolves the host of URL $1 for IP family $2 (4 or 6) as root, outside the slice, into TS_V_T_IP.
+# Fails if the URL cannot be parsed or the host has no address of that family.
+ts_v_target() {
+    local url="$1" fam="$2" rest host=""
+    TS_V_T_IP=""
+    rest="${url#*://}"
+    rest="${rest%%/*}"
+    if [[ "$rest" =~ ^\[([0-9A-Fa-f:.]+)\](:[0-9]{1,5})?$ ]]; then
+        host="${BASH_REMATCH[1]}"
+    elif [[ "$rest" =~ ^([A-Za-z0-9.-]+)(:[0-9]{1,5})?$ ]]; then
+        host="${BASH_REMATCH[1]}"
+    else
+        return 1
+    fi
+    if [[ "$fam" == "4" ]] && valid_ipv4 "$host"; then
+        TS_V_T_IP="$host"
+    elif [[ "$fam" == "6" ]] && [[ "$host" == *:* ]]; then
+        TS_V_T_IP="$host"
+    elif valid_ipv4 "$host" || [[ "$host" == *:* ]]; then
+        # An address of the other family
+        return 1
+    else
+        # IPv4-mapped answers of ahostsv6 are IPv4 traffic, not IPv6
+        TS_V_T_IP=$("$GETENT_BIN" "ahostsv${fam}" "$host" 2>/dev/null | awk '$1 !~ /^::ffff:/ { print $1; exit }') || TS_V_T_IP=""
+        if [[ -z "$TS_V_T_IP" ]]; then
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# Prints the interface of the route to address $2 (IP family $1), as root sees it outside the slice;
+# nothing if there is none.
+ts_v_route_dev() {
+    local out=""
+    out=$("$IP_BIN" "-${1}" route get "$2" 2>/dev/null) || out=""
+    if [[ "$out" =~ [[:space:]]dev[[:space:]]+([^[:space:]]+) ]]; then
+        echo "${BASH_REMATCH[1]}"
+    fi
+    return 0
+}
+
+# Prints why the probes after the kill switch probe must not run, nothing if they may: a kernel check
+# of the unsafe class that did not pass, a kill switch probe that did not pass ($1 = 1 if it did), or
+# emergency rules that are present ($2 = 1 if any is). A check that fails only in its degraded class
+# (Lightning stopped, the tunnel route missing) does not stop them. While emergency rules are present
+# the verdict cannot be protected, so the echo services are not contacted then; the kill switch
+# probe still tests whichever protection holds.
+ts_v_probe_gate() {
+    local ks_pass="$1" block="$2" i
+    for i in "${!TS_V_ID[@]}"; do
+        case "${TS_V_ID[$i]}" in
+            install_state|attest|nft_killswitch|slice_id|ip_rules|emergency_block|table_51820|ln_dropin|ln_membership)
+                if [[ "${TS_V_RESULT[$i]}" != "pass" ]] && [[ "${TS_V_CLASS[$i]}" == "unsafe" ]]; then
+                    echo "${TS_V_ID[$i]} did not pass"
+                    return 0
+                fi
+                ;;
+        esac
+    done
+    if [[ "$ks_pass" -ne 1 ]]; then
+        echo "the kill switch probe did not pass"
+    elif [[ "$block" -eq 1 ]]; then
+        echo "emergency rules are present (the verifier removes them once the kill switch is armed)"
+    fi
+    return 0
+}
+
+# Succeeds if check $1 is recorded and passed.
+ts_v_passed() {
+    local i
+    for i in "${!TS_V_ID[@]}"; do
+        if [[ "${TS_V_ID[$i]}" == "$1" ]] && [[ "${TS_V_RESULT[$i]}" == "pass" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Probes from inside the slice. $1 = 1 while any emergency rule is present (in effect or not). Uses
+# TS_V_ENDPOINT_IP, TS_V_ECHO_URLS and TS_V_V6_URL, and sets TS_V_GOT_THROUGH to 1 if a datagram left
+# this host.
+#   killswitch_probe  one UDP datagram from the slice to the VPN server (the WireGuard endpoint,
+#                     port 9) must be stopped on this host. It needs no DNS and no reply, and if the
+#                     protection were broken it would reach only the VPN server, which knows the
+#                     node's address as its WireGuard peer anyway. Normally it runs as root (the
+#                     cgroup classification on its own; the uid backstop does not cover root) with
+#                     the socket bound to the regular interface, which forces that interface while
+#                     the tunnel is up. A bound socket skips route errors (the kernel then treats the
+#                     destination as on-link), so this exercises the nft kill chain, which drops the
+#                     datagram (EPERM). While emergency rules are present (in effect or not) and the
+#                     kill switch table does not match (nft_killswitch did not pass), it runs as the
+#                     node user with an unbound socket, as the daemon's sockets are, and exercises
+#                     the uid blackhole (EINVAL) and any rule before it. With the table in place,
+#                     the kill chain is what stops the slice's direct path, so the root probe tests
+#                     that: the node user's datagram would be routed into the tunnel, and its "sent"
+#                     could not be told apart from a datagram that left this host.
+#   egress_probe      both echo services must see the endpoint address. Asked only when every kernel
+#                     check of the unsafe class and the kill switch probe passed and no emergency
+#                     rule is present (ts_v_probe_gate), that is, once the direct path was shown
+#                     closed.
+#   ipv6_probe        one UDP datagram from the slice to the TunnelSats host's IPv6 address must be
+#                     stopped on this host (the IPv6 drop, EPERM); behind the same gate.
+ts_v_check_probes() {
+    local block="$1" user="" iface="-" via="" out="" w="" a1="" a2="" a wrong="" ks_pass=0 gate=""
+    TS_V_GOT_THROUGH=0
+    if [[ "$block" -eq 1 ]] && ! ts_v_passed nft_killswitch; then
+        user="$TS_M_INV_USER"
+    elif [[ -n "$TS_V_ENDPOINT_IP" ]]; then
+        iface=$(ts_v_route_dev 4 "$TS_V_ENDPOINT_IP")
+        via=" through ${iface}"
+    fi
+    if [[ -z "$TS_V_ENDPOINT_IP" ]]; then
+        ts_v_add killswitch_probe unsafe fail "could not run: the endpoint address is unknown"
+    elif [[ -z "$iface" ]]; then
+        ts_v_add killswitch_probe unsafe fail "could not run: no route to ${TS_V_ENDPOINT_IP}"
+    elif ! out=$(ts_v_run_probe "$user" send 4 "$iface" "$TS_V_ENDPOINT_IP") || \
+        ! w=$(ts_v_probe_answer "$out" "$TS_V_ENDPOINT_IP"); then
+        ts_v_add killswitch_probe unsafe fail "could not run a probe unit inside ${TS_M_SLICE}"
+    else
+        case "$(ts_m_probe_classify "$w")" in
+            blocked)
+                ks_pass=1
+                ts_v_add killswitch_probe unsafe pass "a datagram from inside the slice to ${TS_V_ENDPOINT_IP}${via} was stopped on this host (${w})"
+                ;;
+            left)
+                TS_V_GOT_THROUGH=1
+                ts_v_add killswitch_probe unsafe fail "a datagram from inside the slice to ${TS_V_ENDPOINT_IP}${via} left this host; nothing stopped it"
+                ;;
+            *)
+                ts_v_add killswitch_probe unsafe fail "could not run (${w})"
+                ;;
+        esac
+    fi
+    gate=$(ts_v_probe_gate "$ks_pass" "$block")
+
+    # Egress: the node user inside the slice must appear with the endpoint address
+    if [[ -n "$gate" ]]; then
+        ts_v_add egress_probe unsafe skip "not run: ${gate}, so the echo services were not contacted"
+    elif ! out=$(ts_v_run_probe "$TS_M_INV_USER" egress4 "${TS_V_ECHO_URLS[@]}") || \
+        ! a1=$(ts_v_probe_answer "$out" "${TS_V_ECHO_URLS[0]}") || ! a2=$(ts_v_probe_answer "$out" "${TS_V_ECHO_URLS[1]}"); then
+        ts_v_add egress_probe unsafe fail "could not run a probe unit inside ${TS_M_SLICE} as ${TS_M_INV_USER}"
+    else
+        for a in "$a1" "$a2"; do
+            if [[ "$a" != "-" ]] && [[ "$a" != "$TS_V_ENDPOINT_IP" ]]; then
+                wrong="$a"
+            fi
+        done
+        if [[ -n "$wrong" ]]; then
+            ts_v_add egress_probe unsafe fail "egress address ${wrong} differs from the endpoint address ${TS_V_ENDPOINT_IP:-unknown}"
+        elif [[ "$a1" == "-" ]] && [[ "$a2" == "-" ]]; then
+            ts_v_add egress_probe degraded fail "no answer from inside the slice (clearnet traffic is blocked)"
+        elif [[ "$a1" == "-" ]] || [[ "$a2" == "-" ]]; then
+            ts_v_add egress_probe degraded fail "only one echo service answered (${TS_V_ENDPOINT_IP}); the egress is not confirmed"
+        else
+            ts_v_add egress_probe unsafe pass "egress ${a1} equals the endpoint address"
+        fi
+    fi
+
+    # IPv6: a datagram from the slice to the TunnelSats host's IPv6 address must be stopped here
+    if [[ -n "$gate" ]]; then
+        ts_v_add ipv6_probe unsafe skip "not run: ${gate}"
+    elif ! ts_m_ipv6_available; then
+        ts_v_add ipv6_probe unsafe skip "not run: this host has no IPv6"
+    elif ! ts_v_target "$TS_V_V6_URL" 6; then
+        ts_v_add ipv6_probe unsafe skip "not run: ${TS_V_V6_URL} has no IPv6 address"
+    elif ! out=$(ts_v_run_probe "$TS_M_INV_USER" send 6 - "$TS_V_T_IP") || \
+        ! w=$(ts_v_probe_answer "$out" "$TS_V_T_IP"); then
+        ts_v_add ipv6_probe unsafe fail "could not run a probe unit inside ${TS_M_SLICE} as ${TS_M_INV_USER}"
+    else
+        case "$(ts_m_probe_classify "$w")" in
+            blocked)
+                ts_v_add ipv6_probe unsafe pass "an IPv6 datagram from inside the slice to ${TS_V_T_IP} was stopped on this host (${w})"
+                ;;
+            left)
+                TS_V_GOT_THROUGH=1
+                ts_v_add ipv6_probe unsafe fail "an IPv6 datagram from inside the slice to ${TS_V_T_IP} left this host; nothing stopped it"
+                ;;
+            *)
+                ts_v_add ipv6_probe unsafe fail "could not run (${w})"
+                ;;
+        esac
+    fi
+}
+
+# $1 = interface (default: the managed tunnel).
+ts_v_check_handshake() {
+    local iface="${1:-$TS_M_IFACE}" out="" ts="" age now
+    if ! out=$("$WG_BIN" show "$iface" latest-handshakes 2>/dev/null); then
+        ts_v_add wg_handshake degraded fail "${iface} is down"
+        return 0
+    fi
+    ts=$(printf '%s\n' "$out" | awk 'NR == 1 { print $2 }')
+    if [[ ! "$ts" =~ ^[0-9]+$ ]] || [[ "$ts" -eq 0 ]]; then
+        ts_v_add wg_handshake degraded fail "no handshake yet"
+        return 0
+    fi
+    now=$(date +%s)
+    age=$((now - ts))
+    if [[ "$age" -lt "$TS_M_HANDSHAKE_MAX_AGE" ]]; then
+        ts_v_add wg_handshake degraded pass "${age} s ago"
+    else
+        ts_v_add wg_handshake degraded fail "last handshake ${age} s ago"
+    fi
+}
+
+# Reads the endpoint of the managed tunnel config into TS_V_EP_HOST, TS_V_EP_PORT, TS_V_ENDPOINT_IP
+# and TS_V_VPN_PORT (the private key is never read into a variable).
+ts_v_read_endpoint() {
+    local ep=""
+    TS_V_EP_HOST=""
+    TS_V_EP_PORT=""
+    TS_V_ENDPOINT_IP=""
+    TS_V_VPN_PORT=""
+    ep=$(sed -nE 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*([^[:space:]#]+).*/\1/Ip' "${TS_FS_ROOT}${TS_M_WG_CONF}" 2>/dev/null | head -n 1) || ep=""
+    if ts_detect_parse_endpoint "$ep"; then
+        TS_V_EP_HOST="$TSD_CFG_EP_HOST"
+        TS_V_EP_PORT="$TSD_CFG_EP_PORT"
+        if valid_ipv4 "$TS_V_EP_HOST"; then
+            TS_V_ENDPOINT_IP="$TS_V_EP_HOST"
+        else
+            TS_V_ENDPOINT_IP=$("$GETENT_BIN" ahostsv4 "$TS_V_EP_HOST" 2>/dev/null | awk 'NR == 1 { print $1 }') || TS_V_ENDPOINT_IP=""
+        fi
+    fi
+    TS_V_VPN_PORT=$(ts_config_vpn_port "${TS_FS_ROOT}${TS_M_WG_CONF}" 2>/dev/null) || TS_V_VPN_PORT=""
+}
+
+ts_v_check_endpoint() {
+    local out="" live=""
+    if ! out=$("$WG_BIN" show "$TS_M_IFACE" endpoints 2>/dev/null); then
+        ts_v_add wg_endpoint degraded fail "${TS_M_IFACE} is down"
+        return 0
+    fi
+    live=$(printf '%s\n' "$out" | awk 'NR == 1 { print $2 }')
+    if [[ -z "$TS_V_ENDPOINT_IP" ]]; then
+        ts_v_add wg_endpoint degraded fail "the configured endpoint ${TS_V_EP_HOST:-?} does not resolve"
+    elif [[ "$live" == "${TS_V_ENDPOINT_IP}:${TS_V_EP_PORT}" ]]; then
+        ts_v_add wg_endpoint degraded pass "${live}"
+    else
+        ts_v_add wg_endpoint degraded fail "live endpoint ${live:-none} differs from ${TS_V_ENDPOINT_IP}:${TS_V_EP_PORT}"
+    fi
+}
+
+# Computes TS_V_VERDICT, TS_V_EXIT and TS_V_CLEARNET_BLOCKED from the recorded checks and $1 (1 if
+# the emergency block is in effect, ts_m_emergency_effective). While it is, the verdict is degraded
+# unless a probe got through (TS_V_GOT_THROUGH), which makes it unsafe. A block that is present but
+# not in effect is a failed emergency_block check, so the verdict is unsafe.
+ts_v_verdict() {
+    local emergency="$1" i unsafe=0 degraded=0
+    for i in "${!TS_V_ID[@]}"; do
+        if [[ "${TS_V_RESULT[$i]}" != "fail" ]]; then
+            continue
+        fi
+        if [[ "${TS_V_CLASS[$i]}" == "unsafe" ]]; then
+            unsafe=$((unsafe + 1))
+        else
+            degraded=$((degraded + 1))
+        fi
+    done
+    TS_V_CLEARNET_BLOCKED=0
+    if [[ "$emergency" -eq 1 ]] && [[ "${TS_V_GOT_THROUGH:-0}" -eq 1 ]]; then
+        TS_V_VERDICT="unsafe"
+        TS_V_EXIT=4
+    elif [[ "$emergency" -eq 1 ]]; then
+        TS_V_VERDICT="degraded"
+        TS_V_EXIT=5
+        TS_V_CLEARNET_BLOCKED=1
+    elif [[ "$unsafe" -gt 0 ]]; then
+        TS_V_VERDICT="unsafe"
+        TS_V_EXIT=4
+    elif [[ "$degraded" -gt 0 ]]; then
+        TS_V_VERDICT="degraded"
+        TS_V_EXIT=5
+        if [[ "${TS_V_GOT_THROUGH:-0}" -eq 0 ]]; then
+            TS_V_CLEARNET_BLOCKED=1
+        fi
+    else
+        TS_V_VERDICT="protected"
+        TS_V_EXIT=0
+    fi
+}
+
+# Succeeds if a check about the tunnel itself failed (handshake, endpoint, egress, tunnel route).
+ts_v_tunnel_failed() {
+    local i
+    for i in "${!TS_V_ID[@]}"; do
+        if [[ "${TS_V_RESULT[$i]}" == "fail" ]]; then
+            case "${TS_V_ID[$i]}" in
+                wg_handshake|wg_endpoint|egress_probe|table_51820) return 0 ;;
+            esac
+        fi
+    done
+    return 1
+}
+
+# Prints the checks that failed, one per line.
+ts_v_print_failed() {
+    local i
+    for i in "${!TS_V_ID[@]}"; do
+        if [[ "${TS_V_RESULT[$i]}" == "fail" ]]; then
+            echo "  - ${TS_V_ID[$i]}: ${TS_V_DETAIL[$i]}"
+        fi
+    done
+}
+
+# Prints the check list as a JSON array into TS_R.
+ts_v_checks_json() {
+    local i items=()
+    for i in "${!TS_V_ID[@]}"; do
+        ts_j_obj s:id "${TS_V_ID[$i]}" s:class "${TS_V_CLASS[$i]}" s:result "${TS_V_RESULT[$i]}" s:detail "${TS_V_DETAIL[$i]}"
+        items+=("$TS_R")
+    done
+    ts_j_arr "${items[@]}"
+}
+
+# Prints the result of verify on a managed install (human summary or the contract-1 document) and
+# exits with its code. $1 = emergency block (1|0), $2 = probes (run|skipped).
+ts_v_report() {
+    local emergency="$1" probes="$2" i errors=() checks_j errors_j ep_j code suffix=""
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        for i in "${!TS_V_ID[@]}"; do
+            if [[ "${TS_V_RESULT[$i]}" == "fail" ]]; then
+                code="E_${TS_V_ID[$i]^^}"
+                ts_j_error "$code" "${TS_V_CLASS[$i]}" "${TS_V_DETAIL[$i]}"
+                errors+=("$TS_R")
+            fi
+        done
+        ts_v_checks_json
+        checks_j="$TS_R"
+        ts_j_arr "${errors[@]}"
+        errors_j="$TS_R"
+        ts_j_obj sn:host "${TS_V_EP_HOST:-}" sn:ipv4 "${TS_V_ENDPOINT_IP:-}" i:port "${TS_V_EP_PORT:-}" i:vpn_port "${TS_V_VPN_PORT:-}"
+        ep_j="$TS_R"
+        ts_j_obj s:verdict "$TS_V_VERDICT" b:clearnet_blocked "$TS_V_CLEARNET_BLOCKED" b:emergency_block "$emergency" \
+            s:emergency_state "${TS_V_EMERGENCY_STATE:-none}" \
+            b:managed 1 s:install_state "$TS_M_INV_STATE" sn:profile "${TS_M_INV_PROFILE:-}" sn:impl "${TS_M_INV_IMPL:-}" \
+            sn:unit "${TS_M_INV_UNIT:-}" s:iface "$TS_M_IFACE" s:probes "$probes" r:endpoint "$ep_j" r:checks "$checks_j" \
+            r:action_required "${TS_V_ACTION_J:-null}"
+        ts_json_document "$TS_V_EXIT" "$errors_j" "${TS_R:1:${#TS_R}-2}"
+        exit "$TS_V_EXIT"
+    fi
+    if [[ "$TS_M_INV_STATE" == "damaged" ]]; then
+        echo -e "${BOLD}TunnelSats verify${NC}: managed, install record damaged, interface ${TS_M_IFACE}"
+    else
+        echo -e "${BOLD}TunnelSats verify${NC}: managed (${TS_M_INV_PROFILE}), ${TS_M_INV_UNIT}, interface ${TS_M_IFACE}"
+    fi
+    print_line
+    for i in "${!TS_V_ID[@]}"; do
+        printf '  %-17s %-5s %s\n' "${TS_V_ID[$i]}" "${TS_V_RESULT[$i]}" "${TS_V_DETAIL[$i]}"
+    done
+    print_line
+    if [[ "$probes" == "skipped" ]]; then
+        suffix=" (kernel checks only, probes skipped)"
+    fi
+    case "$TS_V_VERDICT" in
+        protected)
+            echo -e "${GREEN}Protected${suffix}${NC}"
+            ;;
+        degraded)
+            if [[ "$emergency" -eq 1 ]]; then
+                echo -e "${YELLOW}Emergency block active: Lightning clearnet traffic blocked, Tor and the local network keep working${suffix}${NC}"
+            elif ts_v_tunnel_failed; then
+                echo -e "${YELLOW}Tunnel down: clearnet traffic blocked, the kill switch holds${suffix}${NC}"
+                ts_v_print_failed
+            else
+                echo -e "${YELLOW}Degraded: clearnet traffic blocked, the kill switch holds${suffix}${NC}"
+                ts_v_print_failed
+            fi
+            ;;
+        *)
+            echo -e "${RED}Not protected${suffix}${NC}"
+            ts_v_print_failed
+            ;;
+    esac
+    if [[ -n "$TS_V_ACTION_TEXT" ]]; then
+        echo "Action required: ${TS_V_ACTION_TEXT}"
+    fi
+    exit "$TS_V_EXIT"
+}
+
+# verify on a standard (not managed) install, $1 = its kind: runs the checks that apply (handshake
+# of the installed tunnel, its kill switch table) and reports the verdict "unmanaged" (exit 9).
+# A standard install keeps its kill switch in the tunnel's own hooks, active while the tunnel is
+# up; verify does not rate it protected or unsafe.
+ts_v_unmanaged() {
+    local kind="$1" iface="" age="" up=0 ks=0 n checks_j ep_j text
+    ts_detect_config
+    iface="$TSD_CFG_IFACE"
+    if [[ -z "$iface" ]]; then
+        ts_v_add wg_handshake degraded skip "no single TunnelSats config to check (${TSD_CFG_SELECTION:-none})"
+        ts_v_add legacy_killswitch degraded skip "no single TunnelSats config to check"
+    else
+        ts_v_check_handshake "$iface"
+        n=$((${#TS_V_ID[@]} - 1))
+        if [[ "${TS_V_RESULT[$n]}" == "pass" ]]; then
+            up=1
+            age="${TS_V_DETAIL[$n]}"
+        fi
+        if "$NFT_BIN" list table ip "$iface" >/dev/null 2>&1 || "$NFT_BIN" list table inet "$iface" >/dev/null 2>&1; then
+            ks=1
+            ts_v_add legacy_killswitch degraded pass "nft table ${iface} present (it exists while the tunnel is up)"
+        else
+            ts_v_add legacy_killswitch degraded fail "nft table ${iface} not present (it exists only while the tunnel is up)"
+        fi
+    fi
+    TS_V_VERDICT="unmanaged"
+    TS_V_EXIT=9
+    if [[ "$up" -eq 1 ]] && [[ "$ks" -eq 1 ]]; then
+        text="Standard install: the tunnel is up (handshake ${age}) and its kill switch is active while the tunnel stays up. Managed mode keeps it armed across restarts: see https://github.com/Tunnelsats/tunnelsats/blob/main/docs/managed-mode.md."
+    elif [[ "$up" -eq 1 ]]; then
+        text="Standard install: the tunnel is up (handshake ${age}), but its kill switch table is not loaded. Managed mode keeps a kill switch armed across restarts: see https://github.com/Tunnelsats/tunnelsats/blob/main/docs/managed-mode.md."
+    else
+        text="Standard install: the tunnel is not up right now; its kill switch is active while the tunnel is up. Managed mode keeps it armed across restarts: see https://github.com/Tunnelsats/tunnelsats/blob/main/docs/managed-mode.md."
+    fi
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        ts_v_checks_json
+        checks_j="$TS_R"
+        ts_j_obj sn:host "$TSD_CFG_EP_HOST" sn:ipv4 "" i:port "$TSD_CFG_EP_PORT" i:vpn_port "$TSD_CFG_VPN_PORT"
+        ep_j="$TS_R"
+        ts_j_error E_UNMANAGED unmanaged "$text"
+        local errors_j="[${TS_R}]"
+        ts_j_obj s:verdict unmanaged b:clearnet_blocked 0 b:emergency_block 0 s:emergency_state none b:managed 0 s:install_kind "$kind" \
+            sn:profile "" sn:impl "" sn:unit "" sn:iface "$iface" s:probes skipped r:endpoint "$ep_j" r:checks "$checks_j"
+        ts_json_document "$TS_V_EXIT" "$errors_j" "${TS_R:1:${#TS_R}-2}"
+        exit "$TS_V_EXIT"
+    fi
+    echo -e "${BOLD}TunnelSats verify${NC}: standard install (${kind})${iface:+, interface ${iface}}"
+    print_line
+    for n in "${!TS_V_ID[@]}"; do
+        printf '  %-17s %-5s %s\n' "${TS_V_ID[$n]}" "${TS_V_RESULT[$n]}" "${TS_V_DETAIL[$n]}"
+    done
+    print_line
+    echo "$text"
+    exit "$TS_V_EXIT"
+}
+
+# verify while the install record cannot be read ($1 = why; $2 = probes run or skipped). The kill
+# switch unit then keeps Lightning behind the emergency block for the uid its ExecStart carries
+# (--fallback-uid): install_state "damaged", the block checked for that uid and, unless --no-probe,
+# the kill switch probe as that uid. Degraded with clearnet_blocked while the block is in effect,
+# unsafe otherwise; action_required asks to restore the record or reinstall.
+ts_v_damaged() {
+    local why="$1" probes="$2" uid="" emergency=0 block=0 reason=""
+    TS_M_INV_STATE="damaged"
+    TS_M_INV_PROFILE=""
+    TS_M_INV_IMPL=""
+    TS_M_INV_UNIT=""
+    ts_v_add install_state unsafe fail "the install record cannot be read (${why})"
+    uid=$(ts_m_fallback_uid)
+    if [[ -z "$uid" ]]; then
+        ts_v_add emergency_block unsafe fail "${TS_M_KILLSWITCH_UNIT} carries no fallback uid, so the emergency block cannot be checked"
+    elif ! ts_m_emergency_present "$uid"; then
+        ts_v_add emergency_block unsafe fail "not armed for uid ${uid}"
+    else
+        block=1
+        TS_M_INV_UID="$uid"
+        TS_M_INV_USER="$uid"
+        if ts_m_emergency_effective "$uid"; then
+            emergency=1
+            TS_V_EMERGENCY_STATE="active"
+        else
+            reason="$TS_M_ERROR"
+            TS_V_EMERGENCY_STATE="$TS_M_EMERG_FAIL"
+        fi
+        ts_v_check_emergency "$emergency" "$reason"
+        ts_v_check_emergency_lan "$uid"
+    fi
+    ts_v_read_endpoint
+    if [[ "$probes" == "run" ]] && [[ "$block" -eq 1 ]]; then
+        ts_v_check_probes 1
+    fi
+    ts_v_check_handshake
+    ts_v_check_endpoint
+    ts_v_verdict "$emergency"
+    TS_V_ACTION_TEXT="restore ${TS_M_INVENTORY} (for example from a backup) or reinstall"
+    ts_j_obj s:reason install_record_damaged s:detail "The install record cannot be read (${why}); ${TS_V_ACTION_TEXT}"
+    TS_V_ACTION_J="$TS_R"
+    ts_v_report "$emergency" "$probes"
+}
+
+cmd_verify() {
+    local emergency=0 block=0 block_reason="" probes="run" kind="" existing=""
+    ts_m_require_root
+    TS_V_ID=()
+    TS_V_CLASS=()
+    TS_V_RESULT=()
+    TS_V_DETAIL=()
+    TS_V_GOT_THROUGH=0
+    # Probe targets, overridable for tests. The two echo services must agree; they are asked only
+    # through the tunnel. The kill switch probe goes to the WireGuard endpoint; the IPv6 probe goes
+    # to the TunnelSats host's IPv6 address (TS_VERIFY_ECHO_URLS="URL1 URL2", TS_VERIFY_IPV6_URL).
+    read -r -a TS_V_ECHO_URLS <<< "${TS_VERIFY_ECHO_URLS:-https://api.ipify.org https://ipv4.icanhazip.com}"
+    if [[ ${#TS_V_ECHO_URLS[@]} -lt 2 ]]; then
+        ts_usage_error "TS_VERIFY_ECHO_URLS needs two URLs"
+    fi
+    TS_V_V6_URL="${TS_VERIFY_IPV6_URL:-https://tunnelsats.com}"
+    if [[ "$TS_OPT_NO_PROBE" -eq 1 ]]; then
+        probes="skipped"
+    fi
+
+    if ! ts_m_inventory_present; then
+        # A managed install whose record is gone: its kill switch unit still carries the uid
+        if [[ -n "$(ts_m_fallback_uid)" ]]; then
+            ts_v_damaged "${TS_M_INVENTORY} is missing" "$probes"
+        fi
+        existing=$(ts_m_existing_install) || existing="unknown||"
+        kind="${existing%%|*}"
+        if [[ "$kind" == "none" ]]; then
+            ts_fail 3 E_NOT_INSTALLED not_installed "No TunnelSats install found"
+        fi
+        ts_v_unmanaged "$kind"
+    fi
+    if ! ts_m_inventory_read; then
+        ts_v_damaged "$TS_M_ERROR" "$probes"
+    fi
+    # The emergency block counts as blocking only while it is in effect (ts_m_emergency_effective),
+    # with or without --no-probe; present but not in effect, it is reported as unsafe
+    TS_V_EMERGENCY_STATE="none"
+    if ts_m_emergency_present "$TS_M_INV_UID"; then
+        block=1
+        if ts_m_emergency_effective "$TS_M_INV_UID"; then
+            emergency=1
+            TS_V_EMERGENCY_STATE="active"
+        else
+            block_reason="$TS_M_ERROR"
+            TS_V_EMERGENCY_STATE="$TS_M_EMERG_FAIL"
+        fi
+    fi
+    ts_v_read_endpoint
+    ts_v_check_state
+    ts_v_check_attest
+    ts_v_check_nft
+    ts_v_check_slice
+    ts_v_check_rules
+    if [[ "$block" -eq 1 ]]; then
+        ts_v_check_emergency "$emergency" "$block_reason"
+        ts_v_check_emergency_lan "$TS_M_INV_UID"
+    fi
+    ts_v_check_table
+    ts_v_check_dropin
+    ts_v_check_membership
+    if [[ "$probes" == "run" ]]; then
+        ts_v_check_probes "$block"
+    fi
+    ts_v_check_handshake
+    ts_v_check_endpoint
+    ts_v_verdict "$emergency"
+    ts_v_report "$emergency" "$probes"
 }
 
 # ---------------------------------------------------------------------------
