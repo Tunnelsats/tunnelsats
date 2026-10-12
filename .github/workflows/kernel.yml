@@ -1,0 +1,32 @@
+name: Kernel Dataplane Tests
+
+on:
+  push:
+    paths:
+      - 'scripts/tunnelsats.sh'
+      - 'scripts/test_dataplane_kernel.sh'
+      - '.github/workflows/kernel.yml'
+  pull_request:
+    paths:
+      - 'scripts/tunnelsats.sh'
+      - 'scripts/test_dataplane_kernel.sh'
+      - '.github/workflows/kernel.yml'
+  workflow_dispatch:
+
+jobs:
+  kernel:
+    name: Managed dataplane (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -yqq wireguard-tools nftables curl python3
+      - name: Real-kernel scenarios (S1-S9)
+        run: sudo TS_KERNEL_TEST=1 bash scripts/test_dataplane_kernel.sh
