@@ -22,3 +22,5 @@ jobs:
         run: bash scripts/test_lifecycle_idempotency.sh
       - name: Test CLI Contract (non-interactive, JSON, detect)
         run: bash scripts/test_cli_contract.sh
+      - name: Test Managed Dataplane (renderers, inventory, kill switch, verify)
+        run: bash scripts/test_managed_dataplane.sh
