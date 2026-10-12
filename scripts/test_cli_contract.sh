@@ -1342,6 +1342,9 @@ check_escape '\u0000 literal' "A literal backslash-u sequence"
 check_escape $'caf\xc3\xa9 \xff\xfe' "Valid UTF-8 passes through unchanged, invalid bytes become U+FFFD"
 check_escape $'emoji \xf0\x9f\x98\x80, check \xe2\x9c\x93, quote "' "Three- and four-byte characters pass through next to escapes"
 check_escape $'caf\xc3\xa9 \xff' "Without a UTF-8 locale every non-ASCII byte becomes U+FFFD (pure ASCII)" c
+check_escape $'big \xf4\x90\x80\x80 end' "A four-byte sequence above U+10FFFF (one glibc character) becomes U+FFFD per byte"
+check_escape $'sur \xed\xa0\x80 end' "An encoded surrogate becomes U+FFFD per byte"
+check_escape $'ovl \xc0\x80 \xe0\x80\xaf end' "Overlong forms become U+FFFD per byte"
 check_escape "" "Empty string"
 
 hostile_option=$'--x"\\\n\x01'

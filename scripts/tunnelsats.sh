@@ -167,24 +167,41 @@ ts_byte_len() {
     TS_BYTE_LEN=${#1}
 }
 
+# Multibyte UTF-8 forms allowed by RFC 3629: no overlong forms, no surrogates, nothing above
+# U+10FFFF. Matched byte-wise (C locale), because glibc groups some invalid sequences, for example
+# F4 90 80 80 (above U+10FFFF), into one character.
+TS_UTF8_MULTIBYTE_RE=$'^([\xc2-\xdf][\x80-\xbf]|\xe0[\xa0-\xbf][\x80-\xbf]|[\xe1-\xec\xee\xef][\x80-\xbf][\x80-\xbf]|\xed[\x80-\x9f][\x80-\xbf]|\xf0[\x90-\xbf][\x80-\xbf][\x80-\xbf]|[\xf1-\xf3][\x80-\xbf][\x80-\xbf][\x80-\xbf]|\xf4[\x80-\x8f][\x80-\xbf][\x80-\xbf])$'
+
+# Succeeds if $1 is exactly one valid multibyte UTF-8 character.
+ts_utf8_valid_multibyte() {
+    local LC_ALL=C
+    [[ "$1" =~ $TS_UTF8_MULTIBYTE_RE ]]
+}
+
+# Succeeds if $1 is printable ASCII without quote or backslash (needs no escaping at all).
+ts_json_plain_ascii() {
+    local LC_ALL=C
+    [[ "$1" != *[![:print:]]* ]] && [[ "$1" != *[\"\\]* ]]
+}
+
 # Escapes $1 for use inside a JSON string literal and stores the result in TS_JSON_ESCAPED.
 # Works character-wise in a UTF-8 locale: quote and backslash are escaped, control characters
-# become \b \f \n \r \t or \u00XX, valid UTF-8 characters pass through unchanged (JSON allows raw
-# UTF-8), and every byte that is not valid UTF-8 becomes \ufffd, so the document is always valid
-# JSON, even for hostile input. Without a UTF-8 locale every non-ASCII byte becomes \ufffd (pure
-# ASCII output). Needs no external tool (no jq, no python).
+# become \b \f \n \r \t or \u00XX, valid UTF-8 characters (checked byte-wise against RFC 3629) pass
+# through unchanged (JSON allows raw UTF-8), and every byte that is not part of a valid UTF-8
+# character becomes \ufffd, so the document is always valid JSON, even for hostile input. Without a
+# UTF-8 locale every non-ASCII byte becomes \ufffd (pure ASCII output). Needs no external tool.
 ts_json_escape() {
+    local s="$1" out="" ch code i b
+    if ts_json_plain_ascii "$s"; then
+        TS_JSON_ESCAPED="$s"
+        return 0
+    fi
     local LC_ALL
     case "${TS_JSON_LOCALE:-}" in
         C|C.UTF-8|C.utf8|en_US.UTF-8) ;;
         *) TS_JSON_LOCALE=$(ts_json_utf8_locale) ;;
     esac
     LC_ALL="$TS_JSON_LOCALE"
-    local s="$1" out="" ch code i
-    if [[ "$s" != *[![:print:]]* ]] && [[ "$s" != *[\"\\]* ]]; then
-        TS_JSON_ESCAPED="$s"
-        return 0
-    fi
     for ((i = 0; i < ${#s}; i++)); do
         ch="${s:i:1}"
         case "$ch" in
@@ -198,8 +215,15 @@ ts_json_escape() {
             *)
                 ts_byte_len "$ch"
                 if [[ "$TS_BYTE_LEN" -gt 1 ]]; then
-                    # A whole multibyte character: valid UTF-8 (an invalid byte is always single)
-                    out+="$ch"
+                    if ts_utf8_valid_multibyte "$ch"; then
+                        out+="$ch"
+                    else
+                        # An invalid sequence the locale grouped into one character: every byte
+                        # is replaced, as for any other invalid byte
+                        for ((b = 0; b < TS_BYTE_LEN; b++)); do
+                            out+='\ufffd'
+                        done
+                    fi
                 elif [[ "$ch" == [[:print:]] ]]; then
                     out+="$ch"
                 elif [[ "$ch" == [[:cntrl:]] ]]; then
