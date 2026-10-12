@@ -149,12 +149,37 @@ ts_init_colors() {
 #              E_SHA256_UNAVAILABLE, E_INTERNAL (exit 1).
 # ---------------------------------------------------------------------------
 
-# Escapes $1 for use inside a JSON string literal and stores the result in TS_JSON_ESCAPED.
-# Works on bytes (C locale): quote and backslash are escaped, control characters become
-# \b \f \n \r \t or \u00XX, and every non-ASCII byte becomes \ufffd, so the document is always
-# valid ASCII JSON, even for hostile or non-UTF-8 input. Needs no external tool (no jq, no python).
-ts_json_escape() {
+# Prints a UTF-8 locale bash can switch to (C.UTF-8 on Debian 12), or C if none is available.
+ts_json_utf8_locale() {
+    local loc
+    for loc in C.UTF-8 C.utf8 en_US.UTF-8; do
+        if ( LC_ALL="$loc"; s=$'\xc3\xa4'; [[ ${#s} -eq 1 ]] ) 2>/dev/null; then
+            echo "$loc"
+            return 0
+        fi
+    done
+    echo "C"
+}
+
+# Stores the byte length of $1 in TS_BYTE_LEN (no subshell).
+ts_byte_len() {
     local LC_ALL=C
+    TS_BYTE_LEN=${#1}
+}
+
+# Escapes $1 for use inside a JSON string literal and stores the result in TS_JSON_ESCAPED.
+# Works character-wise in a UTF-8 locale: quote and backslash are escaped, control characters
+# become \b \f \n \r \t or \u00XX, valid UTF-8 characters pass through unchanged (JSON allows raw
+# UTF-8), and every byte that is not valid UTF-8 becomes \ufffd, so the document is always valid
+# JSON, even for hostile input. Without a UTF-8 locale every non-ASCII byte becomes \ufffd (pure
+# ASCII output). Needs no external tool (no jq, no python).
+ts_json_escape() {
+    local LC_ALL
+    case "${TS_JSON_LOCALE:-}" in
+        C|C.UTF-8|C.utf8|en_US.UTF-8) ;;
+        *) TS_JSON_LOCALE=$(ts_json_utf8_locale) ;;
+    esac
+    LC_ALL="$TS_JSON_LOCALE"
     local s="$1" out="" ch code i
     if [[ "$s" != *[![:print:]]* ]] && [[ "$s" != *[\"\\]* ]]; then
         TS_JSON_ESCAPED="$s"
@@ -171,7 +196,11 @@ ts_json_escape() {
             $'\b') out+='\b' ;;
             $'\f') out+='\f' ;;
             *)
-                if [[ "$ch" == [[:print:]] ]]; then
+                ts_byte_len "$ch"
+                if [[ "$TS_BYTE_LEN" -gt 1 ]]; then
+                    # A whole multibyte character: valid UTF-8 (an invalid byte is always single)
+                    out+="$ch"
+                elif [[ "$ch" == [[:print:]] ]]; then
                     out+="$ch"
                 elif [[ "$ch" == [[:cntrl:]] ]]; then
                     printf -v code '%04x' "'$ch"
@@ -584,6 +613,13 @@ valid_ipv4() {
     return $stat
 }
 
+# Succeeds if file name $1 is an installed TunnelSats WireGuard config that wg-quick can load:
+# tunnelsatsv2.conf or tunnelsats-<name>.conf, with an interface name of at most 15 characters.
+ts_valid_installed_config_name() {
+    local name="$1" iface="${1%.conf}"
+    [[ "$name" =~ ^tunnelsats(v2|-[A-Za-z0-9_=+.-]+)\.conf$ ]] && [[ ${#iface} -le 15 ]]
+}
+
 # Installed TunnelSats WireGuard configs and the one in use. One rule for detect, status, restart
 # and uninstall, so they never pick different tunnels:
 #   1. an explicit config (--config) wins
@@ -596,18 +632,36 @@ valid_ipv4() {
 # config is picked) and TS_WG_CANDIDATES (every TunnelSats config found, sorted byte-wise).
 ts_select_wg_config() {
     local LC_ALL=C
-    local explicit="$1" root="${2:-}" wg_dir="${3:-/etc/wireguard}" entry name unreadable=0
+    local explicit="$1" root="${2:-}" wg_dir="${3:-/etc/wireguard}" entry name unreadable=0 parent
     local dir="${root}${wg_dir}"
     TS_WG_SELECTION="none"
     TS_WG_SELECTED=""
     TS_WG_CANDIDATES=()
-    if [[ -e "$dir" ]] && { [[ ! -r "$dir" ]] || [[ ! -x "$dir" ]]; }; then
-        unreadable=1
+    if [[ -e "$dir" ]]; then
+        if [[ ! -r "$dir" ]] || [[ ! -x "$dir" ]]; then
+            unreadable=1
+        fi
+    else
+        # Absent, or hidden behind a parent directory that may not be searched: then nobody can
+        # tell whether a config exists, so this is permission_denied, not none
+        parent="$dir"
+        while [[ "$parent" == */* ]]; do
+            parent="${parent%/*}"
+            if [[ -z "$parent" ]]; then
+                break
+            fi
+            if [[ -e "$parent" ]]; then
+                if [[ -d "$parent" ]] && [[ ! -x "$parent" ]]; then
+                    unreadable=1
+                fi
+                break
+            fi
+        done
     fi
     # Glob results are sorted (byte-wise with LC_ALL=C); names must be valid interface names
     for entry in "$dir"/tunnelsats-*.conf "$dir"/tunnelsatsv2.conf; do
         name="${entry##*/}"
-        if [[ -f "$entry" ]] && [[ "$name" =~ ^tunnelsats(v2|-[A-Za-z0-9_=+.-]+)\.conf$ ]]; then
+        if [[ -f "$entry" ]] && ts_valid_installed_config_name "$name"; then
             TS_WG_CANDIDATES+=("${wg_dir}/${name}")
         fi
     done
@@ -5465,6 +5519,11 @@ parse_args() {
                 fi
                 if [[ "$(cd "$(dirname "$CONFIG_FILE")" && pwd -P)" != "$(cd "${WG_DIR:-/etc/wireguard}" 2>/dev/null && pwd -P)" ]]; then
                     ts_usage_error "restart --config must name an installed config in ${WG_DIR:-/etc/wireguard}"
+                fi
+                # Checked before anything is stopped: a backup such as tunnelsatsv2.conf.bak.X is not
+                # a config wg-quick can start, so restarting with it would leave Lightning stopped
+                if ! ts_valid_installed_config_name "${CONFIG_FILE##*/}"; then
+                    ts_usage_error "restart --config must name an installed TunnelSats config (tunnelsatsv2.conf or tunnelsats-<name>.conf)"
                 fi
             fi
             PLATFORM="$TS_OPT_PLATFORM"

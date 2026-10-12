@@ -538,6 +538,29 @@ assert_equals 2 "$SN_RC" "restart --config outside the WireGuard directory is a 
 assert_contains "$SN_OUT" "restart --config must name an installed config in ${wg_two} [E_USAGE]" "restart --config outside the WireGuard directory explains why"
 assert_no_side_effects "restart --config outside the WireGuard directory"
 
+printf '[Interface]\n' > "$wg_two/tunnelsatsv2.conf.bak.Ab12Cd"
+run_snippet "WG_DIR='$wg_two'; parse_args restart --non-interactive --yes --config '$wg_two/tunnelsatsv2.conf.bak.Ab12Cd'"
+assert_equals 2 "$SN_RC" "restart --config with a backup file name is a usage error (exit 2)"
+assert_contains "$SN_OUT" "restart --config must name an installed TunnelSats config" "restart --config with a backup file name explains why"
+assert_no_side_effects "restart --config with a backup file name (Lightning is never stopped)"
+rm -f "$wg_two/tunnelsatsv2.conf.bak.Ab12Cd"
+
+wg_long="$TMP_ROOT/wg_long"
+mkdir -p "$wg_long"
+printf '[Interface]\n' > "$wg_long/tunnelsats-toolongname.conf"
+assert_equals "selection=none selected= candidates=" "$(select_state "" "$wg_long")" \
+    "Selection: an interface name longer than 15 characters is not a loadable config"
+if [[ "$EUID" -eq 0 ]]; then
+    skip "running as root: unsearchable parent directory"
+else
+    wg_locked="$TMP_ROOT/wg_locked"
+    mkdir -p "$wg_locked/parent/wireguard"
+    chmod 000 "$wg_locked/parent"
+    assert_equals "selection=permission_denied selected= candidates=" "$(select_state "" "$wg_locked/parent/wireguard")" \
+        "Selection: a WireGuard directory behind an unsearchable parent is permission_denied, not none"
+    chmod 755 "$wg_locked/parent"
+fi
+
 wg_empty="$TMP_ROOT/wg_empty"
 mkdir -p "$wg_empty"
 run_snippet "PLATFORM=baremetal; LN_IMPL=lnd; TS_NONINTERACTIVE=1; TS_OPT_YES=1; WG_DIR='$wg_empty'; cmd_restart"
@@ -1263,19 +1286,44 @@ assert_equals "$disc_dir/wg-office.conf" "$(bash -c 'source "$1"; find_config_fi
 echo ""
 echo "--- Group 6: JSON Escaping ---"
 
-# Escapes $1 with ts_json_escape and checks with python3 that the result is pure ASCII and decodes
-# to the input, with every non-ASCII byte replaced by U+FFFD.
+# Escapes $1 with ts_json_escape and checks with python3 that the result is valid JSON string content
+# that decodes to the input: valid UTF-8 characters unchanged, every invalid byte replaced by U+FFFD.
+# $3 = "c" forces the fallback without a UTF-8 locale (TS_JSON_LOCALE=C): pure ASCII output, every
+# non-ASCII byte replaced by U+FFFD.
 check_escape() {
-    local raw="$1" desc="$2"
+    local raw="$1" desc="$2" mode="${3:-utf8}" locale=""
+    if [[ "$mode" == "c" ]]; then
+        locale="C"
+    fi
     printf '%s' "$raw" > "$TMP_ROOT/escape.raw"
-    bash -c 'source "$1"; ts_json_escape "$2"; printf "%s" "$TS_JSON_ESCAPED"' _ "$SCRIPT_UNDER_TEST" "$raw" > "$TMP_ROOT/escape.out"
-    if python3 - "$TMP_ROOT/escape.raw" "$TMP_ROOT/escape.out" <<'PY'
+    TS_JSON_LOCALE="$locale" bash -c 'source "$1"; ts_json_escape "$2"; printf "%s" "$TS_JSON_ESCAPED"' _ "$SCRIPT_UNDER_TEST" "$raw" > "$TMP_ROOT/escape.out"
+    if python3 - "$TMP_ROOT/escape.raw" "$TMP_ROOT/escape.out" "$mode" <<'PY'
 import json, sys
 raw = open(sys.argv[1], "rb").read()
 out = open(sys.argv[2], "rb").read()
-out.decode("ascii")
+mode = sys.argv[3]
+def per_byte_utf8(data):
+    chars, i = [], 0
+    while i < len(data):
+        for n in (1, 2, 3, 4):
+            try:
+                ch = data[i:i + n].decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+            if len(ch) == 1:
+                chars.append(ch)
+                i += n
+                break
+        else:
+            chars.append("\ufffd")
+            i += 1
+    return "".join(chars)
+if mode == "c":
+    out.decode("ascii")
+    expected = "".join(chr(b) if b < 0x80 else "\ufffd" for b in raw)
+else:
+    expected = per_byte_utf8(raw)
 value = json.loads(b'"' + out + b'"')
-expected = "".join(chr(b) if b < 0x80 else "\ufffd" for b in raw)
 sys.exit(0 if value == expected else 1)
 PY
     then
@@ -1291,7 +1339,9 @@ check_escape $'line1\nline2\r\ttab\bback\fform' "Newline, carriage return, tab, 
 check_escape $'\x01\x02\x1b[31mred\x1b[0m\x1f\x7f' "Other control characters and DEL"
 check_escape '","ok":true,"injected":"' "JSON injection attempt stays inside the string"
 check_escape '\u0000 literal' "A literal backslash-u sequence"
-check_escape $'caf\xc3\xa9 \xff\xfe' "Non-ASCII and invalid UTF-8 bytes become U+FFFD"
+check_escape $'caf\xc3\xa9 \xff\xfe' "Valid UTF-8 passes through unchanged, invalid bytes become U+FFFD"
+check_escape $'emoji \xf0\x9f\x98\x80, check \xe2\x9c\x93, quote "' "Three- and four-byte characters pass through next to escapes"
+check_escape $'caf\xc3\xa9 \xff' "Without a UTF-8 locale every non-ASCII byte becomes U+FFFD (pure ASCII)" c
 check_escape "" "Empty string"
 
 hostile_option=$'--x"\\\n\x01'
