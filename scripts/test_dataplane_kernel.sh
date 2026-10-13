@@ -1033,10 +1033,36 @@ assert_equals "fail: a datagram from inside the slice to ${SERVER_ADDR} left thi
     "$(json_get "$V_DOC" '[c["result"] + ": " + c["detail"] for c in d["checks"] if c["id"] == "killswitch_probe"][0]')" \
     "S12: the node user's unbound datagram gets around the block"
 assert_equals "0" "$(echo_count)" "S12: the echo services are still not contacted"
+# A verifier run in this state (it still cannot arm the kill switch) finds that neither protection
+# holds: it stops Lightning, reads back that it stopped, and records the unit
+systemctl start tunnelsats-verifier.service || true
+assert_equals "inactive" "$(systemctl is-active lnd.service || true)" \
+    "S12: the verifier stops Lightning while neither the kill switch nor the emergency block holds"
+assert_contains "$(journalctl --no-pager -u tunnelsats-verifier.service --since '-3 min' 2>/dev/null)" "lnd.service stopped" \
+    "S12: the verifier logged that it stopped Lightning"
+assert_equals "lnd.service" "$(cat /run/tunnelsats/stopped-units 2>/dev/null)" "S12: and recorded the unit it stopped"
 ip rule del priority 100 lookup 100
 run_verify --no-probe
 assert_equals '["degraded", true, true, "active"]' "$(json_get "$V_DOC" '[d["verdict"], d["clearnet_blocked"], d["emergency_block"], d["emergency_state"]]')" \
     "S12: without that rule the emergency block is in effect again (degraded)"
+# The next verifier run finds the block in effect and starts Lightning again, behind the block
+systemctl start tunnelsats-verifier.service || true
+for _ in $(seq 1 30); do
+    if systemctl is-active --quiet lnd.service; then
+        break
+    fi
+    sleep 1
+done
+assert_equals "active" "$(systemctl is-active lnd.service || true)" "S12: the verifier starts Lightning again once the block holds"
+assert_contains "$(journalctl --no-pager -u tunnelsats-verifier.service --since '-3 min' 2>/dev/null)" "lnd.service started again" \
+    "S12: the verifier logged that it started Lightning again"
+if [[ -e /run/tunnelsats/stopped-units ]]; then
+    fail "S12: no record of stopped units remains"
+else
+    pass "S12: no record of stopped units remains"
+fi
+wait_stub || true
+assert_equals "" "$(slice_egress)" "S12: Lightning, started again, still gets no answer from the internet (the block holds)"
 # Arming works again: the resumed verifier re-arms and releases the block
 for d in tunnelsats-killswitch.service.d tunnelsats-verifier.service.d; do
     rm -f "/etc/systemd/system/${d}/ci-arm-fails.conf"

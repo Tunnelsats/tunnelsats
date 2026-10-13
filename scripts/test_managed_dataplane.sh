@@ -224,11 +224,14 @@ EOF
 
 cat > "$STUB_BIN/systemctl" <<'EOF'
 #!/bin/bash
-# Stub for systemctl: properties come from files unit_<unit>_<Property> below STUB_STATE
+# Stub for systemctl: properties come from files unit_<unit>_<Property> below STUB_STATE. With a
+# file stateful_units, start and stop set the unit's ActiveState; with fail_systemctl_show, systemd
+# does not answer show.
 s="${STUB_STATE:?}"
 printf 'systemctl %s\n' "$*" >> "$s/calls"
 case "${1:-}" in
     show)
+        if [[ -f "$s/fail_systemctl_show" ]]; then exit 1; fi
         prop="$3"; unit="${!#}"
         if [[ -f "$s/unit_${unit}_${prop}" ]]; then
             cat "$s/unit_${unit}_${prop}"
@@ -240,6 +243,12 @@ case "${1:-}" in
         ;;
     start|stop|restart|enable|disable|daemon-reload|reset-failed)
         if [[ -f "$s/fail_systemctl_${1}_${2:-}" ]]; then exit 1; fi
+        if [[ -f "$s/stateful_units" ]]; then
+            case "$1" in
+                stop) echo "inactive" > "$s/unit_${!#}_ActiveState" ;;
+                start|restart) echo "active" > "$s/unit_${!#}_ActiveState" ;;
+            esac
+        fi
         ;;
     is-active) exit 3 ;;
     *) echo "systemctl stub: unexpected call: $*" >&2; exit 1 ;;
@@ -765,6 +774,42 @@ printf '100:\tfrom all lookup main\n' >> "$fx/state/rules4"
 run_snippet "$fx" 'TS_OPT_FALLBACK_UID=1001; ts_m_cmd_arm'
 assert_equals "1" "$SN_RC" "managed-arm: an unreadable record and a rule before the block exits 1"
 assert_contains "$SN_OUT" "is armed but not in effect: IPv4 rule before 21818: 100: from all lookup main; Lightning does not start" "managed-arm: names the rule"
+# The verifier in the same state stops the Lightning units that carry the drop-in (read from the
+# unit directory, since the record is unreadable), and starts them again once the block holds
+mkdir -p "$fx/fs/etc/systemd/system/lnd.service.d" "$fx/fs/etc/systemd/system/wg-quick@tunnelsatsv2.service.d"
+run_snippet "$fx" 'ts_m_render_ln_dropin > "$TS_FS_ROOT/etc/systemd/system/lnd.service.d/tunnelsats-managed.conf"; ts_m_render_wg_dropin > "$TS_FS_ROOT/etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsats-managed.conf"; ts_m_dropin_units'
+assert_equals "lnd.service" "$SN_OUT" "Drop-in units: the Lightning unit with the drop-in, not the tunnel unit"
+touch "$fx/state/stateful_units"
+echo "active" > "$fx/state/unit_lnd.service_ActiveState"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_equals "1" "$SN_RC" "managed-verify: an unreadable record and a rule before the block is a failure"
+assert_contains "$SN_OUT" "is armed but not in effect: IPv4 rule before 21818: 100: from all lookup main; lnd.service stopped" \
+    "managed-verify: names the rule and stops Lightning"
+assert_equals "inactive" "$(cat "$fx/state/unit_lnd.service_ActiveState")" "managed-verify: Lightning is stopped"
+sed -i '/^100:/d' "$fx/state/rules4"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_equals "0" "$SN_RC" "managed-verify: without that rule the block holds again"
+assert_contains "$SN_OUT" "protection holds again; lnd.service started again" "managed-verify: and Lightning starts again"
+assert_equals "active" "$(cat "$fx/state/unit_lnd.service_ActiveState")" "managed-verify: Lightning runs again"
+# systemd does not answer: the uid comes from the unit file TunnelSats wrote
+touch "$fx/state/fail_systemctl_show"
+run_snippet "$fx" 'ts_m_render_killswitch_unit lnd.service 1001 > "$TS_FS_ROOT/etc/systemd/system/tunnelsats-killswitch.service"; ts_m_fallback_uid'
+assert_equals "1001" "$SN_OUT" "Fallback uid: read from the unit file while systemd does not answer"
+run_snippet "$fx" 'ts_m_render_killswitch_unit lnd.service "" > "$TS_FS_ROOT/etc/systemd/system/tunnelsats-killswitch.service"; ts_m_fallback_uid; echo "rc=$?"'
+assert_equals "rc=0" "$SN_OUT" "Fallback uid: a unit file without --fallback-uid gives none"
+rm -f "$fx/fs/etc/systemd/system/tunnelsats-killswitch.service"
+run_snippet "$fx" 'rc=0; ts_m_fallback_uid || rc=$?; echo "rc=$rc"'
+assert_equals "rc=1" "$SN_OUT" "Fallback uid: neither systemd nor the unit file answers: an error, never none"
+# Without any uid, no block can be armed: the verifier stops Lightning (systemd does not answer
+# here, so it cannot tell whether the unit stopped: unprotected, said so)
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_equals "1" "$SN_RC" "managed-verify: no readable uid is a failure"
+assert_contains "$SN_OUT" "the Lightning uid cannot be read (systemd does not answer and /etc/systemd/system/tunnelsats-killswitch.service cannot be read), so no emergency block can be armed; could not stop lnd.service (state unknown" \
+    "managed-verify: says why and that Lightning could not be confirmed stopped"
+assert_contains "$(cat "$fx/state/calls")" "systemctl stop lnd.service" "managed-verify: it still tries to stop Lightning"
+rm -f "$fx/state/fail_systemctl_show" "$fx/state/stateful_units" "$fx/fs/run/tunnelsats/stopped-units"
+rm -rf "$fx/fs/etc/systemd/system/lnd.service.d" "$fx/fs/etc/systemd/system/wg-quick@tunnelsatsv2.service.d"
+echo "inactive" > "$fx/state/unit_lnd.service_ActiveState"
 sed -i '/^100:/d' "$fx/state/rules4"
 # The record restored: managed-arm arms the kill switch and releases the block, exemptions included
 write_inventory "$fx"
@@ -842,12 +887,61 @@ assert_contains "$SN_OUT" "emergency block armed for uid 1001" "managed-verify: 
 run_snippet "$fx" 'ts_m_cmd_arm'
 assert_equals "0" "$SN_RC" "managed-arm: exits 0 again once the block is in effect"
 printf '100:\tfrom all lookup main\n' >> "$fx/state/rules4"
+# Lightning runs when that happens: the verifier stops it, reads back that it stopped, and records it
+touch "$fx/state/stateful_units"
+echo "active" > "$fx/state/unit_lnd.service_ActiveState"
 run_snippet "$fx" 'ts_m_cmd_verifier'
 assert_equals "1" "$SN_RC" "managed-verify: a block that is not in effect is a failure"
 assert_contains "$SN_OUT" "the emergency block is armed but not in effect: IPv4 rule before 21818: 100: from all lookup main" \
-    "managed-verify: logs the change to unprotected, naming the rule"
+    "managed-verify: logs the change, naming the rule"
+assert_contains "$SN_OUT" "lnd.service stopped, so no Lightning traffic leaves outside the tunnel" \
+    "managed-verify: stops Lightning while neither the kill switch nor the block holds"
+assert_contains "$(cat "$fx/state/calls")" "systemctl stop lnd.service" "managed-verify: the stop goes through systemd"
+assert_equals "inactive" "$(cat "$fx/state/unit_lnd.service_ActiveState")" "managed-verify: Lightning is stopped"
+assert_equals "lnd.service" "$(cat "$fx/fs/run/tunnelsats/stopped-units" 2>/dev/null)" "managed-verify: records the unit it stopped"
 run_snippet "$fx" 'ts_m_cmd_verifier'
-assert_equals "" "$SN_OUT" "managed-verify: the unchanged unprotected state logs nothing"
+assert_equals "1" "$SN_RC" "managed-verify: still a failure while neither holds"
+assert_equals "" "$SN_OUT" "managed-verify: the unchanged stopped state logs nothing"
+# Without that rule the block holds again: the verifier starts Lightning again, without waiting
+sed -i '/^100:/d' "$fx/state/rules4"
+: > "$fx/state/calls"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_equals "0" "$SN_RC" "managed-verify: the block holds again"
+assert_contains "$SN_OUT" "protection holds again; lnd.service started again" "managed-verify: starts Lightning again"
+assert_contains "$(cat "$fx/state/calls")" "systemctl start --no-block lnd.service" "managed-verify: the start is queued, not awaited (the verifier holds the lock)"
+assert_equals "active" "$(cat "$fx/state/unit_lnd.service_ActiveState")" "managed-verify: Lightning runs again"
+if [[ -e "$fx/fs/run/tunnelsats/stopped-units" ]]; then
+    fail "managed-verify: the record of stopped units is removed"
+else
+    pass "managed-verify: the record of stopped units is removed"
+fi
+# A unit that does not stop: unprotected, with the state and the reason
+printf '100:\tfrom all lookup main\n' >> "$fx/state/rules4"
+touch "$fx/state/fail_systemctl_stop_lnd.service"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_equals "1" "$SN_RC" "managed-verify: a unit that does not stop is a failure"
+assert_contains "$SN_OUT" "could not stop lnd.service (state active; systemctl stop failed)" "managed-verify: says the unit could not be stopped, with its state"
+rm -f "$fx/state/fail_systemctl_stop_lnd.service"
+sed -i '/^100:/d' "$fx/state/rules4"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_equals "0" "$SN_RC" "managed-verify: the block holds again"
+if [[ -e "$fx/fs/run/tunnelsats/stopped-units" ]]; then
+    fail "managed-verify: once the block holds, no record of stopped units remains"
+else
+    pass "managed-verify: once the block holds, no record of stopped units remains"
+fi
+# A Lightning unit that now runs as another user: the uid block would not cover it, so the verifier
+# stops Lightning even though the block could be armed
+echo "root" > "$fx/state/unit_lnd.service_User"
+echo "active" > "$fx/state/unit_lnd.service_ActiveState"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_equals "1" "$SN_RC" "managed-verify: a changed Lightning user is a failure"
+assert_contains "$SN_OUT" "the lnd.service user changed to uid 0, so the emergency block for uid 1001 does not cover it" "managed-verify: names the uid change"
+assert_equals "inactive" "$(cat "$fx/state/unit_lnd.service_ActiveState")" "managed-verify: and stops Lightning"
+run_snippet "$fx" 'ts_m_cmd_arm'
+assert_equals "1" "$SN_RC" "managed-arm: a changed Lightning user exits 1 (Lightning does not start)"
+assert_contains "$SN_OUT" "user changed to uid 0" "managed-arm: and says why"
+rm -f "$fx/state/unit_lnd.service_User" "$fx/state/stateful_units" "$fx/fs/run/tunnelsats/stopped-units"
 
 # ---------------------------------------------------------------------------
 # GROUP 5: Node config detector
@@ -964,6 +1058,49 @@ doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
 assert_json "$doc" '[d["ln_started"], d["node_config"], d["action_required"]["reason"], "runs through a shell" in d["action_required"]["detail"]]' \
     '[false, "unknown", "node_config_unknown", true]' "Uninstall: a command line that cannot be checked leaves Lightning stopped, with the reason"
 assert_not_contains "$(cat "$fx/state/calls")" "systemctl start lnd.service" "Uninstall: Lightning is not started"
+assert_json "$doc" '[d["ln_disabled"], d["action_required"]["then"]]' '[true, "systemctl enable --now lnd.service"]' \
+    "Uninstall: the unit is disabled, and the action says how to enable it again"
+assert_contains "$(cat "$fx/state/calls")" "systemctl disable lnd.service" "Uninstall: the disable goes through systemd"
+
+# uninstall while Lightning was not running: with settings that cannot be checked, the unit is
+# disabled all the same, so no boot starts it outside the tunnel; a failed disable is an error
+fx=$(new_fixture nc-uninstall-stopped)
+mkdir -p "$fx/fs/data/lnd"
+printf '%s\n' "$clean_lnd" > "$fx/fs/data/lnd/lnd.conf"
+printf '{ path=/bin/sh ; argv[]=/bin/sh -c /usr/local/bin/lnd --configfile=/data/lnd/lnd.conf ; ignore_errors=no ; start_time=[n/a] }' > "$fx/state/unit_lnd.service_ExecStart"
+echo "bitcoin" > "$fx/state/unit_lnd.service_User"
+mkdir -p "$fx/fs/etc/tunnelsats"
+write_inventory "$fx"
+touch "$fx/state/fail_systemctl_disable_lnd.service"
+run_snippet "$fx" "TS_JSON=1; TS_NONINTERACTIVE=1; TS_COMMAND=uninstall; TS_OUT_FD=1; TS_OPT_YES=1; cmd_uninstall_managed"
+assert_equals "1" "$SN_RC" "Uninstall: a unit that cannot be disabled exits 1"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["ln_was_active"], d["ln_started"], d["ln_disabled"], d["action_required"]["reason"], d["action_required"]["then"]]' \
+    '[false, false, false, "node_config_unknown", "systemctl disable lnd.service"]' \
+    "Uninstall: not running before, settings unchecked: the action is to disable the unit"
+assert_json "$doc" '[e["code"] for e in d["errors"]]' '["E_LN_DISABLE"]' "Uninstall: the failed disable is reported as an error"
+assert_contains "$SN_OUT" "could not be disabled" "Uninstall: and printed"
+assert_not_contains "$(cat "$fx/state/calls")" "systemctl start lnd.service" "Uninstall: Lightning is not started"
+
+# uninstall after the verifier stopped Lightning (no protection held): it counts as running before,
+# so with a clean node config Lightning starts again; the record is gone before anything else
+fx=$(new_fixture uninstall-after-quarantine)
+mkdir -p "$fx/fs/data/lnd" "$fx/fs/run/tunnelsats"
+printf '%s\n' "$clean_lnd" > "$fx/fs/data/lnd/lnd.conf"
+printf '{ path=/usr/local/bin/lnd ; argv[]=/usr/local/bin/lnd --configfile=/data/lnd/lnd.conf ; ignore_errors=no ; start_time=[n/a] }' > "$fx/state/unit_lnd.service_ExecStart"
+echo "bitcoin" > "$fx/state/unit_lnd.service_User"
+echo "lnd.service" > "$fx/fs/run/tunnelsats/stopped-units"
+mkdir -p "$fx/fs/etc/tunnelsats"
+write_inventory "$fx"
+run_snippet "$fx" "TS_JSON=1; TS_NONINTERACTIVE=1; TS_COMMAND=uninstall; TS_OUT_FD=1; TS_OPT_YES=1; cmd_uninstall_managed"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["ln_was_active"], d["ln_started"], d["node_config"]]' '[true, true, "clean"]' \
+    "Uninstall: Lightning stopped by the verifier counts as running before and starts again with a clean config"
+if [[ -e "$fx/fs/run/tunnelsats/stopped-units" ]]; then
+    fail "Uninstall: the record of stopped units is removed"
+else
+    pass "Uninstall: the record of stopped units is removed"
+fi
 
 # ---------------------------------------------------------------------------
 # GROUP 6: verify verdicts and checks
