@@ -225,8 +225,8 @@ EOF
 cat > "$STUB_BIN/systemctl" <<'EOF'
 #!/bin/bash
 # Stub for systemctl: properties come from files unit_<unit>_<Property> below STUB_STATE. With a
-# file stateful_units, start and stop set the unit's ActiveState; with fail_systemctl_show, systemd
-# does not answer show.
+# file stateful_units, start and stop set the unit's ActiveState; fail_systemctl_<verb>_<unit> makes
+# that call fail; with fail_systemctl_show, systemd does not answer show.
 s="${STUB_STATE:?}"
 printf 'systemctl %s\n' "$*" >> "$s/calls"
 case "${1:-}" in
@@ -242,7 +242,7 @@ case "${1:-}" in
         fi
         ;;
     start|stop|restart|enable|disable|daemon-reload|reset-failed)
-        if [[ -f "$s/fail_systemctl_${1}_${2:-}" ]]; then exit 1; fi
+        if [[ -f "$s/fail_systemctl_${1}_${!#}" ]]; then exit 1; fi
         if [[ -f "$s/stateful_units" ]]; then
             case "$1" in
                 stop) echo "inactive" > "$s/unit_${!#}_ActiveState" ;;
@@ -317,7 +317,7 @@ run_snippet() {
     SN_OUT=$(cd "$fx" && PATH="$STUB_BIN:$PATH" STUB_STATE="$fx/state" TS_FS_ROOT="$fx/fs" WG_DIR="$fx/fs/etc/wireguard" \
         NFT_BIN="$STUB_BIN/nft" IP_BIN="$STUB_BIN/ip" SYSTEMCTL_BIN="$STUB_BIN/systemctl" \
         SYSTEMD_RUN_BIN="$STUB_BIN/systemd-run" GETENT_BIN="$STUB_BIN/getent" CURL_BIN="$STUB_BIN/curl" \
-        UNSHARE_BIN="$STUB_BIN/unshare" SCRIPT_UNDER_TEST="$SCRIPT_UNDER_TEST" \
+        UNSHARE_BIN="$STUB_BIN/unshare" SCRIPT_UNDER_TEST="$SCRIPT_UNDER_TEST" TS_M_STOP_WAIT=0 \
         bash -c 'source "$SCRIPT_UNDER_TEST"
 ts_m_expected_owner() { id -u; }
 ts_m_require_root() { :; }
@@ -789,7 +789,7 @@ assert_equals "inactive" "$(cat "$fx/state/unit_lnd.service_ActiveState")" "mana
 sed -i '/^100:/d' "$fx/state/rules4"
 run_snippet "$fx" 'ts_m_cmd_verifier'
 assert_equals "0" "$SN_RC" "managed-verify: without that rule the block holds again"
-assert_contains "$SN_OUT" "protection holds again; lnd.service started again" "managed-verify: and Lightning starts again"
+assert_contains "$SN_OUT" "protection holds again; starting lnd.service again" "managed-verify: and Lightning starts again"
 assert_equals "active" "$(cat "$fx/state/unit_lnd.service_ActiveState")" "managed-verify: Lightning runs again"
 # systemd does not answer: the uid comes from the unit file TunnelSats wrote
 touch "$fx/state/fail_systemctl_show"
@@ -806,7 +806,7 @@ run_snippet "$fx" 'ts_m_cmd_verifier'
 assert_equals "1" "$SN_RC" "managed-verify: no readable uid is a failure"
 assert_contains "$SN_OUT" "the Lightning uid cannot be read (systemd does not answer and /etc/systemd/system/tunnelsats-killswitch.service cannot be read), so no emergency block can be armed; could not stop lnd.service (state unknown" \
     "managed-verify: says why and that Lightning could not be confirmed stopped"
-assert_contains "$(cat "$fx/state/calls")" "systemctl stop lnd.service" "managed-verify: it still tries to stop Lightning"
+assert_contains "$(cat "$fx/state/calls")" "systemctl stop --no-block lnd.service" "managed-verify: it still tries to stop Lightning"
 rm -f "$fx/state/fail_systemctl_show" "$fx/state/stateful_units" "$fx/fs/run/tunnelsats/stopped-units"
 rm -rf "$fx/fs/etc/systemd/system/lnd.service.d" "$fx/fs/etc/systemd/system/wg-quick@tunnelsatsv2.service.d"
 echo "inactive" > "$fx/state/unit_lnd.service_ActiveState"
@@ -896,9 +896,9 @@ assert_contains "$SN_OUT" "the emergency block is armed but not in effect: IPv4 
     "managed-verify: logs the change, naming the rule"
 assert_contains "$SN_OUT" "lnd.service stopped, so no Lightning traffic leaves outside the tunnel" \
     "managed-verify: stops Lightning while neither the kill switch nor the block holds"
-assert_contains "$(cat "$fx/state/calls")" "systemctl stop lnd.service" "managed-verify: the stop goes through systemd"
+assert_contains "$(cat "$fx/state/calls")" "systemctl stop --no-block lnd.service" "managed-verify: the stop goes through systemd without blocking (the verifier holds the lock)"
 assert_equals "inactive" "$(cat "$fx/state/unit_lnd.service_ActiveState")" "managed-verify: Lightning is stopped"
-assert_equals "lnd.service" "$(cat "$fx/fs/run/tunnelsats/stopped-units" 2>/dev/null)" "managed-verify: records the unit it stopped"
+assert_equals "lnd.service stopped 0" "$(cat "$fx/fs/run/tunnelsats/stopped-units" 2>/dev/null)" "managed-verify: records the unit it stopped"
 run_snippet "$fx" 'ts_m_cmd_verifier'
 assert_equals "1" "$SN_RC" "managed-verify: still a failure while neither holds"
 assert_equals "" "$SN_OUT" "managed-verify: the unchanged stopped state logs nothing"
@@ -907,14 +907,72 @@ sed -i '/^100:/d' "$fx/state/rules4"
 : > "$fx/state/calls"
 run_snippet "$fx" 'ts_m_cmd_verifier'
 assert_equals "0" "$SN_RC" "managed-verify: the block holds again"
-assert_contains "$SN_OUT" "protection holds again; lnd.service started again" "managed-verify: starts Lightning again"
+assert_contains "$SN_OUT" "protection holds again; starting lnd.service again" "managed-verify: starts Lightning again"
 assert_contains "$(cat "$fx/state/calls")" "systemctl start --no-block lnd.service" "managed-verify: the start is queued, not awaited (the verifier holds the lock)"
 assert_equals "active" "$(cat "$fx/state/unit_lnd.service_ActiveState")" "managed-verify: Lightning runs again"
+assert_equals "lnd.service starting 1" "$(cat "$fx/fs/run/tunnelsats/stopped-units" 2>/dev/null)" "managed-verify: the unit stays recorded until a check finds it running"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_contains "$SN_OUT" "lnd.service runs again" "managed-verify: the next check confirms that Lightning runs"
 if [[ -e "$fx/fs/run/tunnelsats/stopped-units" ]]; then
-    fail "managed-verify: the record of stopped units is removed"
+    fail "managed-verify: then the record of stopped units is removed"
 else
-    pass "managed-verify: the record of stopped units is removed"
+    pass "managed-verify: then the record of stopped units is removed"
 fi
+# A start that systemd refuses, or that it accepts but that fails, is retried with each check and
+# logged once per change
+printf '100:\tfrom all lookup main\n' >> "$fx/state/rules4"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+sed -i '/^100:/d' "$fx/state/rules4"
+touch "$fx/state/fail_systemctl_start_lnd.service"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_contains "$SN_OUT" "lnd.service could not be started" "managed-verify: a refused start is logged"
+assert_equals "lnd.service start-failed 1" "$(cat "$fx/fs/run/tunnelsats/stopped-units" 2>/dev/null)" "managed-verify: and the unit stays recorded"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_not_contains "$SN_OUT" "could not be started" "managed-verify: the same failure is not logged again"
+rm -f "$fx/state/fail_systemctl_start_lnd.service" "$fx/state/stateful_units"
+echo "failed" > "$fx/state/unit_lnd.service_ActiveState"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_contains "$SN_OUT" "protection holds again; starting lnd.service again" "managed-verify: the retry is queued once the start is accepted"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_contains "$SN_OUT" "lnd.service did not start (state failed); trying again with each check" "managed-verify: an accepted start that failed is retried"
+assert_equals "lnd.service retrying 4" "$(cat "$fx/fs/run/tunnelsats/stopped-units" 2>/dev/null)" "managed-verify: the unit stays recorded while it does not run, attempts counted"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_equals "" "$SN_OUT" "managed-verify: further retries log nothing"
+echo "active" > "$fx/state/unit_lnd.service_ActiveState"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_contains "$SN_OUT" "lnd.service runs again" "managed-verify: once it runs, that is logged"
+if [[ -e "$fx/fs/run/tunnelsats/stopped-units" ]]; then
+    fail "managed-verify: and the record is removed"
+else
+    pass "managed-verify: and the record is removed"
+fi
+# After TS_M_RESUME_MAX starts, the verifier gives up and logs the command to start it by hand
+echo "lnd.service retrying 2" > "$fx/fs/run/tunnelsats/stopped-units"
+echo "failed" > "$fx/state/unit_lnd.service_ActiveState"
+run_snippet "$fx" 'TS_M_RESUME_MAX=2; ts_m_cmd_verifier'
+assert_contains "$SN_OUT" "lnd.service did not start after 2 attempts (state failed); no further attempts. Start it with: systemctl start lnd.service" \
+    "managed-verify: gives up after the last attempt, with the command"
+if [[ -e "$fx/fs/run/tunnelsats/stopped-units" ]]; then
+    fail "managed-verify: the unit is no longer recorded after the last attempt"
+else
+    pass "managed-verify: the unit is no longer recorded after the last attempt"
+fi
+echo "active" > "$fx/state/unit_lnd.service_ActiveState"
+touch "$fx/state/stateful_units"
+# A unit still shutting down when the wait ends: state stopping; the next check confirms the stop
+printf '100:\tfrom all lookup main\n' >> "$fx/state/rules4"
+rm -f "$fx/state/stateful_units"
+echo "deactivating" > "$fx/state/unit_lnd.service_ActiveState"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_equals "1" "$SN_RC" "managed-verify: a unit still shutting down is not confirmed yet"
+assert_contains "$SN_OUT" "lnd.service is shutting down; the next check confirms that it stopped" "managed-verify: says it is shutting down"
+echo "inactive" > "$fx/state/unit_lnd.service_ActiveState"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_contains "$SN_OUT" "lnd.service stopped, so no Lightning traffic leaves outside the tunnel" "managed-verify: the next check confirms the stop"
+touch "$fx/state/stateful_units"
+sed -i '/^100:/d' "$fx/state/rules4"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_equals "active" "$(cat "$fx/state/unit_lnd.service_ActiveState")" "managed-verify: and starts Lightning again once the block holds"
 # A unit that does not stop: unprotected, with the state and the reason
 printf '100:\tfrom all lookup main\n' >> "$fx/state/rules4"
 touch "$fx/state/fail_systemctl_stop_lnd.service"
@@ -1089,7 +1147,7 @@ mkdir -p "$fx/fs/data/lnd" "$fx/fs/run/tunnelsats"
 printf '%s\n' "$clean_lnd" > "$fx/fs/data/lnd/lnd.conf"
 printf '{ path=/usr/local/bin/lnd ; argv[]=/usr/local/bin/lnd --configfile=/data/lnd/lnd.conf ; ignore_errors=no ; start_time=[n/a] }' > "$fx/state/unit_lnd.service_ExecStart"
 echo "bitcoin" > "$fx/state/unit_lnd.service_User"
-echo "lnd.service" > "$fx/fs/run/tunnelsats/stopped-units"
+echo "lnd.service stopped" > "$fx/fs/run/tunnelsats/stopped-units"
 mkdir -p "$fx/fs/etc/tunnelsats"
 write_inventory "$fx"
 run_snippet "$fx" "TS_JSON=1; TS_NONINTERACTIVE=1; TS_COMMAND=uninstall; TS_OUT_FD=1; TS_OPT_YES=1; cmd_uninstall_managed"

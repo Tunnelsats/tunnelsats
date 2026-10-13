@@ -5811,6 +5811,12 @@ TS_M_VERIFIER_STATE="/run/tunnelsats/verifier.state"
 # Lightning units the verifier stopped because no protection held (ts_m_quarantine); started again
 # once one holds (ts_m_resume_stopped)
 TS_M_STOPPED="/run/tunnelsats/stopped-units"
+# Seconds ts_m_quarantine waits for a stopped Lightning unit to become inactive while it holds the
+# kill switch lock (the stop itself does not block); a later check confirms a longer shutdown
+TS_M_STOP_WAIT="${TS_M_STOP_WAIT:-15}"
+# Starts ts_m_resume_stopped queues for a recorded unit before it gives up and logs the command to
+# start it by hand (one per check, so about five minutes)
+TS_M_RESUME_MAX="${TS_M_RESUME_MAX:-10}"
 TS_M_EMERGENCY6_STATE="/run/tunnelsats/emergency6.rules"
 # Local networks the emergency block keeps for the node uid (priority 21817, before its
 # blackholes), and the record of the exemption rules TunnelSats added
@@ -7056,8 +7062,8 @@ ts_m_log() {
     echo "TunnelSats: $*" >&2
 }
 
-# Records verifier state $1 (armed, failclosed, damaged, stopped, unprotected) and logs message $2
-# only when the state changes, so a steady state never repeats itself in the journal.
+# Records verifier state $1 (armed, failclosed, damaged, stopping, stopped, unprotected) and logs
+# message $2 only when the state changes, so a steady state never repeats itself in the journal.
 ts_m_state_change() {
     local new="$1" msg="$2" f="${TS_FS_ROOT}${TS_M_VERIFIER_STATE}" old=""
     old=$(cat "$f" 2>/dev/null) || old=""
@@ -7077,27 +7083,115 @@ ts_m_state_protected() {
     ts_m_resume_stopped
 }
 
-# Starts the Lightning units recorded in TS_M_STOPPED (stopped by ts_m_quarantine) and removes the
-# record. Called only once a protection holds again: the kill switch is armed and verified, or the
-# emergency block is in effect. Does not wait for the start, because the caller holds the kill
-# switch lock, which a start of the kill switch unit takes. A unit whose start cannot be queued is
-# logged with the command to start it by hand.
+# Prints the status recorded for unit $1 in TS_M_STOPPED (stopped, starting, retrying or
+# start-failed); fails if the unit is not recorded.
+ts_m_stopped_status() {
+    local f="${TS_FS_ROOT}${TS_M_STOPPED}" u st _n
+    if [[ ! -f "$f" ]]; then
+        return 1
+    fi
+    while read -r u st _n; do
+        if [[ "$u" == "$1" ]]; then
+            echo "${st:-stopped}"
+            return 0
+        fi
+    done < "$f"
+    return 1
+}
+
+# Records status $2 and start attempts $3 (default 0) for unit $1 in TS_M_STOPPED, one line
+# "<unit> <status> <attempts>" per unit, replacing an earlier line for it; status "-" removes the
+# unit, and the file goes with its last unit. Fails if the record cannot be written.
+ts_m_stopped_set() {
+    local f="${TS_FS_ROOT}${TS_M_STOPPED}" u st n lines=()
+    if [[ -f "$f" ]]; then
+        while read -r u st n; do
+            if [[ -n "$u" ]] && [[ "$u" != "$1" ]]; then
+                lines+=("$u ${st:-stopped} ${n:-0}")
+            fi
+        done < "$f"
+    fi
+    if [[ "$2" != "-" ]]; then
+        lines+=("$1 $2 ${3:-0}")
+    fi
+    if [[ ${#lines[@]} -eq 0 ]]; then
+        rm -f "$f"
+        return 0
+    fi
+    ts_m_ensure_run_dir || return 1
+    printf '%s\n' "${lines[@]}" > "${f}.tmp" 2>/dev/null && mv -f "${f}.tmp" "$f" 2>/dev/null
+}
+
+# Starts the Lightning units recorded in TS_M_STOPPED (stopped by ts_m_quarantine) again. Called
+# only while a protection holds: the kill switch is armed and verified, or the emergency block is
+# in effect. A unit stays recorded until a later check finds it running, so a start that systemd
+# accepts but that fails (for example at the unit's start limit) is retried with each check, up to
+# TS_M_RESUME_MAX starts; then the command to start it by hand is logged and the unit is dropped.
+# The start does not block, because the caller holds the kill switch lock, which a start of the
+# kill switch unit takes. Each change of a unit's status is logged once.
 ts_m_resume_stopped() {
-    local f="${TS_FS_ROOT}${TS_M_STOPPED}" unit units=() err=""
+    local f="${TS_FS_ROOT}${TS_M_STOPPED}" unit st n state err="" new e entries=()
     if [[ ! -f "$f" ]]; then
         return 0
     fi
-    while IFS= read -r unit; do
+    while read -r unit st n; do
         if [[ "$unit" =~ ^[A-Za-z0-9@._:-]+\.service$ ]]; then
-            units+=("$unit")
+            if [[ ! "$n" =~ ^[0-9]+$ ]]; then
+                n=0
+            fi
+            entries+=("${unit} ${st:-stopped} ${n}")
         fi
     done < "$f"
-    rm -f "$f"
-    for unit in "${units[@]}"; do
+    if [[ ${#entries[@]} -eq 0 ]]; then
+        rm -f "$f"
+        return 0
+    fi
+    for e in "${entries[@]}"; do
+        read -r unit st n <<< "$e"
+        if ! state=$(ts_m_unit_prop "$unit" ActiveState); then
+            state="unknown"
+        fi
+        case "$state" in
+            active|reloading|refreshing)
+                if ! ts_m_stopped_set "$unit" -; then
+                    ts_m_log "cannot update ${TS_M_STOPPED}"
+                fi
+                ts_m_log "${unit} runs again"
+                continue
+                ;;
+            activating)
+                continue
+                ;;
+        esac
+        n=$((n + 1))
+        if [[ "$n" -gt "$TS_M_RESUME_MAX" ]]; then
+            if ! ts_m_stopped_set "$unit" -; then
+                ts_m_log "cannot update ${TS_M_STOPPED}"
+            fi
+            ts_m_log "${unit} did not start after ${TS_M_RESUME_MAX} attempts (state ${state:-unknown}); no further attempts. Start it with: systemctl start ${unit}"
+            continue
+        fi
         if err=$("$SYSTEMCTL_BIN" start --no-block "$unit" 2>&1); then
-            ts_m_log "protection holds again; ${unit} started again"
+            case "$st" in
+                starting|retrying)
+                    new="retrying"
+                    if [[ "$st" == "starting" ]]; then
+                        ts_m_log "${unit} did not start (state ${state:-unknown}); trying again with each check"
+                    fi
+                    ;;
+                *)
+                    new="starting"
+                    ts_m_log "protection holds again; starting ${unit} again"
+                    ;;
+            esac
         else
-            ts_m_log "protection holds again, but ${unit} could not be started (${err:-no reason given}); start it with: systemctl start ${unit}"
+            new="start-failed"
+            if [[ "$st" != "start-failed" ]]; then
+                ts_m_log "protection holds again, but ${unit} could not be started (${err:-no reason given}); trying again with each check"
+            fi
+        fi
+        if ! ts_m_stopped_set "$unit" "$new" "$n"; then
+            ts_m_log "cannot update ${TS_M_STOPPED}"
         fi
     done
     return 0
@@ -7115,14 +7209,38 @@ ts_m_dropin_units() {
     done
 }
 
+# Waits up to TS_M_STOP_WAIT seconds for unit $1 to leave the active states and prints its
+# ActiveState ("unknown" if systemd cannot tell). Used after a stop that does not block, so the
+# kill switch lock is never held for a whole shutdown of the Lightning daemon.
+ts_m_wait_stopped() {
+    local unit="$1" state="" i=0 steps=$((TS_M_STOP_WAIT * 2))
+    while true; do
+        if ! state=$(ts_m_unit_prop "$unit" ActiveState); then
+            state="unknown"
+        fi
+        case "$state" in
+            active|activating|deactivating|reloading|refreshing) ;;
+            *) break ;;
+        esac
+        if [[ "$i" -ge "$steps" ]]; then
+            break
+        fi
+        sleep 0.5
+        i=$((i + 1))
+    done
+    echo "${state:-unknown}"
+}
+
 # Last resort of the verifier when neither the kill switch nor the emergency block holds ($1 =
-# why): stops the Lightning units $2... and reads back that each is no longer active. A unit that
-# was running is recorded in TS_M_STOPPED before it is stopped, so ts_m_resume_stopped starts it
-# again once a protection holds. Logs state "stopped" (no unit runs) or "unprotected" (a unit is
-# still running, systemd cannot tell, or no unit is known), once per change. Returns 0 when every
-# unit is confirmed stopped, 1 otherwise; the verifier exits 1 either way.
+# why): stops the Lightning units $2... without blocking and reads back, for up to TS_M_STOP_WAIT
+# seconds, that each is no longer active. A unit that was running is recorded in TS_M_STOPPED
+# before it is stopped, so ts_m_resume_stopped starts it again once a protection holds. Logs one
+# state per change: "stopped" (no unit runs), "stopping" (a unit is still shutting down; the next
+# check confirms it) or "unprotected" (a unit is still running, systemd cannot tell, or no unit is
+# known). Returns 0 when every unit is confirmed stopped, 1 otherwise; the verifier exits 1 either
+# way.
 ts_m_quarantine() {
-    local why="$1" unit state err="" f="${TS_FS_ROOT}${TS_M_STOPPED}" failed=() names=()
+    local why="$1" unit state err="" failed=() stopping=() names=()
     shift
     if [[ $# -eq 0 ]]; then
         ts_m_state_change unprotected "${why}; no Lightning unit with the TunnelSats drop-in was found to stop"
@@ -7136,24 +7254,30 @@ ts_m_quarantine() {
         if [[ "$state" == "inactive" ]] || [[ "$state" == "failed" ]]; then
             continue
         fi
-        if ! grep -qxF "$unit" "$f" 2>/dev/null; then
-            if ! ts_m_ensure_run_dir || ! printf '%s\n' "$unit" >> "$f" 2>/dev/null; then
-                ts_m_log "cannot record ${unit} in ${TS_M_STOPPED}; it will not be started again automatically"
+        if ! ts_m_stopped_set "$unit" stopped; then
+            ts_m_log "cannot record ${unit} in ${TS_M_STOPPED}; it will not be started again automatically"
+        fi
+        if err=$("$SYSTEMCTL_BIN" stop --no-block "$unit" 2>&1); then
+            err=""
+            state=$(ts_m_wait_stopped "$unit")
+        else
+            err="${err:-systemctl stop failed}"
+            if ! state=$(ts_m_unit_prop "$unit" ActiveState); then
+                state="unknown"
             fi
         fi
-        err=""
-        if ! err=$("$SYSTEMCTL_BIN" stop "$unit" 2>&1); then
-            err="${err:-systemctl stop failed}"
-        fi
-        if ! state=$(ts_m_unit_prop "$unit" ActiveState); then
-            state="unknown"
-        fi
-        if [[ "$state" != "inactive" ]] && [[ "$state" != "failed" ]]; then
-            failed+=("${unit} (state ${state:-unknown}${err:+; ${err//$'\n'/ }})")
-        fi
+        case "$state" in
+            inactive|failed) ;;
+            deactivating) stopping+=("$unit") ;;
+            *) failed+=("${unit} (state ${state:-unknown}${err:+; ${err//$'\n'/ }})") ;;
+        esac
     done
     if [[ ${#failed[@]} -gt 0 ]]; then
         ts_m_state_change unprotected "${why}; could not stop ${failed[*]}. Stop it until the kill switch or the emergency block holds again."
+        return 1
+    fi
+    if [[ ${#stopping[@]} -gt 0 ]]; then
+        ts_m_state_change stopping "${why}; ${stopping[*]} is shutting down; the next check confirms that it stopped. It starts again once the kill switch or the emergency block holds."
         return 1
     fi
     ts_m_state_change stopped "${why}; ${names[*]} stopped, so no Lightning traffic leaves outside the tunnel. It starts again once the kill switch or the emergency block holds."
@@ -8280,8 +8404,9 @@ ts_m_remove_dataplane() {
         fi
     done
     "$SYSTEMCTL_BIN" daemon-reload >/dev/null 2>&1 || true
-    # 2. Units: tunnel, verifier, kill switch (its ExecStop removes the attestation), then the slice
-    for unit in "$TS_M_WG_UNIT" "$TS_M_TIMER_UNIT" "$TS_M_VERIFIER_UNIT" "$TS_M_KILLSWITCH_UNIT" "$TS_M_SLICE_UNIT"; do
+    # 2. Units: the verifier timer and service first (no check runs during the removal), then the
+    # tunnel, the kill switch (its ExecStop removes the attestation) and the slice
+    for unit in "$TS_M_TIMER_UNIT" "$TS_M_VERIFIER_UNIT" "$TS_M_WG_UNIT" "$TS_M_KILLSWITCH_UNIT" "$TS_M_SLICE_UNIT"; do
         "$SYSTEMCTL_BIN" stop "$unit" >/dev/null 2>&1 || true
     done
     for unit in "${TS_M_ENABLED_UNITS[@]}"; do
@@ -8309,7 +8434,7 @@ ts_m_remove_dataplane() {
             rm -f "${TS_FS_ROOT}${rel}"
         fi
     done
-    rm -f "${TS_FS_ROOT}${TS_M_ATTEST}" "${TS_FS_ROOT}${TS_M_RULESET_FILE}" "${TS_FS_ROOT}${TS_M_VERIFIER_STATE}" "${TS_FS_ROOT}${TS_M_STOPPED}"
+    rm -f "${TS_FS_ROOT}${TS_M_ATTEST}" "${TS_FS_ROOT}${TS_M_RULESET_FILE}" "${TS_FS_ROOT}${TS_M_VERIFIER_STATE}" "${TS_FS_ROOT}${TS_M_STOPPED}" "${TS_FS_ROOT}${TS_M_STOPPED}.tmp"
     "$SYSTEMCTL_BIN" daemon-reload >/dev/null 2>&1 || true
     for unit in "$TS_M_WG_UNIT" "$TS_M_TIMER_UNIT" "$TS_M_VERIFIER_UNIT" "$TS_M_KILLSWITCH_UNIT" "$TS_M_SLICE_UNIT"; do
         "$SYSTEMCTL_BIN" reset-failed "$unit" >/dev/null 2>&1 || true
@@ -8589,10 +8714,10 @@ cmd_uninstall_managed() {
     if ts_m_lock; then
         locked=1
     fi
-    if grep -qxF "$TS_M_INV_UNIT" "${TS_FS_ROOT}${TS_M_STOPPED}" 2>/dev/null; then
+    if ts_m_stopped_status "$TS_M_INV_UNIT" >/dev/null; then
         ln_was_stopped=1
     fi
-    rm -f "${TS_FS_ROOT}${TS_M_STOPPED}"
+    rm -f "${TS_FS_ROOT}${TS_M_STOPPED}" "${TS_FS_ROOT}${TS_M_STOPPED}.tmp"
     if [[ "$locked" -eq 1 ]]; then
         ts_m_unlock
     fi

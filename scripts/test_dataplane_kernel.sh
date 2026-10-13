@@ -1040,7 +1040,7 @@ assert_equals "inactive" "$(systemctl is-active lnd.service || true)" \
     "S12: the verifier stops Lightning while neither the kill switch nor the emergency block holds"
 assert_contains "$(journalctl --no-pager -u tunnelsats-verifier.service --since '-3 min' 2>/dev/null)" "lnd.service stopped" \
     "S12: the verifier logged that it stopped Lightning"
-assert_equals "lnd.service" "$(cat /run/tunnelsats/stopped-units 2>/dev/null)" "S12: and recorded the unit it stopped"
+assert_equals "lnd.service stopped 0" "$(cat /run/tunnelsats/stopped-units 2>/dev/null)" "S12: and recorded the unit it stopped"
 ip rule del priority 100 lookup 100
 run_verify --no-probe
 assert_equals '["degraded", true, true, "active"]' "$(json_get "$V_DOC" '[d["verdict"], d["clearnet_blocked"], d["emergency_block"], d["emergency_state"]]')" \
@@ -1054,8 +1054,12 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 assert_equals "active" "$(systemctl is-active lnd.service || true)" "S12: the verifier starts Lightning again once the block holds"
-assert_contains "$(journalctl --no-pager -u tunnelsats-verifier.service --since '-3 min' 2>/dev/null)" "lnd.service started again" \
-    "S12: the verifier logged that it started Lightning again"
+assert_contains "$(journalctl --no-pager -u tunnelsats-verifier.service --since '-3 min' 2>/dev/null)" "starting lnd.service again" \
+    "S12: the verifier logged that it starts Lightning again"
+# The run after that finds Lightning running, logs it and clears the record
+systemctl start tunnelsats-verifier.service || true
+assert_contains "$(journalctl --no-pager -u tunnelsats-verifier.service --since '-3 min' 2>/dev/null)" "lnd.service runs again" \
+    "S12: the next verifier run confirms that Lightning runs again"
 if [[ -e /run/tunnelsats/stopped-units ]]; then
     fail "S12: no record of stopped units remains"
 else
