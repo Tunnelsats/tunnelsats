@@ -2579,6 +2579,18 @@ if [[ ! -e "$fx/fs/etc/tunnelsats" ]] && [[ ! -e "$fx/fs/run/tunnelsats" ]]; the
 else
     fail "Provisioning install: and nothing is left behind"
 fi
+# The same on bare metal: E_CONFIG_INVALID (exit 8), not an internal error
+fx=$(preflight_fixture missing-config)
+mkdir -p "$fx/tmp"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json install --managed baremetal --non-interactive --yes --config '$fx/missing.conf'"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"], d["errors"][0]["message"]]' "[8, \"E_CONFIG_INVALID\", \"WireGuard config not found: $fx/missing.conf\"]" \
+    "Bare-metal install: a missing --config file is reported as E_CONFIG_INVALID (exit 8) as well"
+if [[ ! -e "$fx/fs/etc/tunnelsats" ]] && [[ ! -e "$fx/fs/run/tunnelsats" ]]; then
+    pass "Bare-metal install: and nothing is left behind"
+else
+    fail "Bare-metal install: and nothing is left behind"
+fi
 
 echo ""
 echo "Passed: $pass_count"

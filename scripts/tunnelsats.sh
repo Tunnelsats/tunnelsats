@@ -5698,10 +5698,10 @@ parse_args() {
         esac
     fi
 
-    # Verify configuration exists before proceeding (Early fail). install --managed raspiblitz also
-    # runs unattended during provisioning: its config check reports a missing --config file in the
-    # JSON document (E_CONFIG_INVALID, exit 8)
-    if [[ "$TS_COMMAND" == "install" ]] && { [[ "$TS_OPT_PROFILE" != "raspiblitz" ]] || [[ -z "$CONFIG_FILE" ]]; }; then
+    # Verify configuration exists before proceeding (Early fail). A managed install checks the file
+    # given with --config itself and reports a missing one in the JSON document (E_CONFIG_INVALID,
+    # exit 8), so unattended callers such as provisioning get a clear error
+    if [[ "$TS_COMMAND" == "install" ]] && { [[ "$TS_OPT_MANAGED" -ne 1 ]] || [[ -z "$CONFIG_FILE" ]]; }; then
         config_path=$(detect_config_file "$CONFIG_FILE") || exit $?
         CONFIG_FILE="$config_path"
     fi
