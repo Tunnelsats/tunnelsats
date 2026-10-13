@@ -1,11 +1,11 @@
 #!/bin/bash
-# Unit tests for managed mode (install --managed baremetal, verify, uninstall --managed): the
-# renderers, the inventory, kill switch arm/read-back/disarm/remove, the emergency block, the
-# verifier, the node config detector, the verify verdicts, the CLI options and detect's view of a
-# managed install. Runs unprivileged and offline and never touches the host: the production
-# functions run against a fixture tree (TS_FS_ROOT) with stateful stubs for ip, nft, unshare,
-# systemctl, systemd-run, getent, curl, wg and perl. The datagram probe's perl helper also runs for
-# real inside a throwaway network namespace (unshare -rn) where the system allows one.
+# Unit tests for managed mode (install --managed baremetal|raspiblitz, verify, uninstall --managed):
+# the renderers, the inventory, kill switch arm/read-back/disarm/remove, the emergency block, the
+# verifier, the node config detector, the verify verdicts, the CLI options, detect's view of a
+# managed install and the RaspiBlitz profile. Runs unprivileged and offline and never touches the
+# host: the production functions run against a fixture tree (TS_FS_ROOT) with stateful stubs for ip,
+# nft, unshare, systemctl, systemd-run, getent, curl, wg and perl. The datagram probe's perl helper
+# also runs for real inside a throwaway network namespace (unshare -rn) where the system allows one.
 
 set -euo pipefail
 
@@ -2157,6 +2157,439 @@ fi
     e2e_case uid_bound "sent:left" "Datagram probe (namespace): a bound socket is not stopped by a uid blackhole (treated as on-link)"
 else
     echo "SKIP: no unprivileged network namespace here; the real datagram probe runs in the kernel tests"
+fi
+
+# ---------------------------------------------------------------------------
+# GROUP 11: RaspiBlitz profile (install --managed raspiblitz)
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- Group 11: RaspiBlitz profile ---"
+
+# A RaspiBlitz fixture: the marker directory and the data drive with the links RaspiBlitz puts into
+# the home of bitcoin (blitz.data.sh, cl.install.sh; relative here, so they resolve in the fixture)
+rb_fixture() {
+    local f
+    f=$(new_fixture "rb-$1")
+    mkdir -p "$f/fs/home/admin/config.scripts" "$f/fs/home/bitcoin" "$f/fs/mnt/hdd/app-data/lnd" \
+        "$f/fs/mnt/hdd/app-data/.lightning/testnet" "$f/fs/mnt/hdd/app-data/.lightning/signet"
+    ln -s ../../mnt/hdd/app-data/lnd "$f/fs/home/bitcoin/.lnd"
+    ln -s ../../mnt/hdd/app-data/.lightning "$f/fs/home/bitcoin/.lightning"
+    echo "$f"
+}
+# Unit $2 in fixture $1 as RaspiBlitz writes it: loaded, User=bitcoin, ExecStart $3
+rb_unit() {
+    echo "loaded" > "$1/state/unit_${2}_LoadState"
+    echo "bitcoin" > "$1/state/unit_${2}_User"
+    printf '{ path=%s ; argv[]=%s ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n' \
+        "${3%% *}" "$3" > "$1/state/unit_${2}_ExecStart"
+}
+# ExecStart of RaspiBlitz's LND unit (lnd.install.sh) for unit prefix $1
+rb_lnd_exec() {
+    echo "/usr/local/bin/lnd --configfile=/mnt/hdd/app-data/lnd/${1}lnd.conf"
+}
+# ExecStart of RaspiBlitz's CLN unit (cl.install-service.sh) for config $1, as systemctl shows it:
+# with password file $2 (encrypted hsm_secret) the password pipe comes first; without it the empty
+# option leaves two spaces
+rb_cln_exec() {
+    if [[ -n "${2:-}" ]]; then
+        echo "/bin/sh -c (cat ${2};echo;cat ${2}) | /usr/local/bin/lightningd --conf=${1} --encrypted-hsm --rpc-file-mode 0660"
+    else
+        echo "/bin/sh -c /usr/local/bin/lightningd --conf=${1}  --rpc-file-mode 0660"
+    fi
+}
+# RaspiBlitz's config templates (lnd.install.sh plus the Tor lines of lnd.check.sh; cl.install.sh),
+# and the same with the TunnelSats hybrid settings
+rb_lnd_conf=$'# LND configuration\n\n[Application Options]\n# alias=ALIAS # up to 32 UTF-8 characters\nlisten=0.0.0.0:9735\nrpclisten=0.0.0.0:10009\nrestlisten=0.0.0.0:8080\nnat=false\ndebuglevel=info\n\n[Bitcoin]\nbitcoin.active=1\nbitcoin.mainnet=1\nbitcoin.node=bitcoind\n\n[Tor]\ntor.socks=9050\ntor.control=9051\ntor.v3=true\ntor.active=true'
+rb_lnd_conf_hybrid=$'# LND configuration\n\n[Application Options]\nlisten=0.0.0.0:9735\nexternalhosts=de2.tunnelsats.com:24556\nnat=false\n\n[Tor]\ntor.active=true\ntor.streamisolation=false\ntor.skip-proxy-for-clearnet-targets=true'
+rb_cln_conf=$'# lightningd configuration for bitcoin mainnet\n\nnetwork=bitcoin\nlog-file=cl.log\nlog-level=info\nplugin-dir=/home/bitcoin/cl-plugins-enabled\nclnrest-port=7378\nclnrest-host=0.0.0.0\ngrpc-port=4772\n\n# Tor settings\nproxy=127.0.0.1:9050\nbind-addr=127.0.0.1:9736\naddr=statictor:127.0.0.1:9051/torport=9736\nalways-use-proxy=true'
+rb_cln_conf_testnet=$'# lightningd configuration for bitcoin testnet\n\nnetwork=testnet\nlog-file=cl.log\nplugin-dir=/home/bitcoin/tcl-plugins-enabled\nclnrest-port=17378\n\n# Tor settings\nproxy=127.0.0.1:9050\nbind-addr=127.0.0.1:19736\naddr=statictor:127.0.0.1:9051/torport=19736\nalways-use-proxy=true'
+rb_cln_conf_hybrid=$'network=testnet\nproxy=127.0.0.1:9050\nbind-addr=127.0.0.1:19736\naddr=statictor:127.0.0.1:9051/torport=19736\nbind-addr=0.0.0.0:9735\nannounce-addr=203.0.113.7:24556\nalways-use-proxy=false'
+
+# Unit names: no prefix on mainnet, t on testnet, s on signet
+fx=$(rb_fixture units)
+run_snippet "$fx" 'for i in lnd cln; do for n in mainnet testnet signet; do printf "%s " "$(ts_m_raspiblitz_unit "$i" "$n")"; done; done'
+assert_equals "lnd.service tlnd.service slnd.service lightningd.service tlightningd.service slightningd.service " "$SN_OUT" \
+    "RaspiBlitz units: no prefix on mainnet, t on testnet, s on signet"
+run_snippet "$fx" 'ts_m_raspiblitz_unit lit mainnet || echo "lit: none"; ts_m_raspiblitz_unit lnd regtest || echo "regtest: none"'
+assert_equals $'lit: none\nregtest: none' "$SN_OUT" "RaspiBlitz units: no unit for another implementation or chain"
+run_snippet "$fx" 'for e in $TS_M_LN_UNITS $TS_M_RASPIBLITZ_LN_UNITS; do ts_in_list "$e" "$TS_M_ALL_LN_UNITS" || echo "missing ${e}"; done; echo "$TS_M_ALL_LN_UNITS" | tr " " "\n" | sort | uniq -d; echo checked'
+assert_equals "checked" "$SN_OUT" "RaspiBlitz units: every unit of both profiles is listed once among the units that can carry the drop-in"
+
+# Unit and user selection for each implementation and chain (decision: --impl required,
+# --network defaults to mainnet)
+for spec in lnd:mainnet:lnd.service lnd:testnet:tlnd.service lnd:signet:slnd.service \
+    cln:mainnet:lightningd.service cln:testnet:tlightningd.service cln:signet:slightningd.service; do
+    IFS=: read -r rb_impl rb_net rb_unit_name <<< "$spec"
+    fx=$(rb_fixture "select-${rb_impl}-${rb_net}")
+    rb_unit "$fx" "$rb_unit_name" "/usr/local/bin/x"
+    run_snippet "$fx" "TS_OPT_PROFILE=raspiblitz TS_OPT_IMPL=${rb_impl} TS_OPT_NETWORK=${rb_net}; ts_m_select_ln_unit; ts_m_select_ln_user; echo \"\${TS_M_IMPL} \${TS_M_UNIT} \${TS_M_USER} \${TS_M_UID} others=\${TS_M_OTHER_UNITS[*]}\""
+    assert_equals "${rb_impl} ${rb_unit_name} bitcoin 1001 others=" "$SN_OUT" \
+        "RaspiBlitz selection: --impl ${rb_impl} --network ${rb_net} tunnels ${rb_unit_name} as user bitcoin (uid 1001)"
+done
+fx=$(rb_fixture select-default)
+for u in lnd.service tlnd.service lightningd.service; do
+    rb_unit "$fx" "$u" "/usr/local/bin/x"
+done
+run_snippet "$fx" 'TS_OPT_PROFILE=raspiblitz TS_OPT_IMPL=cln TS_OPT_NETWORK=""; ts_m_select_ln_unit; echo "${TS_M_UNIT} others=${TS_M_OTHER_UNITS[*]}"'
+assert_equals "lightningd.service others=lnd.service tlnd.service" "$SN_OUT" \
+    "RaspiBlitz selection: --network defaults to mainnet; the other loaded instances are listed as not tunneled"
+run_snippet "$fx" 'TS_OPT_PROFILE=baremetal TS_OPT_IMPL=lnd; ts_m_select_ln_unit; echo "${TS_M_UNIT} others=${TS_M_OTHER_UNITS[*]}"'
+assert_equals "lnd.service others=lightningd.service" "$SN_OUT" "Bare-metal selection is unchanged: tlnd.service is no candidate"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=install; TS_OUT_FD=1; TS_OPT_PROFILE=raspiblitz TS_OPT_IMPL=lnd TS_OPT_NETWORK=signet; ts_m_select_ln_unit'
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"], d["errors"][0]["message"]]' \
+    '[7, "E_LN_UNIT", "--impl lnd --network signet: slnd.service is not installed (LoadState not-found)"]' \
+    "RaspiBlitz selection: an instance that is not installed is refused (E_LN_UNIT), naming the unit"
+
+# The managed paths of every RaspiBlitz unit are allowed in the inventory, nothing else in their
+# directories; the inventory records the profile and checks the unit against it
+run_snippet "$fx" 'for u in lnd.service tlnd.service slnd.service lightningd.service tlightningd.service slightningd.service; do
+ts_m_inventory_path_ok "/etc/systemd/system/${u}.d" && ts_m_inventory_path_ok "/etc/systemd/system/${u}.d/tunnelsats-managed.conf" && printf "%s " "$u"
+done
+ts_m_inventory_path_ok /etc/systemd/system/tlnd.service.d/override.conf || printf "| override.conf refused "
+ts_m_inventory_path_ok /etc/systemd/system/tlnd.service || printf "| unit file refused"'
+assert_equals "lnd.service tlnd.service slnd.service lightningd.service tlightningd.service slightningd.service | override.conf refused | unit file refused" "$SN_OUT" \
+    "RaspiBlitz paths: the drop-in and its directory of each unit are allowed, nothing else"
+fx=$(rb_fixture inventory)
+mkdir -p "$fx/fs/etc/tunnelsats"
+run_snippet "$fx" '
+TS_M_INV_STATE=installed TS_M_INV_PROFILE=raspiblitz TS_M_INV_IMPL=cln TS_M_INV_UNIT=tlightningd.service TS_M_INV_USER=bitcoin TS_M_INV_UID=1001 TS_M_INV_BACKSTOP=0
+TS_M_FILES=(/etc/systemd/system/tlightningd.service.d/tunnelsats-managed.conf) TS_M_FILE_SHA=("")
+TS_M_CREATED_DIRS=(/etc/systemd/system/tlightningd.service.d) TS_M_ENABLED_UNITS=()
+ts_m_inventory_write
+TS_M_INV_PROFILE="" TS_M_INV_UNIT="" TS_M_FILES=() TS_M_CREATED_DIRS=()
+ts_m_inventory_read && echo "read: ${TS_M_INV_PROFILE} ${TS_M_INV_IMPL} ${TS_M_INV_UNIT} ${TS_M_FILES[*]} ${TS_M_CREATED_DIRS[*]}"'
+assert_equals "read: raspiblitz cln tlightningd.service /etc/systemd/system/tlightningd.service.d/tunnelsats-managed.conf /etc/systemd/system/tlightningd.service.d" "$SN_OUT" \
+    "RaspiBlitz inventory: profile, prefixed unit and its drop-in round-trip"
+cp "$fx/fs/etc/tunnelsats/managed.json" "$fx/state/inventory.ok"
+sed -i 's/"unit": "tlightningd.service"/"unit": "litd.service"/' "$fx/fs/etc/tunnelsats/managed.json"
+run_snippet "$fx" 'ts_m_inventory_read || echo "refused: $TS_M_ERROR"'
+assert_contains "$SN_OUT" "holds invalid values" "RaspiBlitz inventory: a unit the profile cannot tunnel is refused"
+cp "$fx/state/inventory.ok" "$fx/fs/etc/tunnelsats/managed.json"
+sed -i 's/"profile": "raspiblitz"/"profile": "baremetal"/' "$fx/fs/etc/tunnelsats/managed.json"
+run_snippet "$fx" 'ts_m_inventory_read || echo "refused: $TS_M_ERROR"'
+assert_contains "$SN_OUT" "holds invalid values" "Bare-metal inventory: a RaspiBlitz testnet unit is refused"
+
+# Node config detection on RaspiBlitz's paths: LND reads the file its unit names, CLN the config
+# behind the link to the data drive; RaspiBlitz's shell command for CLN is read through
+rb_nc() {  # $1 = impl, $2 = unit, $3 = ExecStart, $4 = config file on the data drive, $5 = content, $6 = profile
+    local f
+    f=$(rb_fixture "nc-$RANDOM")
+    rb_unit "$f" "$2" "$3"
+    printf '%s\n' "$5" > "$f/fs$4"
+    run_snippet "$f" "ts_m_node_config_clearnet $1 $2 $6; echo \"\$TS_M_NC_STATUS\"; printf '%s\n' \"\${TS_M_NC_LINES[@]}\"; echo \"files=\${TS_M_NC_FILES[*]}\"; echo \"reason=\$TS_M_NC_REASON\""
+}
+rb_nc lnd lnd.service "$(rb_lnd_exec "")" /mnt/hdd/app-data/lnd/lnd.conf "$rb_lnd_conf" raspiblitz
+assert_equals "clean" "${SN_OUT%%$'\n'*}" "RaspiBlitz detector: mainnet LND with RaspiBlitz's Tor-only lnd.conf is clean"
+assert_contains "$SN_OUT" "files=/mnt/hdd/app-data/lnd/lnd.conf" "RaspiBlitz detector: LND's config is the file its unit names (--configfile)"
+rb_nc lnd tlnd.service "$(rb_lnd_exec t)" /mnt/hdd/app-data/lnd/tlnd.conf "$rb_lnd_conf_hybrid" raspiblitz
+assert_equals "clearnet" "${SN_OUT%%$'\n'*}" "RaspiBlitz detector: testnet LND with hybrid settings in tlnd.conf is clearnet"
+assert_contains "$SN_OUT" "/mnt/hdd/app-data/lnd/tlnd.conf:5:externalhosts=de2.tunnelsats.com:24556" "RaspiBlitz detector: reports tlnd.conf, line and externalhosts"
+assert_contains "$SN_OUT" "/mnt/hdd/app-data/lnd/tlnd.conf:11:tor.skip-proxy-for-clearnet-targets=true" "RaspiBlitz detector: and skip-proxy"
+rb_nc cln lightningd.service "$(rb_cln_exec /home/bitcoin/.lightning/config)" /mnt/hdd/app-data/.lightning/config "$rb_cln_conf" raspiblitz
+assert_equals "clean" "${SN_OUT%%$'\n'*}" "RaspiBlitz detector: mainnet CLN through RaspiBlitz's shell command with its Tor-only config is clean"
+assert_contains "$SN_OUT" "files=/home/bitcoin/.lightning/config" "RaspiBlitz detector: CLN's config is read through the link to the data drive"
+rb_nc cln lightningd.service "$(rb_cln_exec /home/bitcoin/.lightning/config)" /mnt/hdd/app-data/.lightning/config "$rb_cln_conf" ""
+assert_equals "unknown" "${SN_OUT%%$'\n'*}" "Bare-metal detector is unchanged: the same shell command stays unknown"
+assert_contains "$SN_OUT" "runs through a shell (/bin/sh)" "Bare-metal detector: with the shell named"
+rb_nc cln tlightningd.service "$(rb_cln_exec /home/bitcoin/.lightning/testnet/config /home/bitcoin/.tcl.pw)" /mnt/hdd/app-data/.lightning/testnet/config "$rb_cln_conf_hybrid" raspiblitz
+assert_equals "clearnet" "${SN_OUT%%$'\n'*}" "RaspiBlitz detector: testnet CLN (encrypted hsm_secret, password pipe) with hybrid settings is clearnet"
+assert_contains "$SN_OUT" "/home/bitcoin/.lightning/testnet/config:5:bind-addr=0.0.0.0:9735" "RaspiBlitz detector: reports the testnet config and bind-addr"
+assert_contains "$SN_OUT" "/home/bitcoin/.lightning/testnet/config:6:announce-addr=203.0.113.7:24556" "RaspiBlitz detector: announce-addr"
+assert_contains "$SN_OUT" "/home/bitcoin/.lightning/testnet/config:7:always-use-proxy=false" "RaspiBlitz detector: always-use-proxy=false"
+assert_not_contains "$SN_OUT" "127.0.0.1:19736" "RaspiBlitz detector: the Tor bind is never reported"
+rb_nc cln slightningd.service "$(rb_cln_exec /home/bitcoin/.lightning/signet/config /dev/shm/.scl.pw)" /mnt/hdd/app-data/.lightning/signet/config "$rb_cln_conf_testnet" raspiblitz
+assert_equals "clean" "${SN_OUT%%$'\n'*}" "RaspiBlitz detector: signet CLN with the password pipe from /dev/shm and a Tor-only config is clean"
+rb_nc cln lightningd.service "/bin/sh -c /usr/local/bin/lightningd --conf=/home/bitcoin/.lightning/config --bind-addr=0.0.0.0:9735 --rpc-file-mode 0660" \
+    /mnt/hdd/app-data/.lightning/config "$rb_cln_conf" raspiblitz
+assert_equals "clearnet" "${SN_OUT%%$'\n'*}" "RaspiBlitz detector: a clearnet argument inside RaspiBlitz's shell command counts like a config line"
+assert_contains "$SN_OUT" "lightningd.service ExecStart: --bind-addr=0.0.0.0:9735" "RaspiBlitz detector: reported with the unit"
+rb_odd=0
+for cmd in \
+    "/bin/sh -c /usr/local/bin/lightningd --conf=/home/bitcoin/.lightning/config --rpc-file-mode 0660; /usr/bin/true" \
+    "/bin/sh -c /usr/local/bin/lightningd --conf=/home/bitcoin/.lightning/config '--bind-addr=0.0.0.0:9735'" \
+    "/bin/sh -c /usr/local/bin/lightningd --conf=/home/bitcoin/.lightning/c* --rpc-file-mode 0660" \
+    "/bin/sh -c (cat /home/bitcoin/.cl.pw;echo;cat /tmp/other.pw) | /usr/local/bin/lightningd --conf=/home/bitcoin/.lightning/config" \
+    "/bin/sh -c echo x | /usr/local/bin/lightningd --conf=/home/bitcoin/.lightning/config" \
+    "/bin/sh -c /opt/cln/lightningd --conf=/home/bitcoin/.lightning/config" \
+    "/bin/bash -c /usr/local/bin/lightningd --conf=/home/bitcoin/.lightning/config" \
+    "/bin/sh -c /usr/local/bin/lightningd --conf=/home/bitcoin/.lightning/config"$'\n'"/usr/local/bin/lightningd --bind-addr=0.0.0.0:9735"; do
+    rb_odd=$((rb_odd + 1))
+    rb_nc cln lightningd.service "$cmd" /mnt/hdd/app-data/.lightning/config "$rb_cln_conf" raspiblitz
+    assert_equals "unknown" "${SN_OUT%%$'\n'*}" "RaspiBlitz detector: a shell command other than RaspiBlitz's own stays unknown (case ${rb_odd})"
+done
+
+# Drop-in units, the verifier's stop and its restart work for prefixed units: from the unit
+# directory while the install record is damaged, and from the record otherwise
+fx=$(rb_fixture dropins)
+mkdir -p "$fx/fs/etc/tunnelsats" "$fx/fs/etc/systemd/system/tlnd.service.d" "$fx/fs/etc/systemd/system/slightningd.service.d" \
+    "$fx/fs/etc/systemd/system/wg-quick@tunnelsatsv2.service.d"
+run_snippet "$fx" 'for u in tlnd.service slightningd.service; do ts_m_render_ln_dropin > "$TS_FS_ROOT/etc/systemd/system/${u}.d/tunnelsats-managed.conf"; done
+ts_m_render_wg_dropin > "$TS_FS_ROOT/etc/systemd/system/wg-quick@tunnelsatsv2.service.d/tunnelsats-managed.conf"
+ts_m_dropin_units'
+assert_equals $'tlnd.service\nslightningd.service' "$SN_OUT" "Drop-in units: RaspiBlitz testnet and signet units with the drop-in are found"
+echo "garbage" > "$fx/fs/etc/tunnelsats/managed.json"
+printf '{ path=/usr/local/sbin/tunnelsats ; argv[]=/usr/local/sbin/tunnelsats managed-arm --fallback-uid 1001 ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n' \
+    > "$fx/state/unit_tunnelsats-killswitch.service_ExecStart"
+printf '100:\tfrom all lookup main\n' > "$fx/state/rules4"
+touch "$fx/state/stateful_units"
+echo "active" > "$fx/state/unit_tlnd.service_ActiveState"
+echo "active" > "$fx/state/unit_slightningd.service_ActiveState"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_equals "1" "$SN_RC" "Damaged record, block bypassed: the verifier fails"
+assert_contains "$SN_OUT" "tlnd.service slightningd.service stopped" "Damaged record: the verifier stops the prefixed units that carry the drop-in"
+assert_equals "inactive inactive" "$(cat "$fx/state/unit_tlnd.service_ActiveState") $(cat "$fx/state/unit_slightningd.service_ActiveState")" \
+    "Damaged record: both are stopped"
+assert_equals $'tlnd.service stopped 0\nslightningd.service stopped 0' "$(cat "$fx/fs/run/tunnelsats/stopped-units" 2>/dev/null)" \
+    "Damaged record: and recorded"
+sed -i '/^100:/d' "$fx/state/rules4"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_contains "$SN_OUT" "protection holds again; starting tlnd.service again" "Damaged record: once the block holds, tlnd.service starts again"
+assert_contains "$SN_OUT" "protection holds again; starting slightningd.service again" "Damaged record: and slightningd.service"
+assert_equals "active active" "$(cat "$fx/state/unit_tlnd.service_ActiveState") $(cat "$fx/state/unit_slightningd.service_ActiveState")" \
+    "Damaged record: both run again"
+fx=$(rb_fixture quarantine)
+mkdir -p "$fx/fs/etc/tunnelsats"
+run_snippet "$fx" '
+TS_M_INV_STATE=installed TS_M_INV_PROFILE=raspiblitz TS_M_INV_IMPL=lnd TS_M_INV_UNIT=tlnd.service TS_M_INV_USER=bitcoin TS_M_INV_UID=1001 TS_M_INV_BACKSTOP=0
+TS_M_FILES=() TS_M_FILE_SHA=() TS_M_CREATED_DIRS=() TS_M_ENABLED_UNITS=()
+ts_m_inventory_write && ts_m_cmd_arm'
+assert_equals "0" "$SN_RC" "RaspiBlitz record: managed-arm arms for tlnd.service"
+assert_json "$(cat "$fx/fs/run/tunnelsats/attest.json")" '[d["profile"], d["impl"], d["unit"]]' '["raspiblitz", "lnd", "tlnd.service"]' \
+    "RaspiBlitz record: the attestation names the profile and the unit"
+touch "$fx/state/nft_refuse" "$fx/state/stateful_units"
+rm -f "$fx/state/nft_table"
+printf '%s\n' "rule add uidrange 1001-1001 blackhole priority 21819" > "$fx/state/fail_ip"
+echo "active" > "$fx/state/unit_tlnd.service_ActiveState"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_equals "1" "$SN_RC" "RaspiBlitz record: neither the kill switch nor the block holds: the verifier fails"
+assert_contains "$SN_OUT" "tlnd.service stopped" "RaspiBlitz record: the verifier stops tlnd.service"
+assert_equals "tlnd.service stopped 0" "$(cat "$fx/fs/run/tunnelsats/stopped-units" 2>/dev/null)" "RaspiBlitz record: and records it"
+rm -f "$fx/state/nft_refuse" "$fx/state/fail_ip"
+run_snippet "$fx" 'ts_m_cmd_verifier'
+assert_contains "$SN_OUT" "protection holds again; starting tlnd.service again" "RaspiBlitz record: once the kill switch holds, tlnd.service starts again"
+assert_equals "active" "$(cat "$fx/state/unit_tlnd.service_ActiveState")" "RaspiBlitz record: it runs again"
+
+# Restart decision: install restarts a Lightning unit that runs, starts or stops (to move it into
+# the slice) and never starts one that is not running; on RaspiBlitz a unit waiting for its
+# automatic restart is left to that restart
+fx=$(new_fixture rb-restart)
+run_snippet "$fx" 'for p in baremetal raspiblitz; do TS_OPT_PROFILE=$p; printf "%s:" "$p"
+for s in active:running reloading:reload deactivating:stop activating:start-pre activating:auto-restart inactive:dead failed:failed; do
+if ts_m_ln_restart_needed "${s%%:*}" "${s#*:}"; then printf " %s=restart" "$s"; else printf " %s=leave" "$s"; fi
+done; echo; done'
+assert_equals $'baremetal: active:running=restart reloading:reload=restart deactivating:stop=restart activating:start-pre=restart activating:auto-restart=restart inactive:dead=leave failed:failed=leave\nraspiblitz: active:running=restart reloading:reload=restart deactivating:stop=restart activating:start-pre=restart activating:auto-restart=leave inactive:dead=leave failed:failed=leave' \
+    "$SN_OUT" "Restart decision: unchanged on bare metal; on RaspiBlitz a unit in auto-restart is left to its own restart"
+
+# Preflight: the raspiblitz profile needs a RaspiBlitz, the baremetal profile refuses one
+rb_preflight_fixture() {  # a RaspiBlitz with its mainnet LND (lnd.service and RaspiBlitz's lnd.conf)
+    local f
+    f=$(rb_fixture "pf-$1")
+    rb_unit "$f" lnd.service "$(rb_lnd_exec "")"
+    printf '%s\n' "$rb_lnd_conf" > "$f/fs/mnt/hdd/app-data/lnd/lnd.conf"
+    echo "$f"
+}
+fx=$(rb_preflight_fixture ok)
+preflight "$fx" "TS_OPT_PROFILE=raspiblitz TS_OPT_IMPL=lnd;"
+assert_contains "$SN_OUT" "PREFLIGHT_OK" "RaspiBlitz preflight: a RaspiBlitz with its mainnet LND passes"
+preflight "$fx" "TS_OPT_PROFILE=raspiblitz TS_OPT_IMPL=lnd TS_OPT_PLATFORM=raspiblitz;"
+assert_contains "$SN_OUT" "PREFLIGHT_OK" "RaspiBlitz preflight: --platform raspiblitz matches"
+preflight "$fx" "TS_OPT_PROFILE=raspiblitz TS_OPT_IMPL=lnd TS_OPT_PLATFORM=baremetal;"
+assert_json "$doc" 'd["errors"][0]["code"]' "E_PLATFORM_UNSUPPORTED" "RaspiBlitz preflight: --platform baremetal does not match the profile"
+preflight "$fx" "TS_OPT_PROFILE=baremetal;"
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"], d["errors"][0]["message"]]' \
+    "[7, \"E_PLATFORM_UNSUPPORTED\", \"This node is a RaspiBlitz: use 'install --managed raspiblitz --impl lnd|cln'\"]" \
+    "Bare-metal preflight on a RaspiBlitz: refused, pointing to the raspiblitz profile"
+fx=$(preflight_fixture rb-elsewhere)
+preflight "$fx" "TS_OPT_PROFILE=raspiblitz TS_OPT_IMPL=lnd;"
+assert_json "$doc" '[d["errors"][0]["code"], d["errors"][0]["message"]]' '["E_PLATFORM_UNSUPPORTED", "The raspiblitz profile needs a RaspiBlitz (detected: no RaspiBlitz)"]' \
+    "RaspiBlitz preflight: refused on a node that is no RaspiBlitz"
+fx=$(rb_fixture pf-testnet-port)
+rb_unit "$fx" tlnd.service "$(rb_lnd_exec t)"
+printf '%s\n' "${rb_lnd_conf//listen=0.0.0.0:9735/listen=0.0.0.0:19735}" > "$fx/fs/mnt/hdd/app-data/lnd/tlnd.conf"
+preflight "$fx" "TS_OPT_PROFILE=raspiblitz TS_OPT_IMPL=lnd TS_OPT_NETWORK=testnet;"
+assert_json "$doc" '[d["errors"][0]["code"], d["errors"][0]["message"]]' '["E_LN_PORT", "Lightning listens on port(s) 19735; the TunnelSats server forwards to 9735"]' \
+    "RaspiBlitz preflight: testnet LND on RaspiBlitz's default port 19735 is refused (the server forwards to 9735)"
+# A leftover drop-in of a prefixed unit is a managed artifact: detect reports it, install refuses
+fx=$(rb_preflight_fixture leftover)
+mkdir -p "$fx/fs/etc/systemd/system/tlnd.service.d"
+run_snippet "$fx" 'ts_m_render_ln_dropin > "$TS_FS_ROOT/etc/systemd/system/tlnd.service.d/tunnelsats-managed.conf"; TS_JSON=1; TS_COMMAND=detect; TS_OUT_FD=1; cmd_detect'
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["install"]["kind"], d["install"]["candidates"], [a["status"] for a in d["install"]["artifacts"] if a["location"] == "/etc/systemd/system/tlnd.service.d/tunnelsats-managed.conf"]]' \
+    '["unknown", ["managed"], ["present"]]' "detect: a leftover drop-in of tlnd.service is a managed artifact"
+preflight "$fx" "TS_OPT_PROFILE=raspiblitz TS_OPT_IMPL=lnd;"
+assert_json "$doc" 'd["errors"][0]["code"]' "E_LEGACY_INSTALL" "RaspiBlitz preflight: install refuses while that drop-in exists"
+
+# CLI: --impl is required for the raspiblitz profile, --network takes mainnet, testnet or signet and
+# belongs to install --managed raspiblitz only (usage errors come before anything else)
+assert_equals "raspiblitz cln signet ." "$(bash -c 'source "$1"; shift; ts_parse_cli "$@"; echo "${TS_OPT_PROFILE} ${TS_OPT_IMPL} ${TS_OPT_NETWORK} .${TS_USAGE_ERROR}"' _ "$SCRIPT_UNDER_TEST" install --managed raspiblitz --impl cln --network signet)" \
+    "CLI: install --managed raspiblitz --impl cln --network signet"
+cli --json install --managed raspiblitz --config "$TMP_ROOT/fx/render/sub.conf"
+assert_equals "2" "$CLI_RC" "CLI: install --managed raspiblitz without --impl exits 2"
+assert_json "$CLI_OUT" '[d["errors"][0]["code"], d["errors"][0]["message"]]' '["E_USAGE", "install --managed raspiblitz requires --impl lnd or --impl cln"]' \
+    "CLI: missing --impl is a usage error"
+cli --json install --managed raspiblitz --impl lit --config "$TMP_ROOT/fx/render/sub.conf"
+assert_json "$CLI_OUT" 'd["errors"][0]["message"]' "install --managed raspiblitz supports --impl lnd or --impl cln, not lit" "CLI: --impl lit is a usage error for RaspiBlitz"
+cli --json install --managed raspiblitz --impl lnd --network regtest --config "$TMP_ROOT/fx/render/sub.conf"
+assert_equals "2" "$CLI_RC" "CLI: an invalid --network exits 2"
+assert_json "$CLI_OUT" '[d["errors"][0]["code"], d["errors"][0]["message"]]' "[\"E_USAGE\", \"Invalid --network 'regtest' (expected: mainnet, testnet, signet)\"]" \
+    "CLI: an invalid --network is a usage error naming the values"
+cli --json install --managed raspiblitz --impl lnd --network
+assert_json "$CLI_OUT" 'd["errors"][0]["message"]' "--network requires a value" "CLI: --network without a value is a usage error"
+cli --json install --managed baremetal --network testnet --config "$TMP_ROOT/fx/render/sub.conf"
+assert_json "$CLI_OUT" 'd["errors"][0]["message"]' "--network is used by 'install --managed raspiblitz' only" "CLI: --network is refused for the baremetal profile"
+cli --json verify --network testnet
+assert_json "$CLI_OUT" 'd["errors"][0]["message"]' "--network is not supported by 'verify'" "CLI: verify rejects --network"
+cli help
+assert_contains "$CLI_OUT" "install --managed raspiblitz --impl lnd|cln [--network mainnet|testnet|signet]" "Help: documents the raspiblitz profile"
+assert_contains "$CLI_OUT" "--network <chain>" "Help: documents --network"
+
+# Full install as provisioning runs it (--non-interactive --yes --json) against the stubs: starting
+# the kill switch unit runs the production managed-arm, as systemd runs its ExecStart; the tunnel
+# stays down (wg show fails)
+RB_BIN="$TMP_ROOT/rb-bin"
+mkdir -p "$RB_BIN"
+cat > "$RB_BIN/systemctl" <<EOF
+#!/bin/bash
+# systemctl for full installs: starting the kill switch unit runs its ExecStart (managed-arm)
+if [[ "\${1:-}" == "start" ]] && [[ "\${!#}" == "tunnelsats-killswitch.service" ]]; then
+    printf 'systemctl %s\n' "\$*" >> "\${STUB_STATE:?}/calls"
+    bash -c 'source "\$SCRIPT_UNDER_TEST"; ts_m_expected_owner() { id -u; }; ts_m_cmd_arm' >> "\$STUB_STATE/arm.log" 2>&1
+    exit \$?
+fi
+exec "$STUB_BIN/systemctl" "\$@"
+EOF
+printf '#!/bin/bash\nexit 1\n' > "$RB_BIN/wg"
+printf '#!/bin/bash\nexit 0\n' > "$RB_BIN/wg-quick"
+chmod +x "$RB_BIN"/*
+rb_env="SYSTEMCTL_BIN='$RB_BIN/systemctl'; WG_BIN='$RB_BIN/wg'; WG_QUICK_BIN='$RB_BIN/wg-quick';"
+rb_install() {  # $1 = fixture, $2 = impl, $3 = network, $4 = 1 for JSON (default) or 0 for the human output
+    mkdir -p "$1/tmp" "$1/fs/lib/systemd/system"
+    : > "$1/fs/lib/systemd/system/wg-quick@.service"
+    run_snippet "$1" "$rb_env export TMPDIR='$1/tmp'
+TS_JSON=${4:-1}; TS_COMMAND=install; TS_OUT_FD=1; TS_NONINTERACTIVE=1; TS_OPT_YES=1
+TS_OPT_MANAGED=1 TS_OPT_PROFILE=raspiblitz TS_OPT_IMPL=$2 TS_OPT_NETWORK=$3 CONFIG_FILE='$TMP_ROOT/fx/render/sub.conf'
+cmd_install_managed"
+    doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+}
+ln_starts() {  # $1 = fixture, $2 = unit: prints the calls that start or restart the unit
+    grep -E "^systemctl (start|restart)( --no-block)? $2\$" "$1/state/calls" || true
+}
+
+# Testnet CLN, not running: installed, not started
+fx=$(rb_fixture full-cln-testnet)
+rb_unit "$fx" tlightningd.service "$(rb_cln_exec /home/bitcoin/.lightning/testnet/config)"
+printf '%s\n' "$rb_cln_conf_testnet" > "$fx/fs/mnt/hdd/app-data/.lightning/testnet/config"
+rb_install "$fx" cln testnet
+assert_equals "0" "$SN_RC" "Provisioning install: testnet CLN, unit inactive: exits 0"
+assert_json "$doc" '[d["ok"], d["profile"], d["impl"], d["unit"], d["node_user"], d["ln_was_active"], d["ln_restarted"], d["node_config"], d["tunnel_started"]]' \
+    '[true, "raspiblitz", "cln", "tlightningd.service", "bitcoin", false, false, "clean", true]' \
+    "Provisioning install: the document names profile and unit; Lightning was not running and is not started"
+assert_equals "" "$(ln_starts "$fx" tlightningd.service)" "Provisioning install: tlightningd.service is never started or restarted"
+assert_contains "$(cat "$fx/state/calls")" "systemctl start tunnelsats-killswitch.service" "Provisioning install: the kill switch unit is started"
+assert_contains "$SN_OUT" "tlightningd.service is not running (inactive); install does not start it" "Provisioning install: and says so"
+inv_doc=$(cat "$fx/fs/etc/tunnelsats/managed.json" 2>/dev/null || true)
+assert_json "$inv_doc" '[d["state"], d["profile"], d["unit"], "/etc/systemd/system/tlightningd.service.d/tunnelsats-managed.conf" in [f["path"] for f in d["files"]]]' \
+    '["installed", "raspiblitz", "tlightningd.service", true]' "Provisioning install: the inventory records the profile, the unit and its drop-in"
+assert_contains "$(cat "$fx/fs/etc/systemd/system/tlightningd.service.d/tunnelsats-managed.conf" 2>/dev/null)" "Slice=tunnelsats.slice" \
+    "Provisioning install: the drop-in puts tlightningd.service into the slice"
+assert_contains "$(cat "$fx/fs/etc/systemd/system/tunnelsats-killswitch.service" 2>/dev/null)" "Before=tlightningd.service wg-quick@tunnelsatsv2.service" \
+    "Provisioning install: the kill switch starts before tlightningd.service"
+assert_json "$(cat "$fx/fs/run/tunnelsats/attest.json" 2>/dev/null)" '[d["profile"], d["unit"]]' '["raspiblitz", "tlightningd.service"]' \
+    "Provisioning install: attested by the production managed-arm"
+
+# Guard contract: verify --json --no-probe exits 0 or 5 only while the dataplane holds for the unit
+echo "activating" > "$fx/state/unit_tlightningd.service_ActiveState"
+echo "start-pre" > "$fx/state/unit_tlightningd.service_SubState"
+echo "/etc/systemd/system/tlightningd.service.d/tunnelsats-managed.conf" > "$fx/state/unit_tlightningd.service_DropInPaths"
+echo "tunnelsats.slice" > "$fx/state/unit_tlightningd.service_Slice"
+: > "$fx/state/calls"
+run_snippet "$fx" "$rb_env TS_JSON=1; TS_COMMAND=verify; TS_OUT_FD=1; TS_OPT_NO_PROBE=1; cmd_verify"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "5" "$SN_RC" "Guard contract: while the guarded unit starts (kill switch armed, tunnel down) verify exits 5"
+assert_json "$doc" '[d["verdict"], d["profile"], d["unit"], d["probes"], sorted(c["id"] for c in d["checks"] if c["result"] == "fail"), [c["id"] for c in d["checks"] if c["result"] != "pass" and c["class"] == "unsafe"]]' \
+    '["degraded", "raspiblitz", "tlightningd.service", "skipped", ["ln_membership", "wg_endpoint", "wg_handshake"], []]' \
+    "Guard contract: degraded, with the unit named and only degraded checks failing"
+assert_equals "" "$(grep -E '^(systemd-run|curl) ' "$fx/state/calls" || true)" "Guard contract: --no-probe sends no probe"
+assert_equals "" "$(grep -E '^(ip (-[46] )?(rule|route) (add|del)|nft -f|nft delete|systemctl (start|stop|restart|enable|disable))' "$fx/state/calls" || true)" \
+    "Guard contract: verify changes nothing"
+cp "$fx/state/nft_table" "$fx/state/nft_table.saved"
+rm -f "$fx/state/nft_table"
+run_snippet "$fx" "$rb_env TS_JSON=1; TS_COMMAND=verify; TS_OUT_FD=1; TS_OPT_NO_PROBE=1; cmd_verify"
+assert_equals "4" "$SN_RC" "Guard contract: without the kill switch table verify exits 4 (block)"
+mv "$fx/state/nft_table.saved" "$fx/state/nft_table"
+fx2=$(rb_fixture after-sd-update)
+rb_unit "$fx2" lnd.service "$(rb_lnd_exec "")"
+run_snippet "$fx2" "$rb_env TS_JSON=1; TS_COMMAND=verify; TS_OUT_FD=1; TS_OPT_NO_PROBE=1; cmd_verify"
+assert_equals "3" "$SN_RC" "Guard contract: after an SD-card update (no managed install yet) verify exits 3 (block)"
+assert_contains "$SN_OUT" '"code":"E_NOT_INSTALLED"' "Guard contract: reported as E_NOT_INSTALLED"
+
+# Uninstall of the RaspiBlitz install removes everything; the unit was not running and stays so
+echo "inactive" > "$fx/state/unit_tlightningd.service_ActiveState"
+rm -f "$fx/state/unit_tlightningd.service_DropInPaths" "$fx/state/unit_tlightningd.service_Slice"
+run_snippet "$fx" "$rb_env TS_JSON=1; TS_COMMAND=uninstall; TS_OUT_FD=1; TS_NONINTERACTIVE=1; TS_OPT_YES=1; TS_OPT_MANAGED=1; cmd_uninstall_managed"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["unit"], d["remaining"], d["node_config"], d["ln_started"]]' '[0, "tlightningd.service", [], "clean", false]' \
+    "Uninstall (RaspiBlitz): complete, Tor-only config checked through RaspiBlitz's shell command, unit not started"
+left=""
+for f in /etc/systemd/system/tlightningd.service.d /etc/systemd/system/tunnelsats-killswitch.service /etc/tunnelsats /usr/local/sbin/tunnelsats /run/tunnelsats; do
+    if [[ -e "$fx/fs$f" ]]; then left+=" $f"; fi
+done
+assert_equals "" "$left" "Uninstall (RaspiBlitz): the prefixed drop-in directory and every managed file are gone"
+
+# Mainnet LND held back by a start guard (auto-restart, as after an SD-card update): left to its
+# own restart; a running one is restarted into the slice
+fx=$(rb_preflight_fixture full-autorestart)
+echo "activating" > "$fx/state/unit_lnd.service_ActiveState"
+echo "auto-restart" > "$fx/state/unit_lnd.service_SubState"
+rb_install "$fx" lnd mainnet
+assert_json "$doc" '[d["exit_code"], d["unit"], d["ln_was_active"], d["ln_restarted"]]' '[0, "lnd.service", false, false]' \
+    "Provisioning install: mainnet LND in auto-restart is left to its own restart"
+assert_equals "" "$(ln_starts "$fx" lnd.service)" "Provisioning install: lnd.service is not restarted"
+assert_contains "$SN_OUT" "lnd.service waits for its next automatic restart (auto-restart)" "Provisioning install: and says so"
+fx=$(rb_preflight_fixture full-active)
+echo "active" > "$fx/state/unit_lnd.service_ActiveState"
+rb_install "$fx" lnd ""
+assert_json "$doc" '[d["exit_code"], d["unit"], d["ln_was_active"], d["ln_restarted"]]' '[0, "lnd.service", true, true]' \
+    "Install (RaspiBlitz): a running LND is restarted into the slice"
+assert_equals "systemctl restart lnd.service" "$(ln_starts "$fx" lnd.service)" "Install (RaspiBlitz): through one restart"
+
+# The human output names the config file the unit reads (it depends on the chain on RaspiBlitz)
+fx=$(rb_fixture full-human)
+rb_unit "$fx" tlightningd.service "$(rb_cln_exec /home/bitcoin/.lightning/testnet/config)"
+printf '%s\n' "$rb_cln_conf_testnet" > "$fx/fs/mnt/hdd/app-data/.lightning/testnet/config"
+rb_install "$fx" cln testnet 0
+assert_equals "0" "$SN_RC" "Install (RaspiBlitz, human output): exits 0"
+assert_contains "$(printf '%s\n' "$SN_OUT" | sed 's/\x1b\[[0-9;]*m//g')" "Edit: /home/bitcoin/.lightning/testnet/config" \
+    "Install (RaspiBlitz, human output): names the testnet config"
+run_snippet "$fx" 'LN_IMPL=lnd PLATFORM=raspiblitz node_user=bitcoin TS_NODE_CONF_FILE=/mnt/hdd/app-data/lnd/tlnd.conf print_node_config_instructions de2.tunnelsats.com 24556 install | sed "s/\x1b\[[0-9;]*m//g" | grep "^Edit:"
+LN_IMPL=lnd PLATFORM=baremetal node_user=bitcoin print_node_config_instructions de2.tunnelsats.com 24556 install | sed "s/\x1b\[[0-9;]*m//g" | grep "^Edit:"'
+assert_equals $'Edit: sudo nano /mnt/hdd/app-data/lnd/tlnd.conf\nEdit: sudo nano /home/bitcoin/.lnd/lnd.conf' "$SN_OUT" \
+    "Node config instructions: the RaspiBlitz install names tlnd.conf; without a known file the bare-metal guess is unchanged"
+
+# A missing --config file is a clear JSON error during provisioning (through the CLI entry point)
+fx=$(rb_preflight_fixture missing-config)
+mkdir -p "$fx/tmp"
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json install --managed raspiblitz --impl lnd --non-interactive --yes --config '$fx/missing.conf'"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"], d["errors"][0]["message"]]' "[8, \"E_CONFIG_INVALID\", \"WireGuard config not found: $fx/missing.conf\"]" \
+    "Provisioning install: a missing --config file is reported as E_CONFIG_INVALID (exit 8)"
+if [[ ! -e "$fx/fs/etc/tunnelsats" ]] && [[ ! -e "$fx/fs/run/tunnelsats" ]]; then
+    pass "Provisioning install: and nothing is left behind"
+else
+    fail "Provisioning install: and nothing is left behind"
+fi
+# The same on bare metal: E_CONFIG_INVALID (exit 8), not an internal error
+fx=$(preflight_fixture missing-config)
+mkdir -p "$fx/tmp"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json install --managed baremetal --non-interactive --yes --config '$fx/missing.conf'"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"], d["errors"][0]["message"]]' "[8, \"E_CONFIG_INVALID\", \"WireGuard config not found: $fx/missing.conf\"]" \
+    "Bare-metal install: a missing --config file is reported as E_CONFIG_INVALID (exit 8) as well"
+if [[ ! -e "$fx/fs/etc/tunnelsats" ]] && [[ ! -e "$fx/fs/run/tunnelsats" ]]; then
+    pass "Bare-metal install: and nothing is left behind"
+else
+    fail "Bare-metal install: and nothing is left behind"
 fi
 
 echo ""

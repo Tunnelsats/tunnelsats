@@ -1,6 +1,6 @@
-# Managed mode for bare-metal nodes (preview)
+# Managed mode for bare-metal nodes and RaspiBlitz (preview)
 
-Managed mode is an opt-in alternative for bare-metal systemd nodes (LND, CLN or LIT on Debian or Ubuntu). Its kill switch stays armed across tunnel restarts, reboots and package upgrades, and `verify` checks the protection at any time. When the subscription ends or the VPN server is unreachable, Lightning keeps running over Tor and the local network; only clearnet pauses until the tunnel is back.
+Managed mode is an opt-in alternative for bare-metal systemd nodes (LND, CLN or LIT on Debian or Ubuntu) and for RaspiBlitz (see [RaspiBlitz](#raspiblitz)). Its kill switch stays armed across tunnel restarts, reboots and package upgrades, and `verify` checks the protection at any time. When the subscription ends or the VPN server is unreachable, Lightning keeps running over Tor and the local network; only clearnet pauses until the tunnel is back.
 
 ```bash
 sudo bash tunnelsats.sh install --managed baremetal --config tunnelsats_<server>.conf
@@ -19,8 +19,8 @@ sudo tunnelsats uninstall --managed
 
 ## Requirements
 
-- A bare-metal systemd node (RaspiBlitz, Umbrel and myNode come later) with a unified cgroup v2 hierarchy and Linux 5.13 or newer.
-- One Lightning unit (`lnd.service`, `lightningd.service`, `litd.service` or `lit.service`) that runs as a dedicated, non-root `User=`. If several are installed, choose one with `--impl`; the others are not tunneled.
+- A bare-metal systemd node or a RaspiBlitz (Umbrel and myNode come later) with a unified cgroup v2 hierarchy and Linux 5.13 or newer.
+- One Lightning unit (`lnd.service`, `lightningd.service`, `litd.service` or `lit.service`) that runs as a dedicated, non-root `User=`. If several are installed, choose one with `--impl`; the others are not tunneled. On RaspiBlitz, `--impl` and `--network` name the unit.
 - perl, which `verify` uses for its datagram probes. Debian and Ubuntu always ship it (`perl-base`); without it install refuses with `E_DEPENDENCY_MISSING`.
 - No other TunnelSats install: run `tunnelsats.sh uninstall` first. Taking over an existing install comes in a later version.
 - No Tailscale exit node: its routing rules come before the TunnelSats rules.
@@ -87,3 +87,49 @@ An external `nft flush ruleset`, or a firewall tool that replaces the whole rule
 `sudo tunnelsats uninstall --managed` stops the Lightning unit, removes the managed dataplane and reads the result back. It starts Lightning again only if no TunnelSats clearnet settings remain, neither in the node configuration nor on the unit's command line (`ExecStart=`), since outside the tunnel those settings would use the regular internet connection. Otherwise Lightning stays stopped, the unit is disabled so that no boot starts it with those settings, and the exact lines to remove are printed; remove them, then run `sudo systemctl enable --now <unit>`. Lightning also stays stopped and disabled when the command line cannot be checked reliably (it runs through a shell, uses `$VARIABLES` or starts a script). If the unit cannot be disabled, uninstall reports an error with the command to run.
 
 If something cannot be removed, uninstall lists it and keeps `/etc/tunnelsats/managed.json` (state `removing`), the installed script and the emergency block records, so you can run `uninstall --managed` again once the cause is fixed. Meanwhile `detect` reports `managed_state: removing`.
+
+## RaspiBlitz
+
+```bash
+sudo bash tunnelsats.sh install --managed raspiblitz --impl lnd --config tunnelsats_<server>.conf
+sudo bash tunnelsats.sh install --managed raspiblitz --impl cln --network testnet --config tunnelsats_<server>.conf
+```
+
+The dataplane is the same as on bare metal. What differs:
+
+- RaspiBlitz runs one unit per implementation and chain, so the profile names the unit instead of picking one. `--impl` (`lnd` or `cln`) is required; `--network` defaults to `mainnet`. The unit must be installed, otherwise install refuses with `E_LN_UNIT` (exit 7). Other RaspiBlitz Lightning units are not tunneled; install lists them in `other_ln_units`.
+
+  | | `--network mainnet` | `--network testnet` | `--network signet` |
+  | :-- | :-- | :-- | :-- |
+  | `--impl lnd` | `lnd.service` | `tlnd.service` | `slnd.service` |
+  | `--impl cln` | `lightningd.service` | `tlightningd.service` | `slightningd.service` |
+
+- Install refuses on a node that is not a RaspiBlitz, and `--managed baremetal` refuses on a RaspiBlitz (`E_PLATFORM_UNSUPPORTED`).
+- Node configuration: for LND the file its unit names (`/mnt/hdd/app-data/lnd/lnd.conf`, `tlnd.conf`, `slnd.conf`); for CLN `/home/bitcoin/.lightning/config` (testnet and signet: `testnet/config`, `signet/config`), which links to `/mnt/hdd/app-data/.lightning`. RaspiBlitz starts CLN through `/bin/sh -c` to pass the password of an encrypted `hsm_secret`; managed mode reads that exact command, so `uninstall --managed` can check CLN's command line. Any other shell command still counts as one that cannot be checked.
+- The TunnelSats server forwards to port 9735. RaspiBlitz's testnet and signet LND listen on 19735 and 39735 by default, so install refuses them with `E_LN_PORT` until they listen on 9735.
+- bitcoind runs as the same user (`bitcoin`). While the emergency block is active, bitcoind keeps only its Tor and local network peers; with `--uid-backstop`, its clearnet connections use the tunnel as well.
+- RaspiBlitz rewrites the unit files, for example when an instance is reinstalled or its `hsm_secret` gets encrypted; the drop-in in `/etc/systemd/system/<unit>.d/` stays.
+- Install never starts a Lightning unit that was not running. An inactive unit stays inactive, and a unit that waits for its automatic restart (`Restart=always`, every 60 seconds on RaspiBlitz) starts inside the slice at that restart. A running unit is restarted into the slice.
+
+### SD-card updates
+
+An SD-card update replaces the system: the managed units, the drop-in, `/etc/tunnelsats/managed.json`, the tunnel config and the installed script are gone, while the data drive keeps the node configuration. RaspiBlitz restores managed mode during provisioning, from `/mnt/hdd/app-data/custom-installs.sh`, which runs as root:
+
+```bash
+tunnelsats.sh install --managed raspiblitz --impl <lnd|cln> [--network <chain>] --config <copy on the data drive> --non-interactive --yes --json
+```
+
+This runs unattended: it never prompts, never starts a Lightning unit that was not running, and prints exactly one JSON document. A failure names its error code (for example `E_LN_UNIT`, `E_CONFIG_INVALID` for a missing or invalid `--config` file, `E_LN_PORT`, or `E_MANAGED_PRESENT` when a managed install exists already, which `verify` then checks) and exits with the documented exit code. Until the install has run, a start guard in the Lightning unit keeps Lightning stopped. On an SD-card update, provisioning starts LND before `custom-installs.sh` runs; the guard holds it back, and its next automatic restart after the install (or provisioning's own start) runs inside the slice.
+
+**Contract for the start guard.** The guard runs as root before Lightning starts (`ExecStartPre=+`) and calls
+
+```bash
+/usr/local/sbin/tunnelsats verify --json --no-probe
+```
+
+This changes no kernel state, unit or file (its comparison uses a temporary file and a throwaway network namespace) and sends no probes; it resolves the VPN server's host name once.
+
+- Start (exit 0) only on exit code 0 (`protected`) or 5 (`degraded`: the kill switch or the emergency block holds), and only when `unit` in the JSON document is the guarded unit. Lightning then starts inside the slice, behind the armed kill switch or the emergency block.
+- Block with a non-zero exit on anything else: 3 (no managed install, as right after an SD-card update), 4 (`unsafe`), 9 (a standard install), 1 or 2 (errors), a missing command or a document that cannot be read. `Restart=always` retries every 60 seconds, so Lightning starts on its own once the install has run.
+- Without a managed install (no install record and no kill switch unit), `verify` exits 3, or 9 on a standard install; never 0 or 5. While the install record is damaged, `unit` is null, so the guard keeps Lightning stopped until the record is restored.
+- The guard and the verifier agree: when the verifier stops Lightning because no protection holds, `verify` exits 4 and the guard blocks other starts; once a protection holds again, the verifier starts Lightning and the guard lets it through.
