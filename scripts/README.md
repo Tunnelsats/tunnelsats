@@ -7,7 +7,7 @@ The `tunnelsats.sh` script is the new, unified setup tool for TunnelSats v2. It 
 Run the script with `sudo` and one of the following commands:
 
 ```bash
-sudo bash tunnelsats.sh [install|uninstall|status|restart|pre-check|detect|version]
+sudo bash tunnelsats.sh [install|uninstall|status|restart|verify|pre-check|detect|version]
 ```
 
 ### Commands
@@ -18,9 +18,12 @@ sudo bash tunnelsats.sh [install|uninstall|status|restart|pre-check|detect|versi
 | **`uninstall`** | "Nuclear" uninstall. Removes all TunnelSats configurations, restores backups, and cleans up Docker networks/firewalls.             |
 | **`status`**    | Detailed diagnostics. Checks subscription validity, interface status, Docker health, and connectivity (Ping/RTT).                  |
 | **`restart`**   | Smart restart helper. Re-initializes the WireGuard interface and DNS watchdog if you lose connection.                              |
+| **`verify`**    | Checks a managed install from kernel state and probes inside the Lightning slice (verdict `protected`, `degraded` or `unsafe`); on a standard install it reports the tunnel and its kill switch (verdict `unmanaged`). |
 | **`pre-check`** | Non-invasive verification. Checks if your system has the necessary prerequisites (WireGuard, Docker, etc.) without making changes. |
-| **`detect`**    | Read-only report: platform, Lightning units, an existing TunnelSats install (v2, v3 before or after the route guard) with its artifacts, config facts, capabilities and conflicts. Needs no root; anything it cannot read is reported as such. |
+| **`detect`**    | Read-only report: platform, Lightning units, an existing TunnelSats install (v2, v3 before or after the route guard, managed) with its artifacts, config facts, capabilities and conflicts. Needs no root; anything it cannot read is reported as such. |
 | **`version`**   | Prints the tool version, the CLI contract number and the sha256 of the running script.                                             |
+
+`install --managed baremetal` and `uninstall --managed` set up and remove managed mode (preview) on bare-metal systemd nodes; see [docs/managed-mode.md](../docs/managed-mode.md).
 
 ### Non-interactive use (scripts and node platforms)
 
@@ -31,16 +34,19 @@ Options are accepted before or after the command:
 | `--non-interactive` | Never prompts. A question that no option answers fails with exit code 2 (`E_INTERACTION_REQUIRED`, naming the option) before anything is changed. A piped stdin alone does not switch this mode on. |
 | `--config <file>` | WireGuard config (`install`: the config to install; `status`, `restart`: the installed config in `/etc/wireguard`); answers the config selection |
 | `--platform <id>` | `raspiblitz`, `umbrel`, `mynode` or `baremetal`; answers the platform questions (`install`, `uninstall`) and replaces auto-detection (`status`, `restart`) |
-| `--impl <id>` | `lnd`, `cln` or `lit`; same commands as `--platform`, for the Lightning implementation |
-| `--yes` | Answers the confirmations (uninstall, restart: stop the node first, LIT) |
+| `--impl <id>` | `lnd`, `cln` or `lit`; same commands as `--platform`, for the Lightning implementation (`install --managed`: the unit to tunnel) |
+| `--yes` | Answers the confirmations (uninstall, restart: stop the node first, LIT, managed install and uninstall) |
 | `--remove-packages`, `--keep-packages` | Answer the uninstall package question; non-interactive mode keeps the packages |
-| `--json` | Exactly one JSON document on stdout, logs on stderr (`version`, `detect`, and usage errors of every command); implies `--non-interactive`. Other commands refuse it with `E_JSON_UNSUPPORTED`. |
+| `--managed [profile]` | Managed mode for `install` (profile `baremetal`) and `uninstall` |
+| `--uid-backstop` | `install --managed`: also routes the Lightning user's traffic into the tunnel by uid (side effects in [docs/managed-mode.md](../docs/managed-mode.md)) |
+| `--no-probe` | `verify`: kernel checks only, no network probes |
+| `--json` | Exactly one JSON document on stdout, logs on stderr (`version`, `detect`, `verify`, `install --managed`, `uninstall --managed`, and usage errors of every command); implies `--non-interactive`. Other commands refuse it with `E_JSON_UNSUPPORTED`. |
 
 Example: `sudo bash tunnelsats.sh install --non-interactive --config tunnelsats_de2.conf --platform raspiblitz --impl lnd`
 
 `status` and `restart` pick the installed tunnel with one rule: `--config` wins, else `/etc/wireguard/tunnelsatsv2.conf`, else the only `/etc/wireguard/tunnelsats-*.conf`. Several `tunnelsats-*.conf` without `tunnelsatsv2.conf` are never guessed: they ask which one, and non-interactive mode fails with `E_INTERACTION_REQUIRED` (pass `--config`). `detect` and `uninstall` take no `--config`: `detect` applies the same rule without the option and reports an unclear choice as `"status": "ambiguous"` with the sorted candidates, and `uninstall` stops and cleans up every TunnelSats tunnel it finds.
 
-JSON documents follow contract 1: `contract`, `command`, `tool_version`, `ok`, `exit_code` and `errors` (`code`, `class`, `message`) plus command fields. Exit codes: `0` success, `1` failure, `2` usage error or interaction required. Colours are off when `NO_COLOR` is set or the output is not a terminal.
+JSON documents follow contract 1: `contract`, `command`, `tool_version`, `ok`, `exit_code` and `errors` (`code`, `class`, `message`) plus command fields. Exit codes: `0` success, `1` failure, `2` usage error or interaction required; `verify` and managed mode also use `3` not installed, `4` unsafe, `5` degraded, `6` capability missing, `7` refused, `8` invalid config and `9` unmanaged (`verify` on a standard install). Colours are off when `NO_COLOR` is set or the output is not a terminal.
 
 ## Compatibility & Testing Status
 
