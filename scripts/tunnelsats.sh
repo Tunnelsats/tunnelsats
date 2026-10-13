@@ -42,6 +42,8 @@ TS_OPT_UID_BACKSTOP=0
 TS_OPT_NO_PROBE=0
 # managed-arm --fallback-uid <uid>: the Lightning uid, from the kill switch unit's ExecStart
 TS_OPT_FALLBACK_UID=""
+# install --managed raspiblitz --network <chain>: the chain of the Lightning instance (default mainnet)
+TS_OPT_NETWORK=""
 TS_WANT_HELP=0
 TS_USAGE_ERROR=""
 TS_OPTS_GIVEN=()
@@ -49,6 +51,8 @@ TS_ARGV=()
 # Identifiers accepted by --platform and --impl (the values used internally for PLATFORM and LN_IMPL)
 TS_PLATFORMS="raspiblitz umbrel mynode baremetal"
 TS_IMPLS="lnd cln lit"
+# Values accepted by --network
+TS_NETWORKS="mainnet testnet signet"
 # JSON output: the document goes to TS_OUT_FD (the original stdout, saved before logs move to stderr)
 TS_OUT_FD=1
 TS_JSON_EMITTED=0
@@ -470,6 +474,8 @@ print_node_config_instructions() {
              [[ ! -f "$lnd_path" ]] && [[ -f "/home/lnd/.lnd/lnd.conf" ]] && lnd_path="/home/lnd/.lnd/lnd.conf"
              [[ ! -f "$lnd_path" ]] && [[ -f "/data/lnd/lnd.conf" ]] && lnd_path="/data/lnd/lnd.conf"
              [[ ! -f "$lnd_path" ]] && [[ -f "/mnt/hdd/lnd/lnd.conf" ]] && lnd_path="/mnt/hdd/lnd/lnd.conf"
+             # The managed raspiblitz install knows the file the unit reads (TS_NODE_CONF_FILE)
+             [[ -n "${TS_NODE_CONF_FILE:-}" ]] && lnd_path="$TS_NODE_CONF_FILE"
              
              echo -e "Edit: ${BOLD}${BLUE}sudo nano $lnd_path${NC}"
              if [[ "$context" == "install" ]]; then
@@ -504,7 +510,7 @@ print_node_config_instructions() {
              echo "3. Edit: ~/umbrel/app-data/core-lightning/docker-compose.yml"
              echo "   Comment out '--bind-addr' if present."
         else
-             echo -e "Edit: ${BOLD}${BLUE}config${NC}"
+             echo -e "Edit: ${BOLD}${BLUE}${TS_NODE_CONF_FILE:-config}${NC}"
              echo ""
              echo "#########################################"
              echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
@@ -928,6 +934,9 @@ Commands:
                             Managed mode (preview) for bare-metal systemd nodes: a
                             persistent kill switch that does not depend on the
                             tunnel, and Lightning in its own systemd slice
+  install --managed raspiblitz --impl lnd|cln [--network mainnet|testnet|signet]
+                            The same on RaspiBlitz, for the Lightning instance that
+                            --impl and --network name (lnd.service, tlnd.service, ...)
   pre-check                 Check system compatibility
   uninstall                 Remove TunnelSats installation
   uninstall --managed       Remove a managed install exactly as it was installed
@@ -950,7 +959,10 @@ Options (accepted before or after the command):
   --remove-packages         uninstall: also remove nftables and wireguard-tools
                             (and cgroup-tools)
   --keep-packages           uninstall: keep system packages without asking
-  --managed [profile]       install (profile baremetal), uninstall: managed mode
+  --managed [profile]       install (profile baremetal or raspiblitz), uninstall:
+                            managed mode
+  --network <chain>         install --managed raspiblitz: mainnet (default), testnet
+                            or signet
   --uid-backstop            install --managed: also route the Lightning user's
                             traffic into the tunnel by uid (see docs/managed-mode.md)
   --no-probe                verify: kernel checks only, no network probes
@@ -981,6 +993,9 @@ Examples:
   # Managed mode on a bare-metal node (preview), then check it
   sudo bash tunnelsats.sh install --managed baremetal --config tunnelsats_us-east.conf
   sudo tunnelsats verify
+
+  # Managed mode on RaspiBlitz, for its mainnet LND
+  sudo bash tunnelsats.sh install --managed raspiblitz --impl lnd --config tunnelsats_us-east.conf
 
   # Check status
   sudo bash tunnelsats.sh status
@@ -4689,8 +4704,9 @@ ts_detect_artifacts() {
     for unit in "$TS_M_SLICE_UNIT" "$TS_M_KILLSWITCH_UNIT" "$TS_M_VERIFIER_UNIT" "$TS_M_TIMER_UNIT"; do
         ts_detect_art_path managed_unit "${sd}/${unit}"
     done
-    for unit in lnd.service lightningd.service litd.service lit.service; do
-        ts_detect_art_path managed_ln_dropin "${sd}/${unit}.d/${TS_M_DROPIN_NAME}"
+    # The drop-in of every unit a managed profile can tunnel (RaspiBlitz testnet and signet units too)
+    for name in $TS_M_ALL_LN_UNITS; do
+        ts_detect_art_path managed_ln_dropin "${sd}/${name#*:}.d/${TS_M_DROPIN_NAME}"
     done
     ts_detect_art_path managed_script "$TS_M_BIN"
     ts_detect_art_path managed_attestation "$TS_M_ATTEST"
@@ -5418,7 +5434,7 @@ ts_option_supported() {
         --platform|--impl) [[ "$1" == "install" || "$1" == "uninstall" || "$1" == "status" || "$1" == "restart" ]] ;;
         --remove-packages|--keep-packages) [[ "$1" == "uninstall" ]] ;;
         --managed) [[ "$1" == "install" || "$1" == "uninstall" ]] ;;
-        --uid-backstop) [[ "$1" == "install" ]] ;;
+        --uid-backstop|--network) [[ "$1" == "install" ]] ;;
         --no-probe) [[ "$1" == "verify" ]] ;;
         --fallback-uid) [[ "$1" == "managed-arm" ]] ;;
         *) return 1 ;;
@@ -5449,6 +5465,7 @@ ts_parse_cli() {
     TS_OPT_UID_BACKSTOP=0
     TS_OPT_NO_PROBE=0
     TS_OPT_FALLBACK_UID=""
+    TS_OPT_NETWORK=""
     TS_WANT_HELP=0
     TS_USAGE_ERROR=""
     TS_OPTS_GIVEN=()
@@ -5508,7 +5525,7 @@ ts_parse_cli() {
                 TS_OPT_PACKAGES="$value"
                 TS_OPTS_GIVEN+=("$1")
                 ;;
-            --config|--platform|--impl)
+            --config|--platform|--impl|--network)
                 opt="$1"
                 if [[ $# -lt 2 ]] || [[ -z "$2" ]] || [[ "$2" == -* ]]; then
                     ts_usage_note "${opt} requires a value"
@@ -5533,6 +5550,12 @@ ts_parse_cli() {
                             ts_usage_note "Invalid --impl '${value}' (expected: ${TS_IMPLS// /, })"
                         fi
                         TS_OPT_IMPL="$value"
+                        ;;
+                    --network)
+                        if ! ts_in_list "$value" "$TS_NETWORKS"; then
+                            ts_usage_note "Invalid --network '${value}' (expected: ${TS_NETWORKS// /, })"
+                        fi
+                        TS_OPT_NETWORK="$value"
                         ;;
                 esac
                 TS_OPTS_GIVEN+=("$opt")
@@ -5590,6 +5613,18 @@ ts_validate_cli() {
         done
     elif [[ "$TS_OPT_UID_BACKSTOP" -eq 1 ]]; then
         ts_usage_error "--uid-backstop requires --managed"
+    fi
+    # RaspiBlitz runs one Lightning unit per implementation and chain, so the raspiblitz profile
+    # names it (--impl, --network) instead of picking one
+    if [[ "$TS_COMMAND" == "install" ]] && [[ "$TS_OPT_MANAGED" -eq 1 ]] && [[ "$TS_OPT_PROFILE" == "raspiblitz" ]]; then
+        if [[ -z "$TS_OPT_IMPL" ]]; then
+            ts_usage_error "install --managed raspiblitz requires --impl lnd or --impl cln"
+        fi
+        if [[ "$TS_OPT_IMPL" != "lnd" ]] && [[ "$TS_OPT_IMPL" != "cln" ]]; then
+            ts_usage_error "install --managed raspiblitz supports --impl lnd or --impl cln, not ${TS_OPT_IMPL}"
+        fi
+    elif [[ -n "$TS_OPT_NETWORK" ]]; then
+        ts_usage_error "--network is used by 'install --managed raspiblitz' only"
     fi
     if [[ "$TS_JSON" -eq 1 ]]; then
         case "$TS_COMMAND" in
@@ -5663,8 +5698,10 @@ parse_args() {
         esac
     fi
 
-    # Verify configuration exists before proceeding (Early fail)
-    if [[ "$TS_COMMAND" == "install" ]]; then
+    # Verify configuration exists before proceeding (Early fail). install --managed raspiblitz also
+    # runs unattended during provisioning: its config check reports a missing --config file in the
+    # JSON document (E_CONFIG_INVALID, exit 8)
+    if [[ "$TS_COMMAND" == "install" ]] && { [[ "$TS_OPT_PROFILE" != "raspiblitz" ]] || [[ -z "$CONFIG_FILE" ]]; }; then
         config_path=$(detect_config_file "$CONFIG_FILE") || exit $?
         CONFIG_FILE="$config_path"
     fi
@@ -5745,7 +5782,7 @@ parse_args() {
 }
 
 # ---------------------------------------------------------------------------
-# MANAGED DATAPLANE (preview): install --managed baremetal, verify, uninstall --managed
+# MANAGED DATAPLANE (preview): install --managed baremetal|raspiblitz, verify, uninstall --managed
 #
 # The tunneled Lightning unit runs in a persistent systemd slice (tunnelsats.slice, set by a
 # drop-in, so the unit file itself is never edited). A persistent nftables table marks the
@@ -5790,7 +5827,7 @@ TS_M_LAN6="::1/128, fc00::/7, fe80::/10"
 # traffic from it, the uid rule is what covers the Lightning daemon
 TS_M_EMERGENCY_SUBNET="10.9.9.0/25"
 # Profiles install --managed accepts, and the words --managed recognises as a profile value
-TS_M_PROFILES="baremetal"
+TS_M_PROFILES="baremetal raspiblitz"
 TS_M_PROFILE_WORDS="baremetal raspiblitz umbrel mynode"
 TS_M_BIN="/usr/local/sbin/tunnelsats"
 TS_M_UNIT_DIR="/etc/systemd/system"
@@ -5828,8 +5865,13 @@ TS_M_WG_DIR="/etc/wireguard"
 TS_M_WG_CONF="/etc/wireguard/tunnelsatsv2.conf"
 TS_M_CGROUP_ROOT="/sys/fs/cgroup"
 TS_M_HANDSHAKE_MAX_AGE=180
-# Lightning units managed mode can tunnel: "<impl>:<unit>"
+# Lightning units managed mode can tunnel: "<impl>:<unit>". The baremetal profile picks one of
+# TS_M_LN_UNITS; the raspiblitz profile names one of TS_M_RASPIBLITZ_LN_UNITS with --impl and
+# --network (ts_m_raspiblitz_unit). TS_M_ALL_LN_UNITS lists each unit of both profiles once: any of
+# them can carry the managed drop-in (path checks, removal, the damaged-record path, detect).
 TS_M_LN_UNITS="lnd:lnd.service cln:lightningd.service lit:litd.service lit:lit.service"
+TS_M_RASPIBLITZ_LN_UNITS="lnd:lnd.service lnd:tlnd.service lnd:slnd.service cln:lightningd.service cln:tlightningd.service cln:slightningd.service"
+TS_M_ALL_LN_UNITS="${TS_M_LN_UNITS} lnd:tlnd.service lnd:slnd.service cln:tlightningd.service cln:slightningd.service"
 
 # Inventory and install state (ts_m_inventory_read, install --managed). The inventory is written
 # ahead of every change: state "installing" with the planned files first, each file's sha256 right
@@ -5851,8 +5893,9 @@ TS_M_ERROR=""
 TS_M_DRIFT=()
 # Lightning units of other implementations found next to the tunneled one (not tunneled)
 TS_M_OTHER_UNITS=()
-# Command line of the Lightning unit's ExecStart (ts_m_execstart_args)
+# Command line of the Lightning unit's ExecStart (ts_m_execstart_args), and its argv[] text
 TS_M_EXEC_ARGV=()
+TS_M_EXEC_RAW=""
 TS_M_EXEC_REASON=""
 
 # Succeeds when the process runs as root. Managed commands call it first (tests replace it).
@@ -6296,7 +6339,7 @@ ts_m_print_inventory_list() {
 # Succeeds if $1 is a path managed mode may have written: removal never follows anything else,
 # even from a modified inventory.
 ts_m_inventory_path_ok() {
-    local p="$1"
+    local p="$1" entry unit
     if [[ "$p" == *".."* ]] || [[ "$p" == *"//"* ]] || [[ ! "$p" =~ ^/[A-Za-z0-9_.@/:-]+$ ]]; then
         return 1
     fi
@@ -6305,12 +6348,24 @@ ts_m_inventory_path_ok() {
         "${TS_M_UNIT_DIR}/${TS_M_SLICE_UNIT}"|"${TS_M_UNIT_DIR}/${TS_M_KILLSWITCH_UNIT}") return 0 ;;
         "${TS_M_UNIT_DIR}/${TS_M_VERIFIER_UNIT}"|"${TS_M_UNIT_DIR}/${TS_M_TIMER_UNIT}") return 0 ;;
         "${TS_M_UNIT_DIR}/${TS_M_WG_UNIT}.d"|"${TS_M_UNIT_DIR}/${TS_M_WG_UNIT}.d/${TS_M_DROPIN_NAME}") return 0 ;;
-        "${TS_M_UNIT_DIR}"/lnd.service.d|"${TS_M_UNIT_DIR}"/lightningd.service.d) return 0 ;;
-        "${TS_M_UNIT_DIR}"/litd.service.d|"${TS_M_UNIT_DIR}"/lit.service.d) return 0 ;;
-        "${TS_M_UNIT_DIR}"/lnd.service.d/"${TS_M_DROPIN_NAME}"|"${TS_M_UNIT_DIR}"/lightningd.service.d/"${TS_M_DROPIN_NAME}") return 0 ;;
-        "${TS_M_UNIT_DIR}"/litd.service.d/"${TS_M_DROPIN_NAME}"|"${TS_M_UNIT_DIR}"/lit.service.d/"${TS_M_DROPIN_NAME}") return 0 ;;
     esac
+    # The drop-in of a Lightning unit managed mode can tunnel, and its directory
+    for entry in $TS_M_ALL_LN_UNITS; do
+        unit="${entry#*:}"
+        if [[ "$p" == "${TS_M_UNIT_DIR}/${unit}.d" ]] || [[ "$p" == "${TS_M_UNIT_DIR}/${unit}.d/${TS_M_DROPIN_NAME}" ]]; then
+            return 0
+        fi
+    done
     return 1
+}
+
+# Succeeds if "<impl>:<unit>" $2 is a Lightning unit that profile $1 can tunnel.
+ts_m_profile_unit_ok() {
+    case "$1" in
+        baremetal) ts_in_list "$2" "$TS_M_LN_UNITS" ;;
+        raspiblitz) ts_in_list "$2" "$TS_M_RASPIBLITZ_LN_UNITS" ;;
+        *) return 1 ;;
+    esac
 }
 
 # Reads the inventory into TS_M_INV_* (TS_M_INV_STATE: installing, installed or removing;
@@ -6425,7 +6480,7 @@ ts_m_inventory_read() {
             ;;
     esac
     if ! ts_in_list "$TS_M_INV_PROFILE" "$TS_M_PROFILES" || ! ts_in_list "$TS_M_INV_IMPL" "$TS_IMPLS" || \
-        ! ts_in_list "${TS_M_INV_IMPL}:${TS_M_INV_UNIT}" "$TS_M_LN_UNITS" || \
+        ! ts_m_profile_unit_ok "$TS_M_INV_PROFILE" "${TS_M_INV_IMPL}:${TS_M_INV_UNIT}" || \
         [[ ! "$TS_M_INV_USER" =~ ^[a-z_][a-z0-9_.-]{0,31}$ ]] || [[ ! "$TS_M_INV_UID" =~ ^[1-9][0-9]{0,9}$ ]]; then
         TS_M_ERROR="inventory ${TS_M_INVENTORY} holds invalid values"
         return 1
@@ -7198,10 +7253,11 @@ ts_m_resume_stopped() {
 }
 
 # Prints the Lightning units that carry the TunnelSats drop-in, one per line. Read from the unit
-# directory, so it works while the install record is unreadable or systemd does not answer.
+# directory, so it works while the install record is unreadable or systemd does not answer. Covers
+# the units of every profile (RaspiBlitz testnet and signet units included).
 ts_m_dropin_units() {
     local e unit
-    for e in $TS_M_LN_UNITS; do
+    for e in $TS_M_ALL_LN_UNITS; do
         unit="${e#*:}"
         if [[ -f "${TS_FS_ROOT}${TS_M_UNIT_DIR}/${unit}.d/${TS_M_DROPIN_NAME}" ]]; then
             echo "$unit"
@@ -7660,11 +7716,13 @@ ts_m_unit_prop() {
 }
 
 # Reads the command line of the single ExecStart of unit $1 ("systemctl show": "{ path=... ;
-# argv[]=<arguments> ; ignore_errors=... }") into TS_M_EXEC_ARGV, one argument per element. Fails if
-# there is no ExecStart, more than one, or the field cannot be found.
+# argv[]=<arguments> ; ignore_errors=... }") into TS_M_EXEC_ARGV, one argument per element, and the
+# argv[] text into TS_M_EXEC_RAW. Fails if there is no ExecStart, more than one, or the field cannot
+# be found.
 ts_m_execstart_tokens() {
     local raw marker='argv[]=' rest
     TS_M_EXEC_ARGV=()
+    TS_M_EXEC_RAW=""
     raw=$(ts_m_unit_prop "$1" ExecStart)
     if [[ "$raw" != *"$marker"* ]]; then
         return 1
@@ -7674,6 +7732,7 @@ ts_m_execstart_tokens() {
         return 1
     fi
     rest="${rest%% ; ignore_errors=*}"
+    TS_M_EXEC_RAW="$rest"
     read -r -a TS_M_EXEC_ARGV <<< "$rest"
     if [[ ${#TS_M_EXEC_ARGV[@]} -eq 0 ]]; then
         return 1
@@ -7681,12 +7740,50 @@ ts_m_execstart_tokens() {
     return 0
 }
 
+# RaspiBlitz starts CLN through a shell, so that it can pipe the password of an encrypted
+# hsm_secret into lightningd (cl.install-service.sh):
+#   /bin/sh -c '[(cat <file>;echo;cat <file>) | ]/usr/local/bin/lightningd --conf=<config> [--encrypted-hsm] --rpc-file-mode 0660'
+# If TS_M_EXEC_ARGV has exactly this shape, the command line holds no control character and every
+# word from lightningd on is a plain word (no quote, variable, glob, redirection or other shell
+# syntax), the shell runs lightningd with exactly these words: replaces TS_M_EXEC_ARGV with them and
+# succeeds. Fails and leaves TS_M_EXEC_ARGV unchanged for anything else.
+ts_m_raspiblitz_cln_argv() {
+    local i=2 w n="${#TS_M_EXEC_ARGV[@]}" f=""
+    if [[ "$TS_M_EXEC_RAW" == *[[:cntrl:]]* ]] || [[ "$n" -lt 3 ]]; then
+        return 1
+    fi
+    if [[ "${TS_M_EXEC_ARGV[0]}" != "/bin/sh" ]] || [[ "${TS_M_EXEC_ARGV[1]}" != "-c" ]]; then
+        return 1
+    fi
+    # The password pipe: "(cat <file>;echo;cat <file>) |", with the same plain path twice
+    if [[ "${TS_M_EXEC_ARGV[2]}" == "(cat" ]]; then
+        f="${TS_M_EXEC_ARGV[3]:-}"
+        f="${f%;echo;cat}"
+        if [[ ! "$f" =~ ^/[A-Za-z0-9_./-]+$ ]] || [[ "${TS_M_EXEC_ARGV[3]:-}" != "${f};echo;cat" ]] || \
+            [[ "${TS_M_EXEC_ARGV[4]:-}" != "${f})" ]] || [[ "${TS_M_EXEC_ARGV[5]:-}" != "|" ]]; then
+            return 1
+        fi
+        i=6
+    fi
+    if [[ "${TS_M_EXEC_ARGV[$i]:-}" != "/usr/local/bin/lightningd" ]]; then
+        return 1
+    fi
+    for (( w = i; w < n; w++ )); do
+        if [[ ! "${TS_M_EXEC_ARGV[$w]}" =~ ^[A-Za-z0-9_./:=@,+-]+$ ]]; then
+            return 1
+        fi
+    done
+    TS_M_EXEC_ARGV=("${TS_M_EXEC_ARGV[@]:$i}")
+    return 0
+}
+
 # Like ts_m_execstart_tokens, and succeeds only if the arguments can be checked reliably. Fails with
 # TS_M_EXEC_REASON when the command line cannot be read, when a shell or a script runs (it can add
 # arguments of its own) or when it uses $VAR or ${VAR} (systemd fills those in from Environment= or
-# EnvironmentFile= when the unit starts).
+# EnvironmentFile= when the unit starts). With profile $2 raspiblitz, RaspiBlitz's own shell command
+# for CLN is read through (ts_m_raspiblitz_cln_argv).
 ts_m_execstart_args() {
-    local unit="$1" exe head=""
+    local unit="$1" profile="${2:-}" exe head=""
     TS_M_EXEC_REASON=""
     if ! ts_m_execstart_tokens "$unit"; then
         TS_M_EXEC_REASON="the command line (ExecStart) of ${unit} cannot be read"
@@ -7695,6 +7792,9 @@ ts_m_execstart_args() {
     if [[ "${TS_M_EXEC_ARGV[*]}" == *'$'* ]]; then
         TS_M_EXEC_REASON="the command line (ExecStart) of ${unit} takes values from environment variables (\$VAR or \${VAR})"
         return 1
+    fi
+    if [[ "$profile" == "raspiblitz" ]]; then
+        ts_m_raspiblitz_cln_argv || true
     fi
     exe="${TS_M_EXEC_ARGV[0]}"
     case "${exe##*/}" in
@@ -7908,9 +8008,11 @@ ts_m_execstart_clearnet() {
 # config file and on its command line (ExecStart); see ts_m_nc_setting_hit. Sets TS_M_NC_STATUS to
 # clearnet (settings found), unknown (config missing or unreadable, or a command line that cannot be
 # checked reliably: shell, script, $VAR) or clean, TS_M_NC_LINES to "<file>:<line>:<setting>" and
-# "<unit> ExecStart: <argument>", and TS_M_NC_REASON. Read-only; the bare-metal guard reuses it.
+# "<unit> ExecStart: <argument>", and TS_M_NC_REASON. $3 = managed profile (raspiblitz: RaspiBlitz's
+# shell command for CLN can be checked, see ts_m_raspiblitz_cln_argv). Read-only; the bare-metal
+# guard reuses it.
 ts_m_node_config_clearnet() {
-    local impl="$1" unit="$2" f entry num key val exec_ok=1
+    local impl="$1" unit="$2" profile="${3:-}" f entry num key val exec_ok=1
     TS_M_NC_STATUS="unknown"
     TS_M_NC_LINES=()
     ts_m_node_config_files "$impl" "$unit"
@@ -7926,7 +8028,7 @@ ts_m_node_config_clearnet() {
         done < <(ts_m_config_settings "${TS_FS_ROOT}${f}")
     done
     # The command line counts like the config file; one that cannot be checked makes it unknown
-    if ts_m_execstart_args "$unit"; then
+    if ts_m_execstart_args "$unit" "$profile"; then
         ts_m_execstart_clearnet "$impl" "$unit"
     else
         exec_ok=0
@@ -7975,7 +8077,7 @@ ts_m_node_config_listen_ports() {
 }
 
 # ---------------------------------------------------------------------------
-# Managed mode: install --managed baremetal
+# Managed mode: install --managed baremetal|raspiblitz
 # ---------------------------------------------------------------------------
 
 # Succeeds on a unified cgroup v2 hierarchy mounted at /sys/fs/cgroup.
@@ -8020,9 +8122,14 @@ ts_m_existing_install() {
 # (LoadState=loaded). With --impl, the unit of that implementation; it must be the only candidate
 # (litd.service and lit.service both belong to lit). Without --impl, exactly one unit may be
 # loaded. Units of other implementations may stay installed: they are not tunneled and are listed
-# in TS_M_OTHER_UNITS. Sets TS_M_IMPL and TS_M_UNIT.
+# in TS_M_OTHER_UNITS. Sets TS_M_IMPL and TS_M_UNIT. The raspiblitz profile names its unit instead
+# (ts_m_select_raspiblitz_unit).
 ts_m_select_ln_unit() {
     local entry impl unit state loaded=() impls=() picked=() picked_impl=""
+    if [[ "$TS_OPT_PROFILE" == "raspiblitz" ]]; then
+        ts_m_select_raspiblitz_unit
+        return 0
+    fi
     TS_M_OTHER_UNITS=()
     for entry in $TS_M_LN_UNITS; do
         impl="${entry%%:*}"
@@ -8062,6 +8169,49 @@ ts_m_select_ln_unit() {
     TS_M_UNIT="${loaded[0]}"
 }
 
+# Prints the RaspiBlitz unit of implementation $1 (lnd or cln) on chain $2 (mainnet, testnet or
+# signet). RaspiBlitz names the unit of a testnet instance with the prefix t and that of a signet
+# instance with s (lnd.install.sh, cl.install-service.sh): lnd.service, tlnd.service, slnd.service,
+# lightningd.service, tlightningd.service, slightningd.service. Fails for any other value.
+ts_m_raspiblitz_unit() {
+    local base prefix
+    case "$1" in
+        lnd) base="lnd.service" ;;
+        cln) base="lightningd.service" ;;
+        *) return 1 ;;
+    esac
+    case "$2" in
+        mainnet) prefix="" ;;
+        testnet) prefix="t" ;;
+        signet) prefix="s" ;;
+        *) return 1 ;;
+    esac
+    echo "${prefix}${base}"
+}
+
+# raspiblitz profile: the unit follows from --impl and --network (default mainnet) and must be
+# loaded. The other RaspiBlitz Lightning units that are loaded are not tunneled; they are listed in
+# TS_M_OTHER_UNITS. Sets TS_M_IMPL and TS_M_UNIT.
+ts_m_select_raspiblitz_unit() {
+    local network="${TS_OPT_NETWORK:-mainnet}" unit entry other state
+    TS_M_OTHER_UNITS=()
+    if ! unit=$(ts_m_raspiblitz_unit "$TS_OPT_IMPL" "$network"); then
+        ts_usage_error "install --managed raspiblitz requires --impl lnd or --impl cln and --network mainnet, testnet or signet"
+    fi
+    state=$(ts_m_unit_prop "$unit" LoadState)
+    if [[ "$state" != "loaded" ]]; then
+        ts_fail 7 E_LN_UNIT refused "--impl ${TS_OPT_IMPL} --network ${network}: ${unit} is not installed (LoadState ${state:-unknown})"
+    fi
+    for entry in $TS_M_RASPIBLITZ_LN_UNITS; do
+        other="${entry#*:}"
+        if [[ "$other" != "$unit" ]] && [[ "$(ts_m_unit_prop "$other" LoadState)" == "loaded" ]]; then
+            TS_M_OTHER_UNITS+=("$other")
+        fi
+    done
+    TS_M_IMPL="$TS_OPT_IMPL"
+    TS_M_UNIT="$unit"
+}
+
 # Sets TS_M_USER and TS_M_UID for the Lightning unit: a dedicated non-root user is required, since
 # the uid backstop and the emergency block select the daemon's traffic by uid.
 ts_m_select_ln_user() {
@@ -8088,14 +8238,23 @@ ts_m_select_ln_user() {
 
 # Every check that can refuse the install before anything changes.
 ts_m_install_preflight() {
-    local guess existing kind evidence found listing line ports p port_ok=0 fam
+    local guess existing kind evidence found listing line ports p port_ok=0 fam profile="${TS_OPT_PROFILE:-baremetal}"
     guess=$(ts_guess_platform "$TS_FS_ROOT")
-    if [[ -n "$TS_OPT_PLATFORM" ]] && [[ "$TS_OPT_PLATFORM" != "baremetal" ]]; then
-        ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Managed mode supports bare-metal systemd nodes only for now (--platform ${TS_OPT_PLATFORM})"
+    if [[ -n "$TS_OPT_PLATFORM" ]] && [[ "$TS_OPT_PLATFORM" != "$profile" ]]; then
+        ts_fail 7 E_PLATFORM_UNSUPPORTED refused "--platform ${TS_OPT_PLATFORM} does not match the managed profile ${profile}"
     fi
-    if [[ -n "$guess" ]]; then
-        ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Managed mode supports bare-metal systemd nodes only for now (detected: ${guess})"
-    fi
+    case "$profile:$guess" in
+        baremetal:|raspiblitz:raspiblitz) ;;
+        baremetal:raspiblitz)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "This node is a RaspiBlitz: use 'install --managed raspiblitz --impl lnd|cln'"
+            ;;
+        raspiblitz:*)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "The raspiblitz profile needs a RaspiBlitz (detected: ${guess:-no RaspiBlitz})"
+            ;;
+        *)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Managed mode supports bare-metal systemd nodes and RaspiBlitz only for now (detected: ${guess})"
+            ;;
+    esac
     if [[ ! -d "${TS_FS_ROOT}/run/systemd/system" ]]; then
         ts_fail 6 E_SYSTEMD_MISSING capability "systemd is not running as PID 1"
     fi
@@ -8347,7 +8506,7 @@ ts_m_fixed_files() {
     printf '%s\n' "$TS_M_BIN" "${TS_M_UNIT_DIR}/${TS_M_SLICE_UNIT}" "${TS_M_UNIT_DIR}/${TS_M_KILLSWITCH_UNIT}" \
         "${TS_M_UNIT_DIR}/${TS_M_VERIFIER_UNIT}" "${TS_M_UNIT_DIR}/${TS_M_TIMER_UNIT}" \
         "${TS_M_UNIT_DIR}/${TS_M_WG_UNIT}.d/${TS_M_DROPIN_NAME}"
-    for entry in $TS_M_LN_UNITS; do
+    for entry in $TS_M_ALL_LN_UNITS; do
         printf '%s\n' "${TS_M_UNIT_DIR}/${entry#*:}.d/${TS_M_DROPIN_NAME}"
     done
 }
@@ -8530,15 +8689,33 @@ ts_m_install_abort() {
     ts_fail 1 "$1" operational "$2"
 }
 
+# Succeeds if install has to restart the Lightning unit to move it into the slice, given its
+# ActiveState $1 and SubState $2: it runs, starts, reloads or stops outside the slice. A unit that is
+# not running is never started. On RaspiBlitz, a unit that waits for its next automatic restart
+# (SubState auto-restart, for example while a start guard holds it back during provisioning) is left
+# to that restart, which runs inside the slice and behind the kill switch.
+ts_m_ln_restart_needed() {
+    case "$1" in
+        active|reloading|deactivating) return 0 ;;
+        activating)
+            if [[ "$TS_OPT_PROFILE" == "raspiblitz" ]] && [[ "$2" == auto-restart* ]]; then
+                return 1
+            fi
+            return 0
+            ;;
+    esac
+    return 1
+}
+
 cmd_install_managed() {
     local answer="" ln_was_active=0 ln_restarted=0 tunnel_started=0 rc=0 out
     ts_m_require_root
     case "$TS_OPT_PROFILE" in
-        baremetal) ;;
-        raspiblitz|umbrel|mynode)
-            ts_fail 7 E_PROFILE_UNSUPPORTED refused "Managed mode supports the baremetal profile only for now (requested: ${TS_OPT_PROFILE})"
+        baremetal|raspiblitz) ;;
+        umbrel|mynode)
+            ts_fail 7 E_PROFILE_UNSUPPORTED refused "Managed mode supports the baremetal and raspiblitz profiles only for now (requested: ${TS_OPT_PROFILE})"
             ;;
-        *) ts_usage_error "--managed requires a profile for install (baremetal)" ;;
+        *) ts_usage_error "--managed requires a profile for install (baremetal or raspiblitz)" ;;
     esac
     ts_m_lifecycle_lock
     if [[ "$TS_JSON" -ne 1 ]]; then
@@ -8550,7 +8727,7 @@ cmd_install_managed() {
     if command -v "$NFT_BIN" >/dev/null 2>&1 && command -v "$UNSHARE_BIN" >/dev/null 2>&1; then
         ts_m_capability_probe
     fi
-    print_info "Platform: baremetal, Lightning: ${TS_M_UNIT} (user ${TS_M_USER}), uid backstop: $([[ "$TS_OPT_UID_BACKSTOP" -eq 1 ]] && echo on || echo off)"
+    print_info "Platform: ${TS_OPT_PROFILE}, Lightning: ${TS_M_UNIT} (user ${TS_M_USER}), uid backstop: $([[ "$TS_OPT_UID_BACKSTOP" -eq 1 ]] && echo on || echo off)"
     if [[ ${#TS_M_OTHER_UNITS[@]} -gt 0 ]]; then
         print_warning "Also installed: ${TS_M_OTHER_UNITS[*]}. Managed mode tunnels ${TS_M_UNIT} only; the other units are not tunneled."
     fi
@@ -8562,7 +8739,7 @@ cmd_install_managed() {
     ts_m_check_tools
     ts_m_capability_probe
 
-    TS_M_INV_PROFILE="baremetal"
+    TS_M_INV_PROFILE="$TS_OPT_PROFILE"
     TS_M_INV_IMPL="$TS_M_IMPL"
     TS_M_INV_UNIT="$TS_M_UNIT"
     TS_M_INV_USER="$TS_M_USER"
@@ -8617,9 +8794,12 @@ cmd_install_managed() {
     else
         print_warning "${TS_M_WG_UNIT} did not start yet; it retries every 30 s and the kill switch blocks clearnet traffic meanwhile"
     fi
-    local ln_state
+    local ln_state ln_sub=""
     ln_state=$(ts_m_unit_prop "$TS_M_UNIT" ActiveState)
-    if [[ "$ln_state" == "active" ]] || [[ "$ln_state" == "activating" ]] || [[ "$ln_state" == "reloading" ]] || [[ "$ln_state" == "deactivating" ]]; then
+    if [[ "$ln_state" == "activating" ]] && [[ "$TS_OPT_PROFILE" == "raspiblitz" ]]; then
+        ln_sub=$(ts_m_unit_prop "$TS_M_UNIT" SubState)
+    fi
+    if ts_m_ln_restart_needed "$ln_state" "$ln_sub"; then
         ln_was_active=1
         print_info "Restarting ${TS_M_UNIT} inside ${TS_M_SLICE}..."
         if "$SYSTEMCTL_BIN" restart "$TS_M_UNIT"; then
@@ -8628,6 +8808,10 @@ cmd_install_managed() {
             rc=1
             print_error "${TS_M_UNIT} did not restart; the managed dataplane stays installed (see: journalctl -u ${TS_M_UNIT})"
         fi
+    elif [[ "$ln_state" == "activating" ]]; then
+        print_info "${TS_M_UNIT} waits for its next automatic restart (${ln_sub}); that start runs inside ${TS_M_SLICE}"
+    else
+        print_info "${TS_M_UNIT} is not running (${ln_state:-state unknown}); install does not start it, and its next start runs inside ${TS_M_SLICE}"
     fi
     if ! "$SYSTEMCTL_BIN" start "$TS_M_TIMER_UNIT"; then
         rc=1
@@ -8639,7 +8823,7 @@ cmd_install_managed() {
         trap ts_json_exit_guard EXIT
     fi
 
-    ts_m_node_config_clearnet "$TS_M_IMPL" "$TS_M_UNIT"
+    ts_m_node_config_clearnet "$TS_M_IMPL" "$TS_M_UNIT" "$TS_OPT_PROFILE"
     if [[ "$TS_JSON" -eq 1 ]]; then
         local errors="[]" items=() other_j
         if [[ "$rc" -ne 0 ]]; then
@@ -8652,7 +8836,7 @@ cmd_install_managed() {
         done
         ts_j_arr "${items[@]}"
         other_j="$TS_R"
-        ts_j_obj b:managed true s:profile baremetal s:impl "$TS_M_IMPL" s:unit "$TS_M_UNIT" s:node_user "$TS_M_USER" \
+        ts_j_obj b:managed true s:profile "$TS_OPT_PROFILE" s:impl "$TS_M_IMPL" s:unit "$TS_M_UNIT" s:node_user "$TS_M_USER" \
             b:uid_backstop "$TS_OPT_UID_BACKSTOP" s:iface "$TS_M_IFACE" s:slice "$TS_M_SLICE" \
             b:tunnel_started "$tunnel_started" b:ln_was_active "$ln_was_active" b:ln_restarted "$ln_restarted" \
             s:node_config "$TS_M_NC_STATUS" r:other_ln_units "$other_j"
@@ -8672,7 +8856,14 @@ cmd_install_managed() {
         vpn_port=$(ts_config_vpn_port "${TS_FS_ROOT}${TS_M_WG_CONF}")
         echo -e "${BOLD}Next: add the hybrid settings to your node configuration, then restart ${TS_M_UNIT}:${NC}"
         echo ""
-        LN_IMPL="$TS_M_IMPL" PLATFORM="baremetal" node_user="$TS_M_USER" print_node_config_instructions "$vpn_dns" "$vpn_port" "install"
+        # On RaspiBlitz the config file depends on the chain (tlnd.conf, testnet/config): name the
+        # file the unit reads
+        local conf_file=""
+        if [[ "$TS_OPT_PROFILE" == "raspiblitz" ]]; then
+            conf_file="${TS_M_NC_FILES[0]:-}"
+        fi
+        LN_IMPL="$TS_M_IMPL" PLATFORM="$TS_OPT_PROFILE" node_user="$TS_M_USER" TS_NODE_CONF_FILE="$conf_file" \
+            print_node_config_instructions "$vpn_dns" "$vpn_port" "install"
         echo ""
         echo "   sudo systemctl restart ${TS_M_UNIT}"
         echo ""
@@ -8743,7 +8934,7 @@ cmd_uninstall_managed() {
 
     # The node config is the operator's: Lightning starts again only if it holds no TunnelSats
     # clearnet settings, because outside the slice they would use the regular internet connection
-    ts_m_node_config_clearnet "$TS_M_INV_IMPL" "$TS_M_INV_UNIT"
+    ts_m_node_config_clearnet "$TS_M_INV_IMPL" "$TS_M_INV_UNIT" "$TS_M_INV_PROFILE"
     if [[ "$ln_was_active" -eq 1 ]] && [[ "$TS_M_NC_STATUS" != "clean" ]] && [[ "$TS_NONINTERACTIVE" -ne 1 ]] && [[ "$rc" -eq 0 ]]; then
         for i in 1 2 3; do
             ts_m_uninstall_print_lines
@@ -8751,7 +8942,7 @@ cmd_uninstall_managed() {
             if [[ "$answer" == "skip" ]]; then
                 break
             fi
-            ts_m_node_config_clearnet "$TS_M_INV_IMPL" "$TS_M_INV_UNIT"
+            ts_m_node_config_clearnet "$TS_M_INV_IMPL" "$TS_M_INV_UNIT" "$TS_M_INV_PROFILE"
             if [[ "$TS_M_NC_STATUS" == "clean" ]]; then
                 break
             fi
@@ -8868,6 +9059,9 @@ ts_m_cmd_restart() {
 # The kill switch probe sends one datagram to the VPN server, which must be stopped on this host;
 # the echo services and the IPv6 probe follow only when every kernel check of the unsafe class and
 # the kill switch probe passed, so no probe shows the node's address to anyone new.
+# A start guard in the Lightning unit (RaspiBlitz) relies on "verify --json --no-probe": exit 0 or
+# 5 only while the dataplane holds for the unit named in "unit", never without a managed install
+# (docs/managed-mode.md, RaspiBlitz).
 # ---------------------------------------------------------------------------
 
 TS_V_ID=()
