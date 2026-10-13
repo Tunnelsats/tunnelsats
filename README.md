@@ -97,6 +97,7 @@ sudo tunnelsats verify
 sudo tunnelsats uninstall --managed
 ```
 
+On RaspiBlitz, install with `--managed raspiblitz --impl lnd` (or `--impl cln`; testnet and signet instances add `--network testnet|signet`).
 Requirements, how it works and what `verify` reports: [docs/managed-mode.md](docs/managed-mode.md).
 
 ---
