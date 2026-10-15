@@ -1514,6 +1514,24 @@ assert_equals "degraded:pass: 198.18.2.1:51820" "$(check_detail wg_endpoint)" "v
 assert_json "$doc" 'd["endpoint"]["ipv4"]' "198.18.2.1" "verify: and reported with its address"
 rm -f "$fx/state/resolve_vpn.ts-host.test"
 sed -i 's/vpn.ts-host.test:51820/198.18.2.1:51820/' "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+# The wg_endpoint details a start guard reads (docs/managed-mode.md, contract 1): the peer has no
+# live endpoint yet, shown as (none), or WireGuard prints no peer line at all
+cat > "$TMP_ROOT/wg-noendpoint" <<'EOF'
+#!/bin/bash
+# wg whose peer has no live endpoint yet: "(none)", or no peer line at all with WG_NO_PEER
+case "$3" in
+    endpoints) if [[ -z "${WG_NO_PEER:-}" ]]; then printf 'c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9\t(none)\n'; fi ;;
+    latest-handshakes) printf 'c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9\t0\n' ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$TMP_ROOT/wg-noendpoint"
+verify_doc "TS_OPT_NO_PROBE=1; WG_BIN='$TMP_ROOT/wg-noendpoint';"
+assert_equals "degraded:fail: live endpoint (none) differs from 198.18.2.1:51820" "$(check_detail wg_endpoint)" \
+    "verify: a peer without a live endpoint yet (a start guard reads this detail)"
+verify_doc "TS_OPT_NO_PROBE=1; WG_BIN='$TMP_ROOT/wg-noendpoint'; export WG_NO_PEER=1;"
+assert_equals "degraded:fail: live endpoint none differs from 198.18.2.1:51820" "$(check_detail wg_endpoint)" \
+    "verify: no peer line at all (a start guard reads this detail)"
 
 # Emergency block armed and verified while the kill switch table is in place too (the fixture's
 # attestation stays valid), as after a re-arm before the release: degraded while no probe gets
@@ -2905,9 +2923,21 @@ assert_equals "5" "$SN_RC" "Guard contract: while the guarded unit starts (kill 
 assert_json "$doc" '[d["verdict"], d["profile"], d["unit"], d["probes"], sorted(c["id"] for c in d["checks"] if c["result"] == "fail"), [c["id"] for c in d["checks"] if c["result"] != "pass" and c["class"] == "unsafe"]]' \
     '["degraded", "raspiblitz", "tlightningd.service", "skipped", ["ln_membership", "wg_endpoint", "wg_handshake"], []]' \
     "Guard contract: degraded, with the unit named and only degraded checks failing"
-assert_json "$doc" '[d["contract"], d["command"], d["ok"], d["exit_code"], d["managed"], d["profile"], d["install_state"], d["unit"], d["impl"], d["emergency_block"], d["verdict"], d["probes"], all({"id", "class", "result"} <= set(c) for c in d["checks"]), sorted({"host", "ipv4", "vpn_port"} & set(d["endpoint"]))]' \
+assert_json "$doc" '[d["contract"], d["command"], d["ok"], d["exit_code"], d["managed"], d["profile"], d["install_state"], d["unit"], d["impl"], d["emergency_block"], d["verdict"], d["probes"], all({"id", "class", "result", "detail"} <= set(c) and isinstance(c["detail"], str) for c in d["checks"]), sorted({"host", "ipv4", "vpn_port"} & set(d["endpoint"]))]' \
     '[1, "verify", false, 5, true, "raspiblitz", "installed", "tlightningd.service", "cln", false, "degraded", "skipped", true, ["host", "ipv4", "vpn_port"]]' \
     "Guard contract: the fields of contract 1 the guard relies on (docs/managed-mode.md) are there"
+rb_contract_checks="install_state attest nft_killswitch slice_id ip_rules table_51820 ln_dropin wg_endpoint wg_handshake"
+assert_json "$doc" "[sum(1 for c in d['checks'] if c['id'] == i) for i in '${rb_contract_checks}'.split()] + [[c['detail'] for c in d['checks'] if c['id'] == 'wg_endpoint'][0].endswith(' is down')]" \
+    '[1, 1, 1, 1, 1, 1, 1, 1, 1, true]' "Guard contract: every check the guard expects is there once, and wg_endpoint says the tunnel is down"
+rb_contract_doc=$(grep '^\*\*Fields of contract 1\.\*\*' "$SCRIPT_DIR/../docs/managed-mode.md" 2>/dev/null || true)
+rb_contract_missing=""
+for f in contract command ok exit_code managed profile install_state unit impl emergency_block verdict probes 'checks[].id' 'checks[].class' \
+    'checks[].result' 'checks[].detail' endpoint.host endpoint.ipv4 endpoint.vpn_port $rb_contract_checks ' is down' 'live endpoint none differs' 'live endpoint (none) differs'; do
+    if [[ "$rb_contract_doc" != *"\`${f}\`"* ]]; then
+        rb_contract_missing+=" [${f}]"
+    fi
+done
+assert_equals "" "$rb_contract_missing" "Guard contract: docs/managed-mode.md names every field, check and detail the guard relies on"
 assert_equals "" "$(grep -E '^(systemd-run|curl) ' "$fx/state/calls" || true)" "Guard contract: --no-probe sends no probe"
 assert_equals "" "$(grep -E '^(ip (-[46] )?(rule|route) (add|del)|nft -f|nft delete|systemctl (start|stop|restart|enable|disable))' "$fx/state/calls" || true)" \
     "Guard contract: verify changes nothing"
