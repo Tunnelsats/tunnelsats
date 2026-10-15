@@ -2358,6 +2358,225 @@ for cmd in \
     assert_equals "unknown" "${SN_OUT%%$'\n'*}" "RaspiBlitz detector: a shell command other than RaspiBlitz's own stays unknown (case ${rb_odd})"
 done
 
+# RaspiBlitz's TunnelSats start guard (the RaspiBlitz integration, unit templates of lnd.install.sh
+# and cl.install-service.sh): the flags of each start come through one variable at the end of the
+# command line, read from the guard's env file. uninstall --managed reads the variable through when
+# the unit carries the guard exactly; the env file then decides: absent or empty is clean, flags mean
+# TunnelSats is still on in RaspiBlitz.
+# $1 = fixture, $2 = lnd|cln, $3 = chain, $4 = CLN password file (encrypted hsm_secret) or empty.
+# Writes the unit file as RaspiBlitz does, and what systemd shows for it (ExecStart with the variable,
+# $$ included, FragmentPath, NeedDaemonReload=no). Prints the unit name.
+rb_guard_unit() {
+    local fx="$1" impl="$2" chain="$3" pw="${4:-}" p="" unit base gimpl var conf pwin="" enc="" shown exec_line
+    case "$chain" in
+        testnet) p="t" ;;
+        signet) p="s" ;;
+    esac
+    if [[ "$impl" == "lnd" ]]; then
+        unit="${p}lnd.service" base="${p}lnd" gimpl="lnd" var="TUNNELSATS_LND_ARGS"
+        shown="$(rb_lnd_exec "$p") \$TUNNELSATS_LND_ARGS"
+        exec_line="ExecStart=/usr/local/bin/lnd --configfile=/mnt/hdd/app-data/lnd/${p}lnd.conf \$TUNNELSATS_LND_ARGS"
+    else
+        unit="${p}lightningd.service" base="${p}lightningd" gimpl="cl" var="TUNNELSATS_CLN_ARGS"
+        conf="/home/bitcoin/.lightning/config"
+        if [[ "$chain" != "mainnet" ]]; then
+            conf="/home/bitcoin/.lightning/${chain}/config"
+        fi
+        if [[ -n "$pw" ]]; then
+            pwin="(cat ${pw};echo;cat ${pw}) | " enc="--encrypted-hsm"
+        fi
+        shown="$(rb_cln_exec "$conf" "$pw") \$\$TUNNELSATS_CLN_ARGS"
+        exec_line="ExecStart=/bin/sh -c '${pwin}/usr/local/bin/lightningd --conf=${conf} ${enc} --rpc-file-mode 0660 \$\$TUNNELSATS_CLN_ARGS'"
+    fi
+    rb_unit "$fx" "$unit" "$shown"
+    echo "/etc/systemd/system/${unit}" > "$fx/state/unit_${unit}_FragmentPath"
+    echo "no" > "$fx/state/unit_${unit}_NeedDaemonReload"
+    {
+        printf '\n[Unit]\nDescription=Lightning on %s\nRequires=%sbitcoind.service\n\n[Service]\n' "$chain" "$p"
+        if [[ "$impl" == "lnd" ]]; then
+            printf 'EnvironmentFile=/mnt/hdd/app-data/raspiblitz.conf\n'
+        fi
+        printf '# TunnelSats start guard (no-op unless TunnelSats is on): clearnet flags for this start only\n'
+        printf '# (without internet.tunnelsats.sh, for example older code after a PATCH, Lightning starts Tor-only)\n'
+        printf 'Environment=%s=\nEnvironmentFile=-/run/tunnelsats/hybrid-%s.env\n' "$var" "$base"
+        if [[ "$impl" == "lnd" ]]; then
+            printf '\nExecStartPre=-/home/admin/config.scripts/lnd.check.sh prestart %s\n' "$chain"
+        else
+            printf 'ExecStartPre=-/home/admin/config.scripts/cl.check.sh prestart %s\n' "$chain"
+        fi
+        printf "ExecStartPre=+/bin/sh -c 'if [ -x /home/admin/config.scripts/internet.tunnelsats.sh ]; then exec /home/admin/config.scripts/internet.tunnelsats.sh guard %s %s; fi; echo tunnelsats-guard: internet.tunnelsats.sh is missing, Lightning starts Tor-only >&2; mkdir -p /run/tunnelsats && echo %s= > /run/tunnelsats/hybrid-%s.env'\n" \
+            "$gimpl" "$chain" "$var" "$base"
+        printf '%s\n' "$exec_line"
+        printf '# avoid hanging on stop\n# ExecStop=/usr/local/bin/lncli stop\n\nUser=bitcoin\nGroup=bitcoin\nRestart=always\nRestartSec=60\n\n[Install]\nWantedBy=multi-user.target\n'
+    } > "$fx/fs/etc/systemd/system/${unit}"
+    echo "$unit"
+}
+# The flags the guard writes for a hybrid start (concept of the RaspiBlitz integration)
+rb_flags_lnd="--tor.skip-proxy-for-clearnet-targets --externalhosts=de2.tunnelsats.com:24556"
+rb_flags_cln="--bind-addr=0.0.0.0:9735 --announce-addr=203.0.113.7:24556 --always-use-proxy=false --announce-addr-discovered=false"
+# Prints "<state>:<node config status>" for each env file state in fixture $1 for unit $2 (impl $3,
+# variable $4, flags $5), then the reason of the last state. "zero" is an empty file.
+rb_guard_states() {
+    local base="${2%.service}"
+    run_snippet "$1" "for s in absent zero empty flags; do
+rm -f \"\$TS_FS_ROOT/run/tunnelsats/hybrid-${base}.env\"
+mkdir -p \"\$TS_FS_ROOT/run/tunnelsats\"
+case \$s in
+    zero) : > \"\$TS_FS_ROOT/run/tunnelsats/hybrid-${base}.env\" ;;
+    empty) printf '%s=\n' '$4' > \"\$TS_FS_ROOT/run/tunnelsats/hybrid-${base}.env\" ;;
+    flags) printf '%s=%s\n' '$4' '$5' > \"\$TS_FS_ROOT/run/tunnelsats/hybrid-${base}.env\" ;;
+esac
+ts_m_node_config_clearnet $3 $2 raspiblitz
+printf '%s:%s ' \"\$s\" \"\$TS_M_NC_STATUS\"
+done
+echo
+echo \"lines=\${TS_M_NC_LINES[*]}\"
+echo \"reason=\$TS_M_NC_REASON\""
+}
+for spec in lnd:mainnet: lnd:testnet: lnd:signet: cln:mainnet: cln:testnet: cln:signet: \
+    cln:mainnet:/home/bitcoin/.cl.pw cln:testnet:/home/bitcoin/.tcl.pw cln:signet:/dev/shm/.scl.pw; do
+    IFS=: read -r g_impl g_chain g_pw <<< "$spec"
+    fx=$(rb_fixture "guard-${g_impl}-${g_chain}${g_pw:+-pw}")
+    g_unit=$(rb_guard_unit "$fx" "$g_impl" "$g_chain" "$g_pw")
+    if [[ "$g_impl" == "lnd" ]]; then
+        g_p="${g_unit%lnd.service}"
+        printf '%s\n' "$rb_lnd_conf" > "$fx/fs/mnt/hdd/app-data/lnd/${g_p}lnd.conf"
+        rb_guard_states "$fx" "$g_unit" lnd TUNNELSATS_LND_ARGS "$rb_flags_lnd"
+    else
+        if [[ "$g_chain" == "mainnet" ]]; then
+            printf '%s\n' "$rb_cln_conf" > "$fx/fs/mnt/hdd/app-data/.lightning/config"
+        else
+            printf '%s\n' "$rb_cln_conf_testnet" > "$fx/fs/mnt/hdd/app-data/.lightning/${g_chain}/config"
+        fi
+        rb_guard_states "$fx" "$g_unit" cln TUNNELSATS_CLN_ARGS "$rb_flags_cln"
+    fi
+    g_name="${g_unit} (${g_impl} ${g_chain}${g_pw:+, password pipe})"
+    assert_equals "absent:clean zero:clean empty:clean flags:unknown " "${SN_OUT%%$'\n'*}" \
+        "RaspiBlitz start guard: ${g_name} with the guard variable is clean while the env file is absent or empty, not while it holds flags"
+    assert_contains "$SN_OUT" "reason=TunnelSats is still on in RaspiBlitz (/run/tunnelsats/hybrid-${g_unit%.service}.env holds the clearnet flags of the current start of ${g_unit}): remove it in the RaspiBlitz menu (SUBSCRIBE > TunnelSats > REMOVE), then enable and start ${g_unit}" \
+        "RaspiBlitz start guard: ${g_name} with flags points to REMOVE in the RaspiBlitz menu"
+    assert_contains "$SN_OUT" $'\nlines=\n' "RaspiBlitz start guard: ${g_name}: the flags are not reported as lines to remove"
+done
+
+# The env file holds anything but "<VAR>=" or "<VAR>=<flags>" on one line: unknown
+fx=$(rb_fixture guard-env)
+g_unit=$(rb_guard_unit "$fx" lnd mainnet "")
+printf '%s\n' "$rb_lnd_conf" > "$fx/fs/mnt/hdd/app-data/lnd/lnd.conf"
+mkdir -p "$fx/fs/run/tunnelsats"
+rb_envs=0
+for content in $'OTHER_ARGS=--externalhosts=x\n' $'TUNNELSATS_LND_ARGS=--a\nTUNNELSATS_LND_ARGS=--b\n' $'TUNNELSATS_LND_ARGS=--a\n\n' \
+    $'TUNNELSATS_LND_ARGS=--a\tb\n' "garbage" $'\n'; do
+    rb_envs=$((rb_envs + 1))
+    printf '%s' "$content" > "$fx/fs/run/tunnelsats/hybrid-lnd.env"
+    run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service raspiblitz; echo "$TS_M_NC_STATUS: $TS_M_NC_REASON"'
+    assert_equals "unknown: /run/tunnelsats/hybrid-lnd.env of the RaspiBlitz start guard holds something other than TUNNELSATS_LND_ARGS=<flags>" "$SN_OUT" \
+        "RaspiBlitz start guard: an env file with anything else is unknown (case ${rb_envs})"
+done
+rm -f "$fx/fs/run/tunnelsats/hybrid-lnd.env"
+mkdir "$fx/fs/run/tunnelsats/hybrid-lnd.env"
+run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service raspiblitz; echo "$TS_M_NC_STATUS"'
+assert_equals "unknown" "$SN_OUT" "RaspiBlitz start guard: an env file that is no regular file is unknown"
+rmdir "$fx/fs/run/tunnelsats/hybrid-lnd.env"
+ln -s /dev/null "$fx/fs/run/tunnelsats/hybrid-lnd.env"
+run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service raspiblitz; echo "$TS_M_NC_STATUS"'
+assert_equals "unknown" "$SN_OUT" "RaspiBlitz start guard: a symlink is unknown"
+rm -f "$fx/fs/run/tunnelsats/hybrid-lnd.env"
+# Read before the removal clears /run/tunnelsats: the state passed in decides, not the file
+run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service raspiblitz flags; echo "$TS_M_NC_STATUS"; ts_m_node_config_clearnet lnd lnd.service raspiblitz empty; echo "$TS_M_NC_STATUS"'
+assert_equals $'unknown\nclean' "$SN_OUT" "RaspiBlitz start guard: the env file state read before the removal decides"
+run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service raspiblitz; echo "$TS_M_NC_STATUS"'
+assert_equals "clean" "$SN_OUT" "RaspiBlitz start guard: the reference fixture is clean"
+
+# Anything but the exact form stays unknown: one change at a time to the reference fixture
+cp "$fx/fs/etc/systemd/system/lnd.service" "$fx/state/lnd.service.ok"
+cp "$fx/state/unit_lnd.service_ExecStart" "$fx/state/ExecStart.ok"
+rb_guard_case() {  # $1 = expected reason part, $2 = name; checks and restores the fixture
+    run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service raspiblitz; echo "$TS_M_NC_STATUS: $TS_M_NC_REASON"'
+    assert_equals "unknown" "${SN_OUT%%:*}" "RaspiBlitz start guard: ${2} stays unknown"
+    assert_contains "$SN_OUT" "$1" "RaspiBlitz start guard: ${2}: reason"
+    cp "$fx/state/lnd.service.ok" "$fx/fs/etc/systemd/system/lnd.service"
+    cp "$fx/state/ExecStart.ok" "$fx/state/unit_lnd.service_ExecStart"
+    echo "no" > "$fx/state/unit_lnd.service_NeedDaemonReload"
+    echo "/etc/systemd/system/lnd.service" > "$fx/state/unit_lnd.service_FragmentPath"
+    rm -f "$fx/state/unit_lnd.service_DropInPaths"
+}
+rb_unit_edit() {  # $1 = sed expression for the unit file
+    sed -i "$1" "$fx/fs/etc/systemd/system/lnd.service"
+}
+rb_shown() {  # $1 = ExecStart as systemctl shows it
+    rb_unit "$fx" lnd.service "$1"
+}
+rb_form="ends with \$TUNNELSATS_LND_ARGS of the RaspiBlitz start guard, but the unit does not carry the guard in the expected form"
+rb_unit_edit 's/guard lnd mainnet/guard lnd testnet/'
+rb_guard_case "$rb_form" "a guard line for another chain"
+rb_unit_edit 's/Lightning starts Tor-only >&2/Lightning starts >\&2/'
+rb_guard_case "$rb_form" "a changed guard line"
+rb_unit_edit '/^ExecStartPre=+/d'
+rb_guard_case "$rb_form" "a unit without the guard line"
+rb_unit_edit 's/^\(ExecStartPre=+.*\)$/\1\n\1/'
+rb_guard_case "$rb_form" "a guard line twice"
+rb_unit_edit 's/^\(ExecStartPre=+.*\)$/[Unit]\n\1\n[Service]/'
+rb_guard_case "$rb_form" "a guard line outside [Service]"
+rb_unit_edit '/^Environment=TUNNELSATS_LND_ARGS=$/d'
+rb_guard_case "$rb_form" "a unit without Environment=TUNNELSATS_LND_ARGS="
+rb_unit_edit 's|^EnvironmentFile=-/run/tunnelsats/hybrid-lnd.env$|EnvironmentFile=-/run/tunnelsats/hybrid-tlnd.env|'
+rb_guard_case "$rb_form" "an env file of another unit"
+rb_unit_edit '\|^EnvironmentFile=-/run/tunnelsats/hybrid-lnd.env$|d'
+rb_guard_case "$rb_form" "a unit without the env file"
+rb_unit_edit 's|^\(EnvironmentFile=-/run/tunnelsats/hybrid-lnd.env\)$|\1\nEnvironmentFile=-/etc/default/lnd|'
+rb_guard_case "${rb_form} (it does not read /run/tunnelsats/hybrid-lnd.env once, as its last EnvironmentFile=)" "another env file read after the guard's"
+rb_unit_edit 's|^\(Environment=TUNNELSATS_LND_ARGS=\)$|\1\nEnvironment="TUNNELSATS_LND_ARGS=--externalhosts=de2.tunnelsats.com:24556"|'
+rb_guard_case "${rb_form} (its unit file names TUNNELSATS_LND_ARGS elsewhere)" "a second assignment of the variable"
+rb_unit_edit 's/^\(User=bitcoin\)$/Description=x \\\n\1/'
+rb_guard_case "${rb_form} (its unit file continues lines with a backslash)" "a unit file with a line continuation"
+echo "yes" > "$fx/state/unit_lnd.service_NeedDaemonReload"
+rb_guard_case "${rb_form} (its unit file changed since systemd loaded it" "a unit file changed since the last daemon-reload"
+echo "/etc/systemd/system/lnd.service.d/override.conf" > "$fx/state/unit_lnd.service_DropInPaths"
+rb_guard_case "${rb_form} (the drop-in /etc/systemd/system/lnd.service.d/override.conf can change it)" "a unit with a drop-in of its own"
+rm -f "$fx/state/unit_lnd.service_FragmentPath"
+rb_guard_case "${rb_form} (its unit file (none) cannot be read)" "a unit whose unit file systemd does not name"
+rb_shown "/usr/local/bin/lnd --configfile=/mnt/hdd/app-data/lnd/lnd.conf --externalhosts=de2.tunnelsats.com:24556 \$TUNNELSATS_LND_ARGS"
+rb_guard_case "${rb_form} (the ExecStart= of its unit file differs from the one systemd runs)" "an ExecStart systemd runs from elsewhere (drop-in or quoting)"
+rb_unit_edit 's/^\(ExecStart=.*\)$/\1\nExecStart=/'
+rb_guard_case "$rb_form" "a second ExecStart= line"
+rb_shown "/opt/lnd/lnd --configfile=/mnt/hdd/app-data/lnd/lnd.conf \$TUNNELSATS_LND_ARGS"
+rb_unit_edit 's|^ExecStart=/usr/local/bin/lnd|ExecStart=/opt/lnd/lnd|'
+rb_guard_case "${rb_form} (it does not run /usr/local/bin/lnd)" "another lnd binary"
+rb_shown "/usr/local/bin/lnd --configfile=/mnt/hdd/app-data/lnd/lnd.conf \${TUNNELSATS_LND_ARGS}"
+rb_unit_edit 's/\$TUNNELSATS_LND_ARGS$/${TUNNELSATS_LND_ARGS}/'
+rb_guard_case "takes values from environment variables" "the \${VAR} form"
+rb_shown "/usr/local/bin/lnd --configfile=\$LND_CONF \$TUNNELSATS_LND_ARGS"
+rb_unit_edit 's|--configfile=/mnt/hdd/app-data/lnd/lnd.conf|--configfile=$LND_CONF|'
+rb_guard_case "takes values from environment variables" "another variable before the guard's"
+rb_shown "/usr/local/bin/lnd \$TUNNELSATS_LND_ARGS --configfile=/mnt/hdd/app-data/lnd/lnd.conf"
+rb_unit_edit 's|^ExecStart=.*$|ExecStart=/usr/local/bin/lnd $TUNNELSATS_LND_ARGS --configfile=/mnt/hdd/app-data/lnd/lnd.conf|'
+rb_guard_case "takes values from environment variables" "the variable before other arguments"
+run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service baremetal; echo "$TS_M_NC_STATUS: $TS_M_NC_REASON"'
+assert_equals "unknown: the command line (ExecStart) of lnd.service takes values from environment variables (\$VAR or \${VAR})" "$SN_OUT" \
+    "RaspiBlitz start guard: the bare-metal profile does not read the variable through"
+run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service raspiblitz; echo "$TS_M_NC_STATUS"'
+assert_equals "clean" "$SN_OUT" "RaspiBlitz start guard: every case restored the reference fixture"
+
+# CLN: the variable must be RaspiBlitz's $$ word, last inside the single sh -c string
+fx=$(rb_fixture guard-cln-forms)
+g_unit=$(rb_guard_unit "$fx" cln mainnet "")
+printf '%s\n' "$rb_cln_conf" > "$fx/fs/mnt/hdd/app-data/.lightning/config"
+cp "$fx/fs/etc/systemd/system/lightningd.service" "$fx/state/lightningd.service.ok"
+rb_cln_case() {  # $1 = ExecStart as systemctl shows it, $2 = sed expression for the unit file, $3 = expected status, $4 = name
+    rb_unit "$fx" lightningd.service "$1"
+    cp "$fx/state/lightningd.service.ok" "$fx/fs/etc/systemd/system/lightningd.service"
+    sed -i "$2" "$fx/fs/etc/systemd/system/lightningd.service"
+    run_snippet "$fx" 'ts_m_node_config_clearnet cln lightningd.service raspiblitz; echo "$TS_M_NC_STATUS: $TS_M_NC_REASON"'
+    assert_equals "$3" "${SN_OUT%%:*}" "RaspiBlitz start guard (CLN): ${4}"
+}
+rb_cln_base="/bin/sh -c /usr/local/bin/lightningd --conf=/home/bitcoin/.lightning/config  --rpc-file-mode 0660"
+rb_cln_case "${rb_cln_base} \$\$TUNNELSATS_CLN_ARGS" 's/^$//' "clean" "RaspiBlitz's form is clean"
+rb_cln_case "${rb_cln_base} \$TUNNELSATS_CLN_ARGS" 's/\$\$TUNNELSATS_CLN_ARGS/$TUNNELSATS_CLN_ARGS/' "unknown" "a single \$ (systemd would expand it) stays unknown"
+rb_cln_case "${rb_cln_base} \$\$TUNNELSATS_CLN_ARGS" "s/ \\\$\\\$TUNNELSATS_CLN_ARGS'\$/' \$\$TUNNELSATS_CLN_ARGS/" "unknown" "the variable outside the sh -c string stays unknown"
+rb_cln_case "${rb_cln_base} --bind-addr=0.0.0.0:9735 \$\$TUNNELSATS_CLN_ARGS" 's/0660 \$\$/0660 --bind-addr=0.0.0.0:9735 $$/' "clearnet" "a clearnet argument before the variable is still reported"
+rb_cln_case "/bin/sh -c /usr/local/bin/lightningd --conf=/home/bitcoin/.lightning/config; /usr/bin/true \$\$TUNNELSATS_CLN_ARGS" \
+    "s|--conf=/home/bitcoin/.lightning/config  --rpc-file-mode 0660|--conf=/home/bitcoin/.lightning/config; /usr/bin/true|" "unknown" "another shell command stays unknown"
+
 # Drop-in units, the verifier's stop and its restart work for prefixed units: from the unit
 # directory while the install record is damaged, and from the record otherwise
 fx=$(rb_fixture dropins)
@@ -2575,6 +2794,59 @@ for f in /etc/systemd/system/tlightningd.service.d /etc/systemd/system/tunnelsat
     if [[ -e "$fx/fs$f" ]]; then left+=" $f"; fi
 done
 assert_equals "" "$left" "Uninstall (RaspiBlitz): the prefixed drop-in directory and every managed file are gone"
+
+# Install and uninstall of mainnet LND whose unit carries RaspiBlitz's start guard; Lightning ran.
+# The guard's env file, read before the removal clears /run/tunnelsats, decides whether it starts
+# again. $1 = name, $2 = env file content ("-": none), $3 = mode settings (default: JSON)
+rb_guard_uninstall() {
+    fx=$(rb_fixture "guard-uninstall-$1")
+    rb_guard_unit "$fx" lnd mainnet "" > /dev/null
+    printf '%s\n' "$rb_lnd_conf" > "$fx/fs/mnt/hdd/app-data/lnd/lnd.conf"
+    rb_install "$fx" lnd mainnet
+    install_doc="$doc"
+    echo "active" > "$fx/state/unit_lnd.service_ActiveState"
+    touch "$fx/state/stateful_units"
+    if [[ "$2" != "-" ]]; then
+        printf '%s' "$2" > "$fx/fs/run/tunnelsats/hybrid-lnd.env"
+    fi
+    : > "$fx/state/calls"
+    run_snippet "$fx" "$rb_env ${3:-TS_JSON=1; TS_OUT_FD=1; TS_NONINTERACTIVE=1;} TS_COMMAND=uninstall; TS_OPT_YES=1; TS_OPT_MANAGED=1; cmd_uninstall_managed"
+    doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+}
+rb_guard_uninstall flags "TUNNELSATS_LND_ARGS=${rb_flags_lnd}"$'\n'
+assert_json "$install_doc" '[d["exit_code"], d["node_config"]]' '[0, "clean"]' \
+    "Install (RaspiBlitz start guard): the unit with the guard variable and a Tor-only lnd.conf is clean"
+assert_json "$doc" '[d["exit_code"], d["remaining"], d["ln_was_active"], d["ln_started"], d["ln_disabled"], d["node_config"]]' \
+    '[0, [], true, false, true, "unknown"]' "Uninstall (RaspiBlitz start guard, flags): complete; Lightning stays stopped and is disabled"
+assert_json "$doc" '[d["action_required"]["reason"], d["action_required"]["lines"], d["action_required"]["then"]]' \
+    '["node_config_unknown", [], "systemctl enable --now lnd.service"]' "Uninstall (RaspiBlitz start guard, flags): action_required in the usual form"
+assert_json "$doc" 'd["action_required"]["detail"]' \
+    "TunnelSats is still on in RaspiBlitz (/run/tunnelsats/hybrid-lnd.env holds the clearnet flags of the current start of lnd.service): remove it in the RaspiBlitz menu (SUBSCRIBE > TunnelSats > REMOVE), then enable and start lnd.service" \
+    "Uninstall (RaspiBlitz start guard, flags): its detail points to REMOVE in the RaspiBlitz menu"
+assert_contains "$(cat "$fx/state/calls")" "systemctl disable lnd.service" "Uninstall (RaspiBlitz start guard, flags): the unit is disabled"
+assert_equals "" "$(ln_starts "$fx" lnd.service)" "Uninstall (RaspiBlitz start guard, flags): and not started"
+if [[ ! -e "$fx/fs/run/tunnelsats" ]]; then
+    pass "Uninstall (RaspiBlitz start guard, flags): the env file was read before the removal cleared /run/tunnelsats"
+else
+    fail "Uninstall (RaspiBlitz start guard, flags): the env file was read before the removal cleared /run/tunnelsats"
+fi
+for g_env in empty absent; do
+    g_content="-"
+    if [[ "$g_env" == "empty" ]]; then
+        g_content=$'TUNNELSATS_LND_ARGS=\n'
+    fi
+    rb_guard_uninstall "$g_env" "$g_content"
+    assert_json "$doc" '[d["exit_code"], d["ln_started"], d["ln_disabled"], d["node_config"], d["action_required"]]' '[0, true, false, "clean", null]' \
+        "Uninstall (RaspiBlitz start guard, env file ${g_env}): clean, so Lightning starts again"
+    assert_equals "systemctl start lnd.service" "$(ln_starts "$fx" lnd.service)" "Uninstall (RaspiBlitz start guard, env file ${g_env}): through one start"
+done
+# Interactively, nothing the operator edits changes the flags read before the removal: no re-check
+rb_guard_uninstall interactive "TUNNELSATS_LND_ARGS=${rb_flags_lnd}"$'\n' "TS_JSON=0; TS_NONINTERACTIVE=0; exec </dev/null;"
+assert_equals "1" "$(grep -c "could not be checked" <<< "$SN_OUT")" \
+    "Uninstall (RaspiBlitz start guard, interactive): the flags are reported once, without a re-check loop"
+assert_contains "$SN_OUT" "SUBSCRIBE > TunnelSats > REMOVE" "Uninstall (RaspiBlitz start guard, interactive): pointing to REMOVE in the RaspiBlitz menu"
+assert_contains "$(cat "$fx/state/calls")" "systemctl disable lnd.service" "Uninstall (RaspiBlitz start guard, interactive): the unit is disabled"
+assert_equals "" "$(ln_starts "$fx" lnd.service)" "Uninstall (RaspiBlitz start guard, interactive): and not started"
 
 # Mainnet LND held back by a start guard (auto-restart, as after an SD-card update): left to its
 # own restart; a running one is restarted into the slice
