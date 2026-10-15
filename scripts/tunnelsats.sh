@@ -7832,12 +7832,14 @@ ts_m_raspiblitz_guard_ctx() {
 # TS_M_RB_WORD, see ts_m_raspiblitz_guard_ctx) carries exactly this form, and removes the variable
 # word from TS_M_EXEC_ARGV and TS_M_EXEC_RAW: systemd loaded the unit file as it is (no daemon-reload
 # pending), no drop-in but the managed one applies, and the [Service] section holds the Environment=
-# line, the env file as the last EnvironmentFile=, the guard line and the ExecStart systemd shows, each
-# exactly once; no other line names the variable and none continues on the next. Fails with
-# TS_M_RB_WHY and changes nothing otherwise.
+# line (no empty Environment= clears it later), the env file as the last EnvironmentFile=, the guard
+# line as the last ExecStartPre= (nothing runs after it, no empty ExecStartPre= clears it) and the
+# ExecStart systemd shows, each exactly once; no other line names the variable and none continues on
+# the next. Lines count as systemd reads them: comments, and whitespace around a line and around "=",
+# do not count. Fails with TS_M_RB_WHY and changes nothing otherwise.
 ts_m_raspiblitz_guard_argv() {
-    local unit="$1" n="${#TS_M_EXEC_ARGV[@]}" raw frag p line section="" exec_line guard_line env_line envf_line
-    local n_env=0 n_envf=0 n_guard=0 n_exec=0 n_var=0 last_envf="" exec_seen="" cont=0
+    local unit="$1" n="${#TS_M_EXEC_ARGV[@]}" raw frag p line key val section="" exec_line guard_line env_line envf_line
+    local n_env=0 n_envf=0 n_guard=0 n_exec=0 n_var=0 last_envf="" last_pre="" exec_seen="" cont=0 env_reset=0
     local -a dropins=()
     TS_M_RB_WHY=""
     raw="${TS_M_EXEC_RAW% "$TS_M_RB_WORD"}"
@@ -7878,7 +7880,6 @@ ts_m_raspiblitz_guard_argv() {
     envf_line="EnvironmentFile=-${TS_M_RB_ENVFILE}"
     guard_line="ExecStartPre=+/bin/sh -c 'if [ -x ${TS_M_RB_SCRIPT} ]; then exec ${TS_M_RB_SCRIPT} guard ${TS_M_RB_IMPL} ${TS_M_RB_CHAIN}; fi; echo tunnelsats-guard: internet.tunnelsats.sh is missing, Lightning starts Tor-only >&2; mkdir -p ${TS_M_RUN_DIR} && echo ${TS_M_RB_VAR}= > ${TS_M_RB_ENVFILE}'"
     while IFS= read -r line || [[ -n "$line" ]]; do
-        # systemd ignores the whitespace around a line, and comment lines
         line="${line#"${line%%[![:space:]]*}"}"
         line="${line%"${line##*[![:space:]]}"}"
         if [[ "$line" == [#\;]* ]]; then
@@ -7894,31 +7895,51 @@ ts_m_raspiblitz_guard_argv() {
         if [[ "$line" == *"$TS_M_RB_VAR"* ]]; then
             n_var=$((n_var + 1))
         fi
-        if [[ "$section" != "[Service]" ]]; then
+        if [[ "$section" != "[Service]" ]] || [[ "$line" != *=* ]]; then
             continue
         fi
-        if [[ "$line" == "$env_line" ]]; then
-            n_env=$((n_env + 1))
-        elif [[ "$line" == "$guard_line" ]]; then
-            n_guard=$((n_guard + 1))
-        elif [[ "$line" == EnvironmentFile=* ]]; then
-            last_envf="$line"
-            if [[ "$line" == "$envf_line" ]]; then
-                n_envf=$((n_envf + 1))
-            fi
-        elif [[ "$line" == ExecStart=* ]]; then
-            n_exec=$((n_exec + 1))
-            exec_seen="$line"
-        fi
+        key="${line%%=*}"
+        key="${key%"${key##*[![:space:]]}"}"
+        val="${line#*=}"
+        val="${val#"${val%%[![:space:]]*}"}"
+        line="${key}=${val}"
+        case "$key" in
+            Environment)
+                if [[ "$line" == "$env_line" ]]; then
+                    n_env=$((n_env + 1))
+                elif [[ -z "$val" ]] && [[ "$n_env" -gt 0 ]]; then
+                    # An empty assignment clears the list, the default included
+                    env_reset=1
+                fi
+                ;;
+            EnvironmentFile)
+                last_envf="$line"
+                if [[ "$line" == "$envf_line" ]]; then
+                    n_envf=$((n_envf + 1))
+                fi
+                ;;
+            ExecStartPre)
+                last_pre="$line"
+                if [[ "$line" == "$guard_line" ]]; then
+                    n_guard=$((n_guard + 1))
+                fi
+                ;;
+            ExecStart)
+                n_exec=$((n_exec + 1))
+                exec_seen="$line"
+                ;;
+        esac
     done < "${TS_FS_ROOT}${frag}"
     if [[ "$cont" -eq 1 ]]; then
         TS_M_RB_WHY="its unit file continues lines with a backslash"
     elif [[ "$n_env" -ne 1 ]]; then
         TS_M_RB_WHY="it does not set ${env_line} once in [Service]"
+    elif [[ "$env_reset" -eq 1 ]]; then
+        TS_M_RB_WHY="an empty Environment= after ${env_line} clears that default"
     elif [[ "$n_envf" -ne 1 ]] || [[ "$last_envf" != "$envf_line" ]]; then
         TS_M_RB_WHY="it does not read ${TS_M_RB_ENVFILE} once, as its last EnvironmentFile="
-    elif [[ "$n_guard" -ne 1 ]]; then
-        TS_M_RB_WHY="it does not hold the guard line (guard ${TS_M_RB_IMPL} ${TS_M_RB_CHAIN}) once in [Service]"
+    elif [[ "$n_guard" -ne 1 ]] || [[ "$last_pre" != "$guard_line" ]]; then
+        TS_M_RB_WHY="it does not run the guard line (guard ${TS_M_RB_IMPL} ${TS_M_RB_CHAIN}) once, as its last ExecStartPre="
     elif [[ "$n_exec" -ne 1 ]] || [[ "$exec_seen" != "$exec_line" ]]; then
         TS_M_RB_WHY="the ExecStart= of its unit file differs from the one systemd runs"
     elif [[ "$n_var" -ne 3 ]]; then

@@ -2517,8 +2517,27 @@ rb_unit_edit 's/^\(ExecStartPre=+.*\)$/\1\n\1/'
 rb_guard_case "$rb_form" "a guard line twice"
 rb_unit_edit 's/^\(ExecStartPre=+.*\)$/[Unit]\n\1\n[Service]/'
 rb_guard_case "$rb_form" "a guard line outside [Service]"
+rb_guard_last_pre="${rb_form} (it does not run the guard line (guard lnd mainnet) once, as its last ExecStartPre=)"
+rb_unit_edit 's/^\(ExecStartPre=+.*\)$/\1\nExecStartPre=/'
+rb_guard_case "$rb_guard_last_pre" "an empty ExecStartPre= after the guard line (it clears the guard)"
+rb_unit_edit 's/^\(ExecStartPre=+.*\)$/\1\n  ExecStartPre = /'
+rb_guard_case "$rb_guard_last_pre" "the same reset with whitespace around ="
+rb_unit_edit 's|^\(ExecStartPre=+.*\)$|\1\nExecStartPre=/bin/true|'
+rb_guard_case "$rb_guard_last_pre" "another command after the guard line"
 rb_unit_edit '/^Environment=TUNNELSATS_LND_ARGS=$/d'
 rb_guard_case "$rb_form" "a unit without Environment=TUNNELSATS_LND_ARGS="
+rb_unit_edit 's/^\(Environment=TUNNELSATS_LND_ARGS=\)$/\1\nEnvironment=/'
+rb_guard_case "${rb_form} (an empty Environment= after Environment=TUNNELSATS_LND_ARGS= clears that default)" "an empty Environment= after the default"
+# What systemd reads the same way still counts
+rb_guard_ok() {  # $1 = name; checks that the fixture is still clean and restores it
+    run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service raspiblitz; echo "$TS_M_NC_STATUS: $TS_M_NC_REASON"'
+    assert_equals "clean: " "$SN_OUT" "RaspiBlitz start guard: ${1} still counts"
+    cp "$fx/state/lnd.service.ok" "$fx/fs/etc/systemd/system/lnd.service"
+}
+rb_unit_edit 's/^\(ExecStartPre=-.*\)$/ExecStartPre=\n\1/'
+rb_guard_ok "an empty ExecStartPre= before the guard line (the guard still runs last)"
+rb_unit_edit 's/^Environment=TUNNELSATS_LND_ARGS=$/Environment = TUNNELSATS_LND_ARGS=/; s/^ExecStart=/  ExecStart = /'
+rb_guard_ok "whitespace around = and before a line"
 rb_unit_edit 's|^EnvironmentFile=-/run/tunnelsats/hybrid-lnd.env$|EnvironmentFile=-/run/tunnelsats/hybrid-tlnd.env|'
 rb_guard_case "$rb_form" "an env file of another unit"
 rb_unit_edit '\|^EnvironmentFile=-/run/tunnelsats/hybrid-lnd.env$|d'
