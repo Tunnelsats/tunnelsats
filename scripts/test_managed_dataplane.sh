@@ -2768,18 +2768,21 @@ assert_equals "5" "$SN_RC" "Guard contract: while the guarded unit starts (kill 
 assert_json "$doc" '[d["verdict"], d["profile"], d["unit"], d["probes"], sorted(c["id"] for c in d["checks"] if c["result"] == "fail"), [c["id"] for c in d["checks"] if c["result"] != "pass" and c["class"] == "unsafe"]]' \
     '["degraded", "raspiblitz", "tlightningd.service", "skipped", ["ln_membership", "wg_endpoint", "wg_handshake"], []]' \
     "Guard contract: degraded, with the unit named and only degraded checks failing"
+assert_json "$doc" '[d["contract"], d["command"], d["ok"], d["exit_code"], d["managed"], d["profile"], d["install_state"], d["unit"], d["impl"], d["emergency_block"], d["verdict"], d["probes"], all({"id", "class", "result"} <= set(c) for c in d["checks"]), sorted({"host", "ipv4", "vpn_port"} & set(d["endpoint"]))]' \
+    '[1, "verify", false, 5, true, "raspiblitz", "installed", "tlightningd.service", "cln", false, "degraded", "skipped", true, ["host", "ipv4", "vpn_port"]]' \
+    "Guard contract: the fields of contract 1 the guard relies on (docs/managed-mode.md) are there"
 assert_equals "" "$(grep -E '^(systemd-run|curl) ' "$fx/state/calls" || true)" "Guard contract: --no-probe sends no probe"
 assert_equals "" "$(grep -E '^(ip (-[46] )?(rule|route) (add|del)|nft -f|nft delete|systemctl (start|stop|restart|enable|disable))' "$fx/state/calls" || true)" \
     "Guard contract: verify changes nothing"
 cp "$fx/state/nft_table" "$fx/state/nft_table.saved"
 rm -f "$fx/state/nft_table"
 run_snippet "$fx" "$rb_env TS_JSON=1; TS_COMMAND=verify; TS_OUT_FD=1; TS_OPT_NO_PROBE=1; cmd_verify"
-assert_equals "4" "$SN_RC" "Guard contract: without the kill switch table verify exits 4 (block)"
+assert_equals "4" "$SN_RC" "Guard contract: without the kill switch table verify exits 4 (no clearnet flags: Tor-only start)"
 mv "$fx/state/nft_table.saved" "$fx/state/nft_table"
 fx2=$(rb_fixture after-sd-update)
 rb_unit "$fx2" lnd.service "$(rb_lnd_exec "")"
 run_snippet "$fx2" "$rb_env TS_JSON=1; TS_COMMAND=verify; TS_OUT_FD=1; TS_OPT_NO_PROBE=1; cmd_verify"
-assert_equals "3" "$SN_RC" "Guard contract: after an SD-card update (no managed install yet) verify exits 3 (block)"
+assert_equals "3" "$SN_RC" "Guard contract: after an SD-card update (no managed install yet) verify exits 3 (no clearnet flags: Tor-only start)"
 assert_contains "$SN_OUT" '"code":"E_NOT_INSTALLED"' "Guard contract: reported as E_NOT_INSTALLED"
 
 # Uninstall of the RaspiBlitz install removes everything; the unit was not running and stays so
@@ -2848,8 +2851,8 @@ assert_contains "$SN_OUT" "SUBSCRIBE > TunnelSats > REMOVE" "Uninstall (RaspiBli
 assert_contains "$(cat "$fx/state/calls")" "systemctl disable lnd.service" "Uninstall (RaspiBlitz start guard, interactive): the unit is disabled"
 assert_equals "" "$(ln_starts "$fx" lnd.service)" "Uninstall (RaspiBlitz start guard, interactive): and not started"
 
-# Mainnet LND held back by a start guard (auto-restart, as after an SD-card update): left to its
-# own restart; a running one is restarted into the slice
+# Mainnet LND that waits for its automatic restart (auto-restart, for example while a start guard
+# holds it back): left to its own restart; a running one is restarted into the slice
 fx=$(rb_preflight_fixture full-autorestart)
 echo "activating" > "$fx/state/unit_lnd.service_ActiveState"
 echo "auto-restart" > "$fx/state/unit_lnd.service_SubState"

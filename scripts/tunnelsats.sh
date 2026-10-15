@@ -8898,8 +8898,8 @@ ts_m_install_abort() {
 # Succeeds if install has to restart the Lightning unit to move it into the slice, given its
 # ActiveState $1 and SubState $2: it runs, starts, reloads or stops outside the slice. A unit that is
 # not running is never started. On RaspiBlitz, a unit that waits for its next automatic restart
-# (SubState auto-restart, for example while a start guard holds it back during provisioning) is left
-# to that restart, which runs inside the slice and behind the kill switch.
+# (SubState auto-restart, for example while a start guard holds it back) is left to that restart,
+# which runs inside the slice and behind the kill switch.
 ts_m_ln_restart_needed() {
     case "$1" in
         active|reloading|deactivating) return 0 ;;

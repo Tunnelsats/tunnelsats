@@ -110,27 +110,45 @@ The dataplane is the same as on bare metal. What differs:
 - bitcoind runs as the same user (`bitcoin`). While the emergency block is active, bitcoind keeps only its Tor and local network peers; with `--uid-backstop`, its clearnet connections use the tunnel as well.
 - RaspiBlitz rewrites the unit files, for example when an instance is reinstalled or its `hsm_secret` gets encrypted; the drop-in in `/etc/systemd/system/<unit>.d/` stays.
 - Install never starts a Lightning unit that was not running. An inactive unit stays inactive, and a unit that waits for its automatic restart (`Restart=always`, every 60 seconds on RaspiBlitz) starts inside the slice at that restart. A running unit is restarted into the slice.
-- A start guard in the form of the RaspiBlitz integration (below) passes the clearnet flags of each start through one variable at the end of the command line: `$TUNNELSATS_LND_ARGS`, or for CLN `$$TUNNELSATS_CLN_ARGS` at the end of RaspiBlitz's `sh -c` command. It writes them to `/run/tunnelsats/hybrid-<name>.env` (for example `hybrid-tlnd.env` for `tlnd.service`) before every start. `uninstall --managed` reads that variable through only when the unit carries the guard exactly in that form: no `daemon-reload` pending, no drop-in except the managed one, and the `[Service]` section of the unit file holds `Environment=<variable>=`, `EnvironmentFile=-/run/tunnelsats/hybrid-<name>.env` as its last `EnvironmentFile=`, the guard line and the `ExecStart=` systemd runs, each once, with the variable on no other line. The env file then decides. Absent or empty, no clearnet flags are in use and the command line counts as clean. With flags, TunnelSats is still on in RaspiBlitz: Lightning stays stopped and disabled, and `action_required` says to remove TunnelSats in the RaspiBlitz menu (SUBSCRIBE > TunnelSats > REMOVE), then to run `sudo systemctl enable --now <unit>`. Any other variable still makes the command line one that cannot be checked.
 
 ### SD-card updates
 
-An SD-card update replaces the system: the managed units, the drop-in, `/etc/tunnelsats/managed.json`, the tunnel config and the installed script are gone, while the data drive keeps the node configuration. RaspiBlitz restores managed mode during provisioning, from `/mnt/hdd/app-data/custom-installs.sh`, which runs as root:
+An SD-card update replaces the system: the managed units, the drop-in, `/etc/tunnelsats/managed.json`, the tunnel config and the installed script are gone, while the data drive keeps the node configuration. Managed mode is restored during provisioning, as root (on RaspiBlitz from `/mnt/hdd/app-data/custom-installs.sh`):
 
 ```bash
 tunnelsats.sh install --managed raspiblitz --impl <lnd|cln> [--network <chain>] --config <copy on the data drive> --non-interactive --yes --json
 ```
 
-This runs unattended: it never prompts, never starts a Lightning unit that was not running, and prints exactly one JSON document. A failure names its error code (for example `E_LN_UNIT`, `E_CONFIG_INVALID` for a missing or invalid `--config` file, `E_LN_PORT`, or `E_MANAGED_PRESENT` when a managed install exists already, which `verify` then checks) and exits with the documented exit code. Until the install has run, a start guard in the Lightning unit keeps Lightning stopped. On an SD-card update, provisioning starts LND before `custom-installs.sh` runs; the guard holds it back, and its next automatic restart after the install (or provisioning's own start) runs inside the slice.
+This runs unattended: it never prompts, never starts a Lightning unit that was not running, and prints exactly one JSON document. A failure names its error code (for example `E_LN_UNIT`, `E_CONFIG_INVALID` for a missing or invalid `--config` file, `E_LN_PORT`, or `E_MANAGED_PRESENT` when a managed install exists already, which `verify` then checks) and exits with the documented exit code.
 
-**Contract for the start guard.** The guard runs as root before Lightning starts (`ExecStartPre=+`) and calls
+Until managed mode is restored, Lightning is Tor-only. Provisioning starts it before the install runs; `verify` finds no managed install then, so the start guard (below) starts Lightning without clearnet flags, over Tor and the local network. Once the install has run, it restarts a running Lightning unit into the slice, and the guard gives that start its clearnet flags; a unit that waits for its automatic restart gets them at that restart.
+
+### The start guard contract
+
+Managed mode never edits the Lightning unit or its clearnet settings. A start guard in the unit, such as the one of the RaspiBlitz integration in review, decides at every start whether Lightning gets clearnet flags for that start. The guard runs as root before Lightning starts (`ExecStartPre=+`) and calls
 
 ```bash
 /usr/local/sbin/tunnelsats verify --json --no-probe
 ```
 
-This changes no kernel state, unit or file (its comparison uses a temporary file and a throwaway network namespace) and sends no probes; it resolves the VPN server's host name once.
+This changes no kernel state, unit or file (its comparison uses a temporary file and a throwaway network namespace) and sends no probes. It resolves the VPN server's host name once, for at most 5 seconds; a lookup that gets no answer in that time is reported as such in the `wg_endpoint` check.
 
-- Start (exit 0) only on exit code 0 (`protected`) or 5 (`degraded`: the kill switch or the emergency block holds), and only when `unit` in the JSON document is the guarded unit. Lightning then starts inside the slice, behind the armed kill switch or the emergency block.
-- Block with a non-zero exit on anything else: 3 (no managed install, as right after an SD-card update), 4 (`unsafe`), 9 (a standard install), 1 or 2 (errors), a missing command or a document that cannot be read. `Restart=always` retries every 60 seconds, so Lightning starts on its own once the install has run.
-- Without a managed install (no install record and no kill switch unit), `verify` exits 3, or 9 on a standard install; never 0 or 5. While the install record is damaged, `unit` is null, so the guard keeps Lightning stopped until the record is restored.
-- The guard and the verifier agree: when the verifier stops Lightning because no protection holds, `verify` exits 4 and the guard blocks other starts; once a protection holds again, the verifier starts Lightning and the guard lets it through.
+- Clearnet flags only on exit code 0 (`protected`) or 5 (`degraded`: the kill switch or the emergency block holds), and only when `unit` in the JSON document is the guarded unit and `emergency_block` is `false`. Lightning then starts inside the slice, behind the armed kill switch, with the clearnet flags for this start.
+- Anything else starts Lightning Tor-only, without clearnet flags: exit code 3 (no managed install, as right after an SD-card update), 4 (`unsafe`), 9 (a standard install), 1 or 2 (errors), `emergency_block: true`, another `unit`, a missing command, no document in time or one that cannot be read. Tor and the local network keep working.
+- Without a managed install (no install record and no kill switch unit), `verify` exits 3, or 9 on a standard install; never 0 or 5. While the install record is damaged, `unit` is null, so Lightning starts Tor-only until the record is restored.
+- The guard and the verifier agree: while no protection holds, the verifier keeps Lightning stopped (see [Emergency block](#emergency-block)) and `verify` exits 4, so no start gets clearnet flags; once a protection holds again, the verifier starts Lightning, and that start passes the guard.
+
+**Fields of contract 1.** The guard relies on these fields of the `verify` document: `contract`, `command`, `ok`, `exit_code`, `managed`, `profile`, `install_state`, `unit`, `impl`, `emergency_block`, `verdict`, `probes`, `checks[].id`, `checks[].class`, `checks[].result`, `endpoint.host`, `endpoint.ipv4` and `endpoint.vpn_port`. They are part of contract 1: renaming one of them, or changing what its values mean, needs a contract bump.
+
+**Flags for one start.** The guard passes the flags through one variable at the end of the Lightning command line, read from `/run/tunnelsats/hybrid-<name>.env` (for example `hybrid-tlnd.env` for `tlnd.service`). It rewrites that file before every start, with the flags or with an empty value; while the file is absent, the unit's `Environment=` line keeps the variable empty. The node configuration stays Tor-only, and the file does not survive a reboot. In the RaspiBlitz integration, the unit of mainnet LND holds these lines (CLN passes `$$TUNNELSATS_CLN_ARGS` at the end of RaspiBlitz's `sh -c` command):
+
+```ini
+Environment=TUNNELSATS_LND_ARGS=
+EnvironmentFile=-/run/tunnelsats/hybrid-lnd.env
+ExecStartPre=+/bin/sh -c 'if [ -x /home/admin/config.scripts/internet.tunnelsats.sh ]; then exec /home/admin/config.scripts/internet.tunnelsats.sh guard lnd mainnet; fi; echo tunnelsats-guard: internet.tunnelsats.sh is missing, Lightning starts Tor-only >&2; mkdir -p /run/tunnelsats && echo TUNNELSATS_LND_ARGS= > /run/tunnelsats/hybrid-lnd.env'
+ExecStart=/usr/local/bin/lnd --configfile=/mnt/hdd/app-data/lnd/lnd.conf $TUNNELSATS_LND_ARGS
+```
+
+**When the guard script is missing.** The guard line runs the guard script only if it is there. Otherwise it writes the empty value itself and logs that Lightning starts Tor-only, for example after an update that brings back RaspiBlitz code without the integration.
+
+**Uninstall.** `uninstall --managed` reads the variable through only when the unit carries the guard exactly in this form: no `daemon-reload` pending, no drop-in except the managed one, and the `[Service]` section of the unit file holds `Environment=<variable>=`, `EnvironmentFile=-/run/tunnelsats/hybrid-<name>.env` as its last `EnvironmentFile=`, the guard line and the `ExecStart=` systemd runs, each once, with the variable on no other line. The env file then decides, as it was before the removal cleared `/run/tunnelsats`. Absent or empty, no clearnet flags are in use and the command line counts as clean. With flags, TunnelSats is still on in RaspiBlitz: Lightning stays stopped and disabled, and `action_required` says to remove TunnelSats in the RaspiBlitz menu (SUBSCRIBE > TunnelSats > REMOVE), then to run `sudo systemctl enable --now <unit>`. Any other variable still makes the command line one that cannot be checked.
