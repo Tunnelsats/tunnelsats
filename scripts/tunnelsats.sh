@@ -5897,6 +5897,17 @@ TS_M_OTHER_UNITS=()
 TS_M_EXEC_ARGV=()
 TS_M_EXEC_RAW=""
 TS_M_EXEC_REASON=""
+# RaspiBlitz's TunnelSats start guard on the Lightning unit (ts_m_raspiblitz_guard_ctx,
+# ts_m_raspiblitz_guard_argv): the script its guard line runs; the variable that carries the flags of
+# a start, its word on the command line and the env file the guard writes it to; and why a unit does
+# not carry the guard in the expected form
+TS_M_RB_SCRIPT="/home/admin/config.scripts/internet.tunnelsats.sh"
+TS_M_RB_IMPL=""
+TS_M_RB_CHAIN=""
+TS_M_RB_VAR=""
+TS_M_RB_WORD=""
+TS_M_RB_ENVFILE=""
+TS_M_RB_WHY=""
 
 # Succeeds when the process runs as root. Managed commands call it first (tests replace it).
 ts_m_require_root() {
@@ -7777,17 +7788,216 @@ ts_m_raspiblitz_cln_argv() {
     return 0
 }
 
+# RaspiBlitz's TunnelSats start guard (the RaspiBlitz integration) for unit $1: TS_M_RB_IMPL and
+# TS_M_RB_CHAIN (as its guard line names them: lnd or cl, and the chain), TS_M_RB_VAR (the variable
+# that carries the clearnet flags of a start), TS_M_RB_WORD (its word on the command line) and
+# TS_M_RB_ENVFILE (the file the guard writes it to). Fails for any other unit.
+ts_m_raspiblitz_guard_ctx() {
+    local impl net
+    TS_M_RB_IMPL=""
+    TS_M_RB_CHAIN=""
+    TS_M_RB_VAR=""
+    TS_M_RB_WORD=""
+    TS_M_RB_ENVFILE=""
+    for impl in lnd cln; do
+        for net in $TS_NETWORKS; do
+            if [[ "$(ts_m_raspiblitz_unit "$impl" "$net")" != "$1" ]]; then
+                continue
+            fi
+            TS_M_RB_CHAIN="$net"
+            if [[ "$impl" == "lnd" ]]; then
+                TS_M_RB_IMPL="lnd"
+                TS_M_RB_VAR="TUNNELSATS_LND_ARGS"
+                TS_M_RB_WORD="\$TUNNELSATS_LND_ARGS"
+            else
+                # Inside RaspiBlitz's sh -c string: systemd turns $$ into the $ the shell expands
+                TS_M_RB_IMPL="cl"
+                TS_M_RB_VAR="TUNNELSATS_CLN_ARGS"
+                TS_M_RB_WORD="\$\$TUNNELSATS_CLN_ARGS"
+            fi
+            TS_M_RB_ENVFILE="${TS_M_RUN_DIR}/hybrid-${1%.service}.env"
+            return 0
+        done
+    done
+    return 1
+}
+
+# RaspiBlitz's TunnelSats start guard passes the clearnet flags of each start through one variable,
+# the last word of the Lightning command line:
+#   LND: ExecStart=/usr/local/bin/lnd --configfile=<config> $TUNNELSATS_LND_ARGS
+#   CLN: ExecStart=/bin/sh -c '<RaspiBlitz's command, ts_m_raspiblitz_cln_argv> $$TUNNELSATS_CLN_ARGS'
+# Before every start, its guard line (ExecStartPre=+) writes "<VAR>=<flags>" to the env file, or
+# "<VAR>=" (Tor-only) unless verify vouches for the managed dataplane, and also when the guard script
+# is missing; Environment=<VAR>= is the default. Succeeds if unit $1 (TS_M_EXEC_ARGV ends with
+# TS_M_RB_WORD, see ts_m_raspiblitz_guard_ctx) carries exactly this form, and removes the variable
+# word from TS_M_EXEC_ARGV and TS_M_EXEC_RAW: systemd loaded the unit file as it is (no daemon-reload
+# pending), no drop-in but the managed one applies, and the [Service] section holds the Environment=
+# line (no empty Environment= clears it later), the env file as the last EnvironmentFile=, the guard
+# line as the last ExecStartPre= (nothing runs after it, no empty ExecStartPre= clears it) and the
+# ExecStart systemd shows, each exactly once; no other line names the variable and none continues on
+# the next. Lines count as systemd reads them: comments, and whitespace around a line and around "=",
+# do not count. Fails with TS_M_RB_WHY and changes nothing otherwise.
+ts_m_raspiblitz_guard_argv() {
+    local unit="$1" n="${#TS_M_EXEC_ARGV[@]}" raw frag p line key val section="" exec_line guard_line env_line envf_line
+    local n_env=0 n_envf=0 n_guard=0 n_exec=0 n_var=0 last_envf="" last_pre="" exec_seen="" cont=0 env_reset=0
+    local -a dropins=()
+    TS_M_RB_WHY=""
+    raw="${TS_M_EXEC_RAW% "$TS_M_RB_WORD"}"
+    if [[ "${TS_M_EXEC_ARGV[n-1]}" != "$TS_M_RB_WORD" ]] || [[ "$raw" == "$TS_M_EXEC_RAW" ]]; then
+        TS_M_RB_WHY="${TS_M_RB_WORD} is not its last word"
+        return 1
+    fi
+    if [[ "$TS_M_RB_IMPL" == "lnd" ]]; then
+        if [[ "${TS_M_EXEC_ARGV[0]}" != "/usr/local/bin/lnd" ]]; then
+            TS_M_RB_WHY="it does not run /usr/local/bin/lnd"
+            return 1
+        fi
+        exec_line="ExecStart=${TS_M_EXEC_RAW}"
+    else
+        if [[ "$TS_M_EXEC_RAW" != "/bin/sh -c "* ]]; then
+            TS_M_RB_WHY="it does not run /bin/sh -c"
+            return 1
+        fi
+        exec_line="ExecStart=/bin/sh -c '${TS_M_EXEC_RAW#/bin/sh -c }'"
+    fi
+    if [[ "$(ts_m_unit_prop "$unit" NeedDaemonReload)" != "no" ]]; then
+        TS_M_RB_WHY="its unit file changed since systemd loaded it (systemctl daemon-reload)"
+        return 1
+    fi
+    read -r -a dropins <<< "$(ts_m_unit_prop "$unit" DropInPaths)"
+    for p in "${dropins[@]}"; do
+        if [[ "$p" != "${TS_M_UNIT_DIR}/${unit}.d/${TS_M_DROPIN_NAME}" ]]; then
+            TS_M_RB_WHY="the drop-in ${p} can change it"
+            return 1
+        fi
+    done
+    frag=$(ts_m_unit_prop "$unit" FragmentPath)
+    if [[ "$frag" != /* ]] || [[ ! -f "${TS_FS_ROOT}${frag}" ]] || [[ ! -r "${TS_FS_ROOT}${frag}" ]]; then
+        TS_M_RB_WHY="its unit file (${frag:-none}) cannot be read"
+        return 1
+    fi
+    env_line="Environment=${TS_M_RB_VAR}="
+    envf_line="EnvironmentFile=-${TS_M_RB_ENVFILE}"
+    guard_line="ExecStartPre=+/bin/sh -c 'if [ -x ${TS_M_RB_SCRIPT} ]; then exec ${TS_M_RB_SCRIPT} guard ${TS_M_RB_IMPL} ${TS_M_RB_CHAIN}; fi; echo tunnelsats-guard: internet.tunnelsats.sh is missing, Lightning starts Tor-only >&2; mkdir -p ${TS_M_RUN_DIR} && echo ${TS_M_RB_VAR}= > ${TS_M_RB_ENVFILE}'"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        if [[ "$line" == [#\;]* ]]; then
+            continue
+        fi
+        if [[ "$line" == *\\ ]]; then
+            cont=1
+        fi
+        if [[ "$line" == \[*\] ]]; then
+            section="$line"
+            continue
+        fi
+        if [[ "$line" == *"$TS_M_RB_VAR"* ]]; then
+            n_var=$((n_var + 1))
+        fi
+        if [[ "$section" != "[Service]" ]] || [[ "$line" != *=* ]]; then
+            continue
+        fi
+        key="${line%%=*}"
+        key="${key%"${key##*[![:space:]]}"}"
+        val="${line#*=}"
+        val="${val#"${val%%[![:space:]]*}"}"
+        line="${key}=${val}"
+        case "$key" in
+            Environment)
+                if [[ "$line" == "$env_line" ]]; then
+                    n_env=$((n_env + 1))
+                elif [[ -z "$val" ]] && [[ "$n_env" -gt 0 ]]; then
+                    # An empty assignment clears the list, the default included
+                    env_reset=1
+                fi
+                ;;
+            EnvironmentFile)
+                last_envf="$line"
+                if [[ "$line" == "$envf_line" ]]; then
+                    n_envf=$((n_envf + 1))
+                fi
+                ;;
+            ExecStartPre)
+                last_pre="$line"
+                if [[ "$line" == "$guard_line" ]]; then
+                    n_guard=$((n_guard + 1))
+                fi
+                ;;
+            ExecStart)
+                n_exec=$((n_exec + 1))
+                exec_seen="$line"
+                ;;
+        esac
+    done < "${TS_FS_ROOT}${frag}"
+    if [[ "$cont" -eq 1 ]]; then
+        TS_M_RB_WHY="its unit file continues lines with a backslash"
+    elif [[ "$n_env" -ne 1 ]]; then
+        TS_M_RB_WHY="it does not set ${env_line} once in [Service]"
+    elif [[ "$env_reset" -eq 1 ]]; then
+        TS_M_RB_WHY="an empty Environment= after ${env_line} clears that default"
+    elif [[ "$n_envf" -ne 1 ]] || [[ "$last_envf" != "$envf_line" ]]; then
+        TS_M_RB_WHY="it does not read ${TS_M_RB_ENVFILE} once, as its last EnvironmentFile="
+    elif [[ "$n_guard" -ne 1 ]] || [[ "$last_pre" != "$guard_line" ]]; then
+        TS_M_RB_WHY="it does not run the guard line (guard ${TS_M_RB_IMPL} ${TS_M_RB_CHAIN}) once, as its last ExecStartPre="
+    elif [[ "$n_exec" -ne 1 ]] || [[ "$exec_seen" != "$exec_line" ]]; then
+        TS_M_RB_WHY="the ExecStart= of its unit file differs from the one systemd runs"
+    elif [[ "$n_var" -ne 3 ]]; then
+        TS_M_RB_WHY="its unit file names ${TS_M_RB_VAR} elsewhere"
+    else
+        TS_M_EXEC_ARGV=("${TS_M_EXEC_ARGV[@]:0:n-1}")
+        TS_M_EXEC_RAW="$raw"
+        return 0
+    fi
+    return 1
+}
+
+# State of the env file $1 of RaspiBlitz's start guard for variable $2: absent, empty (no bytes, or
+# "<VAR>=": the current start is Tor-only), flags ("<VAR>=<flags>" on one line: the clearnet flags of
+# the current start) or invalid (anything else, or not a regular file that can be read).
+ts_m_raspiblitz_env_state() {
+    local f="$1" var="$2" content="" re
+    if [[ ! -e "$f" ]] && [[ ! -L "$f" ]]; then
+        echo "absent"
+        return 0
+    fi
+    if [[ -L "$f" ]] || [[ ! -f "$f" ]] || ! content=$(head -c 4097 -- "$f" 2>/dev/null && printf x); then
+        echo "invalid"
+        return 0
+    fi
+    content="${content%x}"
+    re="^${var}=[^[:cntrl:]]+"$'\n'"?\$"
+    if [[ -z "$content" ]] || [[ "$content" == "${var}=" ]] || [[ "$content" == "${var}="$'\n' ]]; then
+        echo "empty"
+    elif [[ "${#content}" -le 4096 ]] && [[ "$content" =~ $re ]]; then
+        echo "flags"
+    else
+        echo "invalid"
+    fi
+}
+
 # Like ts_m_execstart_tokens, and succeeds only if the arguments can be checked reliably. Fails with
 # TS_M_EXEC_REASON when the command line cannot be read, when a shell or a script runs (it can add
 # arguments of its own) or when it uses $VAR or ${VAR} (systemd fills those in from Environment= or
 # EnvironmentFile= when the unit starts). With profile $2 raspiblitz, RaspiBlitz's own shell command
-# for CLN is read through (ts_m_raspiblitz_cln_argv).
+# for CLN is read through (ts_m_raspiblitz_cln_argv), and so is the variable of RaspiBlitz's start
+# guard (ts_m_raspiblitz_guard_argv): then the guard's env file decides, in state $3 if given (read
+# before uninstall --managed cleared /run/tunnelsats), else as it is now (ts_m_raspiblitz_env_state).
+# Absent or empty passes; flags mean TunnelSats is still on in RaspiBlitz, and fail like anything else.
 ts_m_execstart_args() {
-    local unit="$1" profile="${2:-}" exe head=""
+    local unit="$1" profile="${2:-}" rb_env="${3:-}" exe head="" rb_guard=0
     TS_M_EXEC_REASON=""
     if ! ts_m_execstart_tokens "$unit"; then
         TS_M_EXEC_REASON="the command line (ExecStart) of ${unit} cannot be read"
         return 1
+    fi
+    if [[ "$profile" == "raspiblitz" ]] && ts_m_raspiblitz_guard_ctx "$unit" && \
+        [[ "${TS_M_EXEC_ARGV[${#TS_M_EXEC_ARGV[@]}-1]}" == "$TS_M_RB_WORD" ]]; then
+        if ! ts_m_raspiblitz_guard_argv "$unit"; then
+            TS_M_EXEC_REASON="the command line (ExecStart) of ${unit} ends with ${TS_M_RB_WORD} of the RaspiBlitz start guard, but the unit does not carry the guard in the expected form (${TS_M_RB_WHY})"
+            return 1
+        fi
+        rb_guard=1
     fi
     if [[ "${TS_M_EXEC_ARGV[*]}" == *'$'* ]]; then
         TS_M_EXEC_REASON="the command line (ExecStart) of ${unit} takes values from environment variables (\$VAR or \${VAR})"
@@ -7809,6 +8019,22 @@ ts_m_execstart_args() {
             TS_M_EXEC_REASON="the command line (ExecStart) of ${unit} runs the script ${exe}, which can add arguments"
             return 1
         fi
+    fi
+    if [[ "$rb_guard" -eq 1 ]]; then
+        if [[ -z "$rb_env" ]]; then
+            rb_env=$(ts_m_raspiblitz_env_state "${TS_FS_ROOT}${TS_M_RB_ENVFILE}" "$TS_M_RB_VAR")
+        fi
+        case "$rb_env" in
+            absent|empty) ;;
+            flags)
+                TS_M_EXEC_REASON="TunnelSats is still on in RaspiBlitz (${TS_M_RB_ENVFILE} holds the clearnet flags of the current start of ${unit}): remove it in the RaspiBlitz menu (SUBSCRIBE > TunnelSats > REMOVE), then enable and start ${unit}"
+                return 1
+                ;;
+            *)
+                TS_M_EXEC_REASON="${TS_M_RB_ENVFILE} of the RaspiBlitz start guard holds something other than ${TS_M_RB_VAR}=<flags>"
+                return 1
+                ;;
+        esac
     fi
     return 0
 }
@@ -8006,15 +8232,19 @@ ts_m_execstart_clearnet() {
 
 # Reports active TunnelSats clearnet settings of the Lightning unit $2 (implementation $1), in its
 # config file and on its command line (ExecStart); see ts_m_nc_setting_hit. Sets TS_M_NC_STATUS to
-# clearnet (settings found), unknown (config missing or unreadable, or a command line that cannot be
-# checked reliably: shell, script, $VAR) or clean, TS_M_NC_LINES to "<file>:<line>:<setting>" and
-# "<unit> ExecStart: <argument>", and TS_M_NC_REASON. $3 = managed profile (raspiblitz: RaspiBlitz's
-# shell command for CLN can be checked, see ts_m_raspiblitz_cln_argv). Read-only; the bare-metal
-# guard reuses it.
+# clearnet (settings found), unknown (config missing or unreadable, a CLN config that includes other
+# files, or a command line that cannot be checked reliably: shell, script, $VAR) or clean,
+# TS_M_NC_LINES to "<file>:<line>:<setting>" and "<unit> ExecStart: <argument>", followed by the
+# include lines of a CLN config ("<file>:<line>:include <path>", also in TS_M_NC_INCLUDES), and
+# TS_M_NC_REASON. $3 = managed profile (raspiblitz: RaspiBlitz's shell command for CLN and the
+# variable of its start guard can be checked, see ts_m_raspiblitz_cln_argv and
+# ts_m_raspiblitz_guard_argv), $4 = state of the start guard's env file read earlier
+# (ts_m_execstart_args). Read-only; the bare-metal guard reuses it.
 ts_m_node_config_clearnet() {
-    local impl="$1" unit="$2" profile="${3:-}" f entry num key val exec_ok=1
+    local impl="$1" unit="$2" profile="${3:-}" rb_env="${4:-}" f entry num key val exec_ok=1
     TS_M_NC_STATUS="unknown"
     TS_M_NC_LINES=()
+    TS_M_NC_INCLUDES=()
     ts_m_node_config_files "$impl" "$unit"
     for f in "${TS_M_NC_FILES[@]}"; do
         while IFS= read -r entry; do
@@ -8026,9 +8256,16 @@ ts_m_node_config_clearnet() {
                 TS_M_NC_LINES+=("${f}:${num}:${key}=${val}")
             fi
         done < <(ts_m_config_settings "${TS_FS_ROOT}${f}")
+        # lightningd reads an included file as part of its config; included files are not
+        # followed here, so an include makes the config one that cannot be checked
+        if [[ "$impl" == "cln" ]]; then
+            while IFS= read -r entry; do
+                TS_M_NC_INCLUDES+=("${f}:${entry%%|*}:include ${entry#*|}")
+            done < <(ts_m_cln_config_includes "${TS_FS_ROOT}${f}")
+        fi
     done
     # The command line counts like the config file; one that cannot be checked makes it unknown
-    if ts_m_execstart_args "$unit" "$profile"; then
+    if ts_m_execstart_args "$unit" "$profile" "$rb_env"; then
         ts_m_execstart_clearnet "$impl" "$unit"
     else
         exec_ok=0
@@ -8038,14 +8275,35 @@ ts_m_node_config_clearnet() {
             TS_M_NC_REASON="$TS_M_EXEC_REASON"
         fi
     fi
+    if [[ ${#TS_M_NC_INCLUDES[@]} -gt 0 ]]; then
+        TS_M_NC_REASON="${TS_M_NC_REASON:+${TS_M_NC_REASON}; }the CLN config includes other files, which are not checked"
+    fi
     if [[ ${#TS_M_NC_LINES[@]} -gt 0 ]]; then
         TS_M_NC_STATUS="clearnet"
-    elif [[ ${#TS_M_NC_FILES[@]} -eq 0 ]] || [[ "$exec_ok" -eq 0 ]]; then
+    elif [[ ${#TS_M_NC_FILES[@]} -eq 0 ]] || [[ "$exec_ok" -eq 0 ]] || [[ ${#TS_M_NC_INCLUDES[@]} -gt 0 ]]; then
         TS_M_NC_STATUS="unknown"
     else
         TS_M_NC_STATUS="clean"
     fi
+    TS_M_NC_LINES+=("${TS_M_NC_INCLUDES[@]}")
     return 0
+}
+
+# Prints the include directives of CLN config file $1 as "<line number>|<path>": active lines
+# "include <path>" or "include=<path>", as lightningd reads them.
+ts_m_cln_config_includes() {
+    awk '
+        { sub(/\r$/, "") }
+        {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            sub(/[[:space:]]+$/, "", line)
+            if (match(line, /^include([[:space:]]+|=)/)) {
+                path = substr(line, RLENGTH + 1)
+                sub(/^[[:space:]]+/, "", path)
+                if (path != "") print NR "|" path
+            }
+        }' "$1" 2>/dev/null
 }
 
 # Prints the TCP ports of the non-loopback Lightning listen addresses set in the node config of
@@ -8692,8 +8950,8 @@ ts_m_install_abort() {
 # Succeeds if install has to restart the Lightning unit to move it into the slice, given its
 # ActiveState $1 and SubState $2: it runs, starts, reloads or stops outside the slice. A unit that is
 # not running is never started. On RaspiBlitz, a unit that waits for its next automatic restart
-# (SubState auto-restart, for example while a start guard holds it back during provisioning) is left
-# to that restart, which runs inside the slice and behind the kill switch.
+# (SubState auto-restart, for example while a start guard holds it back) is left to that restart,
+# which runs inside the slice and behind the kill switch.
 ts_m_ln_restart_needed() {
     case "$1" in
         active|reloading|deactivating) return 0 ;;
@@ -8876,7 +9134,7 @@ cmd_install_managed() {
 # ---------------------------------------------------------------------------
 
 cmd_uninstall_managed() {
-    local answer="" ln_was_active=0 ln_was_stopped=0 locked=0 ln_started=0 ln_disabled=0 disable_err="" reason="" rc=0 i
+    local answer="" ln_was_active=0 ln_was_stopped=0 ln_state="" locked=0 ln_started=0 ln_disabled=0 disable_err="" reason="" rc=0 rb_env="" i
     ts_m_require_root
     if ! ts_m_inventory_present; then
         ts_fail 3 E_NOT_INSTALLED not_installed "No managed install found (${TS_M_INVENTORY})"
@@ -8912,15 +9170,36 @@ cmd_uninstall_managed() {
     if [[ "$locked" -eq 1 ]]; then
         ts_m_unlock
     fi
-    if [[ "$(ts_m_unit_prop "$TS_M_INV_UNIT" ActiveState)" == "active" ]]; then
-        ln_was_active=1
-        print_info "Stopping ${TS_M_INV_UNIT} (it is still inside the slice and protected)..."
-        if ! "$SYSTEMCTL_BIN" stop "$TS_M_INV_UNIT"; then
-            ts_fail 1 E_LN_STOP operational "${TS_M_INV_UNIT} could not be stopped; nothing was removed"
-        fi
-    elif [[ "$ln_was_stopped" -eq 1 ]]; then
-        # Stopped by the verifier while no protection held; it was meant to run
-        ln_was_active=1
+    # Every state but inactive and failed means the unit runs, starts (ExecStartPre, LND before
+    # READY=1), reloads, stops or waits for its next automatic restart (Restart=always, also after a
+    # start a start guard refused). disable ends none of these, and a start that completes after the
+    # removal runs outside the tunnel: the unit is stopped (which also cancels a pending restart) and
+    # has to read back stopped before anything is removed. It was meant to run.
+    ln_state=$(ts_m_unit_prop "$TS_M_INV_UNIT" ActiveState)
+    case "$ln_state" in
+        inactive|failed)
+            if [[ "$ln_was_stopped" -eq 1 ]]; then
+                # Stopped by the verifier while no protection held; it was meant to run
+                ln_was_active=1
+            fi
+            ;;
+        *)
+            ln_was_active=1
+            print_info "Stopping ${TS_M_INV_UNIT} (${ln_state:-state unknown}; still inside the slice and protected)..."
+            if ! "$SYSTEMCTL_BIN" stop "$TS_M_INV_UNIT"; then
+                ts_fail 1 E_LN_STOP operational "${TS_M_INV_UNIT} could not be stopped; nothing was removed"
+            fi
+            ln_state=$(ts_m_unit_prop "$TS_M_INV_UNIT" ActiveState)
+            case "$ln_state" in
+                inactive|failed) ;;
+                *) ts_fail 1 E_LN_STOP operational "${TS_M_INV_UNIT} did not stop (state ${ln_state:-unknown}); nothing was removed" ;;
+            esac
+            ;;
+    esac
+    # RaspiBlitz's start guard keeps the flags of the current start below /run/tunnelsats, which the
+    # removal clears: their state is read first (ts_m_execstart_args)
+    if [[ "$TS_M_INV_PROFILE" == "raspiblitz" ]] && ts_m_raspiblitz_guard_ctx "$TS_M_INV_UNIT"; then
+        rb_env=$(ts_m_raspiblitz_env_state "${TS_FS_ROOT}${TS_M_RB_ENVFILE}" "$TS_M_RB_VAR")
     fi
     print_info "Removing the managed dataplane..."
     ts_m_remove_dataplane
@@ -8933,16 +9212,18 @@ cmd_uninstall_managed() {
     fi
 
     # The node config is the operator's: Lightning starts again only if it holds no TunnelSats
-    # clearnet settings, because outside the slice they would use the regular internet connection
-    ts_m_node_config_clearnet "$TS_M_INV_IMPL" "$TS_M_INV_UNIT" "$TS_M_INV_PROFILE"
-    if [[ "$ln_was_active" -eq 1 ]] && [[ "$TS_M_NC_STATUS" != "clean" ]] && [[ "$TS_NONINTERACTIVE" -ne 1 ]] && [[ "$rc" -eq 0 ]]; then
+    # clearnet settings, because outside the slice they would use the regular internet connection.
+    # Flags of the start guard are no setting to remove here, so they get no re-check.
+    ts_m_node_config_clearnet "$TS_M_INV_IMPL" "$TS_M_INV_UNIT" "$TS_M_INV_PROFILE" "$rb_env"
+    if [[ "$ln_was_active" -eq 1 ]] && [[ "$TS_M_NC_STATUS" != "clean" ]] && [[ "$TS_NONINTERACTIVE" -ne 1 ]] && [[ "$rc" -eq 0 ]] && \
+        [[ "$rb_env" != "flags" ]]; then
         for i in 1 2 3; do
             ts_m_uninstall_print_lines
             ts_ask answer "--yes" "Remove these settings now, then press Enter to check again (or type 'skip'): " "skip"
             if [[ "$answer" == "skip" ]]; then
                 break
             fi
-            ts_m_node_config_clearnet "$TS_M_INV_IMPL" "$TS_M_INV_UNIT" "$TS_M_INV_PROFILE"
+            ts_m_node_config_clearnet "$TS_M_INV_IMPL" "$TS_M_INV_UNIT" "$TS_M_INV_PROFILE" "$rb_env"
             if [[ "$TS_M_NC_STATUS" == "clean" ]]; then
                 break
             fi
@@ -9015,18 +9296,28 @@ cmd_uninstall_managed() {
 }
 
 # Prints the TunnelSats clearnet settings found in the node config or on the unit's command line
-# (or why they could not be checked).
+# (or why they could not be checked), and the includes of a CLN config, which are not checked (they
+# end TS_M_NC_LINES, see ts_m_node_config_clearnet).
 ts_m_uninstall_print_lines() {
-    local l
+    local l i n_set=$(( ${#TS_M_NC_LINES[@]} - ${#TS_M_NC_INCLUDES[@]} ))
     if [[ "$TS_M_NC_STATUS" == "unknown" ]]; then
         echo "The Lightning settings could not be checked: ${TS_M_NC_REASON}." >&2
+        for l in "${TS_M_NC_INCLUDES[@]}"; do
+            echo "  ${l}" >&2
+        done
         echo "Make sure neither the node config nor the command line (ExecStart) of ${TS_M_INV_UNIT} holds TunnelSats clearnet settings (LND: externalhosts, tor.skip-proxy-for-clearnet-targets; CLN: bind-addr=0.0.0.0:9735, addr or announce-addr with a clearnet address, always-use-proxy=false)." >&2
         return 0
     fi
     echo "Remove these TunnelSats settings (node config, or the command line of ${TS_M_INV_UNIT}):" >&2
-    for l in "${TS_M_NC_LINES[@]}"; do
-        echo "  ${l}" >&2
+    for (( i = 0; i < n_set; i++ )); do
+        echo "  ${TS_M_NC_LINES[$i]}" >&2
     done
+    if [[ ${#TS_M_NC_INCLUDES[@]} -gt 0 ]]; then
+        echo "The config also includes other files, which are not checked; check them for these settings as well:" >&2
+        for l in "${TS_M_NC_INCLUDES[@]}"; do
+            echo "  ${l}" >&2
+        done
+    fi
 }
 
 # restart on a managed install: restarts only the tunnel; the kill switch keeps clearnet traffic
@@ -9060,8 +9351,8 @@ ts_m_cmd_restart() {
 # the echo services and the IPv6 probe follow only when every kernel check of the unsafe class and
 # the kill switch probe passed, so no probe shows the node's address to anyone new.
 # A start guard in the Lightning unit (RaspiBlitz) relies on "verify --json --no-probe": exit 0 or
-# 5 only while the dataplane holds for the unit named in "unit", never without a managed install
-# (docs/managed-mode.md, RaspiBlitz).
+# 5 only while the dataplane holds for the unit named in "unit", never without a managed install,
+# and no long wait: its one name lookup (the endpoint) is bounded (docs/managed-mode.md, RaspiBlitz).
 # ---------------------------------------------------------------------------
 
 TS_V_ID=()
@@ -9073,6 +9364,10 @@ TS_V_EMERGENCY_STATE="none"
 # action_required of the verify document (raw JSON), set when the operator has to act
 TS_V_ACTION_J="null"
 TS_V_ACTION_TEXT=""
+# Time limit of the endpoint lookup in seconds (ts_v_resolve_timeout), and "timeout" when the
+# lookup got no answer within it (ts_v_read_endpoint)
+TS_V_RESOLVE_TIMEOUT=5
+TS_V_EP_LOOKUP=""
 
 # Records check $1 with class $2 (unsafe or degraded, the class a failure falls into), result $3
 # (pass, fail, skip) and detail $4.
@@ -9566,13 +9861,27 @@ ts_v_check_handshake() {
     fi
 }
 
+# Prints the time limit of the endpoint lookup in seconds: TS_VERIFY_RESOLVE_TIMEOUT (tests), else 5.
+# Fails for anything but a whole number from 1 to 999.
+ts_v_resolve_timeout() {
+    local t="${TS_VERIFY_RESOLVE_TIMEOUT:-5}"
+    if [[ ! "$t" =~ ^[1-9][0-9]{0,2}$ ]]; then
+        return 1
+    fi
+    echo "$t"
+}
+
 # Reads the endpoint of the managed tunnel config into TS_V_EP_HOST, TS_V_EP_PORT, TS_V_ENDPOINT_IP
-# and TS_V_VPN_PORT (the private key is never read into a variable).
+# and TS_V_VPN_PORT (the private key is never read into a variable). A host name is resolved once,
+# for at most TS_V_RESOLVE_TIMEOUT seconds: a start guard runs verify before every Lightning start,
+# so a name server that does not answer must not hold it up. TS_V_EP_LOOKUP is "timeout" when the
+# lookup got no answer in time, else empty.
 ts_v_read_endpoint() {
-    local ep=""
+    local ep="" out="" rc=0
     TS_V_EP_HOST=""
     TS_V_EP_PORT=""
     TS_V_ENDPOINT_IP=""
+    TS_V_EP_LOOKUP=""
     TS_V_VPN_PORT=""
     ep=$(sed -nE 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*([^[:space:]#]+).*/\1/Ip' "${TS_FS_ROOT}${TS_M_WG_CONF}" 2>/dev/null | head -n 1) || ep=""
     if ts_detect_parse_endpoint "$ep"; then
@@ -9581,7 +9890,11 @@ ts_v_read_endpoint() {
         if valid_ipv4 "$TS_V_EP_HOST"; then
             TS_V_ENDPOINT_IP="$TS_V_EP_HOST"
         else
-            TS_V_ENDPOINT_IP=$("$GETENT_BIN" ahostsv4 "$TS_V_EP_HOST" 2>/dev/null | awk 'NR == 1 { print $1 }') || TS_V_ENDPOINT_IP=""
+            out=$(timeout --kill-after=1 "${TS_V_RESOLVE_TIMEOUT:-5}" "$GETENT_BIN" ahostsv4 "$TS_V_EP_HOST" 2>/dev/null) || rc=$?
+            TS_V_ENDPOINT_IP=$(printf '%s\n' "$out" | awk 'NR == 1 { print $1 }')
+            if [[ -z "$TS_V_ENDPOINT_IP" ]] && { [[ "$rc" -eq 124 ]] || [[ "$rc" -eq 137 ]]; }; then
+                TS_V_EP_LOOKUP="timeout"
+            fi
         fi
     fi
     TS_V_VPN_PORT=$(ts_config_vpn_port "${TS_FS_ROOT}${TS_M_WG_CONF}" 2>/dev/null) || TS_V_VPN_PORT=""
@@ -9594,7 +9907,9 @@ ts_v_check_endpoint() {
         return 0
     fi
     live=$(printf '%s\n' "$out" | awk 'NR == 1 { print $2 }')
-    if [[ -z "$TS_V_ENDPOINT_IP" ]]; then
+    if [[ -z "$TS_V_ENDPOINT_IP" ]] && [[ "$TS_V_EP_LOOKUP" == "timeout" ]]; then
+        ts_v_add wg_endpoint degraded fail "the lookup of the configured endpoint ${TS_V_EP_HOST} got no answer within ${TS_V_RESOLVE_TIMEOUT:-5} s"
+    elif [[ -z "$TS_V_ENDPOINT_IP" ]]; then
         ts_v_add wg_endpoint degraded fail "the configured endpoint ${TS_V_EP_HOST:-?} does not resolve"
     elif [[ "$live" == "${TS_V_ENDPOINT_IP}:${TS_V_EP_PORT}" ]]; then
         ts_v_add wg_endpoint degraded pass "${live}"
@@ -9856,6 +10171,10 @@ cmd_verify() {
         ts_usage_error "TS_VERIFY_ECHO_URLS needs two URLs"
     fi
     TS_V_V6_URL="${TS_VERIFY_IPV6_URL:-https://tunnelsats.com}"
+    # The endpoint lookup gets TS_VERIFY_RESOLVE_TIMEOUT seconds (default 5), overridable for tests
+    if ! TS_V_RESOLVE_TIMEOUT=$(ts_v_resolve_timeout); then
+        ts_usage_error "TS_VERIFY_RESOLVE_TIMEOUT must be a whole number of seconds from 1 to 999"
+    fi
     if [[ "$TS_OPT_NO_PROBE" -eq 1 ]]; then
         probes="skipped"
     fi
