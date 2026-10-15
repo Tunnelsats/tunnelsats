@@ -1368,6 +1368,45 @@ verify_doc "TS_OPT_NO_PROBE=1;"
 assert_json "$doc" '[d["verdict"], [c["class"] + ":" + c["result"] for c in d["checks"] if c["id"] == "table_51820"][0]]' \
     '["degraded", "degraded:fail"]' "verify: the missing tunnel route on its own is degraded"
 
+# The endpoint host name is resolved once, for at most TS_VERIFY_RESOLVE_TIMEOUT seconds (default
+# 5): a name server that does not answer holds verify up for that long at most (a start guard runs
+# verify before every Lightning start), and wg_endpoint names the lookup that got no answer
+run_snippet "$fx" 'for v in "" 1 7 999 0 1000 abc " 5" 5s; do printf "[%s]=%s " "$v" "$(TS_VERIFY_RESOLVE_TIMEOUT="$v" ts_v_resolve_timeout || echo refused)"; done'
+assert_equals "[]=5 [1]=1 [7]=7 [999]=999 [0]=refused [1000]=refused [abc]=refused [ 5]=refused [5s]=refused " "$SN_OUT" \
+    "verify: the endpoint lookup timeout defaults to 5 s and takes 1 to 999 s"
+verify_doc "TS_OPT_NO_PROBE=1; export TS_VERIFY_RESOLVE_TIMEOUT=abc;"
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"], d["errors"][0]["message"]]' \
+    '[2, "E_USAGE", "TS_VERIFY_RESOLVE_TIMEOUT must be a whole number of seconds from 1 to 999"]' "verify: an invalid lookup timeout is a usage error"
+cat > "$TMP_ROOT/getent-silent" <<EOF
+#!/bin/bash
+# getent whose host lookups get no answer (a silent name server); everything else as the stub
+if [[ "\$1" == "ahostsv4" ]]; then sleep 20; fi
+exec "$STUB_BIN/getent" "\$@"
+EOF
+chmod +x "$TMP_ROOT/getent-silent"
+sed -i 's/198.18.2.1:51820/vpn.ts-host.test:51820/' "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+lookup_started=$SECONDS
+verify_doc "TS_OPT_NO_PROBE=1; GETENT_BIN='$TMP_ROOT/getent-silent'; export TS_VERIFY_RESOLVE_TIMEOUT=1;"
+lookup_secs=$((SECONDS - lookup_started))
+assert_equals "degraded:fail: the lookup of the configured endpoint vpn.ts-host.test got no answer within 1 s" "$(check_detail wg_endpoint)" \
+    "verify: an endpoint lookup that gets no answer is reported as such"
+assert_json "$doc" '[d["exit_code"], d["endpoint"]["host"], d["endpoint"]["ipv4"]]' '[5, "vpn.ts-host.test", null]' \
+    "verify: degraded, with the host name and no address"
+if [[ "$lookup_secs" -lt 10 ]]; then
+    pass "verify: the lookup is cut off after the timeout (${lookup_secs} s)"
+else
+    fail "verify: the lookup is cut off after the timeout (took ${lookup_secs} s)"
+fi
+verify_doc "TS_OPT_NO_PROBE=1;"
+assert_equals "degraded:fail: the configured endpoint vpn.ts-host.test does not resolve" "$(check_detail wg_endpoint)" \
+    "verify: a name that does not resolve is reported as before"
+echo "198.18.2.1" > "$fx/state/resolve_vpn.ts-host.test"
+verify_doc "TS_OPT_NO_PROBE=1;"
+assert_equals "degraded:pass: 198.18.2.1:51820" "$(check_detail wg_endpoint)" "verify: a resolved host name is compared with the live endpoint"
+assert_json "$doc" 'd["endpoint"]["ipv4"]' "198.18.2.1" "verify: and reported with its address"
+rm -f "$fx/state/resolve_vpn.ts-host.test"
+sed -i 's/vpn.ts-host.test:51820/198.18.2.1:51820/' "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+
 # Emergency block armed and verified while the kill switch table is in place too (the fixture's
 # attestation stays valid), as after a re-arm before the release: degraded while no probe gets
 # through. The kill chain stops the slice's direct path then, so the kill switch probe runs as root,

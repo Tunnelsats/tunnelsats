@@ -9060,8 +9060,8 @@ ts_m_cmd_restart() {
 # the echo services and the IPv6 probe follow only when every kernel check of the unsafe class and
 # the kill switch probe passed, so no probe shows the node's address to anyone new.
 # A start guard in the Lightning unit (RaspiBlitz) relies on "verify --json --no-probe": exit 0 or
-# 5 only while the dataplane holds for the unit named in "unit", never without a managed install
-# (docs/managed-mode.md, RaspiBlitz).
+# 5 only while the dataplane holds for the unit named in "unit", never without a managed install,
+# and no long wait: its one name lookup (the endpoint) is bounded (docs/managed-mode.md, RaspiBlitz).
 # ---------------------------------------------------------------------------
 
 TS_V_ID=()
@@ -9073,6 +9073,10 @@ TS_V_EMERGENCY_STATE="none"
 # action_required of the verify document (raw JSON), set when the operator has to act
 TS_V_ACTION_J="null"
 TS_V_ACTION_TEXT=""
+# Time limit of the endpoint lookup in seconds (ts_v_resolve_timeout), and "timeout" when the
+# lookup got no answer within it (ts_v_read_endpoint)
+TS_V_RESOLVE_TIMEOUT=5
+TS_V_EP_LOOKUP=""
 
 # Records check $1 with class $2 (unsafe or degraded, the class a failure falls into), result $3
 # (pass, fail, skip) and detail $4.
@@ -9566,13 +9570,27 @@ ts_v_check_handshake() {
     fi
 }
 
+# Prints the time limit of the endpoint lookup in seconds: TS_VERIFY_RESOLVE_TIMEOUT (tests), else 5.
+# Fails for anything but a whole number from 1 to 999.
+ts_v_resolve_timeout() {
+    local t="${TS_VERIFY_RESOLVE_TIMEOUT:-5}"
+    if [[ ! "$t" =~ ^[1-9][0-9]{0,2}$ ]]; then
+        return 1
+    fi
+    echo "$t"
+}
+
 # Reads the endpoint of the managed tunnel config into TS_V_EP_HOST, TS_V_EP_PORT, TS_V_ENDPOINT_IP
-# and TS_V_VPN_PORT (the private key is never read into a variable).
+# and TS_V_VPN_PORT (the private key is never read into a variable). A host name is resolved once,
+# for at most TS_V_RESOLVE_TIMEOUT seconds: a start guard runs verify before every Lightning start,
+# so a name server that does not answer must not hold it up. TS_V_EP_LOOKUP is "timeout" when the
+# lookup got no answer in time, else empty.
 ts_v_read_endpoint() {
-    local ep=""
+    local ep="" out="" rc=0
     TS_V_EP_HOST=""
     TS_V_EP_PORT=""
     TS_V_ENDPOINT_IP=""
+    TS_V_EP_LOOKUP=""
     TS_V_VPN_PORT=""
     ep=$(sed -nE 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*([^[:space:]#]+).*/\1/Ip' "${TS_FS_ROOT}${TS_M_WG_CONF}" 2>/dev/null | head -n 1) || ep=""
     if ts_detect_parse_endpoint "$ep"; then
@@ -9581,7 +9599,11 @@ ts_v_read_endpoint() {
         if valid_ipv4 "$TS_V_EP_HOST"; then
             TS_V_ENDPOINT_IP="$TS_V_EP_HOST"
         else
-            TS_V_ENDPOINT_IP=$("$GETENT_BIN" ahostsv4 "$TS_V_EP_HOST" 2>/dev/null | awk 'NR == 1 { print $1 }') || TS_V_ENDPOINT_IP=""
+            out=$(timeout --kill-after=1 "${TS_V_RESOLVE_TIMEOUT:-5}" "$GETENT_BIN" ahostsv4 "$TS_V_EP_HOST" 2>/dev/null) || rc=$?
+            TS_V_ENDPOINT_IP=$(printf '%s\n' "$out" | awk 'NR == 1 { print $1 }')
+            if [[ -z "$TS_V_ENDPOINT_IP" ]] && { [[ "$rc" -eq 124 ]] || [[ "$rc" -eq 137 ]]; }; then
+                TS_V_EP_LOOKUP="timeout"
+            fi
         fi
     fi
     TS_V_VPN_PORT=$(ts_config_vpn_port "${TS_FS_ROOT}${TS_M_WG_CONF}" 2>/dev/null) || TS_V_VPN_PORT=""
@@ -9594,7 +9616,9 @@ ts_v_check_endpoint() {
         return 0
     fi
     live=$(printf '%s\n' "$out" | awk 'NR == 1 { print $2 }')
-    if [[ -z "$TS_V_ENDPOINT_IP" ]]; then
+    if [[ -z "$TS_V_ENDPOINT_IP" ]] && [[ "$TS_V_EP_LOOKUP" == "timeout" ]]; then
+        ts_v_add wg_endpoint degraded fail "the lookup of the configured endpoint ${TS_V_EP_HOST} got no answer within ${TS_V_RESOLVE_TIMEOUT:-5} s"
+    elif [[ -z "$TS_V_ENDPOINT_IP" ]]; then
         ts_v_add wg_endpoint degraded fail "the configured endpoint ${TS_V_EP_HOST:-?} does not resolve"
     elif [[ "$live" == "${TS_V_ENDPOINT_IP}:${TS_V_EP_PORT}" ]]; then
         ts_v_add wg_endpoint degraded pass "${live}"
@@ -9856,6 +9880,10 @@ cmd_verify() {
         ts_usage_error "TS_VERIFY_ECHO_URLS needs two URLs"
     fi
     TS_V_V6_URL="${TS_VERIFY_IPV6_URL:-https://tunnelsats.com}"
+    # The endpoint lookup gets TS_VERIFY_RESOLVE_TIMEOUT seconds (default 5), overridable for tests
+    if ! TS_V_RESOLVE_TIMEOUT=$(ts_v_resolve_timeout); then
+        ts_usage_error "TS_VERIFY_RESOLVE_TIMEOUT must be a whole number of seconds from 1 to 999"
+    fi
     if [[ "$TS_OPT_NO_PROBE" -eq 1 ]]; then
         probes="skipped"
     fi
