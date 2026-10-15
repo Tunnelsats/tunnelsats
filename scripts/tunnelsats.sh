@@ -9103,7 +9103,7 @@ cmd_install_managed() {
 # ---------------------------------------------------------------------------
 
 cmd_uninstall_managed() {
-    local answer="" ln_was_active=0 ln_was_stopped=0 locked=0 ln_started=0 ln_disabled=0 disable_err="" reason="" rc=0 rb_env="" i
+    local answer="" ln_was_active=0 ln_was_stopped=0 ln_state="" locked=0 ln_started=0 ln_disabled=0 disable_err="" reason="" rc=0 rb_env="" i
     ts_m_require_root
     if ! ts_m_inventory_present; then
         ts_fail 3 E_NOT_INSTALLED not_installed "No managed install found (${TS_M_INVENTORY})"
@@ -9139,16 +9139,32 @@ cmd_uninstall_managed() {
     if [[ "$locked" -eq 1 ]]; then
         ts_m_unlock
     fi
-    if [[ "$(ts_m_unit_prop "$TS_M_INV_UNIT" ActiveState)" == "active" ]]; then
-        ln_was_active=1
-        print_info "Stopping ${TS_M_INV_UNIT} (it is still inside the slice and protected)..."
-        if ! "$SYSTEMCTL_BIN" stop "$TS_M_INV_UNIT"; then
-            ts_fail 1 E_LN_STOP operational "${TS_M_INV_UNIT} could not be stopped; nothing was removed"
-        fi
-    elif [[ "$ln_was_stopped" -eq 1 ]]; then
-        # Stopped by the verifier while no protection held; it was meant to run
-        ln_was_active=1
-    fi
+    # Every state but inactive and failed means the unit runs, starts (ExecStartPre, LND before
+    # READY=1), reloads, stops or waits for its next automatic restart (Restart=always, also after a
+    # start a start guard refused). disable ends none of these, and a start that completes after the
+    # removal runs outside the tunnel: the unit is stopped (which also cancels a pending restart) and
+    # has to read back stopped before anything is removed. It was meant to run.
+    ln_state=$(ts_m_unit_prop "$TS_M_INV_UNIT" ActiveState)
+    case "$ln_state" in
+        inactive|failed)
+            if [[ "$ln_was_stopped" -eq 1 ]]; then
+                # Stopped by the verifier while no protection held; it was meant to run
+                ln_was_active=1
+            fi
+            ;;
+        *)
+            ln_was_active=1
+            print_info "Stopping ${TS_M_INV_UNIT} (${ln_state:-state unknown}; still inside the slice and protected)..."
+            if ! "$SYSTEMCTL_BIN" stop "$TS_M_INV_UNIT"; then
+                ts_fail 1 E_LN_STOP operational "${TS_M_INV_UNIT} could not be stopped; nothing was removed"
+            fi
+            ln_state=$(ts_m_unit_prop "$TS_M_INV_UNIT" ActiveState)
+            case "$ln_state" in
+                inactive|failed) ;;
+                *) ts_fail 1 E_LN_STOP operational "${TS_M_INV_UNIT} did not stop (state ${ln_state:-unknown}); nothing was removed" ;;
+            esac
+            ;;
+    esac
     # RaspiBlitz's start guard keeps the flags of the current start below /run/tunnelsats, which the
     # removal clears: their state is read first (ts_m_execstart_args)
     if [[ "$TS_M_INV_PROFILE" == "raspiblitz" ]] && ts_m_raspiblitz_guard_ctx "$TS_M_INV_UNIT"; then

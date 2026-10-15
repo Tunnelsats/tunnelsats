@@ -1109,6 +1109,7 @@ printf '%s\n' "$clean_lnd" > "$fx/fs/data/lnd/lnd.conf"
 printf '{ path=/bin/sh ; argv[]=/bin/sh -c /usr/local/bin/lnd --configfile=/data/lnd/lnd.conf ; ignore_errors=no ; start_time=[n/a] }' > "$fx/state/unit_lnd.service_ExecStart"
 echo "bitcoin" > "$fx/state/unit_lnd.service_User"
 echo "active" > "$fx/state/unit_lnd.service_ActiveState"
+touch "$fx/state/stateful_units"
 mkdir -p "$fx/fs/etc/tunnelsats"
 write_inventory "$fx"
 run_snippet "$fx" "TS_JSON=1; TS_NONINTERACTIVE=1; TS_COMMAND=uninstall; TS_OUT_FD=1; TS_OPT_YES=1; cmd_uninstall_managed"
@@ -1158,6 +1159,69 @@ if [[ -e "$fx/fs/run/tunnelsats/stopped-units" ]]; then
     fail "Uninstall: the record of stopped units is removed"
 else
     pass "Uninstall: the record of stopped units is removed"
+fi
+
+# uninstall while Lightning is not "active" but starts (ExecStartPre, LND before READY=1), reloads,
+# stops or waits for its next automatic restart: disable ends none of these, so it is stopped and
+# read back stopped before anything is removed. It counts as running before: it starts again with
+# a clean config, and stays stopped and disabled with clearnet settings
+calls_before() {  # $1 = fixture, $2 = call, $3 = later call: succeeds if both are logged in this order
+    local a b
+    a=$(grep -n -m 1 -x -F "$2" "$1/state/calls" | cut -d: -f1)
+    b=$(grep -n -m 1 -x -F "$3" "$1/state/calls" | cut -d: -f1)
+    [[ -n "$a" ]] && [[ -n "$b" ]] && [[ "$a" -lt "$b" ]]
+}
+starting_fixture() {  # $1 = name, $2 = ActiveState, $3 = SubState, $4 = node config: a bare-metal install of lnd.service
+    local f
+    f=$(new_fixture "$1")
+    mkdir -p "$f/fs/data/lnd" "$f/fs/etc/tunnelsats"
+    printf '%s\n' "$4" > "$f/fs/data/lnd/lnd.conf"
+    printf '{ path=/usr/local/bin/lnd ; argv[]=/usr/local/bin/lnd --configfile=/data/lnd/lnd.conf ; ignore_errors=no ; start_time=[n/a] }' > "$f/state/unit_lnd.service_ExecStart"
+    echo "bitcoin" > "$f/state/unit_lnd.service_User"
+    echo "$2" > "$f/state/unit_lnd.service_ActiveState"
+    echo "$3" > "$f/state/unit_lnd.service_SubState"
+    touch "$f/state/stateful_units"
+    write_inventory "$f"
+    echo "$f"
+}
+uninstall_json='TS_JSON=1; TS_NONINTERACTIVE=1; TS_COMMAND=uninstall; TS_OUT_FD=1; TS_OPT_YES=1; cmd_uninstall_managed'
+for st in activating:auto-restart activating:start-pre reloading:reload deactivating:stop refreshing:refresh; do
+    fx=$(starting_fixture "uninstall-${st%%:*}-${st#*:}" "${st%%:*}" "${st#*:}" "$clean_lnd")
+    run_snippet "$fx" "$uninstall_json"
+    doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+    assert_json "$doc" '[d["exit_code"], d["remaining"], d["ln_was_active"], d["ln_started"], d["node_config"]]' '[0, [], true, true, "clean"]' \
+        "Uninstall (unit ${st}): counts as running before and starts again with a clean config"
+    if calls_before "$fx" "systemctl stop lnd.service" "systemctl daemon-reload"; then
+        pass "Uninstall (unit ${st}): stopped before anything is removed"
+    else
+        fail "Uninstall (unit ${st}): stopped before anything is removed"
+    fi
+done
+fx=$(starting_fixture uninstall-autorestart-hybrid activating auto-restart "$(printf '%s\nexternalhosts=de2.tunnelsats.com:24556' "$clean_lnd")")
+run_snippet "$fx" "$uninstall_json"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["ln_was_active"], d["ln_started"], d["ln_disabled"], d["node_config"]]' '[0, true, false, true, "clearnet"]' \
+    "Uninstall (unit waiting for its automatic restart, clearnet settings): stopped, stays stopped and is disabled"
+assert_equals "inactive" "$(cat "$fx/state/unit_lnd.service_ActiveState")" "Uninstall (unit waiting for its automatic restart): the pending restart is cancelled"
+assert_not_contains "$(cat "$fx/state/calls")" "systemctl start lnd.service" "Uninstall (unit waiting for its automatic restart, clearnet settings): not started"
+# A stop that fails, or that does not take effect, leaves everything in place
+fx=$(starting_fixture uninstall-stop-fails activating auto-restart "$clean_lnd")
+touch "$fx/state/fail_systemctl_stop_lnd.service"
+run_snippet "$fx" "$uninstall_json"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[1, "E_LN_STOP"]' "Uninstall (unit waiting for its automatic restart): a failed stop is E_LN_STOP"
+assert_equals "" "$(grep -E '^(systemctl (daemon-reload|disable)|nft delete)' "$fx/state/calls" || true)" "Uninstall (failed stop): nothing is removed"
+fx=$(starting_fixture uninstall-stop-noeffect activating start-pre "$clean_lnd")
+rm -f "$fx/state/stateful_units"
+run_snippet "$fx" "$uninstall_json"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"], d["errors"][0]["message"]]' \
+    '[1, "E_LN_STOP", "lnd.service did not stop (state activating); nothing was removed"]' "Uninstall: a unit that does not read back stopped is E_LN_STOP"
+assert_equals "" "$(grep -E '^(systemctl (daemon-reload|disable)|nft delete)' "$fx/state/calls" || true)" "Uninstall (unit not stopped): nothing is removed"
+if [[ -f "$fx/fs/etc/tunnelsats/managed.json" ]]; then
+    pass "Uninstall (unit not stopped): the install record stays"
+else
+    fail "Uninstall (unit not stopped): the install record stays"
 fi
 
 # ---------------------------------------------------------------------------
@@ -2819,14 +2883,15 @@ assert_equals "" "$left" "Uninstall (RaspiBlitz): the prefixed drop-in directory
 
 # Install and uninstall of mainnet LND whose unit carries RaspiBlitz's start guard; Lightning ran.
 # The guard's env file, read before the removal clears /run/tunnelsats, decides whether it starts
-# again. $1 = name, $2 = env file content ("-": none), $3 = mode settings (default: JSON)
+# again. $1 = name, $2 = env file content ("-": none), $3 = mode settings (default: JSON), $4 = the
+# unit's ActiveState (default: active)
 rb_guard_uninstall() {
     fx=$(rb_fixture "guard-uninstall-$1")
     rb_guard_unit "$fx" lnd mainnet "" > /dev/null
     printf '%s\n' "$rb_lnd_conf" > "$fx/fs/mnt/hdd/app-data/lnd/lnd.conf"
     rb_install "$fx" lnd mainnet
     install_doc="$doc"
-    echo "active" > "$fx/state/unit_lnd.service_ActiveState"
+    echo "${4:-active}" > "$fx/state/unit_lnd.service_ActiveState"
     touch "$fx/state/stateful_units"
     if [[ "$2" != "-" ]]; then
         printf '%s' "$2" > "$fx/fs/run/tunnelsats/hybrid-lnd.env"
@@ -2869,6 +2934,25 @@ assert_equals "1" "$(grep -c "could not be checked" <<< "$SN_OUT")" \
 assert_contains "$SN_OUT" "SUBSCRIBE > TunnelSats > REMOVE" "Uninstall (RaspiBlitz start guard, interactive): pointing to REMOVE in the RaspiBlitz menu"
 assert_contains "$(cat "$fx/state/calls")" "systemctl disable lnd.service" "Uninstall (RaspiBlitz start guard, interactive): the unit is disabled"
 assert_equals "" "$(ln_starts "$fx" lnd.service)" "Uninstall (RaspiBlitz start guard, interactive): and not started"
+# A unit the guard blocked waits for its automatic restart (activating), and a start in progress is
+# activating as well: both are stopped before the dataplane goes, and count as running before
+rb_guard_uninstall autorestart-flags "TUNNELSATS_LND_ARGS=${rb_flags_lnd}"$'\n' "" activating
+assert_json "$doc" '[d["exit_code"], d["ln_was_active"], d["ln_started"], d["ln_disabled"], d["node_config"]]' '[0, true, false, true, "unknown"]' \
+    "Uninstall (RaspiBlitz start guard, unit activating, flags): stopped, stays stopped and is disabled"
+if calls_before "$fx" "systemctl stop lnd.service" "systemctl daemon-reload"; then
+    pass "Uninstall (RaspiBlitz start guard, unit activating, flags): stopped before anything is removed"
+else
+    fail "Uninstall (RaspiBlitz start guard, unit activating, flags): stopped before anything is removed"
+fi
+assert_equals "" "$(ln_starts "$fx" lnd.service)" "Uninstall (RaspiBlitz start guard, unit activating, flags): not started"
+rb_guard_uninstall activating-empty $'TUNNELSATS_LND_ARGS=\n' "" activating
+assert_json "$doc" '[d["exit_code"], d["ln_was_active"], d["ln_started"], d["ln_disabled"], d["node_config"]]' '[0, true, true, false, "clean"]' \
+    "Uninstall (RaspiBlitz start guard, unit activating, empty env file): stopped, then started again outside the slice"
+if calls_before "$fx" "systemctl stop lnd.service" "systemctl daemon-reload" && calls_before "$fx" "systemctl daemon-reload" "systemctl start lnd.service"; then
+    pass "Uninstall (RaspiBlitz start guard, unit activating, empty env file): stopped before the removal, started after it"
+else
+    fail "Uninstall (RaspiBlitz start guard, unit activating, empty env file): stopped before the removal, started after it"
+fi
 
 # Mainnet LND that waits for its automatic restart (auto-restart, for example while a start guard
 # holds it back): left to its own restart; a running one is restarted into the slice
