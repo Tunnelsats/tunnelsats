@@ -8232,16 +8232,19 @@ ts_m_execstart_clearnet() {
 
 # Reports active TunnelSats clearnet settings of the Lightning unit $2 (implementation $1), in its
 # config file and on its command line (ExecStart); see ts_m_nc_setting_hit. Sets TS_M_NC_STATUS to
-# clearnet (settings found), unknown (config missing or unreadable, or a command line that cannot be
-# checked reliably: shell, script, $VAR) or clean, TS_M_NC_LINES to "<file>:<line>:<setting>" and
-# "<unit> ExecStart: <argument>", and TS_M_NC_REASON. $3 = managed profile (raspiblitz: RaspiBlitz's
-# shell command for CLN and the variable of its start guard can be checked, see
-# ts_m_raspiblitz_cln_argv and ts_m_raspiblitz_guard_argv), $4 = state of the start guard's env file
-# read earlier (ts_m_execstart_args). Read-only; the bare-metal guard reuses it.
+# clearnet (settings found), unknown (config missing or unreadable, a CLN config that includes other
+# files, or a command line that cannot be checked reliably: shell, script, $VAR) or clean,
+# TS_M_NC_LINES to "<file>:<line>:<setting>" and "<unit> ExecStart: <argument>", followed by the
+# include lines of a CLN config ("<file>:<line>:include <path>", also in TS_M_NC_INCLUDES), and
+# TS_M_NC_REASON. $3 = managed profile (raspiblitz: RaspiBlitz's shell command for CLN and the
+# variable of its start guard can be checked, see ts_m_raspiblitz_cln_argv and
+# ts_m_raspiblitz_guard_argv), $4 = state of the start guard's env file read earlier
+# (ts_m_execstart_args). Read-only; the bare-metal guard reuses it.
 ts_m_node_config_clearnet() {
     local impl="$1" unit="$2" profile="${3:-}" rb_env="${4:-}" f entry num key val exec_ok=1
     TS_M_NC_STATUS="unknown"
     TS_M_NC_LINES=()
+    TS_M_NC_INCLUDES=()
     ts_m_node_config_files "$impl" "$unit"
     for f in "${TS_M_NC_FILES[@]}"; do
         while IFS= read -r entry; do
@@ -8253,6 +8256,13 @@ ts_m_node_config_clearnet() {
                 TS_M_NC_LINES+=("${f}:${num}:${key}=${val}")
             fi
         done < <(ts_m_config_settings "${TS_FS_ROOT}${f}")
+        # lightningd reads an included file as part of its config; included files are not
+        # followed here, so an include makes the config one that cannot be checked
+        if [[ "$impl" == "cln" ]]; then
+            while IFS= read -r entry; do
+                TS_M_NC_INCLUDES+=("${f}:${entry%%|*}:include ${entry#*|}")
+            done < <(ts_m_cln_config_includes "${TS_FS_ROOT}${f}")
+        fi
     done
     # The command line counts like the config file; one that cannot be checked makes it unknown
     if ts_m_execstart_args "$unit" "$profile" "$rb_env"; then
@@ -8265,14 +8275,35 @@ ts_m_node_config_clearnet() {
             TS_M_NC_REASON="$TS_M_EXEC_REASON"
         fi
     fi
+    if [[ ${#TS_M_NC_INCLUDES[@]} -gt 0 ]]; then
+        TS_M_NC_REASON="${TS_M_NC_REASON:+${TS_M_NC_REASON}; }the CLN config includes other files, which are not checked"
+    fi
     if [[ ${#TS_M_NC_LINES[@]} -gt 0 ]]; then
         TS_M_NC_STATUS="clearnet"
-    elif [[ ${#TS_M_NC_FILES[@]} -eq 0 ]] || [[ "$exec_ok" -eq 0 ]]; then
+    elif [[ ${#TS_M_NC_FILES[@]} -eq 0 ]] || [[ "$exec_ok" -eq 0 ]] || [[ ${#TS_M_NC_INCLUDES[@]} -gt 0 ]]; then
         TS_M_NC_STATUS="unknown"
     else
         TS_M_NC_STATUS="clean"
     fi
+    TS_M_NC_LINES+=("${TS_M_NC_INCLUDES[@]}")
     return 0
+}
+
+# Prints the include directives of CLN config file $1 as "<line number>|<path>": active lines
+# "include <path>" or "include=<path>", as lightningd reads them.
+ts_m_cln_config_includes() {
+    awk '
+        { sub(/\r$/, "") }
+        {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            sub(/[[:space:]]+$/, "", line)
+            if (match(line, /^include([[:space:]]+|=)/)) {
+                path = substr(line, RLENGTH + 1)
+                sub(/^[[:space:]]+/, "", path)
+                if (path != "") print NR "|" path
+            }
+        }' "$1" 2>/dev/null
 }
 
 # Prints the TCP ports of the non-loopback Lightning listen addresses set in the node config of
@@ -9265,18 +9296,28 @@ cmd_uninstall_managed() {
 }
 
 # Prints the TunnelSats clearnet settings found in the node config or on the unit's command line
-# (or why they could not be checked).
+# (or why they could not be checked), and the includes of a CLN config, which are not checked (they
+# end TS_M_NC_LINES, see ts_m_node_config_clearnet).
 ts_m_uninstall_print_lines() {
-    local l
+    local l i n_set=$(( ${#TS_M_NC_LINES[@]} - ${#TS_M_NC_INCLUDES[@]} ))
     if [[ "$TS_M_NC_STATUS" == "unknown" ]]; then
         echo "The Lightning settings could not be checked: ${TS_M_NC_REASON}." >&2
+        for l in "${TS_M_NC_INCLUDES[@]}"; do
+            echo "  ${l}" >&2
+        done
         echo "Make sure neither the node config nor the command line (ExecStart) of ${TS_M_INV_UNIT} holds TunnelSats clearnet settings (LND: externalhosts, tor.skip-proxy-for-clearnet-targets; CLN: bind-addr=0.0.0.0:9735, addr or announce-addr with a clearnet address, always-use-proxy=false)." >&2
         return 0
     fi
     echo "Remove these TunnelSats settings (node config, or the command line of ${TS_M_INV_UNIT}):" >&2
-    for l in "${TS_M_NC_LINES[@]}"; do
-        echo "  ${l}" >&2
+    for (( i = 0; i < n_set; i++ )); do
+        echo "  ${TS_M_NC_LINES[$i]}" >&2
     done
+    if [[ ${#TS_M_NC_INCLUDES[@]} -gt 0 ]]; then
+        echo "The config also includes other files, which are not checked; check them for these settings as well:" >&2
+        for l in "${TS_M_NC_INCLUDES[@]}"; do
+            echo "  ${l}" >&2
+        done
+    fi
 }
 
 # restart on a managed install: restarts only the tunnel; the kill switch keeps clearnet traffic

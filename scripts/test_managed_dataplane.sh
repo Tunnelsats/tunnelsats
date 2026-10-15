@@ -1051,6 +1051,22 @@ assert_equals "clearnet" "${SN_OUT%%$'\n'*}" "Detector: CLN addr with a public a
 assert_contains "$SN_OUT" "/etc/cln/config:2:addr=203.0.113.7:9735" "Detector: reports the CLN addr line"
 nc_case cln lightningd.service "/usr/bin/lightningd --conf=/etc/cln/config" /etc/cln/config $'addr=:9735'
 assert_equals "clearnet" "${SN_OUT%%$'\n'*}" "Detector: CLN addr on all interfaces is clearnet"
+# lightningd reads included files as part of its config; they are not followed, so an include makes
+# the config one that cannot be checked, listed with its line
+nc_case cln lightningd.service "/usr/bin/lightningd --conf=/etc/cln/config" /etc/cln/config $'proxy=127.0.0.1:9050\nalways-use-proxy=true\ninclude /etc/cln/extra.conf'
+assert_equals "unknown" "${SN_OUT%%$'\n'*}" "Detector: a CLN config with an include cannot be checked"
+assert_contains "$SN_OUT" $'\n/etc/cln/config:3:include /etc/cln/extra.conf\n' "Detector: the include is listed with file and line"
+assert_contains "$SN_OUT" "reason=the CLN config includes other files, which are not checked" "Detector: with the reason"
+nc_case cln lightningd.service "/usr/bin/lightningd --conf=/etc/cln/config" /etc/cln/config $'  include=/etc/cln/extra.conf  \nalways-use-proxy=true'
+assert_equals "unknown" "${SN_OUT%%$'\n'*}" "Detector: include=<path> counts as well"
+assert_contains "$SN_OUT" $'\n/etc/cln/config:1:include /etc/cln/extra.conf\n' "Detector: listed with its path"
+nc_case cln lightningd.service "/usr/bin/lightningd --conf=/etc/cln/config" /etc/cln/config $'# include /etc/cln/extra.conf\nalways-use-proxy=true'
+assert_equals "clean" "${SN_OUT%%$'\n'*}" "Detector: a commented include does not count"
+nc_case cln lightningd.service "/usr/bin/lightningd --conf=/etc/cln/config" /etc/cln/config $'include /etc/cln/extra.conf\nalways-use-proxy=false'
+assert_equals "clearnet" "${SN_OUT%%$'\n'*}" "Detector: clearnet settings next to an include are clearnet"
+assert_contains "$SN_OUT" $'/etc/cln/config:2:always-use-proxy=false\n/etc/cln/config:1:include /etc/cln/extra.conf\n' "Detector: the settings first, then the include"
+nc_case lnd lnd.service "/usr/local/bin/lnd --configfile=/data/lnd/lnd.conf" /data/lnd/lnd.conf $'[Application Options]\ninclude=/data/lnd/other.conf\n[Tor]\ntor.active=true'
+assert_equals "clean" "${SN_OUT%%$'\n'*}" "Detector: LND has no include directive"
 nc_case lit litd.service "/usr/local/bin/litd" /home/bitcoin/.lit/lit.conf $'lnd-mode=integrated\nlnd.externalhosts=de2.tunnelsats.com:24556'
 assert_equals "clearnet" "${SN_OUT%%$'\n'*}" "Detector: LIT lnd.externalhosts is clearnet"
 
@@ -1223,6 +1239,34 @@ if [[ -f "$fx/fs/etc/tunnelsats/managed.json" ]]; then
 else
     fail "Uninstall (unit not stopped): the install record stays"
 fi
+
+# uninstall of a CLN install whose config includes other files: they are not followed, so Lightning
+# stays stopped and disabled, with the include in action_required and in the printed lines
+fx=$(new_fixture uninstall-cln-include)
+mkdir -p "$fx/fs/etc/cln" "$fx/fs/etc/tunnelsats"
+printf '%s\n' "$clean_cln" "include /etc/cln/extra.conf" > "$fx/fs/etc/cln/config"
+printf '{ path=/usr/bin/lightningd ; argv[]=/usr/bin/lightningd --conf=/etc/cln/config ; ignore_errors=no ; start_time=[n/a] }' > "$fx/state/unit_lightningd.service_ExecStart"
+echo "bitcoin" > "$fx/state/unit_lightningd.service_User"
+echo "active" > "$fx/state/unit_lightningd.service_ActiveState"
+touch "$fx/state/stateful_units"
+run_snippet "$fx" '
+TS_M_INV_STATE=installed TS_M_INV_PROFILE=baremetal TS_M_INV_IMPL=cln TS_M_INV_UNIT=lightningd.service TS_M_INV_USER=bitcoin TS_M_INV_UID=1001 TS_M_INV_BACKSTOP=0
+TS_M_FILES=() TS_M_FILE_SHA=() TS_M_CREATED_DIRS=() TS_M_ENABLED_UNITS=()
+ts_m_inventory_write'
+run_snippet "$fx" "$uninstall_json"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["ln_was_active"], d["ln_started"], d["ln_disabled"], d["node_config"], d["action_required"]["reason"], d["action_required"]["lines"]]' \
+    '[0, true, false, true, "unknown", "node_config_unknown", ["/etc/cln/config:3:include /etc/cln/extra.conf"]]' \
+    "Uninstall (CLN config with an include): stays stopped and disabled, the include listed in action_required"
+assert_json "$doc" 'd["action_required"]["detail"]' "the CLN config includes other files, which are not checked" "Uninstall (CLN config with an include): with the reason"
+assert_not_contains "$(cat "$fx/state/calls")" "systemctl start lightningd.service" "Uninstall (CLN config with an include): not started"
+run_snippet "$fx" 'TS_M_INV_UNIT=lightningd.service; ts_m_node_config_clearnet cln lightningd.service baremetal; ts_m_uninstall_print_lines'
+assert_equals $'The Lightning settings could not be checked: the CLN config includes other files, which are not checked.\n  /etc/cln/config:3:include /etc/cln/extra.conf' \
+    "$(printf '%s\n' "$SN_OUT" | head -n 2)" "Uninstall (CLN config with an include): the printed reason lists the include"
+printf '%s\n' "include /etc/cln/extra.conf" "always-use-proxy=false" > "$fx/fs/etc/cln/config"
+run_snippet "$fx" 'TS_M_INV_UNIT=lightningd.service; ts_m_node_config_clearnet cln lightningd.service baremetal; ts_m_uninstall_print_lines'
+assert_equals $'Remove these TunnelSats settings (node config, or the command line of lightningd.service):\n  /etc/cln/config:2:always-use-proxy=false\nThe config also includes other files, which are not checked; check them for these settings as well:\n  /etc/cln/config:1:include /etc/cln/extra.conf' \
+    "$SN_OUT" "Uninstall (CLN config with clearnet settings and an include): the settings to remove, then the include to check"
 
 # ---------------------------------------------------------------------------
 # GROUP 6: verify verdicts and checks
@@ -2659,6 +2703,16 @@ rb_cln_case "${rb_cln_base} \$\$TUNNELSATS_CLN_ARGS" "s/ \\\$\\\$TUNNELSATS_CLN_
 rb_cln_case "${rb_cln_base} --bind-addr=0.0.0.0:9735 \$\$TUNNELSATS_CLN_ARGS" 's/0660 \$\$/0660 --bind-addr=0.0.0.0:9735 $$/' "clearnet" "a clearnet argument before the variable is still reported"
 rb_cln_case "/bin/sh -c /usr/local/bin/lightningd --conf=/home/bitcoin/.lightning/config; /usr/bin/true \$\$TUNNELSATS_CLN_ARGS" \
     "s|--conf=/home/bitcoin/.lightning/config  --rpc-file-mode 0660|--conf=/home/bitcoin/.lightning/config; /usr/bin/true|" "unknown" "another shell command stays unknown"
+# A CLN config with an include cannot be checked here either, guard or not
+rb_unit "$fx" lightningd.service "${rb_cln_base} \$\$TUNNELSATS_CLN_ARGS"
+cp "$fx/state/lightningd.service.ok" "$fx/fs/etc/systemd/system/lightningd.service"
+printf '%s\n' "$rb_cln_conf" "include /home/bitcoin/.lightning/extra.conf" > "$fx/fs/mnt/hdd/app-data/.lightning/config"
+run_snippet "$fx" 'ts_m_node_config_clearnet cln lightningd.service raspiblitz; echo "$TS_M_NC_STATUS: $TS_M_NC_REASON"; printf "%s\n" "${TS_M_NC_LINES[@]}"'
+assert_equals $'unknown: the CLN config includes other files, which are not checked\n/home/bitcoin/.lightning/config:16:include /home/bitcoin/.lightning/extra.conf' "$SN_OUT" \
+    "RaspiBlitz start guard (CLN): a config with an include cannot be checked, the include listed"
+rb_unit "$fx" lightningd.service "${rb_cln_base}"
+run_snippet "$fx" 'ts_m_node_config_clearnet cln lightningd.service raspiblitz; echo "$TS_M_NC_STATUS"'
+assert_equals "unknown" "$SN_OUT" "RaspiBlitz (CLN without the guard): a config with an include cannot be checked either"
 
 # Drop-in units, the verifier's stop and its restart work for prefixed units: from the unit
 # directory while the install record is damaged, and from the record otherwise
