@@ -2973,6 +2973,38 @@ verify_installation() {
     fi
 }
 
+# Prints, after the standard uninstall, the command that takes the former VPN address out of LND's
+# node announcement: LND 0.20 and later announces the addresses it saved again at every start when its
+# config sets no externalip, and this uninstall does not start LND again. $1 = 1 on Docker (Umbrel),
+# $2 = the LND container (may be empty), then the TunnelSats configs; the address is the endpoint's
+# IPv4 (looked up for at most TS_V_RESOLVE_TIMEOUT seconds, as in verify) with the forwarded port.
+ts_print_announce_command() {
+    local docker="$1" container="${2:-<lnd container>}" conf addr prefix="lncli"
+    local -a addrs=()
+    shift 2
+    for conf in "$@"; do
+        ts_v_read_endpoint "$conf"
+        if [[ -n "$TS_V_ENDPOINT_IP" ]] && valid_ipv4 "$TS_V_ENDPOINT_IP" && [[ -n "$TS_V_VPN_PORT" ]]; then
+            addr="${TS_V_ENDPOINT_IP}:${TS_V_VPN_PORT}"
+            if ! ts_in_list "$addr" "${addrs[*]}"; then
+                addrs+=("$addr")
+            fi
+        fi
+    done
+    if [[ "$docker" -eq 1 ]]; then
+        prefix="docker exec ${container} lncli"
+    fi
+    echo "LND 0.20 and later keeps announcing the addresses it saved, the former VPN address too."
+    echo "Once LND runs again, remove that address from its node announcement:"
+    if [[ ${#addrs[@]} -eq 0 ]]; then
+        echo -e "  ${BOLD}${prefix} peers updatenodeannouncement --address_remove <ip>:<port>${NC}"
+        echo "  (the address that lncli getinfo lists under uris)"
+    fi
+    for addr in "${addrs[@]}"; do
+        echo -e "  ${BOLD}${prefix} peers updatenodeannouncement --address_remove ${addr}${NC}"
+    done
+}
+
 cmd_uninstall() {
     print_header "Uninstall Wizard"
     
@@ -3004,6 +3036,7 @@ cmd_uninstall() {
     local ln_impl="${LN_IMPL}"
     local is_docker=0
     local home_dir=""
+    local lnd_container=""
 
     if [[ "$PLATFORM" == "umbrel" ]]; then
         is_docker=1
@@ -3021,6 +3054,7 @@ cmd_uninstall() {
              if [[ -n "$container_ids" ]]; then
                  for id in ${container_ids}; do
                      local c_name=$(docker inspect --format '{{.Name}}' "$id" | sed 's/^\///')
+                     lnd_container="${lnd_container:-$c_name}"
                      print_info "Stopping $c_name ... (this may take a few seconds)"
                      echo -n "" >&2
                      docker stop "$id" &>/dev/null
@@ -3399,6 +3433,10 @@ cmd_uninstall() {
         echo "  - tor.skip-proxy-for-clearnet-targets (should be false or removed)"
     fi
     echo ""
+    if [[ "$ln_impl" == "lnd" ]] || [[ "$ln_impl" == "lit" ]]; then
+        ts_print_announce_command "$is_docker" "$lnd_container" "${TS_WG_CANDIDATES[@]}"
+        echo ""
+    fi
     
     echo "Next: Restart your node for changes to take effect."
     echo "      (Required to fully clear persistent network rules)"
@@ -10050,19 +10088,19 @@ ts_v_resolve_timeout() {
     echo "$t"
 }
 
-# Reads the endpoint of the managed tunnel config into TS_V_EP_HOST, TS_V_EP_PORT, TS_V_ENDPOINT_IP
-# and TS_V_VPN_PORT (the private key is never read into a variable). A host name is resolved once,
-# for at most TS_V_RESOLVE_TIMEOUT seconds: a start guard runs verify before every Lightning start,
-# so a name server that does not answer must not hold it up. TS_V_EP_LOOKUP is "timeout" when the
-# lookup got no answer in time, else empty.
+# Reads the endpoint of the managed tunnel config (or of config $1) into TS_V_EP_HOST, TS_V_EP_PORT,
+# TS_V_ENDPOINT_IP and TS_V_VPN_PORT (the private key is never read into a variable). A host name is
+# resolved once, for at most TS_V_RESOLVE_TIMEOUT seconds: a start guard runs verify before every
+# Lightning start, so a name server that does not answer must not hold it up. TS_V_EP_LOOKUP is
+# "timeout" when the lookup got no answer in time, else empty.
 ts_v_read_endpoint() {
-    local ep="" out="" rc=0
+    local conf="${1:-${TS_FS_ROOT}${TS_M_WG_CONF}}" ep="" out="" rc=0
     TS_V_EP_HOST=""
     TS_V_EP_PORT=""
     TS_V_ENDPOINT_IP=""
     TS_V_EP_LOOKUP=""
     TS_V_VPN_PORT=""
-    ep=$(sed -nE 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*([^[:space:]#]+).*/\1/Ip' "${TS_FS_ROOT}${TS_M_WG_CONF}" 2>/dev/null | head -n 1) || ep=""
+    ep=$(sed -nE 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*([^[:space:]#]+).*/\1/Ip' "$conf" 2>/dev/null | head -n 1) || ep=""
     if ts_detect_parse_endpoint "$ep"; then
         TS_V_EP_HOST="$TSD_CFG_EP_HOST"
         TS_V_EP_PORT="$TSD_CFG_EP_PORT"
@@ -10076,7 +10114,7 @@ ts_v_read_endpoint() {
             fi
         fi
     fi
-    TS_V_VPN_PORT=$(ts_config_vpn_port "${TS_FS_ROOT}${TS_M_WG_CONF}" 2>/dev/null) || TS_V_VPN_PORT=""
+    TS_V_VPN_PORT=$(ts_config_vpn_port "$conf" 2>/dev/null) || TS_V_VPN_PORT=""
 }
 
 ts_v_check_endpoint() {

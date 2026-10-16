@@ -446,6 +446,26 @@ else
         assert_contains "$SN_LOG" "systemctl disable wg-quick@${multi_iface}" "Uninstall disables ${multi_iface}"
         assert_contains "$SN_LOG" "nft delete table ip ${multi_iface}" "Uninstall deletes the nft table of ${multi_iface}"
     done
+
+    # LND 0.20 and later announces the addresses it saved again at every start: the standard
+    # uninstall never starts LND, so its final instructions name the exact command that takes the
+    # former VPN address (the endpoint's IPv4 and the forwarded port of the installed config) out of
+    # the node announcement; on Umbrel through the LND container
+    wg_announce="$TMP_ROOT/wg_announce"
+    mkdir -p "$wg_announce"
+    printf '[Interface]\n# Port Forwarding: 24556\n[Peer]\nEndpoint = de2.tunnelsats.com:51820\n' > "$wg_announce/tunnelsatsv2.conf"
+    printf '#!/bin/bash\nif [[ "$1 $2" == "ahostsv4 de2.tunnelsats.com" ]]; then echo "1.2.3.4         STREAM de2.tunnelsats.com"; exit 0; fi\nexit 2\n' > "$TMP_ROOT/getent-announce"
+    chmod +x "$TMP_ROOT/getent-announce"
+    run_snippet "WG_DIR='$wg_announce'; GETENT_BIN='$TMP_ROOT/getent-announce'; TS_NONINTERACTIVE=1; ${uninstall_flags}; cmd_uninstall"
+    assert_equals 0 "$SN_RC" "Uninstall (LND on systemd) completes"
+    assert_contains "$SN_OUT" "lncli peers updatenodeannouncement --address_remove 1.2.3.4:24556" \
+        "Uninstall (LND on systemd): the final instructions name the command for the former VPN address"
+    run_snippet "WG_DIR='$wg_announce'; GETENT_BIN='$TMP_ROOT/getent-announce'; TS_NONINTERACTIVE=1; TS_OPT_YES=1; TS_OPT_PLATFORM=umbrel; TS_OPT_IMPL=lnd
+docker() { stub_log \"docker \$*\"; case \"\$1 \${2:-}\" in 'ps --filter') echo c0ffee ;; 'inspect --format') echo /lightning_lnd_1 ;; esac; return 0; }
+cmd_uninstall"
+    assert_equals 0 "$SN_RC" "Uninstall (LND on Umbrel) completes"
+    assert_contains "$SN_OUT" "docker exec lightning_lnd_1 lncli peers updatenodeannouncement --address_remove 1.2.3.4:24556" \
+        "Uninstall (LND on Umbrel): the command runs lncli in the LND container"
 fi
 
 # Prompts 10 and 11: restart confirmations, answered by --yes
