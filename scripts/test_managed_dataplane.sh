@@ -1328,9 +1328,21 @@ ts_m_inventory_write'
 announce_update="lncli --lnddir=/home/bitcoin/.lnd peers updatenodeannouncement --address_remove 1.2.3.4:24556"
 announce_command="sudo -u bitcoin ${STUB_BIN}/lncli --lnddir=/home/bitcoin/.lnd peers updatenodeannouncement --address_remove 1.2.3.4:24556"
 announce_updates() { grep -E '^lncli .*updatenodeannouncement' "$1/state/calls" || true; }
+cat > "$STUB_BIN/wg-announce" <<'EOF'
+#!/bin/bash
+# Stub for wg in the announcement tests: "show <iface> endpoints" prints wg_endpoint below STUB_STATE
+s="${STUB_STATE:?}"
+if [[ "${1:-} ${3:-}" == "show endpoints" ]] && [[ -f "$s/wg_endpoint" ]]; then
+    printf 'c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9\t%s\n' "$(cat "$s/wg_endpoint")"
+    exit 0
+fi
+exit 1
+EOF
+chmod +x "$STUB_BIN/wg-announce"
+announce_json="WG_BIN='$STUB_BIN/wg-announce'; $uninstall_json"
 
 fx=$(announce_fixture announce-removed)
-run_snippet "$fx" "$uninstall_json"
+run_snippet "$fx" "$announce_json"
 doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
 assert_json "$doc" '[d["exit_code"], d["ln_started"], d["announce_cleanup"], d["warnings"]]' '[0, true, "removed", []]' \
     "Uninstall (LND announces the former VPN address): it leaves the node announcement"
@@ -1350,7 +1362,7 @@ fi
 
 fx=$(announce_fixture announce-none "$(printf '%s\nbitcoin.testnet=1\nrpclisten=0.0.0.0:11009' "$clean_lnd")")
 printf '{\n    "uris": [\n        "02aa@exampleonion.onion:9735"\n    ]\n}\n' > "$fx/state/lncli_getinfo"
-run_snippet "$fx" "$uninstall_json"
+run_snippet "$fx" "$announce_json"
 doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
 assert_json "$doc" '[d["exit_code"], d["announce_cleanup"], d["warnings"]]' '[0, "none", []]' \
     "Uninstall (LND does not announce the former VPN address): nothing to remove"
@@ -1361,7 +1373,7 @@ assert_contains "$(cat "$fx/state/calls")" "lncli --lnddir=/home/bitcoin/.lnd --
 fx=$(announce_fixture announce-not-ready)
 rm -f "$fx/state/lncli_getinfo"
 announce_start=$SECONDS
-run_snippet "$fx" "TS_M_ANNOUNCE_WAIT=1; $uninstall_json"
+run_snippet "$fx" "TS_M_ANNOUNCE_WAIT=1; $announce_json"
 announce_took=$((SECONDS - announce_start))
 doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
 assert_json "$doc" '[d["exit_code"], d["ln_started"], d["announce_cleanup"], len(d["warnings"])]' '[0, true, "lnd_not_ready", 1]' \
@@ -1376,14 +1388,14 @@ fi
 
 fx=$(announce_fixture announce-failed)
 echo 1 > "$fx/state/lncli_update_rc"
-run_snippet "$fx" "$uninstall_json"
+run_snippet "$fx" "$announce_json"
 doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
 assert_json "$doc" '[d["exit_code"], d["announce_cleanup"], len(d["warnings"])]' '[0, "failed", 1]' \
     "Uninstall (the update fails): failed, with one warning; the uninstall itself succeeded"
 assert_contains "$(json_eval "$doc" 'd["warnings"][0]' 2>&1)" "$announce_command" "Uninstall (the update fails): the warning holds the exact command"
 
 fx=$(announce_fixture announce-stopped "$(printf '%s\nexternalhosts=de2.tunnelsats.com:24556' "$clean_lnd")")
-run_snippet "$fx" "$uninstall_json"
+run_snippet "$fx" "$announce_json"
 doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
 assert_json "$doc" '[d["exit_code"], d["ln_started"], d["ln_disabled"], d["announce_cleanup"], len(d["warnings"])]' '[0, false, true, "skipped", 1]' \
     "Uninstall (LND left stopped, node config not clean): skipped, with one warning"
@@ -1399,14 +1411,57 @@ run_snippet "$fx" '
 TS_M_INV_STATE=installed TS_M_INV_PROFILE=baremetal TS_M_INV_IMPL=cln TS_M_INV_UNIT=lightningd.service TS_M_INV_USER=bitcoin TS_M_INV_UID=1001 TS_M_INV_BACKSTOP=0
 TS_M_FILES=(/etc/wireguard/tunnelsatsv2.conf) TS_M_FILE_SHA=("") TS_M_CREATED_DIRS=() TS_M_ENABLED_UNITS=()
 ts_m_inventory_write'
-run_snippet "$fx" "$uninstall_json"
+run_snippet "$fx" "$announce_json"
 doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
 assert_json "$doc" '[d["exit_code"], d["ln_started"], d["announce_cleanup"], d["warnings"]]' '[0, true, "skipped", []]' \
     "Uninstall (CLN): the announcement step is skipped (CLN announces what its config says)"
 assert_equals "" "$(grep -E '^(lncli|runuser) |^getent ahostsv4' "$fx/state/calls" || true)" "Uninstall (CLN): no lookup, no lncli"
 
+# The endpoint moved to another server (DNS change): LND may have saved the IPv4 that WireGuard
+# still uses, so that one is a candidate as well
+fx=$(announce_fixture announce-dns-moved)
+echo "5.6.7.8" > "$fx/state/resolve_de2.tunnelsats.com"
+echo "1.2.3.4:51820" > "$fx/state/wg_endpoint"
+run_snippet "$fx" "$announce_json"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["announce_cleanup"], d["warnings"]]' '[0, "removed", []]' \
+    "Uninstall (endpoint moved by DNS): the address of the IPv4 WireGuard still uses leaves the announcement"
+assert_equals "$announce_update" "$(announce_updates "$fx")" "Uninstall (endpoint moved by DNS): only the announced candidate is updated"
+
+# Another address with the forwarded port is never removed, but named with its command
+fx=$(announce_fixture announce-other-address)
+printf '{\n    "uris": [\n        "02aa@9.9.9.9:24556",\n        "02aa@exampleonion.onion:9735"\n    ]\n}\n' > "$fx/state/lncli_getinfo"
+run_snippet "$fx" "$announce_json"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["announce_cleanup"], len(d["warnings"])]' '[0, "none", 1]' \
+    "Uninstall (another address with the forwarded port): none, with one warning"
+assert_contains "$(json_eval "$doc" 'd["warnings"][0]' 2>&1)" \
+    "sudo -u bitcoin ${STUB_BIN}/lncli --lnddir=/home/bitcoin/.lnd peers updatenodeannouncement --address_remove 9.9.9.9:24556" \
+    "Uninstall (another address with the forwarded port): the warning names its command"
+assert_equals "" "$(announce_updates "$fx")" "Uninstall (another address with the forwarded port): it is not removed"
+
+# An uninstall that does not complete keeps the addresses in its record; the repeated uninstall,
+# after the removal deleted the tunnel config, still names the exact command
+fx=$(announce_fixture announce-retry)
+run_snippet "$fx" 'ts_m_emergency_arm 1001 >/dev/null && echo ARMED'
+assert_contains "$SN_OUT" "ARMED" "Uninstall retry fixture: emergency block armed"
+printf '%s\n' "rule del priority 21819 uidrange 1001-1001 blackhole" > "$fx/state/fail_ip"
+run_snippet "$fx" "$announce_json"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["ln_started"], d["announce_cleanup"], len(d["warnings"])]' '[1, false, "skipped", 1]' \
+    "Uninstall that does not complete: LND stays stopped, a warning names the command"
+assert_json "$(cat "$fx/fs/etc/tunnelsats/managed.json" 2>/dev/null || true)" '[d["state"], d["announce_addrs"]]' \
+    '["removing", "1.2.3.4:24556"]' "Uninstall that does not complete: the record keeps the address"
+rm -f "$fx/state/fail_ip"
+run_snippet "$fx" "$announce_json"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["remaining"], d["announce_cleanup"], len(d["warnings"])]' '[0, [], "skipped", 1]' \
+    "Repeated uninstall: completes; LND did not run, a warning names the command"
+assert_contains "$(json_eval "$doc" 'd["warnings"][0]' 2>&1)" "$announce_command" \
+    "Repeated uninstall: the exact command comes from the record (the tunnel config is gone)"
+
 fx=$(announce_fixture announce-text)
-run_snippet "$fx" "TS_JSON=0; TS_NONINTERACTIVE=1; TS_COMMAND=uninstall; TS_OPT_YES=1; cmd_uninstall_managed"
+run_snippet "$fx" "WG_BIN='$STUB_BIN/wg-announce'; TS_JSON=0; TS_NONINTERACTIVE=1; TS_COMMAND=uninstall; TS_OPT_YES=1; cmd_uninstall_managed"
 assert_equals "0 1" "$SN_RC $(printf '%s\n' "$SN_OUT" | grep -c '1\.2\.3\.4:24556' || true)" "Uninstall (text mode): the announcement step prints one line"
 
 # ---------------------------------------------------------------------------
