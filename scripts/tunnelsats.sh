@@ -69,6 +69,10 @@ GETENT_BIN="${GETENT_BIN:-getent}"
 CURL_BIN="${CURL_BIN:-curl}"
 UNSHARE_BIN="${UNSHARE_BIN:-unshare}"
 PERL_BIN="${PERL_BIN:-perl}"
+# uninstall: lncli (empty: the lncli next to the Lightning unit's daemon, else lncli on the PATH) and
+# runuser, which runs it as the node user
+LNCLI_BIN="${LNCLI_BIN:-}"
+RUNUSER_BIN="${RUNUSER_BIN:-runuser}"
 TS_FS_ROOT="${TS_FS_ROOT:-}"
 
 # Shared Lightning daemon container resolvers (used by the installer and the generated network monitor)
@@ -5851,6 +5855,9 @@ TS_M_STOPPED="/run/tunnelsats/stopped-units"
 # Seconds ts_m_quarantine waits for a stopped Lightning unit to become inactive while it holds the
 # kill switch lock (the stop itself does not block); a later check confirms a longer shutdown
 TS_M_STOP_WAIT="${TS_M_STOP_WAIT:-15}"
+# Seconds uninstall --managed waits for LND to answer lncli getinfo before it takes the former VPN
+# address out of LND's node announcement (0 to 999)
+TS_M_ANNOUNCE_WAIT="${TS_M_ANNOUNCE_WAIT:-120}"
 # Starts ts_m_resume_stopped queues for a recorded unit before it gives up and logs the command to
 # start it by hand (one per check, so about five minutes)
 TS_M_RESUME_MAX="${TS_M_RESUME_MAX:-10}"
@@ -9201,6 +9208,13 @@ cmd_uninstall_managed() {
     if [[ "$TS_M_INV_PROFILE" == "raspiblitz" ]] && ts_m_raspiblitz_guard_ctx "$TS_M_INV_UNIT"; then
         rb_env=$(ts_m_raspiblitz_env_state "${TS_FS_ROOT}${TS_M_RB_ENVFILE}" "$TS_M_RB_VAR")
     fi
+    # LND announces the addresses it saved again at every start: the former VPN address is read
+    # before the removal deletes the tunnel config (ts_m_announce_cleanup)
+    TS_M_ANN_ADDR=""
+    TS_M_ANN_WHY="not read"
+    if [[ "$TS_M_INV_IMPL" == "lnd" ]] || [[ "$TS_M_INV_IMPL" == "lit" ]]; then
+        ts_m_announce_read
+    fi
     print_info "Removing the managed dataplane..."
     ts_m_remove_dataplane
     if [[ ${#TS_M_REMAINING[@]} -gt 0 ]]; then
@@ -9255,15 +9269,23 @@ cmd_uninstall_managed() {
         reason="start_failed"
         print_error "${TS_M_INV_UNIT} did not start (see: journalctl -u ${TS_M_INV_UNIT})"
     fi
+    ts_m_announce_cleanup
 
     if [[ "$TS_JSON" -eq 1 ]]; then
-        local items=() errors=() remaining_j lines_j action_j="null" then_cmd
+        local items=() errors=() remaining_j lines_j action_j="null" then_cmd warnings_j
         for i in "${TS_M_REMAINING[@]}"; do
             ts_j_str "$i"
             items+=("$TS_R")
         done
         ts_j_arr "${items[@]}"
         remaining_j="$TS_R"
+        items=()
+        for i in "${TS_M_ANN_WARNINGS[@]}"; do
+            ts_j_str "$i"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        warnings_j="$TS_R"
         if [[ "$TS_M_NC_STATUS" != "clean" ]]; then
             items=()
             for i in "${TS_M_NC_LINES[@]}"; do
@@ -9289,7 +9311,8 @@ cmd_uninstall_managed() {
             errors+=("$TS_R")
         fi
         ts_j_obj b:managed true s:unit "$TS_M_INV_UNIT" r:remaining "$remaining_j" b:ln_was_active "$ln_was_active" \
-            b:ln_started "$ln_started" b:ln_disabled "$ln_disabled" s:node_config "$TS_M_NC_STATUS" r:action_required "$action_j"
+            b:ln_started "$ln_started" b:ln_disabled "$ln_disabled" s:node_config "$TS_M_NC_STATUS" r:action_required "$action_j" \
+            s:announce_cleanup "$TS_M_ANN_RESULT" r:warnings "$warnings_j"
         ts_json_document "$rc" "$(IFS=,; echo "[${errors[*]}]")" "${TS_R:1:${#TS_R}-2}"
     fi
     exit "$rc"
@@ -9317,6 +9340,162 @@ ts_m_uninstall_print_lines() {
         for l in "${TS_M_NC_INCLUDES[@]}"; do
             echo "  ${l}" >&2
         done
+    fi
+}
+
+# LND 0.20 and later saves the addresses it announces and announces them again at every start when
+# its config sets no externalip, so after the uninstall it would go on announcing the former VPN
+# address: the endpoint's IPv4 with the forwarded port, which externalhosts resolved to. Reads that
+# address from the managed tunnel config into TS_M_ANN_ADDR before the removal deletes the config
+# (the endpoint lookup takes at most TS_V_RESOLVE_TIMEOUT seconds, as in verify). TS_M_ANN_ADDR stays
+# empty, with the reason in TS_M_ANN_WHY, when the endpoint, the forwarded port or the IPv4 is missing.
+ts_m_announce_read() {
+    TS_M_ANN_ADDR=""
+    TS_M_ANN_WHY=""
+    ts_v_read_endpoint
+    if [[ -z "$TS_V_EP_HOST" ]]; then
+        TS_M_ANN_WHY="no endpoint in ${TS_M_WG_CONF}"
+    elif [[ -z "$TS_V_VPN_PORT" ]]; then
+        TS_M_ANN_WHY="no forwarded port in ${TS_M_WG_CONF}"
+    elif [[ -z "$TS_V_ENDPOINT_IP" ]] || ! valid_ipv4 "$TS_V_ENDPOINT_IP"; then
+        TS_M_ANN_WHY="${TS_V_EP_HOST} did not resolve"
+    else
+        TS_M_ANN_ADDR="${TS_V_ENDPOINT_IP}:${TS_V_VPN_PORT}"
+    fi
+}
+
+# Sets TS_M_LNCLI to the lncli command line for LND unit $1, without the user it runs as: LNCLI_BIN,
+# else the lncli next to the unit's lnd, else lncli on the PATH; --lnddir from the unit's command line,
+# else lnddir in the node config, else ~/.lnd of the node user; --network and --rpcserver when the
+# command line or the node config sets bitcoin.<network> or rpclisten. Leaves TS_M_NC_* as they were.
+ts_m_lncli_argv() {
+    local unit="$1" arg prev="" dir="" net="" rpc="" bin="lncli" home="" f key val nc_reason="$TS_M_NC_REASON"
+    local -a files=() nc_files=("${TS_M_NC_FILES[@]}")
+    TS_M_LNCLI=()
+    if ts_m_execstart_tokens "$unit"; then
+        if [[ "${TS_M_EXEC_ARGV[0]}" == /*/lnd ]] && [[ -x "${TS_M_EXEC_ARGV[0]%/lnd}/lncli" ]]; then
+            bin="${TS_M_EXEC_ARGV[0]%/lnd}/lncli"
+        fi
+        for arg in "${TS_M_EXEC_ARGV[@]:1}"; do
+            case "$prev" in
+                --lnddir) dir="$arg" ;;
+                --rpclisten) rpc="${rpc:-$arg}" ;;
+            esac
+            case "$arg" in
+                --lnddir=*) dir="${arg#*=}" ;;
+                --rpclisten=*) rpc="${rpc:-${arg#*=}}" ;;
+            esac
+            if [[ "$arg" =~ ^--bitcoin\.(testnet4|testnet|signet|regtest|simnet)(=(true|1))?$ ]]; then
+                net="${BASH_REMATCH[1]}"
+            fi
+            prev="$arg"
+        done
+    fi
+    ts_m_node_config_files lnd "$unit"
+    files=("${TS_M_NC_FILES[@]}")
+    TS_M_NC_FILES=("${nc_files[@]}")
+    TS_M_NC_REASON="$nc_reason"
+    for f in "${files[@]}"; do
+        while IFS='|' read -r _ key val; do
+            case "$key" in
+                lnddir) dir="${dir:-$val}" ;;
+                rpclisten) rpc="${rpc:-$val}" ;;
+                bitcoin.testnet4|bitcoin.testnet|bitcoin.signet|bitcoin.regtest|bitcoin.simnet)
+                    case "${val,,}" in
+                        ""|true|1) net="${net:-${key#bitcoin.}}" ;;
+                    esac
+                    ;;
+            esac
+        done < <(ts_m_config_settings "${TS_FS_ROOT}${f}")
+    done
+    home=$(ts_m_user_home "$TS_M_INV_USER") || home=""
+    if [[ -n "$home" ]]; then
+        dir="${dir:-${home}/.lnd}"
+        case "$dir" in
+            \~/*) dir="${home}/${dir:2}" ;;
+        esac
+    fi
+    TS_M_LNCLI=("${LNCLI_BIN:-$bin}")
+    if [[ "$dir" == /* ]]; then
+        TS_M_LNCLI+=("--lnddir=${dir}")
+    fi
+    if [[ -n "$net" ]]; then
+        TS_M_LNCLI+=("--network=${net}")
+    fi
+    case "$rpc" in
+        "") ;;
+        0.0.0.0:*|"[::]:"*|:*) TS_M_LNCLI+=("--rpcserver=localhost:${rpc##*:}") ;;
+        *) TS_M_LNCLI+=("--rpcserver=${rpc}") ;;
+    esac
+}
+
+# Prints the command that takes address $1 out of LND's node announcement (TS_M_LNCLI, as the node user).
+ts_m_announce_command() {
+    printf 'sudo -u %s %s peers updatenodeannouncement --address_remove %s' "$TS_M_INV_USER" "${TS_M_LNCLI[*]}" "$1"
+}
+
+# Records warning $1 of the announcement step (JSON warnings) and prints it as one line.
+ts_m_announce_warn() {
+    TS_M_ANN_WARNINGS+=("$1")
+    print_warning "$1"
+}
+
+# After uninstall --managed, LND only: once LND answers lncli getinfo (TS_M_ANNOUNCE_WAIT seconds at
+# most), takes the former VPN address TS_M_ANN_ADDR out of its node announcement if it is announced
+# there (lncli peers updatenodeannouncement --address_remove, as the node user), never the onion
+# address or any other one. Sets TS_M_ANN_RESULT (removed, none, lnd_not_ready, failed, or skipped:
+# CLN, LIT, or LND not running) and TS_M_ANN_WARNINGS (the exact command whenever the address may
+# remain), and prints one line.
+ts_m_announce_cleanup() {
+    local cmd info="" state deadline limit="$TS_M_ANNOUNCE_WAIT"
+    TS_M_ANN_RESULT="skipped"
+    TS_M_ANN_WARNINGS=()
+    case "$TS_M_INV_IMPL" in
+        lnd|lit) ;;
+        *) return 0 ;;
+    esac
+    if [[ -z "$TS_M_ANN_ADDR" ]]; then
+        ts_m_announce_warn "The former VPN address could not be determined (${TS_M_ANN_WHY}); if lncli getinfo still lists it under uris, remove it with: lncli peers updatenodeannouncement --address_remove <ip>:<port>"
+        return 0
+    fi
+    if [[ "$TS_M_INV_IMPL" == "lit" ]]; then
+        ts_m_announce_warn "LND in ${TS_M_INV_UNIT} may still announce the former VPN address ${TS_M_ANN_ADDR}; once it runs, remove it with: sudo -u ${TS_M_INV_USER} lncli peers updatenodeannouncement --address_remove ${TS_M_ANN_ADDR}"
+        return 0
+    fi
+    ts_m_lncli_argv "$TS_M_INV_UNIT"
+    cmd=$(ts_m_announce_command "$TS_M_ANN_ADDR")
+    state=$(ts_m_unit_prop "$TS_M_INV_UNIT" ActiveState)
+    case "$state" in
+        active|activating|reloading) ;;
+        *)
+            ts_m_announce_warn "${TS_M_INV_UNIT} does not run; when it starts, it may announce the former VPN address ${TS_M_ANN_ADDR} again. Once it runs, remove it with: ${cmd}"
+            return 0
+            ;;
+    esac
+    if [[ ! "$limit" =~ ^[0-9]{1,3}$ ]]; then
+        limit=120
+    fi
+    deadline=$((SECONDS + limit))
+    until info=$(timeout --kill-after=2 15 "$RUNUSER_BIN" -u "$TS_M_INV_USER" -- "${TS_M_LNCLI[@]}" getinfo 2>/dev/null); do
+        if [[ "$SECONDS" -ge "$deadline" ]]; then
+            TS_M_ANN_RESULT="lnd_not_ready"
+            ts_m_announce_warn "${TS_M_INV_UNIT} did not answer lncli getinfo within ${limit} s, so it may still announce the former VPN address ${TS_M_ANN_ADDR}. Once it answers, remove it with: ${cmd}"
+            return 0
+        fi
+        sleep 2
+    done
+    if [[ "$info" != *"@${TS_M_ANN_ADDR}\""* ]]; then
+        TS_M_ANN_RESULT="none"
+        print_info "${TS_M_INV_UNIT} does not announce the former VPN address ${TS_M_ANN_ADDR}"
+        return 0
+    fi
+    if timeout --kill-after=2 30 "$RUNUSER_BIN" -u "$TS_M_INV_USER" -- "${TS_M_LNCLI[@]}" peers updatenodeannouncement \
+        --address_remove "$TS_M_ANN_ADDR" >/dev/null 2>&1; then
+        TS_M_ANN_RESULT="removed"
+        print_success "Removed the former VPN address ${TS_M_ANN_ADDR} from the node announcement of ${TS_M_INV_UNIT}"
+    else
+        TS_M_ANN_RESULT="failed"
+        ts_m_announce_warn "${TS_M_INV_UNIT} still announces the former VPN address ${TS_M_ANN_ADDR}: the update failed. Remove it with: ${cmd}"
     fi
 }
 

@@ -165,7 +165,7 @@ cleanup() {
         diagnostics
     fi
     if [[ -f /etc/tunnelsats/managed.json ]]; then
-        bash "$TS" uninstall --managed --yes --non-interactive >/dev/null 2>&1
+        TS_M_ANNOUNCE_WAIT=0 bash "$TS" uninstall --managed --yes --non-interactive >/dev/null 2>&1
     fi
     systemctl stop lnd.service >/dev/null 2>&1
     rm -f "$LN_UNIT_FILE"
@@ -730,7 +730,8 @@ install_managed() {
 
 uninstall_managed() {
     set +e
-    U_DOC=$(bash "$TS" uninstall --managed --yes --json 2>"$WORK/uninstall.err")
+    # The stub Lightning daemon has no RPC: the announcement step does not wait for lncli getinfo
+    U_DOC=$(TS_M_ANNOUNCE_WAIT=0 bash "$TS" uninstall --managed --yes --json 2>"$WORK/uninstall.err")
     U_RC=$?
     set -e
     if [[ "$U_RC" -ne 0 ]]; then
@@ -1185,6 +1186,8 @@ step "S9 uninstall --managed with a clean node config"
 uninstall_managed
 assert_equals "0" "$U_RC" "S9: uninstall --managed exits 0"
 assert_equals '[true, true, [], "clean"]' "$(json_get "$U_DOC" '[d["ok"], d["ln_started"], d["remaining"], d["node_config"]]')" "S9: Lightning started again, nothing left"
+assert_equals '["lnd_not_ready", 1]' "$(json_get "$U_DOC" '[d["announce_cleanup"], len(d["warnings"])]')" \
+    "S9: the announcement step ran (the stub daemon has no RPC) and names the command in a warning"
 assert_equals "active" "$(systemctl is-active lnd.service)" "S9: lnd.service runs"
 assert_equals "/system.slice/lnd.service" "$(ln_cgroup)" "S9: lnd.service runs outside the slice again"
 snapshot_rules > "$WORK/a1.rules"
