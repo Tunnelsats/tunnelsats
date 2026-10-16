@@ -85,6 +85,8 @@ To remove TunnelSats and restore your original configuration:
 sudo bash tunnelsats.sh uninstall
 ```
 
+LND 0.20 and later keeps announcing the addresses it saved, the former VPN address too. Once LND runs again, remove that address with `lncli peers updatenodeannouncement --address_remove <ip>:<port>`; uninstall prints the exact command (`uninstall --managed` runs it itself when LND answers). The same command removes an older clearnet address that `lncli getinfo` still lists under `uris`.
+
 ---
 
 ## Managed mode for bare-metal nodes (preview)

@@ -88,6 +88,8 @@ An external `nft flush ruleset`, or a firewall tool that replaces the whole rule
 
 If something cannot be removed, uninstall lists it and keeps `/etc/tunnelsats/managed.json` (state `removing`), the installed script and the emergency block records, so you can run `uninstall --managed` again once the cause is fixed. Meanwhile `detect` reports `managed_state: removing`.
 
+**LND's node announcement.** LND 0.20 and later saves the addresses it announces and announces them again at every start when its config sets no `externalip`. After the removal it would therefore go on announcing the former VPN address, the `<ipv4>:<port>` that `externalhosts` resolved to. `uninstall --managed` reads that address from the tunnel config before it removes the config. Once LND runs again and answers `lncli getinfo` (it waits up to 2 minutes), uninstall removes exactly that address from the node announcement with `lncli peers updatenodeannouncement --address_remove <ipv4>:<port>`, run as the node user; the onion address and every other address stay. The JSON document reports this step in `announce_cleanup` (`removed`, `none`, `lnd_not_ready`, `failed`, or `skipped` for CLN and while Lightning stays stopped) and, whenever the address may remain, adds a line to `warnings` with the exact command to run once LND runs. The standard `uninstall` prints that command with its final instructions. The same command also removes an older clearnet address that LND still announces from an earlier setup: `lncli getinfo` lists the announced addresses under `uris`.
+
 ## RaspiBlitz
 
 ```bash
