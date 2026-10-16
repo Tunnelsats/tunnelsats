@@ -1460,6 +1460,33 @@ assert_json "$doc" '[d["exit_code"], d["remaining"], d["announce_cleanup"], len(
 assert_contains "$(json_eval "$doc" 'd["warnings"][0]' 2>&1)" "$announce_command" \
     "Repeated uninstall: the exact command comes from the record (the tunnel config is gone)"
 
+# The node config belongs to the node user, and root is asked to paste the printed command: lnddir
+# and rpclisten pass only as plain values, for the executed and the printed command alike. An
+# unusable one is left out, and a warning names the setting without its value
+announce_unsafe() {  # $1 = name, $2 = line planted in lnd.conf, $3 = setting the warning names, $4 = text that must not reach lncli
+    local f d w printed
+    f=$(announce_fixture "$1" "$(printf '%s\n%s' "$clean_lnd" "$2")")
+    rm -f "$f/state/lncli_getinfo"
+    run_snippet "$f" "$announce_json"
+    d=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+    w=$(json_eval "$d" '"\n".join(d["warnings"])' 2>&1)
+    printed=$(printf '%s\n' "$SN_OUT" | grep -F 'updatenodeannouncement' | grep -v '^{"contract"' | sed -n 's/.*remove it with: //p' || true)
+    assert_json "$d" '[d["announce_cleanup"], len(d["warnings"])]' '["lnd_not_ready", 2]' \
+        "Uninstall ($1): lnd_not_ready, plus one warning for the unusable setting"
+    assert_contains "$w" "The $3 setting of lnd.service in its node config or on its command line is not a plain value" \
+        "Uninstall ($1): the warning names the setting"
+    if printf '%s\n%s\n' "$w" "$printed" | grep -q '[;#\$`|&<>[:cntrl:]]'; then
+        fail "Uninstall ($1): no shell metacharacter in the printed command or the JSON warnings"
+    else
+        pass "Uninstall ($1): no shell metacharacter in the printed command or the JSON warnings"
+    fi
+    assert_contains "$printed" "--address_remove 1.2.3.4:24556" "Uninstall ($1): the command is still printed"
+    assert_not_contains "$(grep -E '^(runuser|lncli) ' "$f/state/calls" || true)" "$4" "Uninstall ($1): the executed lncli does not get the value"
+}
+announce_unsafe announce-unsafe-lnddir 'lnddir=/x;id #' lnddir "/x;id"
+announce_unsafe announce-unsafe-escape 'lnddir=/data/lnd\e[2J' lnddir '\'
+announce_unsafe announce-unsafe-rpclisten 'rpclisten=localhost:10009;id' rpclisten "--rpcserver"
+
 fx=$(announce_fixture announce-text)
 run_snippet "$fx" "WG_BIN='$STUB_BIN/wg-announce'; TS_JSON=0; TS_NONINTERACTIVE=1; TS_COMMAND=uninstall; TS_OPT_YES=1; cmd_uninstall_managed"
 assert_equals "0 1" "$SN_RC $(printf '%s\n' "$SN_OUT" | grep -c '1\.2\.3\.4:24556' || true)" "Uninstall (text mode): the announcement step prints one line"

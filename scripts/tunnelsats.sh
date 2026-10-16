@@ -9488,31 +9488,52 @@ ts_m_lncli_argv() {
             \~/*) dir="${home}/${dir:2}" ;;
         esac
     fi
+    # The node config belongs to the node user, and root is asked to paste the printed command: lnddir
+    # and rpclisten pass only as plain values, for the executed command line and the printed one alike.
+    # An unusable one is left out (lncli takes its default) and named in TS_M_LNCLI_UNUSABLE.
+    local dir_re='^/[A-Za-z0-9._/-]{1,255}$' rpc_re='^(localhost|[A-Za-z0-9.-]{1,253}|\[[0-9A-Fa-f:]+\]):[0-9]{1,5}$'
     TS_M_LNCLI=("${LNCLI_BIN:-$bin}")
-    if [[ "$dir" == /* ]]; then
-        TS_M_LNCLI+=("--lnddir=${dir}")
+    TS_M_LNCLI_UNUSABLE=()
+    if [[ -n "$dir" ]]; then
+        if [[ "$dir" =~ $dir_re ]] && [[ "/${dir}/" != */../* ]]; then
+            TS_M_LNCLI+=("--lnddir=${dir}")
+        else
+            TS_M_LNCLI_UNUSABLE+=("lnddir")
+        fi
     fi
     if [[ -n "$net" ]]; then
         TS_M_LNCLI+=("--network=${net}")
     fi
     case "$rpc" in
-        "") ;;
-        0.0.0.0:*|"[::]:"*|:*) TS_M_LNCLI+=("--rpcserver=localhost:${rpc##*:}") ;;
-        *) TS_M_LNCLI+=("--rpcserver=${rpc}") ;;
+        0.0.0.0:*|"[::]:"*|:*) rpc="localhost:${rpc##*:}" ;;
     esac
+    if [[ -n "$rpc" ]]; then
+        if [[ "$rpc" =~ $rpc_re ]]; then
+            TS_M_LNCLI+=("--rpcserver=${rpc}")
+        else
+            TS_M_LNCLI_UNUSABLE+=("rpclisten")
+        fi
+    fi
 }
 
 # Prints the command that takes addresses $1... out of LND's node announcement (TS_M_LNCLI, as the
-# node user; lncli takes --address_remove more than once).
+# node user; lncli takes --address_remove more than once), every word shell-quoted (%q) so that the
+# printed line is safe to paste.
 ts_m_announce_command() {
-    printf 'sudo -u %s %s peers updatenodeannouncement' "$TS_M_INV_USER" "${TS_M_LNCLI[*]}"
-    printf ' --address_remove %s' "$@"
+    local a
+    local -a argv=(sudo -u "$TS_M_INV_USER" "${TS_M_LNCLI[@]}" peers updatenodeannouncement)
+    for a in "$@"; do
+        argv+=(--address_remove "$a")
+    done
+    printf '%q' "${argv[0]}"
+    printf ' %q' "${argv[@]:1}"
 }
 
-# Records warning $1 of the announcement step (JSON warnings) and prints it as one line.
+# Records warning $1 of the announcement step (JSON warnings) and prints it as one line, as
+# print_warning does but without interpreting backslash escapes in the text.
 ts_m_announce_warn() {
     TS_M_ANN_WARNINGS+=("$1")
-    print_warning "$1"
+    printf '%b  %s\n' "${YELLOW}⚠${NC}" "$1" >&2
 }
 
 # After uninstall --managed, LND only: once LND answers lncli getinfo (TS_M_ANNOUNCE_WAIT seconds at
@@ -9536,10 +9557,14 @@ ts_m_announce_cleanup() {
         return 0
     fi
     if [[ "$TS_M_INV_IMPL" == "lit" ]]; then
-        ts_m_announce_warn "LND in ${unit} may still announce the former VPN address ${TS_M_ANN_ADDRS[*]}; once it runs, remove it with: sudo -u ${TS_M_INV_USER} lncli peers updatenodeannouncement$(printf ' --address_remove %s' "${TS_M_ANN_ADDRS[@]}")"
+        TS_M_LNCLI=(lncli)
+        ts_m_announce_warn "LND in ${unit} may still announce the former VPN address ${TS_M_ANN_ADDRS[*]}; once it runs, remove it with: $(ts_m_announce_command "${TS_M_ANN_ADDRS[@]}")"
         return 0
     fi
     ts_m_lncli_argv "$unit"
+    for a in "${TS_M_LNCLI_UNUSABLE[@]}"; do
+        ts_m_announce_warn "The ${a} setting of ${unit} in its node config or on its command line is not a plain value, so lncli runs without it"
+    done
     cmd=$(ts_m_announce_command "${TS_M_ANN_ADDRS[@]}")
     state=$(ts_m_unit_prop "$unit" ActiveState)
     case "$state" in
