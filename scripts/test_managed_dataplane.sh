@@ -3636,6 +3636,82 @@ else
     fail "16d: RaspiBlitz lnd.check.sh restored from lnd.check.bak and blitzapi drop-in removed"
 fi
 
+# 15c: uninstall --managed --legacy-artifacts stops active lnd.service before teardown, disables it when clearnet settings remain,
+# and preserves custom /etc/nftables.conf when /etc/nftablespriortunnelsats.backup exists
+fx=$(new_fixture legacy-custom-nft)
+mkdir -p "$fx/fs/etc/wireguard" "$fx/fs/etc/systemd/system" "$fx/fs/home/bitcoin/.lnd"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+cat > "$fx/fs/etc/systemd/system/lnd.service" <<'EOF'
+[Unit]
+Description=LND
+[Service]
+User=bitcoin
+ExecStart=/usr/local/bin/lnd --configfile=/home/bitcoin/.lnd/lnd.conf
+EOF
+printf '[Application Options]\nexternalhosts=de2.tunnelsats.com:24556\n' > "$fx/fs/home/bitcoin/.lnd/lnd.conf"
+: > "$fx/state/stateful_units"
+echo "loaded" > "$fx/state/unit_lnd.service_LoadState"
+echo "active" > "$fx/state/unit_lnd.service_ActiveState"
+printf '{ path=/usr/local/bin/lnd ; argv[]=/usr/local/bin/lnd --configfile=/home/bitcoin/.lnd/lnd.conf ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n' > "$fx/state/unit_lnd.service_ExecStart"
+printf 'table inet custom_fw {}\n' > "$fx/fs/etc/nftables.conf"
+printf 'table inet old_backup {}\n' > "$fx/fs/etc/nftablespriortunnelsats.backup"
+run_snippet "$fx" "parse_args --json uninstall --managed --legacy-artifacts --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "1" "$SN_RC" "15c: --legacy-artifacts exits 1 when custom /etc/nftables.conf prevents overwriting from backup"
+assert_json "$doc" '[d["ok"], d["removed"], d["remaining"]]' '[false, false, ["/etc/nftablespriortunnelsats.backup"]]' \
+    "15c: JSON reports /etc/nftablespriortunnelsats.backup in remaining"
+assert_equals "table inet custom_fw {}" "$(cat "$fx/fs/etc/nftables.conf")" "15c: custom /etc/nftables.conf is preserved"
+if calls_before "$fx" "systemctl stop lnd.service" "systemctl stop wg-quick@tunnelsatsv2.service" && \
+    grep -q '^systemctl disable lnd\.service$' "$fx/state/calls"; then
+    pass "15c: active lnd.service stopped before legacy wg-quick teardown and disabled due to clearnet settings"
+else
+    fail "15c: active lnd.service stopped before legacy wg-quick teardown and disabled due to clearnet settings"
+fi
+
+# 16e: adopt --managed preflight rule/route checks, auto-restart stop, and WireGuard config restoration on step 4 failure
+fx=$(preflight_fixture adopt-unrecorded-fc)
+mkdir -p "$fx/tmp" "$fx/fs/etc/wireguard"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+printf 'from 10.9.9.0/25\n' > "$fx/fs/etc/wireguard/.tunnelsats-failclosed-rules"
+printf '21819:\tfrom all uidrange 2000-2000 blackhole\n' > "$fx/state/rules4"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[7, "E_RULE_PRIORITY_IN_USE"]' \
+    "16e: adopt --managed refuses 21819 rule whose selector is not in .tunnelsats-failclosed-rules"
+
+fx=$(preflight_fixture adopt-foreign-bh)
+mkdir -p "$fx/tmp" "$fx/fs/etc/wireguard"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+printf 'blackhole 198.51.100.0/24 \n' > "$fx/state/routes4"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[7, "E_TABLE_51820_IN_USE"]' \
+    "16e: adopt --managed refuses non-metric-3 blackhole route in table 51820"
+
+fx=$(rb_preflight_fixture adopt-rollback-cfg)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+printf 'from 10.9.9.0/25\nuidrange 1001-1001\n' > "$fx/fs/etc/wireguard/.tunnelsats-failclosed-rules"
+printf '21818:\tfrom 10.9.9.0/25 blackhole\n21819:\tfrom all uidrange 1001-1001 blackhole\n' > "$fx/state/rules4"
+: > "$fx/state/stateful_units"
+echo "activating" > "$fx/state/unit_lnd.service_ActiveState"
+echo "auto-restart" > "$fx/state/unit_lnd.service_SubState"
+echo "enabled" > "$fx/state/unit_lnd.service_UnitFileState"
+: > "$fx/state/fail_systemctl_start_tunnelsats-killswitch.service"
+run_snippet "$fx" "SYSTEMCTL_BIN='$STUB_BIN/systemctl'; WG_BIN='$RB_BIN/wg'; WG_QUICK_BIN='$RB_BIN/wg-quick'; export TMPDIR='$fx/tmp'; parse_args --json adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[1, "E_KILLSWITCH"]' \
+    "16e: adopt --managed aborts with E_KILLSWITCH when killswitch start fails"
+if [[ -f "$fx/fs/etc/wireguard/tunnelsatsv2.conf" ]] && \
+    grep -q '^systemctl stop lnd\.service$' "$fx/state/calls" && \
+    grep -q '^systemctl disable lnd\.service$' "$fx/state/calls"; then
+    pass "16e: failed adopt stops activating/auto-restart lnd.service, leaves it disabled, and restores /etc/wireguard/tunnelsatsv2.conf"
+else
+    fail "16e: failed adopt stops activating/auto-restart lnd.service, leaves it disabled, and restores /etc/wireguard/tunnelsatsv2.conf"
+fi
+
 echo ""
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"

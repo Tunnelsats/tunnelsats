@@ -1811,6 +1811,9 @@ PostDown = $route_guard clean %i || true
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 "
         echo -e "$inputNonDocker" >> "$target_path"
+        if [[ "$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || echo 0)" == "0" ]]; then
+            touch "${WG_DIR:-${TS_FS_ROOT}/etc/wireguard}/.tunnelsats-ipv6-disabled" 2>/dev/null || true
+        fi
     fi
     
     # Verify rules were applied
@@ -3211,6 +3214,29 @@ cmd_uninstall() {
                         detected_nc_lines+=("${path}:${nc_num}:${nc_key}=${nc_val}")
                     fi
                 done < <(ts_m_config_settings "$path")
+                local inc_entry inc_num inc_key inc_v inc_file
+                while IFS= read -r nc_entry; do
+                    nc_num="${nc_entry%%|*}"
+                    nc_val="${nc_entry#*|}"
+                    detected_nc_lines+=("${path}:${nc_num}:include ${nc_val}")
+                    inc_file="$nc_val"
+                    if [[ "$inc_file" != /* ]]; then
+                        inc_file="$(dirname "$path")/${inc_file}"
+                    else
+                        inc_file="${TS_FS_ROOT}${inc_file}"
+                    fi
+                    if [[ -f "$inc_file" ]]; then
+                        while IFS= read -r inc_entry; do
+                            inc_num="${inc_entry%%|*}"
+                            inc_entry="${inc_entry#*|}"
+                            inc_key="${inc_entry%%|*}"
+                            inc_v="${inc_entry#*|}"
+                            if ts_m_nc_setting_hit "cln" "$inc_key" "$inc_v"; then
+                                detected_nc_lines+=("${inc_file}:${inc_num}:${inc_key}=${inc_v}")
+                            fi
+                        done < <(ts_m_config_settings "$inc_file")
+                    fi
+                done < <(ts_m_cln_config_includes "$path")
             fi
         done
         if [[ -f "$home_dir/umbrel/app-data/core-lightning/exports.sh" ]] && \
@@ -3246,6 +3272,21 @@ cmd_uninstall() {
         for nc_entry in "${detected_nc_lines[@]}"; do
             echo "  - ${nc_entry}"
         done
+        # As uninstall --managed does: without the tunnel these settings use the regular internet
+        # connection, so the stopped Lightning unit is disabled until they are removed
+        local nc_unit=""
+        case "$ln_impl" in
+            lnd) nc_unit="lnd.service" ;;
+            cln) nc_unit="lightningd.service" ;;
+            lit) nc_unit="litd.service"; [[ -f "${TS_FS_ROOT}/etc/systemd/system/${nc_unit}" ]] || nc_unit="lit.service" ;;
+        esac
+        if [[ $is_docker -eq 0 ]] && [[ -n "$nc_unit" ]]; then
+            if systemctl disable "$nc_unit" &>/dev/null; then
+                print_warning "${nc_unit} stays stopped and is disabled. Remove these settings, then run: sudo systemctl enable --now ${nc_unit}"
+            else
+                print_error "${nc_unit} could not be disabled: remove these settings before the next boot"
+            fi
+        fi
     else
         print_info "No TunnelSats clearnet settings detected in standard config locations"
     fi
@@ -3398,8 +3439,14 @@ cmd_uninstall() {
     fi
     
     if [[ -f "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" ]]; then
-         mv "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" "${TS_FS_ROOT}/etc/nftables.conf"
-         print_success "Restored original nftables.conf"
+         if [[ ! -f "${TS_FS_ROOT}/etc/nftables.conf" ]] \
+             || grep -qE 'tunnelsats|splitted_processes|0x1000000' "${TS_FS_ROOT}/etc/nftables.conf" 2>/dev/null \
+             || cmp -s "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" "${TS_FS_ROOT}/etc/nftables.conf" 2>/dev/null; then
+             mv "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" "${TS_FS_ROOT}/etc/nftables.conf"
+             print_success "Restored original nftables.conf"
+         else
+             print_warning "Kept /etc/nftables.conf and /etc/nftablespriortunnelsats.backup (existing /etc/nftables.conf contains non-TunnelSats rules)"
+         fi
     fi
 
     # Remove only TunnelSats-owned policy rules/routes; other users of table 51820 are preserved
@@ -3410,9 +3457,10 @@ cmd_uninstall() {
     done
 
     if [[ $is_docker -eq 0 ]]; then
-        if [[ "$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || echo 0)" == "1" ]]; then
+        if [[ -f "$wg_dir/.tunnelsats-ipv6-disabled" ]]; then
             sysctl -w net.ipv6.conf.all.disable_ipv6=0 &>/dev/null || true
             sysctl -w net.ipv6.conf.default.disable_ipv6=0 &>/dev/null || true
+            rm -f "$wg_dir/.tunnelsats-ipv6-disabled" &>/dev/null || true
         fi
     fi
 
@@ -3480,7 +3528,6 @@ cmd_uninstall() {
     local has_resolvconf_marker=0
     if [[ -f "$wg_dir/.tunnelsats-resolvconf.installed" ]]; then
         has_resolvconf_marker=1
-        rm -f "$wg_dir/.tunnelsats-resolvconf.installed" &>/dev/null || true
     fi
     case "$TS_OPT_PACKAGES" in
         remove) answer="Y" ;;
@@ -3521,6 +3568,9 @@ cmd_uninstall() {
              else
                  apt-get remove -yqq cgroup-tools nftables wireguard-tools &>/dev/null
              fi
+         fi
+         if [[ "$has_resolvconf_marker" -eq 1 ]]; then
+             rm -f "$wg_dir/.tunnelsats-resolvconf.installed" &>/dev/null || true
          fi
          print_success "Packages removed"
     else
@@ -9130,21 +9180,35 @@ ts_m_remove_dataplane() {
 
 TS_M_ROLLBACK_ARMED=0
 TS_M_TMP_DIR=""
+TS_M_ADOPT_BACKUP=""
+TS_M_ADOPT_ORIG_CONF=""
 
-# EXIT trap of install --managed: removes the temporary copy of the config (it holds the private
-# key) and, after a failure, everything the install created so far. Keeps the JSON contract.
+# EXIT trap of install/adopt --managed: removes the temporary copy of the config (it holds the
+# private key) and, after a failure, everything the install created so far. For adopt --managed,
+# restores the original WireGuard config from TS_M_ADOPT_BACKUP if it was backed up. Keeps the JSON contract.
 ts_m_install_exit_trap() {
     local rc=$?
     trap - EXIT
-    if [[ -n "$TS_M_TMP_DIR" ]]; then
-        rm -rf "$TS_M_TMP_DIR"
-    fi
     if [[ "$rc" -ne 0 ]] && [[ "$TS_M_ROLLBACK_ARMED" -eq 1 ]]; then
         print_warning "Install failed; removing what it created so far..."
         ts_m_remove_dataplane
         if [[ ${#TS_M_REMAINING[@]} -gt 0 ]]; then
             print_error "Could not remove: ${TS_M_REMAINING[*]}. The inventory keeps the record: fix the cause, then run 'tunnelsats.sh uninstall --managed'."
         fi
+    fi
+    if [[ "$rc" -ne 0 ]] && [[ -n "$TS_M_ADOPT_BACKUP" ]] && [[ -f "$TS_M_ADOPT_BACKUP" ]]; then
+        if [[ -n "$TS_M_ADOPT_ORIG_CONF" ]]; then
+            mkdir -p "$(dirname "$TS_M_ADOPT_ORIG_CONF")" 2>/dev/null || true
+            mv -f "$TS_M_ADOPT_BACKUP" "$TS_M_ADOPT_ORIG_CONF" 2>/dev/null || true
+            chmod 0600 "$TS_M_ADOPT_ORIG_CONF" 2>/dev/null || true
+        else
+            rm -f "$TS_M_ADOPT_BACKUP" 2>/dev/null || true
+        fi
+    elif [[ -n "$TS_M_ADOPT_BACKUP" ]]; then
+        rm -f "$TS_M_ADOPT_BACKUP" 2>/dev/null || true
+    fi
+    if [[ -n "$TS_M_TMP_DIR" ]]; then
+        rm -rf "$TS_M_TMP_DIR"
     fi
     if [[ "$rc" -ne 0 ]]; then
         ts_m_lifecycle_cleanup
@@ -9425,12 +9489,10 @@ ts_m_adopt_preflight() {
             fi
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                case "$line" in
-                    blackhole[[:space:]]*|*" dev tunnelsats"*) ;;
-                    *)
-                        ts_fail 7 E_TABLE_51820_IN_USE refused "IPv4 routing table ${TS_M_RT_TABLE} has a non-TunnelSats route: ${line}"
-                        ;;
-                esac
+                if ! [[ "$line" =~ ^blackhole[[:space:]]+default[[:space:]]+metric[[:space:]]+3([[:space:]]|$) ]] && \
+                    ! [[ "$line" =~ ^default[[:space:]]+dev[[:space:]]+tunnelsats[A-Za-z0-9_.-]*([[:space:]]|$) ]]; then
+                    ts_fail 7 E_TABLE_51820_IN_USE refused "IPv4 routing table ${TS_M_RT_TABLE} has a non-TunnelSats route: ${line}"
+                fi
             done < <(printf '%s\n' "$listing")
         fi
         if ! listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null); then
@@ -9445,8 +9507,23 @@ ts_m_adopt_preflight() {
                     case "$line" in
                         21820:*lookup[[:space:]]main[[:space:]]suppress_prefixlength[[:space:]]0*) ;;
                         21821:*0x1000000*lookup[[:space:]]51820*|21821:*uidrange*lookup[[:space:]]51820*) ;;
-                        21818:*unreachable*|21819:*unreachable*)
-                            if [[ ! -f "${TS_FS_ROOT}${wg_rel}/.tunnelsats-failclosed-rules" ]]; then
+                        21818:*blackhole*|21818:*unreachable*)
+                            local fc_sel=""
+                            if [[ "$line" =~ ^21818:[[:space:]]+from[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)[[:space:]]+(blackhole|unreachable)([[:space:]]|$) ]]; then
+                                fc_sel="from ${BASH_REMATCH[1]}"
+                            fi
+                            if [[ -z "$fc_sel" ]] || [[ ! -f "${TS_FS_ROOT}${wg_rel}/.tunnelsats-failclosed-rules" ]] || \
+                                ! grep -qxF "$fc_sel" "${TS_FS_ROOT}${wg_rel}/.tunnelsats-failclosed-rules" 2>/dev/null; then
+                                ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv4 policy rule priority ${line%%:*} is in use: ${line}"
+                            fi
+                            ;;
+                        21819:*blackhole*|21819:*unreachable*)
+                            local fc_sel=""
+                            if [[ "$line" =~ ^21819:[[:space:]]+from[[:space:]]+all[[:space:]]+uidrange[[:space:]]+([0-9]+-[0-9]+)[[:space:]]+(blackhole|unreachable)([[:space:]]|$) ]]; then
+                                fc_sel="uidrange ${BASH_REMATCH[1]}"
+                            fi
+                            if [[ -z "$fc_sel" ]] || [[ ! -f "${TS_FS_ROOT}${wg_rel}/.tunnelsats-failclosed-rules" ]] || \
+                                ! grep -qxF "$fc_sel" "${TS_FS_ROOT}${wg_rel}/.tunnelsats-failclosed-rules" 2>/dev/null; then
                                 ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv4 policy rule priority ${line%%:*} is in use: ${line}"
                             fi
                             ;;
@@ -9476,9 +9553,13 @@ ts_m_adopt_preflight() {
 }
 
 cmd_adopt_managed() {
-    local answer="" ln_was_active=0 ln_restarted=0 tunnel_started=0 rc=0 out fam listing line
+    local answer="" ln_was_active=0 ln_was_enabled=0 ln_ufile_state="" ln_restarted=0 tunnel_started=0 rc=0 out fam listing line
     local -a unit_edits=()
     local unit_reverted=0
+    local wg_rel="${WG_DIR:-/etc/wireguard}"
+    wg_rel="${wg_rel#"$TS_FS_ROOT"}"
+    [[ -z "$wg_rel" ]] && wg_rel="/etc/wireguard"
+    local wg_full="${TS_FS_ROOT}${wg_rel}"
     ts_m_require_root
     case "$TS_OPT_PROFILE" in
         baremetal|raspiblitz) ;;
@@ -9510,33 +9591,54 @@ cmd_adopt_managed() {
     ts_m_capability_probe
 
     # 1. Stop the Lightning unit FIRST while the legacy tunnel/killswitch is still active so the
-    # daemon never runs without tunnel routing during legacy teardown
-    local ln_state ln_sub=""
+    # daemon never runs without tunnel routing (or triggers an auto-restart timer) during legacy teardown
+    local ln_state
     ln_state=$(ts_m_unit_prop "$TS_M_UNIT" ActiveState)
-    if [[ "$ln_state" == "activating" ]] && [[ "$TS_OPT_PROFILE" == "raspiblitz" ]]; then
-        ln_sub=$(ts_m_unit_prop "$TS_M_UNIT" SubState)
-    fi
-    if ts_m_ln_restart_needed "$ln_state" "$ln_sub"; then
-        ln_was_active=1
-        print_info "Stopping ${TS_M_UNIT} before removing legacy artifacts..."
-        if ! "$SYSTEMCTL_BIN" stop "$TS_M_UNIT"; then
-            ts_fail 1 E_LN_STOP operational "Could not stop ${TS_M_UNIT} before removing legacy artifacts"
+    case "$ln_state" in
+        inactive|failed|"") ;;
+        *)
+            ln_was_active=1
+            print_info "Stopping ${TS_M_UNIT} before removing legacy artifacts..."
+            if ! "$SYSTEMCTL_BIN" stop "$TS_M_UNIT"; then
+                ts_fail 1 E_LN_STOP operational "Could not stop ${TS_M_UNIT} before removing legacy artifacts"
+            fi
+            ln_state=$(ts_m_unit_prop "$TS_M_UNIT" ActiveState)
+            case "$ln_state" in
+                inactive|failed) ;;
+                *)
+                    ts_fail 1 E_LN_STOP operational "${TS_M_UNIT} is still ${ln_state:-active} after systemctl stop"
+                    ;;
+            esac
+            ;;
+    esac
+
+    # Disable the Lightning unit before legacy teardown so a failed adopt cannot leave it enabled
+    # with clearnet settings outside any tunnel on the next boot; re-enabled once the kill switch is armed
+    ln_ufile_state=$(ts_m_unit_prop "$TS_M_UNIT" UnitFileState)
+    if [[ "$ln_ufile_state" != "disabled" ]]; then
+        if [[ "$ln_ufile_state" == "enabled"* ]] || [[ "$ln_was_active" -eq 1 ]]; then
+            ln_was_enabled=1
         fi
-        ln_state=$(ts_m_unit_prop "$TS_M_UNIT" ActiveState)
-        case "$ln_state" in
-            inactive|failed) ;;
-            *)
-                ts_fail 1 E_LN_STOP operational "${TS_M_UNIT} is still ${ln_state:-active} after systemctl stop"
-                ;;
-        esac
+        if ! "$SYSTEMCTL_BIN" disable "$TS_M_UNIT" >/dev/null 2>&1; then
+            ts_fail 1 E_LN_DISABLE operational "Could not disable ${TS_M_UNIT} before removing legacy artifacts"
+        fi
     fi
 
+    # Back up the original WireGuard config so ts_m_install_exit_trap can restore it if adopt fails
+    TS_M_ADOPT_ORIG_CONF="$CONFIG_FILE"
+    TS_M_ADOPT_BACKUP="${TS_M_TMP_DIR}/adopt-orig-wg.conf"
+    if ! cp -f "$CONFIG_FILE" "$TS_M_ADOPT_BACKUP" 2>/dev/null; then
+        TS_M_ADOPT_BACKUP=""
+        ts_fail 1 E_WRITE_FAILED operational "Could not back up ${CONFIG_FILE} before adopt"
+    fi
+    chmod 0600 "$TS_M_ADOPT_BACKUP" 2>/dev/null || true
+
     # 2. Revert legacy in-place edits on the guarded unit (never restoring from stale .service.bak)
-    # and clean all legacy artifacts (the config is already sanitized in TS_M_SANITIZED)
+    # and clean all legacy artifacts while keeping WireGuard configs on disk until step 4 succeeds
     ts_m_revert_legacy_unit_edits "/etc/systemd/system/${TS_M_UNIT}" || true
     unit_edits=("${TS_M_UNIT_EDITS_FOUND[@]}")
     unit_reverted="$TS_M_UNIT_REVERTED"
-    TS_OPT_KEEP_CONFIG=0 ts_m_clean_legacy_artifacts
+    TS_OPT_KEEP_CONFIG=1 ts_m_clean_legacy_artifacts
     if [[ "$unit_reverted" -eq 1 ]] && [[ " ${TS_M_LEGACY_REMOVED[*]} " != *" /etc/systemd/system/${TS_M_UNIT} "* ]]; then
         TS_M_LEGACY_REMOVED=("/etc/systemd/system/${TS_M_UNIT}" "${TS_M_LEGACY_REMOVED[@]}")
     fi
@@ -9581,8 +9683,6 @@ cmd_adopt_managed() {
     if ! ts_m_install_files; then
         ts_m_install_abort E_WRITE_FAILED "Writing the managed files failed"
     fi
-    rm -rf "$TS_M_TMP_DIR"
-    TS_M_TMP_DIR=""
     if ! "$SYSTEMCTL_BIN" daemon-reload; then
         ts_m_install_abort E_SYSTEMD "systemctl daemon-reload failed"
     fi
@@ -9609,6 +9709,27 @@ cmd_adopt_managed() {
         ts_m_install_abort E_KILLSWITCH "The kill switch unit ran, but the attestation is ${TS_M_ATT_STATUS//_/ }"
     fi
     print_success "Kill switch armed and attested"
+
+    # Managed dataplane is armed: remove the adopt backup and any non-canonical legacy tunnelsats-*.conf files
+    rm -rf "$TS_M_TMP_DIR"
+    TS_M_TMP_DIR=""
+    TS_M_ADOPT_BACKUP=""
+    TS_M_ADOPT_ORIG_CONF=""
+    for out in "$wg_full"/tunnelsats-*.conf; do
+        if [[ -e "$out" ]] || [[ -L "$out" ]]; then
+            if [[ "$out" != "${TS_FS_ROOT}${TS_M_WG_CONF}" ]]; then
+                rm -f "$out" 2>/dev/null || true
+                TS_M_LEGACY_REMOVED+=("${out#"$TS_FS_ROOT"}")
+            fi
+        fi
+    done
+
+    if [[ "$ln_was_enabled" -eq 1 ]]; then
+        if ! "$SYSTEMCTL_BIN" enable "$TS_M_UNIT" >/dev/null 2>&1; then
+            rc=1
+            print_error "${TS_M_UNIT} could not be re-enabled"
+        fi
+    fi
 
     print_info "Starting the tunnel..."
     if "$SYSTEMCTL_BIN" start "$TS_M_WG_UNIT"; then
@@ -9731,7 +9852,7 @@ ts_m_revert_legacy_unit_edits() {
 }
 
 # Cleans legacy (v2/v3) artifacts from TS_FS_ROOT and kernel state, recording removed items in
-# TS_M_LEGACY_REMOVED. Respects TS_OPT_KEEP_CONFIG for /etc/wireguard/tunnelsats*.conf.
+# TS_M_LEGACY_REMOVED and any unremovable items in TS_M_REMAINING. Respects TS_OPT_KEEP_CONFIG.
 ts_m_clean_legacy_artifacts() {
     local wg_rel="${WG_DIR:-/etc/wireguard}"
     wg_rel="${wg_rel#"$TS_FS_ROOT"}"
@@ -9772,7 +9893,11 @@ ts_m_clean_legacy_artifacts() {
             "$SYSTEMCTL_BIN" disable "$unit" >/dev/null 2>&1 || true
             rm -f "${sd_full}/${unit}"
             rm -f "${sd_full}/multi-user.target.wants/${unit}" "${sd_full}/timers.target.wants/${unit}" 2>/dev/null || true
-            TS_M_LEGACY_REMOVED+=("${sd_rel}/${unit}")
+            if [[ -e "${sd_full}/${unit}" ]] || [[ -L "${sd_full}/${unit}" ]]; then
+                TS_M_REMAINING+=("${sd_rel}/${unit}")
+            else
+                TS_M_LEGACY_REMOVED+=("${sd_rel}/${unit}")
+            fi
         fi
     done
 
@@ -9786,14 +9911,22 @@ ts_m_clean_legacy_artifacts() {
             if [[ -e "$f" ]] || [[ -L "$f" ]]; then
                 rel="${f#"$TS_FS_ROOT"}"
                 rm -f "$f"
-                TS_M_LEGACY_REMOVED+=("$rel")
+                if [[ -e "$f" ]] || [[ -L "$f" ]]; then
+                    TS_M_REMAINING+=("$rel")
+                else
+                    TS_M_LEGACY_REMOVED+=("$rel")
+                fi
             fi
         done
         for f in "$sd_full"/wg-quick@tunnelsats*.service.d; do
             if [[ -d "$f" ]]; then
                 rel="${f#"$TS_FS_ROOT"}"
                 rm -rf "$f"
-                TS_M_LEGACY_REMOVED+=("$rel")
+                if [[ -d "$f" ]]; then
+                    TS_M_REMAINING+=("$rel")
+                else
+                    TS_M_LEGACY_REMOVED+=("$rel")
+                fi
             fi
         done
     fi
@@ -9804,16 +9937,25 @@ ts_m_clean_legacy_artifacts() {
         if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
             rm -f "${TS_FS_ROOT}${rel}"
             rmdir "${TS_FS_ROOT}${sd_rel}/${unit}.d" 2>/dev/null || true
-            TS_M_LEGACY_REMOVED+=("$rel")
+            if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
+                TS_M_REMAINING+=("$rel")
+            else
+                TS_M_LEGACY_REMOVED+=("$rel")
+            fi
         fi
-        ts_m_revert_legacy_unit_edits "${sd_rel}/${unit}" || true
-        if [[ "$TS_M_UNIT_REVERTED" -eq 1 ]]; then
+        if ! ts_m_revert_legacy_unit_edits "${sd_rel}/${unit}"; then
+            TS_M_REMAINING+=("${sd_rel}/${unit}")
+        elif [[ "$TS_M_UNIT_REVERTED" -eq 1 ]]; then
             TS_M_LEGACY_REMOVED+=("${sd_rel}/${unit}")
         fi
         rel="${sd_rel}/${unit}.bak"
         if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
             rm -f "${TS_FS_ROOT}${rel}"
-            TS_M_LEGACY_REMOVED+=("$rel")
+            if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
+                TS_M_REMAINING+=("$rel")
+            else
+                TS_M_LEGACY_REMOVED+=("$rel")
+            fi
         fi
     done
     for rel in "${sd_rel}/blitzapi.service.d/tunnelsats-wg.conf" \
@@ -9822,7 +9964,11 @@ ts_m_clean_legacy_artifacts() {
         if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
             rm -f "${TS_FS_ROOT}${rel}"
             rmdir "$(dirname "${TS_FS_ROOT}${rel}")" 2>/dev/null || true
-            TS_M_LEGACY_REMOVED+=("$rel")
+            if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
+                TS_M_REMAINING+=("$rel")
+            else
+                TS_M_LEGACY_REMOVED+=("$rel")
+            fi
         fi
     done
 
@@ -9836,33 +9982,81 @@ ts_m_clean_legacy_artifacts() {
             else
                 rm -f "${TS_FS_ROOT}${rel}" 2>/dev/null || true
             fi
-            TS_M_LEGACY_REMOVED+=("$rel")
+            if [[ -f "${TS_FS_ROOT}${rel}" ]]; then
+                TS_M_REMAINING+=("$rel")
+            else
+                TS_M_LEGACY_REMOVED+=("$rel")
+            fi
         fi
     done
     if [[ -f "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" ]]; then
-        if [[ ! -f "${TS_FS_ROOT}/etc/nftables.conf" ]]; then
-            mv "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" "${TS_FS_ROOT}/etc/nftables.conf" 2>/dev/null || true
+        if [[ ! -f "${TS_FS_ROOT}/etc/nftables.conf" ]] \
+            || grep -qE 'tunnelsats|splitted_processes|0x1000000' "${TS_FS_ROOT}/etc/nftables.conf" 2>/dev/null \
+            || cmp -s "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" "${TS_FS_ROOT}/etc/nftables.conf" 2>/dev/null; then
+            if mv "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" "${TS_FS_ROOT}/etc/nftables.conf" 2>/dev/null; then
+                TS_M_LEGACY_REMOVED+=("/etc/nftablespriortunnelsats.backup")
+            else
+                TS_M_REMAINING+=("/etc/nftablespriortunnelsats.backup")
+            fi
         else
-            rm -f "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" 2>/dev/null || true
+            # /etc/nftables.conf contains non-TunnelSats rules: preserve both files and report in remaining
+            TS_M_REMAINING+=("/etc/nftablespriortunnelsats.backup")
         fi
-        TS_M_LEGACY_REMOVED+=("/etc/nftablespriortunnelsats.backup")
     fi
 
     # 5. Legacy helper scripts, backups, markers, and (unless --keep-config) WireGuard configs
     for unit in tunnelsats-route-guard.sh tunnelsats-create-cgroup.sh \
         tunnelsats-splitting-processes.sh tunnelsats-resolve-dns-wg.sh \
-        tunnelsats-docker-network.sh .tunnelsats-resolvconf.installed; do
+        tunnelsats-docker-network.sh; do
         rel="${wg_rel}/${unit}"
         if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
             rm -f "${TS_FS_ROOT}${rel}"
-            TS_M_LEGACY_REMOVED+=("$rel")
+            if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
+                TS_M_REMAINING+=("$rel")
+            else
+                TS_M_LEGACY_REMOVED+=("$rel")
+            fi
         fi
     done
-    for f in "$wg_full"/tunnelsats*.conf.bak.* "$wg_full"/.tunnelsats-ufw-9735-*.created; do
+    # Remove .tunnelsats-resolvconf.installed in legacy cleanup only when resolvconf is no longer installed
+    rel="${wg_rel}/.tunnelsats-resolvconf.installed"
+    if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
+        if ! command -v resolvconf >/dev/null 2>&1; then
+            rm -f "${TS_FS_ROOT}${rel}"
+            TS_M_LEGACY_REMOVED+=("$rel")
+        fi
+    fi
+    # Reset IPv6 sysctls when .tunnelsats-ipv6-disabled marker is present
+    rel="${wg_rel}/.tunnelsats-ipv6-disabled"
+    if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
+        sysctl -w net.ipv6.conf.all.disable_ipv6=0 >/dev/null 2>&1 || true
+        sysctl -w net.ipv6.conf.default.disable_ipv6=0 >/dev/null 2>&1 || true
+        rm -f "${TS_FS_ROOT}${rel}"
+        TS_M_LEGACY_REMOVED+=("$rel")
+    fi
+    for f in "$wg_full"/tunnelsats*.conf.bak.*; do
         if [[ -e "$f" ]] || [[ -L "$f" ]]; then
             rel="${f#"$TS_FS_ROOT"}"
             rm -f "$f"
             TS_M_LEGACY_REMOVED+=("$rel")
+        fi
+    done
+    for f in "$wg_full"/.tunnelsats-ufw-9735-*.created; do
+        if [[ -e "$f" ]] || [[ -L "$f" ]]; then
+            rel="${f#"$TS_FS_ROOT"}"
+            local ufw_iface="${f##*/.tunnelsats-ufw-9735-}"
+            ufw_iface="${ufw_iface%.created}"
+            if command -v ufw >/dev/null 2>&1; then
+                if ufw delete allow in on "$ufw_iface" to any port 9735 proto tcp >/dev/null 2>&1; then
+                    rm -f "$f"
+                    TS_M_LEGACY_REMOVED+=("$rel")
+                else
+                    TS_M_REMAINING+=("$rel")
+                fi
+            else
+                rm -f "$f"
+                TS_M_LEGACY_REMOVED+=("$rel")
+            fi
         fi
     done
     if [[ "$TS_OPT_KEEP_CONFIG" -ne 1 ]]; then
@@ -9870,7 +10064,11 @@ ts_m_clean_legacy_artifacts() {
             if [[ -e "$f" ]] || [[ -L "$f" ]]; then
                 rel="${f#"$TS_FS_ROOT"}"
                 rm -f "$f"
-                TS_M_LEGACY_REMOVED+=("$rel")
+                if [[ -e "$f" ]] || [[ -L "$f" ]]; then
+                    TS_M_REMAINING+=("$rel")
+                else
+                    TS_M_LEGACY_REMOVED+=("$rel")
+                fi
             fi
         done
     fi
@@ -9885,27 +10083,51 @@ ts_m_clean_legacy_artifacts() {
                 fi
                 if "$NFT_BIN" delete table "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" 2>/dev/null; then
                     TS_M_LEGACY_REMOVED+=("nft table ${BASH_REMATCH[1]} ${BASH_REMATCH[2]}")
+                else
+                    TS_M_REMAINING+=("nft table ${BASH_REMATCH[1]} ${BASH_REMATCH[2]}")
                 fi
             fi
         done < <(printf '%s\n' "$tbl_out")
     fi
 
     if [[ -f "${wg_full}/.tunnelsats-failclosed-rules" ]]; then
+        local fc_failed=0
         if command -v "$IP_BIN" >/dev/null 2>&1; then
-            local fc_entry
+            local fc_entry fc_after
             while IFS= read -r fc_entry || [[ -n "$fc_entry" ]]; do
                 case "$fc_entry" in
                     "from "[0-9]*.[0-9]*.[0-9]*.[0-9]*/*)
-                        "$IP_BIN" -4 rule del priority 21818 from "${fc_entry#from }" blackhole 2>/dev/null || true
+                        "$IP_BIN" -4 rule del priority 21818 from "${fc_entry#from }" blackhole 2>/dev/null \
+                            || "$IP_BIN" -4 rule del priority 21818 from "${fc_entry#from }" unreachable 2>/dev/null || true
                         ;;
                     "uidrange "[1-9][0-9]*-[1-9][0-9]*)
-                        "$IP_BIN" -4 rule del priority 21819 uidrange "${fc_entry#uidrange }" blackhole 2>/dev/null || true
+                        "$IP_BIN" -4 rule del priority 21819 uidrange "${fc_entry#uidrange }" blackhole 2>/dev/null \
+                            || "$IP_BIN" -4 rule del priority 21819 uidrange "${fc_entry#uidrange }" unreachable 2>/dev/null || true
+                        ;;
+                esac
+            done < "${wg_full}/.tunnelsats-failclosed-rules"
+            fc_after=$("$IP_BIN" -4 rule show 2>/dev/null) || fc_after=""
+            while IFS= read -r fc_entry || [[ -n "$fc_entry" ]]; do
+                case "$fc_entry" in
+                    "from "[0-9]*.[0-9]*.[0-9]*.[0-9]*/*)
+                        if printf '%s\n' "$fc_after" | grep -qE "^21818:[[:space:]]+from[[:space:]]+${fc_entry#from }[[:space:]]+(blackhole|unreachable)([[:space:]]|$)"; then
+                            fc_failed=1
+                        fi
+                        ;;
+                    "uidrange "[1-9][0-9]*-[1-9][0-9]*)
+                        if printf '%s\n' "$fc_after" | grep -qE "^21819:[[:space:]]+from[[:space:]]+all[[:space:]]+uidrange[[:space:]]+${fc_entry#uidrange }[[:space:]]+(blackhole|unreachable)([[:space:]]|$)"; then
+                            fc_failed=1
+                        fi
                         ;;
                 esac
             done < "${wg_full}/.tunnelsats-failclosed-rules"
         fi
-        rm -f "${wg_full}/.tunnelsats-failclosed-rules"
-        TS_M_LEGACY_REMOVED+=("${wg_rel}/.tunnelsats-failclosed-rules")
+        if [[ "$fc_failed" -eq 0 ]]; then
+            rm -f "${wg_full}/.tunnelsats-failclosed-rules"
+            TS_M_LEGACY_REMOVED+=("${wg_rel}/.tunnelsats-failclosed-rules")
+        else
+            TS_M_REMAINING+=("${wg_rel}/.tunnelsats-failclosed-rules")
+        fi
     fi
 
     if command -v "$IP_BIN" >/dev/null 2>&1 && ! ts_m_inventory_present; then
@@ -9920,16 +10142,22 @@ ts_m_clean_legacy_artifacts() {
                         had_legacy_fwmark=1
                         removed_any=1
                         TS_M_LEGACY_REMOVED+=("ip -4 rule ${prio} (fwmark 0x1000000/0xff000000 lookup 51820)")
+                    else
+                        TS_M_REMAINING+=("ip -4 rule ${prio} (fwmark 0x1000000/0xff000000 lookup 51820)")
                     fi
                 elif [[ "$line" =~ ^21821:[[:space:]]+from\ all\ uidrange\ ([0-9]+-[0-9]+)\ lookup\ 51820([[:space:]]|$) ]]; then
                     if "$IP_BIN" -4 rule del from all uidrange "${BASH_REMATCH[1]}" lookup 51820 priority 21821 2>/dev/null; then
                         removed_any=1
                         TS_M_LEGACY_REMOVED+=("ip -4 rule 21821 (uidrange ${BASH_REMATCH[1]} lookup 51820)")
+                    else
+                        TS_M_REMAINING+=("ip -4 rule 21821 (uidrange ${BASH_REMATCH[1]} lookup 51820)")
                     fi
                 elif [[ "$line" =~ ^21820:[[:space:]]+from\ all\ lookup\ main\ suppress_prefixlength\ 0([[:space:]]|$) ]]; then
                     if "$IP_BIN" -4 rule del from all lookup main suppress_prefixlength 0 priority 21820 2>/dev/null; then
                         removed_any=1
                         TS_M_LEGACY_REMOVED+=("ip -4 rule 21820 (lookup main suppress_prefixlength 0)")
+                    else
+                        TS_M_REMAINING+=("ip -4 rule 21820 (lookup main suppress_prefixlength 0)")
                     fi
                 fi
             done < <(printf '%s\n' "$rules_out")
@@ -9942,6 +10170,8 @@ ts_m_clean_legacy_artifacts() {
                     prio="${BASH_REMATCH[1]}"
                     if "$IP_BIN" -4 rule del from all lookup main suppress_prefixlength 0 priority "$prio" 2>/dev/null; then
                         TS_M_LEGACY_REMOVED+=("ip -4 rule ${prio} (lookup main suppress_prefixlength 0)")
+                    else
+                        TS_M_REMAINING+=("ip -4 rule ${prio} (lookup main suppress_prefixlength 0)")
                     fi
                 fi
             done < <(printf '%s\n' "$rules_out")
@@ -9952,12 +10182,16 @@ ts_m_clean_legacy_artifacts() {
         if printf '%s\n' "$routes_out" | grep -qE '^blackhole[[:space:]]+default[[:space:]]+metric[[:space:]]+3([[:space:]]|$)'; then
             if "$IP_BIN" -4 route del blackhole default metric 3 table 51820 2>/dev/null; then
                 TS_M_LEGACY_REMOVED+=("ip -4 route table 51820 blackhole metric 3")
+            else
+                TS_M_REMAINING+=("ip -4 route table 51820 blackhole metric 3")
             fi
         fi
         for iface in "${ifaces[@]}"; do
             if printf '%s\n' "$routes_out" | grep -qE "^default[[:space:]]+dev[[:space:]]+${iface}([[:space:]]|$)"; then
                 if "$IP_BIN" -4 route del default dev "$iface" table 51820 2>/dev/null; then
                     TS_M_LEGACY_REMOVED+=("ip -4 route table 51820 default dev ${iface}")
+                else
+                    TS_M_REMAINING+=("ip -4 route table 51820 default dev ${iface}")
                 fi
             fi
         done
@@ -9982,6 +10216,34 @@ cmd_uninstall_managed() {
                     ts_m_lifecycle_cleanup
                     ts_fail 1 E_ABORTED operational "Uninstall aborted; nothing was changed"
                 fi
+                local -a leg_units=() leg_active_units=()
+                local leg_u leg_state leg_impl leg_prof
+                leg_prof=$(ts_guess_platform "$TS_FS_ROOT")
+                [[ "$leg_prof" != "raspiblitz" ]] && leg_prof="baremetal"
+                for leg_u in lnd.service tlnd.service slnd.service lightningd.service tlightningd.service slightningd.service litd.service lit.service; do
+                    if [[ -f "${TS_FS_ROOT}/etc/systemd/system/${leg_u}" ]] || [[ "$(ts_m_unit_prop "$leg_u" LoadState)" == "loaded" ]]; then
+                        leg_units+=("$leg_u")
+                        leg_state=$(ts_m_unit_prop "$leg_u" ActiveState)
+                        case "$leg_state" in
+                            inactive|failed|"") ;;
+                            *)
+                                leg_active_units+=("$leg_u")
+                                if ! "$SYSTEMCTL_BIN" stop "$leg_u"; then
+                                    ts_m_lifecycle_cleanup
+                                    ts_fail 1 E_LN_STOP operational "${leg_u} could not be stopped; nothing was removed"
+                                fi
+                                leg_state=$(ts_m_unit_prop "$leg_u" ActiveState)
+                                case "$leg_state" in
+                                    inactive|failed) ;;
+                                    *)
+                                        ts_m_lifecycle_cleanup
+                                        ts_fail 1 E_LN_STOP operational "${leg_u} did not stop (state ${leg_state:-unknown}); nothing was removed"
+                                        ;;
+                                esac
+                                ;;
+                        esac
+                    fi
+                done
                 TS_M_REMAINING=()
                 ts_m_clean_legacy_artifacts
                 if [[ -e "${TS_FS_ROOT}${TS_M_BIN}" ]] || [[ -L "${TS_FS_ROOT}${TS_M_BIN}" ]]; then
@@ -9992,6 +10254,23 @@ cmd_uninstall_managed() {
                         TS_M_LEGACY_REMOVED+=("$TS_M_BIN")
                     fi
                 fi
+                for leg_u in "${leg_units[@]}"; do
+                    case "$leg_u" in
+                        *lnd.service) leg_impl="lnd" ;;
+                        *lightningd.service) leg_impl="cln" ;;
+                        *) leg_impl="lit" ;;
+                    esac
+                    ts_m_node_config_clearnet "$leg_impl" "$leg_u" "$leg_prof"
+                    if [[ "$TS_M_NC_STATUS" != "clean" ]]; then
+                        if ! "$SYSTEMCTL_BIN" disable "$leg_u" >/dev/null 2>&1; then
+                            TS_M_REMAINING+=("${leg_u} (could not be disabled)")
+                        fi
+                    elif [[ " ${leg_active_units[*]} " == *" ${leg_u} "* ]] && [[ ${#TS_M_REMAINING[@]} -eq 0 ]]; then
+                        if ! "$SYSTEMCTL_BIN" start "$leg_u" >/dev/null 2>&1; then
+                            TS_M_REMAINING+=("${leg_u} (could not be started)")
+                        fi
+                    fi
+                done
                 ts_m_lifecycle_cleanup
                 if [[ ${#TS_M_REMAINING[@]} -gt 0 ]]; then
                     rc=1
