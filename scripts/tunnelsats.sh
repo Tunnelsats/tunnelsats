@@ -943,6 +943,9 @@ Commands:
   install --managed raspiblitz --impl lnd|cln [--network mainnet|testnet|signet]
                             The same on RaspiBlitz, for the Lightning instance that
                             --impl and --network name (lnd.service, tlnd.service, ...)
+  adopt --managed baremetal|raspiblitz
+                            Replace an existing standard (legacy) install with the
+                            managed dataplane in one step
   pre-check                 Check system compatibility
   uninstall                 Remove TunnelSats installation
   uninstall --managed       Remove a managed install exactly as it was installed
@@ -957,25 +960,28 @@ Commands:
   help                      Show this help message
 
 Options (accepted before or after the command):
-  --config <file>           WireGuard config to use (install, status, restart)
+  --config <file>           WireGuard config to use (install, adopt, status, restart)
   --platform <id>           raspiblitz, umbrel, mynode or baremetal
-                            (install, uninstall, status, restart)
-  --impl <id>               lnd, cln or lit (install, uninstall, status, restart)
+                            (install, adopt, uninstall, status, restart)
+  --impl <id>               lnd, cln or lit (install, adopt, uninstall, status, restart)
   --yes                     Answer yes to confirmation prompts
   --remove-packages         uninstall: also remove nftables and wireguard-tools
                             (and cgroup-tools)
   --keep-packages           uninstall: keep system packages without asking
-  --managed [profile]       install (profile baremetal or raspiblitz), uninstall:
-                            managed mode
-  --network <chain>         install --managed raspiblitz: mainnet (default), testnet
-                            or signet
-  --uid-backstop            install --managed: also route the Lightning user's
+  --keep-config             uninstall: keep /etc/wireguard/tunnelsats*.conf on disk
+  --legacy-artifacts        uninstall --managed: also clean legacy v2/v3 artifacts
+                            (or clean a legacy install when no managed record exists)
+  --managed [profile]       install, adopt (profile baremetal or raspiblitz),
+                            uninstall: managed mode
+  --network <chain>         install/adopt --managed raspiblitz: mainnet (default),
+                            testnet or signet
+  --uid-backstop            install/adopt --managed: also route the Lightning user's
                             traffic into the tunnel by uid (see docs/managed-mode.md)
   --no-probe                verify: kernel checks only, no network probes
   --non-interactive         Never prompt: a question that no option answers fails
                             with exit code 2 before any change is made
   --json                    One JSON document on stdout, logs on stderr (version,
-                            detect, verify, install and uninstall --managed);
+                            detect, verify, and install, adopt, uninstall --managed);
                             implies --non-interactive
 
 Exit codes: 0 success, 1 failure, 2 usage error or interaction required
