@@ -22,8 +22,23 @@ sudo tunnelsats uninstall --managed
 - A bare-metal systemd node or a RaspiBlitz (Umbrel and myNode come later) with a unified cgroup v2 hierarchy and Linux 5.13 or newer.
 - One Lightning unit (`lnd.service`, `lightningd.service`, `litd.service` or `lit.service`) that runs as a dedicated, non-root `User=`. If several are installed, choose one with `--impl`; the others are not tunneled. On RaspiBlitz, `--impl` and `--network` name the unit.
 - perl, which `verify` uses for its datagram probes. Debian and Ubuntu always ship it (`perl-base`); without it install refuses with `E_DEPENDENCY_MISSING`.
-- No other TunnelSats install: run `tunnelsats.sh uninstall` first. Taking over an existing install comes in a later version.
+- No other TunnelSats install for `install --managed`: run `tunnelsats.sh adopt --managed <baremetal|raspiblitz>` to convert an existing standard install in one step, or `tunnelsats.sh uninstall` first.
 - No Tailscale exit node: its routing rules come before the TunnelSats rules.
+
+## Adopting an existing standard install: `adopt --managed`
+
+```bash
+sudo bash tunnelsats.sh adopt --managed baremetal
+sudo bash tunnelsats.sh adopt --managed raspiblitz --impl lnd [--network mainnet|testnet|signet]
+```
+
+`adopt --managed` converts an existing standard (legacy v2 or v3) TunnelSats install into managed mode in one transition:
+
+1. It validates the existing WireGuard configuration in `/etc/wireguard` (or the file passed with `--config`) and checks the target Lightning unit, user, routing table 51820 and policy rules 21818-21822 (allowing legacy TunnelSats-owned routes and rules while refusing foreign ones).
+2. If the Lightning unit is running, it stops the unit first while the legacy tunnel and rules are still in place.
+3. It strips legacy in-place edits (`cgexec` on `ExecStart=` and a commented `ExecStartPre=...check.sh` on RaspiBlitz) from `/etc/systemd/system/<unit>` without ever overwriting the unit from a stale `.service.bak` file, and removes all legacy units, timers, drop-ins, helper scripts, `.bak` files, nft tables and policy rules.
+4. It installs the managed dataplane, arms and attests the kill switch, starts the tunnel, starts the Lightning unit inside `tunnelsats.slice` if it was running before, and starts the verifier timer.
+5. In `--json` mode it emits the Contract 1 install fields plus `adopted: true`, `legacy_kind`, `legacy_removed`, `legacy_remaining`, `unit_edits`, `unit_reverted`, and `node_config_lines`.
 
 ## When the subscription ends or the VPN server is unreachable
 
@@ -84,7 +99,7 @@ An external `nft flush ruleset`, or a firewall tool that replaces the whole rule
 
 ## Uninstall
 
-`sudo tunnelsats uninstall --managed` stops the Lightning unit, also while it starts or waits for its automatic restart, and removes nothing unless the unit reads back stopped (otherwise `E_LN_STOP`). It then removes the managed dataplane and reads the result back. It starts Lightning again only if no TunnelSats clearnet settings remain, neither in the node configuration nor on the unit's command line (`ExecStart=`), since outside the tunnel those settings would use the regular internet connection. Otherwise Lightning stays stopped, the unit is disabled so that no boot starts it with those settings, and the exact lines to remove are printed; remove them, then run `sudo systemctl enable --now <unit>`. Lightning also stays stopped and disabled when the settings cannot be checked reliably: a CLN config that includes other files (`include`; included files are not followed, and the include lines are listed), or a command line that runs through a shell, uses `$VARIABLES` or starts a script (for RaspiBlitz's shell command for CLN and the variable of a RaspiBlitz start guard, see [RaspiBlitz](#raspiblitz)). If the unit cannot be disabled, uninstall reports an error with the command to run.
+`sudo tunnelsats uninstall --managed` stops the Lightning unit, also while it starts or waits for its automatic restart, and removes nothing unless the unit reads back stopped (otherwise `E_LN_STOP`). It then removes the managed dataplane and reads the result back. Pass `--keep-config` to keep `/etc/wireguard/tunnelsatsv2.conf` on disk (`config_kept: true` in JSON), or `--legacy-artifacts` to also remove any leftover artifacts from an earlier standard v2/v3 install (`legacy_removed` in JSON; when no managed install record exists, `uninstall --managed --legacy-artifacts` cleans the legacy artifacts directly). It starts Lightning again only if no TunnelSats clearnet settings remain, neither in the node configuration nor on the unit's command line (`ExecStart=`), since outside the tunnel those settings would use the regular internet connection. Otherwise Lightning stays stopped, the unit is disabled so that no boot starts it with those settings, and the exact lines to remove are printed; remove them, then run `sudo systemctl enable --now <unit>`. Lightning also stays stopped and disabled when the settings cannot be checked reliably: a CLN config that includes other files (`include`; included files are not followed, and the include lines are listed), or a command line that runs through a shell, uses `$VARIABLES` or starts a script (for RaspiBlitz's shell command for CLN and the variable of a RaspiBlitz start guard, see [RaspiBlitz](#raspiblitz)). If the unit cannot be disabled, uninstall reports an error with the command to run.
 
 If something cannot be removed, uninstall lists it and keeps `/etc/tunnelsats/managed.json` (state `removing`), the installed script and the emergency block records, so you can run `uninstall --managed` again once the cause is fixed. Meanwhile `detect` reports `managed_state: removing`.
 

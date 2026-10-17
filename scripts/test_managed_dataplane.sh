@@ -142,12 +142,27 @@ case "$obj:$verb" in
         cat "$s/routes${fam}"
         ;;
     route:add|route:del)
-        if [[ "$fam" == 4 ]]; then r="blackhole default metric 4294967295 "; else r="blackhole default dev lo metric 4294967295 pref medium"; fi
+        if [[ "$*" == "blackhole default metric 3 "* ]]; then
+            r="blackhole default metric 3 "
+        elif [[ "$*" == "default dev "* ]]; then
+            set -- $*
+            r="default dev ${3} "
+        elif [[ "$fam" == 4 ]]; then
+            r="blackhole default metric 4294967295 "
+        else
+            r="blackhole default dev lo metric 4294967295 pref medium"
+        fi
         touch "$s/routes${fam}"
         if [[ "$verb" == "add" ]]; then
             if grep -qxF "$r" "$s/routes${fam}"; then echo "RTNETLINK answers: File exists" >&2; exit 2; fi
             printf '%s\n' "$r" >> "$s/routes${fam}"
         else
+            if [[ "$r" == "default dev "* ]]; then
+                if ! grep -qE "^${r}(scope link )?$" "$s/routes${fam}"; then echo "RTNETLINK answers: No such process" >&2; exit 2; fi
+                awk -v p="^${r}(scope link )?$" '$0 ~ p && !done { done = 1; next } { print }' "$s/routes${fam}" > "$s/routes.tmp"
+                mv "$s/routes.tmp" "$s/routes${fam}"
+                exit 0
+            fi
             if ! grep -qxF "$r" "$s/routes${fam}"; then echo "RTNETLINK answers: No such process" >&2; exit 2; fi
             awk -v e="$r" '$0 == e && !done { done = 1; next } { print }' "$s/routes${fam}" > "$s/routes.tmp"
             mv "$s/routes.tmp" "$s/routes${fam}"
@@ -195,12 +210,28 @@ case "$*" in
         ;;
     "list tables")
         if [[ -s "$table" ]]; then echo "table inet tunnelsats"; fi
+        for lt in "$s"/legacy_table_*; do
+            if [[ -f "$lt" ]]; then
+                lt_base="${lt##*/legacy_table_}"
+                echo "table ${lt_base%%_*} ${lt_base#*_}"
+            fi
+        done
         ;;
-    "list table ip tunnelsats_failclosed") exit 1 ;;
-    "delete table ip tunnelsats_failclosed") exit 1 ;;
+    "list table ip tunnelsats_failclosed")
+        if [[ -f "$s/legacy_table_ip_tunnelsats_failclosed" ]]; then echo "table ip tunnelsats_failclosed {"; echo "}"; exit 0; fi
+        exit 1
+        ;;
+    "delete table ip tunnelsats_failclosed")
+        rm -f "$s/legacy_table_ip_tunnelsats_failclosed"
+        exit 0
+        ;;
     "list table ip "*|"list table inet "*)
         # A legacy kill switch table (named after the tunnel interface) when the fixture has one
         if [[ -f "$s/legacy_table_${3}_${4}" ]]; then echo "table ${3} ${4} {"; echo "}"; exit 0; fi
+        exit 1
+        ;;
+    "delete table ip "*|"delete table inet "*)
+        if [[ -f "$s/legacy_table_${3}_${4}" ]]; then rm -f "$s/legacy_table_${3}_${4}"; exit 0; fi
         exit 1
         ;;
     *) echo "nft stub: unexpected call: $*" >&2; exit 1 ;;
@@ -331,6 +362,17 @@ printf 'runuser %s\n' "$*" >> "$s/calls"
 while [[ $# -gt 0 ]] && [[ "$1" != "--" ]]; do shift; done
 shift
 exec "$@"
+EOF
+
+cat > "$STUB_BIN/ufw" <<'EOF'
+#!/bin/bash
+# Stub for ufw: logs the call, prints ufw_status on 'status', and exits with ufw_rc (default 0)
+s="${STUB_STATE:?}"
+printf 'ufw %s\n' "$*" >> "$s/calls"
+if [[ "${1:-}" == "status" ]] && [[ -f "$s/ufw_status" ]]; then
+    cat "$s/ufw_status"
+fi
+exit "$(cat "$s/ufw_rc" 2>/dev/null || echo 0)"
 EOF
 chmod +x "$STUB_BIN"/*
 
@@ -2041,6 +2083,50 @@ run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=detect; TS_OUT_FD=1; cmd_detect'
 doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
 assert_json "$doc" '[d["install"]["kind"], d["install"]["candidates"]]' '["unknown", ["managed"]]' "detect: managed units without the inventory are unknown (candidate managed)"
 
+# Isolation: A lone managed_script without the inventory is kind "none"
+fx=$(new_fixture detect-lone)
+echo "loaded" > "$fx/state/unit_lnd.service_LoadState"
+echo "bitcoin" > "$fx/state/unit_lnd.service_User"
+mkdir -p "$fx/fs/usr/local/sbin"
+touch "$fx/fs/usr/local/sbin/tunnelsats"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=detect; TS_OUT_FD=1; cmd_detect'
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" 'd["install"]["kind"]' "none" "detect: a lone managed_script is kind none"
+assert_json "$doc" 'next(a["status"] for a in d["install"]["artifacts"] if a["id"] == "managed_script")' "present" "detect: the lone managed_script is listed as present"
+
+# Verify exits 3 (E_NOT_INSTALLED) for a lone managed_script
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=verify; TS_OUT_FD=1; cmd_verify'
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "3" "$SN_RC" "verify: a lone managed_script exits 3"
+assert_json "$doc" 'd["errors"][0]["code"]' "E_NOT_INSTALLED" "verify: a lone managed_script reports E_NOT_INSTALLED"
+
+# If another managed artifact exists alongside it without inventory, it is "unknown"
+mkdir -p "$fx/fs/etc/systemd/system"
+touch "$fx/fs/etc/systemd/system/tunnelsats.slice"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=detect; TS_OUT_FD=1; cmd_detect'
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" 'd["install"]["kind"]' "unknown" "detect: managed_script plus slice is unknown"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=verify; TS_OUT_FD=1; cmd_verify'
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "9" "$SN_RC" "verify: managed_script plus slice exits 9 (unmanaged)"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=install; TS_OPT_MANAGED=1; TS_OUT_FD=1; ts_m_install_preflight'
+assert_equals "7" "$SN_RC" "install: managed_script plus slice exits 7 (E_LEGACY_INSTALL)"
+
+# If wg_config exists alongside managed_script, install --managed refuses with E_CONFIG_PRESENT
+rm -f "$fx/fs/etc/systemd/system/tunnelsats.slice"
+mkdir -p "$fx/fs/etc/wireguard"
+touch "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=install; TS_OPT_MANAGED=1; TS_OUT_FD=1; ts_m_install_preflight'
+assert_equals "7" "$SN_RC" "install: managed_script plus wg_config exits 7"
+assert_contains "$SN_OUT" "E_CONFIG_PRESENT" "install: managed_script plus wg_config reports E_CONFIG_PRESENT"
+
+# If ONLY managed_script exists, install --managed passes preflight
+rm -f "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=install; TS_OPT_MANAGED=1; TS_OUT_FD=1; ts_m_install_preflight && echo PREFLIGHT_OK'
+assert_equals "0" "$SN_RC" "install: lone managed_script passes preflight"
+assert_contains "$SN_OUT" "PREFLIGHT_OK" "install: lone managed_script preflight completes"
+
+
 # ---------------------------------------------------------------------------
 # GROUP 9: Install files and removal
 # ---------------------------------------------------------------------------
@@ -3314,6 +3400,402 @@ if [[ ! -e "$fx/fs/etc/tunnelsats" ]] && [[ ! -e "$fx/fs/run/tunnelsats" ]]; the
     pass "Bare-metal install: and nothing is left behind"
 else
     fail "Bare-metal install: and nothing is left behind"
+fi
+
+# ---------------------------------------------------------------------------
+# Group 15: --keep-config and --legacy-artifacts on uninstall --managed (#217)
+# ---------------------------------------------------------------------------
+echo "=== Group 15: --keep-config and --legacy-artifacts (#217) ==="
+
+# 15a: uninstall --managed --keep-config keeps /etc/wireguard/tunnelsatsv2.conf
+fx=$(rb_preflight_fixture keep-cfg)
+rb_install "$fx" lnd mainnet
+assert_equals "0" "$SN_RC" "15a: setup managed install"
+run_snippet "$fx" "$rb_env parse_args --json uninstall --managed --keep-config --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "15a: uninstall --managed --keep-config exits 0"
+assert_json "$doc" '[d["ok"], d["managed"], d["config_kept"], d["remaining"]]' '[true, true, true, []]' \
+    "15a: JSON reports config_kept=true and remaining=[]"
+if [[ -f "$fx/fs/etc/wireguard/tunnelsatsv2.conf" ]] && [[ ! -e "$fx/fs/etc/tunnelsats/managed.json" ]]; then
+    pass "15a: /etc/wireguard/tunnelsatsv2.conf stays on disk while managed.json is removed"
+else
+    fail "15a: /etc/wireguard/tunnelsatsv2.conf stays on disk while managed.json is removed"
+fi
+
+# 15b: uninstall --managed --legacy-artifacts without a managed inventory cleans full legacy v2/v3 state
+fx=$(new_fixture legacy-clean)
+mkdir -p "$fx/fs/etc/wireguard" "$fx/fs/etc/systemd/system/multi-user.target.wants" \
+    "$fx/fs/etc/systemd/system/lnd.service.d" "$fx/fs/etc/systemd/system/blitzapi.service.d" \
+    "$fx/fs/home/admin/config.scripts" "$fx/fs/usr/local/sbin"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf.bak.Ab12Cd"
+: > "$fx/fs/etc/wireguard/tunnelsats-route-guard.sh"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+: > "$fx/fs/etc/wireguard/tunnelsats-splitting-processes.sh"
+: > "$fx/fs/etc/wireguard/tunnelsats-resolve-dns-wg.sh"
+: > "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsatsv2.created"
+: > "$fx/fs/etc/wireguard/.tunnelsats-resolvconf.installed"
+printf 'from 10.9.9.0/25\nuidrange 1001-1001\n' > "$fx/fs/etc/wireguard/.tunnelsats-failclosed-rules"
+for u in tunnelsats-create-cgroup.service tunnelsats-splitting-processes.service tunnelsats-splitting-processes.timer \
+    tunnelsats-resolve-dns-wg.service tunnelsats-resolve-dns-wg.timer; do
+    printf '[Unit]\n' > "$fx/fs/etc/systemd/system/$u"
+done
+ln -s /lib/systemd/system/wg-quick@.service "$fx/fs/etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsatsv2.service"
+printf '[Unit]\nRequires=tunnelsats-create-cgroup.service\n' > "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf"
+printf '[Unit]\n' > "$fx/fs/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf"
+cat > "$fx/fs/etc/systemd/system/lnd.service" <<'EOF'
+[Unit]
+Description=LND Lightning Network Daemon
+[Service]
+User=bitcoin
+#ExecStartPre=-/home/admin/config.scripts/lnd.check.sh prestart mainnet
+ExecStart=/usr/bin/cgexec -g net_cls:splitted_processes /usr/local/bin/lnd --configfile=/mnt/hdd/app-data/lnd/lnd.conf
+EOF
+printf '[Unit]\n# stale backup\n' > "$fx/fs/etc/systemd/system/lnd.service.bak"
+printf '#!/bin/bash\n' > "$fx/fs/home/admin/config.scripts/lnd.check.bak"
+printf '#!/usr/sbin/nft -f\n' > "$fx/fs/etc/nftablespriortunnelsats.backup"
+printf '#!/bin/bash\n' > "$fx/fs/usr/local/sbin/tunnelsats"
+: > "$fx/state/legacy_table_ip_tunnelsatsv2"
+: > "$fx/state/legacy_table_ip_tunnelsats_failclosed"
+printf '21818:\tfrom 10.9.9.0/25 blackhole\n21819:\tfrom all uidrange 1001-1001 blackhole\n21820:\tfrom all lookup main suppress_prefixlength 0\n21821:\tfrom all fwmark 0x1000000/0xff000000 lookup 51820\n' > "$fx/state/rules4"
+printf 'default dev tunnelsatsv2 scope link \n' > "$fx/state/routes4"
+
+run_snippet "$fx" "TS_COMMAND=detect; TS_JSON=1; TS_OUT_FD=1; cmd_detect"
+assert_json "$SN_OUT" 'd["install"]["kind"]' "legacy_v3_post_204" "15b: fixture starts as legacy_v3_post_204"
+
+run_snippet "$fx" "parse_args --json uninstall --managed --legacy-artifacts --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "15b: uninstall --managed --legacy-artifacts without inventory exits 0"
+assert_json "$doc" '[d["ok"], d["managed"], d["removed"], d["config_kept"], d["remaining"]]' \
+    '[true, false, true, false, []]' "15b: JSON reports managed=false, removed=true, config_kept=false, remaining=[]"
+assert_json "$doc" 'len(d["legacy_removed"]) > 10' "true" "15b: legacy_removed lists cleaned items"
+if grep -q '^ExecStart=/usr/local/bin/lnd ' "$fx/fs/etc/systemd/system/lnd.service" && \
+    grep -q '^ExecStartPre=-/home/admin/config.scripts/lnd.check.sh prestart mainnet$' "$fx/fs/etc/systemd/system/lnd.service" && \
+    [[ ! -e "$fx/fs/etc/systemd/system/lnd.service.bak" ]] && \
+    [[ -f "$fx/fs/home/admin/config.scripts/lnd.check.sh" ]]; then
+    pass "15b: lnd.service reverted in-place (not overwritten by stale .bak) and lnd.check.sh restored"
+else
+    fail "15b: lnd.service reverted in-place (not overwritten by stale .bak) and lnd.check.sh restored"
+fi
+
+run_snippet "$fx" "TS_COMMAND=detect; TS_JSON=1; TS_OUT_FD=1; cmd_detect"
+assert_json "$SN_OUT" 'd["install"]["kind"]' "none" "15b: detect --json reports kind=none after --legacy-artifacts cleanup"
+
+# ---------------------------------------------------------------------------
+# Group 16: adopt --managed for baremetal and raspiblitz
+# ---------------------------------------------------------------------------
+echo "=== Group 16: adopt --managed ==="
+
+# 16a: adopt --managed preflight refusals (no install -> exit 3 E_NOT_INSTALLED; managed present -> exit 7 E_MANAGED_PRESENT; foreign route/rule -> exit 7)
+fx=$(preflight_fixture adopt-empty)
+mkdir -p "$fx/tmp"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[3, "E_NOT_INSTALLED"]' \
+    "16a: adopt --managed refuses with exit 3 E_NOT_INSTALLED when no install or config exists"
+
+fx=$(preflight_fixture adopt-managed-present)
+mkdir -p "$fx/tmp" "$fx/fs/etc/tunnelsats"
+write_inventory "$fx"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[7, "E_MANAGED_PRESENT"]' \
+    "16a: adopt --managed refuses with exit 7 E_MANAGED_PRESENT when managed.json exists"
+
+fx=$(preflight_fixture adopt-foreign-route)
+mkdir -p "$fx/tmp" "$fx/fs/etc/wireguard"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+printf '10.20.0.0/16 dev wg9 scope link \n' > "$fx/state/routes4"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[7, "E_TABLE_51820_IN_USE"]' \
+    "16a: adopt --managed refuses foreign route in table 51820"
+
+fx=$(preflight_fixture adopt-foreign-rule)
+mkdir -p "$fx/tmp" "$fx/fs/etc/wireguard"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+printf '21822:\tfrom all uidrange 1001-1001 lookup 51820\n' > "$fx/state/rules4"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[7, "E_RULE_PRIORITY_IN_USE"]' \
+    "16a: adopt --managed refuses foreign rule at priority 21818-21822"
+
+# 16b: adopt --managed baremetal on legacy_v3_post_204 (active lnd.service, cgexec edit, stale .bak, legacy rules/routes)
+fx=$(preflight_fixture adopt-bm)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard" "$fx/fs/etc/systemd/system/multi-user.target.wants" \
+    "$fx/fs/etc/systemd/system/lnd.service.d" "$fx/fs/home/bitcoin/.lnd"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf.bak.Ab12Cd"
+: > "$fx/fs/etc/wireguard/tunnelsats-route-guard.sh"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+: > "$fx/fs/etc/wireguard/tunnelsats-splitting-processes.sh"
+for u in tunnelsats-create-cgroup.service tunnelsats-splitting-processes.service tunnelsats-splitting-processes.timer; do
+    printf '[Unit]\n' > "$fx/fs/etc/systemd/system/$u"
+done
+ln -s /lib/systemd/system/wg-quick@.service "$fx/fs/etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsatsv2.service"
+printf '[Unit]\nWants=tunnelsats-create-cgroup.service\n' > "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf"
+cat > "$fx/fs/etc/systemd/system/lnd.service" <<'EOF'
+[Unit]
+Description=LND Lightning Network Daemon
+[Service]
+User=bitcoin
+ExecStart=/usr/bin/cgexec -g net_cls:splitted_processes /usr/local/bin/lnd --configfile=/home/bitcoin/.lnd/lnd.conf
+EOF
+printf '[Unit]\n# stale backup\n' > "$fx/fs/etc/systemd/system/lnd.service.bak"
+cat > "$fx/fs/home/bitcoin/.lnd/lnd.conf" <<'EOF'
+[Application Options]
+listen=0.0.0.0:9735
+externalhosts=vpn.example.com:35678
+[Tor]
+tor.active=true
+tor.streamisolation=false
+tor.skip-proxy-for-clearnet-targets=true
+EOF
+: > "$fx/state/stateful_units"
+echo "active" > "$fx/state/unit_lnd.service_ActiveState"
+echo "running" > "$fx/state/unit_lnd.service_SubState"
+printf '{ path=/usr/local/bin/lnd ; argv[]=/usr/local/bin/lnd --configfile=/home/bitcoin/.lnd/lnd.conf ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n' > "$fx/state/unit_lnd.service_ExecStart"
+: > "$fx/state/legacy_table_ip_tunnelsatsv2"
+printf '21820:\tfrom all lookup main suppress_prefixlength 0\n21821:\tfrom all fwmark 0x1000000/0xff000000 lookup 51820\n' > "$fx/state/rules4"
+printf 'default dev tunnelsatsv2 scope link \n' > "$fx/state/routes4"
+
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "16b: adopt --managed baremetal exits 0"
+assert_json "$doc" '[d["ok"], d["adopted"], d["managed"], d["legacy_kind"], d["unit_edits"], d["unit_reverted"], d["ln_was_active"], d["ln_restarted"], d["node_config"]]' \
+    '[true, true, true, "legacy_v3_post_204", ["ln_unit_cgexec"], true, true, true, "clearnet"]' \
+    "16b: adopt JSON reports adopted=true, legacy_kind=legacy_v3_post_204, unit_edits=[ln_unit_cgexec], unit_reverted=true, node_config=clearnet"
+assert_json "$doc" 'len(d["node_config_lines"]) == 2' "true" "16b: adopt JSON includes node_config_lines"
+stop_ln_line=$(grep -n '^systemctl stop lnd\.service$' "$fx/state/calls" | head -n 1 | cut -d: -f1 || true)
+stop_wg_line=$(grep -n '^systemctl stop wg-quick@tunnelsatsv2\.service$' "$fx/state/calls" | head -n 1 | cut -d: -f1 || true)
+if [[ -n "$stop_ln_line" ]] && [[ -n "$stop_wg_line" ]] && [[ "$stop_ln_line" -lt "$stop_wg_line" ]]; then
+    pass "16b: lnd.service stopped before legacy wg-quick@tunnelsatsv2.service teardown"
+else
+    fail "16b: lnd.service stopped before legacy wg-quick@tunnelsatsv2.service teardown (ln=$stop_ln_line wg=$stop_wg_line)"
+fi
+if grep -q '^ExecStart=/usr/local/bin/lnd ' "$fx/fs/etc/systemd/system/lnd.service" && \
+    [[ ! -e "$fx/fs/etc/systemd/system/lnd.service.bak" ]] && \
+    [[ ! -e "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf" ]] && \
+    [[ -f "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-managed.conf" ]] && \
+    [[ -f "$fx/fs/etc/tunnelsats/managed.json" ]]; then
+    pass "16b: cgexec stripped in-place, stale .bak and legacy drop-in removed, managed drop-in and inventory installed"
+else
+    fail "16b: cgexec stripped in-place, stale .bak and legacy drop-in removed, managed drop-in and inventory installed"
+fi
+
+# 16c: adopt --managed raspiblitz --impl lnd on legacy_v3_pre_204 (uncomments lnd.check.sh, strips cgexec, keeps UFW allow on tunnelsatsv2)
+fx=$(rb_preflight_fixture adopt-rb-v3pre)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard" "$fx/fs/etc/systemd/system/lnd.service.d"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+printf '#Tunnelsats-Setupv2-Non-Docker\n' >> "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+: > "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsatsv2.created"
+printf '[Unit]\nWants=tunnelsats-create-cgroup.service\n' > "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf"
+cat > "$fx/fs/etc/systemd/system/lnd.service" <<'EOF'
+[Unit]
+Description=LND on RaspiBlitz
+[Service]
+User=bitcoin
+#ExecStartPre=-/home/admin/config.scripts/lnd.check.sh prestart mainnet
+ExecStart=/usr/bin/cgexec -g net_cls:splitted_processes /usr/local/bin/lnd --configfile=/mnt/hdd/app-data/lnd/lnd.conf
+EOF
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "16c: adopt --managed raspiblitz (legacy_v3_pre_204) exits 0"
+assert_json "$doc" '[d["ok"], d["adopted"], d["profile"], d["impl"], d["unit"], d["legacy_kind"], d["unit_edits"], d["unit_reverted"]]' \
+    '[true, true, "raspiblitz", "lnd", "lnd.service", "legacy_v3_pre_204", ["ln_unit_cgexec", "ln_unit_check_disabled"], true]' \
+    "16c: adopt JSON on RaspiBlitz reports legacy_v3_pre_204 and both unit edits reverted"
+if grep -q '^ExecStartPre=-/home/admin/config.scripts/lnd.check.sh prestart mainnet$' "$fx/fs/etc/systemd/system/lnd.service" && \
+    grep -q '^ExecStart=/usr/local/bin/lnd ' "$fx/fs/etc/systemd/system/lnd.service" && \
+    [[ -f "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsatsv2.created" ]] && \
+    ! grep -q '^ufw delete ' "$fx/state/calls"; then
+    pass "16c: RaspiBlitz lnd.check.sh uncommented, cgexec stripped, and UFW allow rule on tunnelsatsv2 preserved"
+else
+    fail "16c: RaspiBlitz lnd.check.sh uncommented, cgexec stripped, and UFW allow rule on tunnelsatsv2 preserved"
+fi
+run_snippet "$fx" "$rb_env TS_COMMAND=detect; TS_JSON=1; TS_OUT_FD=1; cmd_detect"
+assert_json "$SN_OUT" 'd["install"]["kind"]' "managed" "16c: detect --json reports kind=managed after adopt"
+
+# 16d: adopt --managed raspiblitz --impl lnd on legacy_v2 (restores lnd.check.bak -> lnd.check.sh, removes blitzapi drop-in)
+fx=$(rb_preflight_fixture adopt-rb-v2)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard" "$fx/fs/etc/systemd/system/lnd.service.d" \
+    "$fx/fs/etc/systemd/system/blitzapi.service.d" "$fx/fs/home/admin/config.scripts"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+printf '[Unit]\nRequires=tunnelsats-create-cgroup.service\n' > "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf"
+printf '[Unit]\n' > "$fx/fs/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf"
+printf '#!/bin/bash\n' > "$fx/fs/home/admin/config.scripts/lnd.check.bak"
+cat > "$fx/fs/etc/systemd/system/lnd.service" <<'EOF'
+[Unit]
+Description=LND on RaspiBlitz
+[Service]
+User=bitcoin
+ExecStartPre=-/home/admin/config.scripts/lnd.check.sh prestart mainnet
+ExecStart=/usr/bin/cgexec -g net_cls:splitted_processes /usr/local/bin/lnd --configfile=/mnt/hdd/app-data/lnd/lnd.conf
+EOF
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "16d: adopt --managed raspiblitz (legacy_v2) exits 0"
+assert_json "$doc" '[d["ok"], d["adopted"], d["legacy_kind"], d["unit_edits"], d["unit_reverted"]]' \
+    '[true, true, "legacy_v2", ["ln_unit_cgexec"], true]' \
+    "16d: adopt JSON on RaspiBlitz reports legacy_v2 and ln_unit_cgexec reverted"
+if [[ -f "$fx/fs/home/admin/config.scripts/lnd.check.sh" ]] && \
+    [[ ! -e "$fx/fs/home/admin/config.scripts/lnd.check.bak" ]] && \
+    [[ ! -e "$fx/fs/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf" ]]; then
+    pass "16d: RaspiBlitz lnd.check.sh restored from lnd.check.bak and blitzapi drop-in removed"
+else
+    fail "16d: RaspiBlitz lnd.check.sh restored from lnd.check.bak and blitzapi drop-in removed"
+fi
+
+# 15c: uninstall --managed --legacy-artifacts stops active lnd.service before teardown, disables it when clearnet settings remain,
+# and preserves custom /etc/nftables.conf when /etc/nftablespriortunnelsats.backup exists
+fx=$(new_fixture legacy-custom-nft)
+mkdir -p "$fx/fs/etc/wireguard" "$fx/fs/etc/systemd/system" "$fx/fs/home/bitcoin/.lnd"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+cat > "$fx/fs/etc/systemd/system/lnd.service" <<'EOF'
+[Unit]
+Description=LND
+[Service]
+User=bitcoin
+ExecStart=/usr/local/bin/lnd --configfile=/home/bitcoin/.lnd/lnd.conf
+EOF
+printf '[Application Options]\nexternalhosts=de2.tunnelsats.com:24556\n' > "$fx/fs/home/bitcoin/.lnd/lnd.conf"
+: > "$fx/state/stateful_units"
+echo "loaded" > "$fx/state/unit_lnd.service_LoadState"
+echo "active" > "$fx/state/unit_lnd.service_ActiveState"
+printf '{ path=/usr/local/bin/lnd ; argv[]=/usr/local/bin/lnd --configfile=/home/bitcoin/.lnd/lnd.conf ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n' > "$fx/state/unit_lnd.service_ExecStart"
+printf 'table inet custom_fw {}\n' > "$fx/fs/etc/nftables.conf"
+printf 'table inet old_backup {}\n' > "$fx/fs/etc/nftablespriortunnelsats.backup"
+run_snippet "$fx" "parse_args --json uninstall --managed --legacy-artifacts --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "1" "$SN_RC" "15c: --legacy-artifacts exits 1 when custom /etc/nftables.conf prevents overwriting from backup"
+assert_json "$doc" '[d["ok"], d["removed"], d["remaining"], d["disabled_units"], d["action_required"]["reason"], d["action_required"]["then"]]' \
+    '[false, false, ["/etc/nftablespriortunnelsats.backup"], ["lnd.service"], "node_config_clearnet", "systemctl enable --now lnd.service"]' \
+    "15c: JSON reports /etc/nftablespriortunnelsats.backup in remaining and disabled_units/action_required for lnd.service"
+assert_equals "table inet custom_fw {}" "$(cat "$fx/fs/etc/nftables.conf")" "15c: custom /etc/nftables.conf is preserved"
+if calls_before "$fx" "systemctl stop lnd.service" "systemctl stop wg-quick@tunnelsatsv2.service" && \
+    grep -q '^systemctl disable lnd\.service$' "$fx/state/calls"; then
+    pass "15c: active lnd.service stopped before legacy wg-quick teardown and disabled due to clearnet settings"
+else
+    fail "15c: active lnd.service stopped before legacy wg-quick teardown and disabled due to clearnet settings"
+fi
+
+# 16e: adopt --managed preflight rule/route checks, auto-restart stop, and WireGuard config restoration on step 4 failure
+fx=$(preflight_fixture adopt-unrecorded-fc)
+mkdir -p "$fx/tmp" "$fx/fs/etc/wireguard"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+printf 'from 10.9.9.0/25\n' > "$fx/fs/etc/wireguard/.tunnelsats-failclosed-rules"
+printf '21819:\tfrom all uidrange 2000-2000 blackhole\n' > "$fx/state/rules4"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[7, "E_RULE_PRIORITY_IN_USE"]' \
+    "16e: adopt --managed refuses 21819 rule whose selector is not in .tunnelsats-failclosed-rules"
+
+fx=$(preflight_fixture adopt-foreign-bh)
+mkdir -p "$fx/tmp" "$fx/fs/etc/wireguard"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+printf 'blackhole 198.51.100.0/24 \n' > "$fx/state/routes4"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[7, "E_TABLE_51820_IN_USE"]' \
+    "16e: adopt --managed refuses non-metric-3 blackhole route in table 51820"
+
+fx=$(rb_preflight_fixture adopt-rollback-cfg)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+printf 'from 10.9.9.0/25\nuidrange 1001-1001\n' > "$fx/fs/etc/wireguard/.tunnelsats-failclosed-rules"
+printf '21818:\tfrom 10.9.9.0/25 blackhole\n21819:\tfrom all uidrange 1001-1001 blackhole\n' > "$fx/state/rules4"
+: > "$fx/state/stateful_units"
+echo "activating" > "$fx/state/unit_lnd.service_ActiveState"
+echo "auto-restart" > "$fx/state/unit_lnd.service_SubState"
+echo "enabled" > "$fx/state/unit_lnd.service_UnitFileState"
+: > "$fx/state/fail_systemctl_start_tunnelsats-killswitch.service"
+run_snippet "$fx" "SYSTEMCTL_BIN='$STUB_BIN/systemctl'; WG_BIN='$RB_BIN/wg'; WG_QUICK_BIN='$RB_BIN/wg-quick'; export TMPDIR='$fx/tmp'; parse_args --json adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[1, "E_KILLSWITCH"]' \
+    "16e: adopt --managed aborts with E_KILLSWITCH when killswitch start fails"
+if [[ -f "$fx/fs/etc/wireguard/tunnelsatsv2.conf" ]] && \
+    grep -q '^systemctl stop lnd\.service$' "$fx/state/calls" && \
+    grep -q '^systemctl disable lnd\.service$' "$fx/state/calls"; then
+    pass "16e: failed adopt stops activating/auto-restart lnd.service, leaves it disabled, and restores /etc/wireguard/tunnelsatsv2.conf"
+else
+    fail "16e: failed adopt stops activating/auto-restart lnd.service, leaves it disabled, and restores /etc/wireguard/tunnelsatsv2.conf"
+fi
+run_snippet "$fx" "SYSTEMCTL_BIN='$STUB_BIN/systemctl'; WG_BIN='$RB_BIN/wg'; WG_QUICK_BIN='$RB_BIN/wg-quick'; export TMPDIR='$fx/tmp'; parse_args adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+assert_contains "$SN_OUT" "Adopt did not complete: $fx/fs/etc/wireguard/tunnelsatsv2.conf is restored, and lnd.service stays stopped and disabled" \
+    "16e: failed adopt human output warns that config is restored and unit stays stopped and disabled"
+
+# 16f: adopt --managed UFW ownership marker migration and legacy_remaining reporting
+fx=$(rb_preflight_fixture adopt-ufw-op)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+: > "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsats-old.created"
+cat > "$fx/state/ufw_status" <<'EOF'
+Status: active
+
+To                         Action      From
+--                         ------      ----
+9735/tcp on tunnelsatsv2   ALLOW IN    Anywhere
+EOF
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["ok"], d["legacy_remaining"]]' '[true, []]' "16f: adopt --managed succeeds with empty legacy_remaining"
+if [[ ! -e "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsatsv2.created" ]] && \
+    [[ ! -e "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsats-old.created" ]] && \
+    ! grep -q '^ufw allow in on tunnelsatsv2 ' "$fx/state/calls"; then
+    pass "16f: adopt does not claim operator-existing UFW rule on tunnelsatsv2"
+else
+    fail "16f: adopt does not claim operator-existing UFW rule on tunnelsatsv2"
+fi
+
+fx=$(rb_preflight_fixture adopt-ufw-migrate)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+: > "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsats-old.created"
+cat > "$fx/state/ufw_status" <<'EOF'
+Status: active
+
+To                         Action      From
+--                         ------      ----
+9735/tcp on tunnelsats-old ALLOW IN    Anywhere
+EOF
+echo "1" > "$fx/state/ufw_rc"
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["ok"], d["legacy_remaining"]]' '[true, ["/etc/wireguard/.tunnelsats-ufw-9735-tunnelsats-old.created"]]' \
+    "16f: adopt --managed reports unremoved UFW marker in legacy_remaining when ufw fails"
+
+fx=$(rb_preflight_fixture adopt-ufw-narrow)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+: > "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsats-old.created"
+cat > "$fx/state/ufw_status" <<'EOF'
+Status: active
+
+To                         Action      From
+--                         ------      ----
+9735/udp on tunnelsatsv2   ALLOW IN    Anywhere
+9735/tcp                   ALLOW IN    192.168.1.0/24
+EOF
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["ok"], d["legacy_remaining"]]' '[true, []]' "16f: adopt --managed succeeds when narrower UFW rules exist"
+if [[ -f "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsatsv2.created" ]] && \
+    grep -q '^ufw allow in on tunnelsatsv2 to any port 9735 proto tcp$' "$fx/state/calls"; then
+    pass "16f: narrower UDP or source-limited TCP UFW rules do not prevent adding unrestricted TCP 9735 allow on tunnelsatsv2"
+else
+    fail "16f: narrower UDP or source-limited TCP UFW rules do not prevent adding unrestricted TCP 9735 allow on tunnelsatsv2"
 fi
 
 echo ""

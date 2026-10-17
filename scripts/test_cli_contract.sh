@@ -172,6 +172,11 @@ usage_cases=(
     "detect --config x.conf|--config is not supported by 'detect'"
     "status --remove-packages|--remove-packages is not supported by 'status'"
     "pre-check --impl lnd|--impl is not supported by 'pre-check'"
+    "adopt|adopt requires --managed <baremetal|raspiblitz>"
+    "adopt --managed raspiblitz|adopt --managed raspiblitz requires --impl lnd or --impl cln"
+    "adopt --managed raspiblitz --impl lit|adopt --managed raspiblitz supports --impl lnd or --impl cln, not lit"
+    "adopt --managed baremetal --network testnet|--network is used by 'adopt --managed raspiblitz' only"
+    "adopt --remove-packages|--remove-packages is not supported by 'adopt'"
     "frobnicate|Unknown command: frobnicate"
     "version extra|Unexpected argument: extra"
     "--non-interactive|Missing command"
@@ -458,8 +463,63 @@ else
     chmod +x "$TMP_ROOT/getent-announce"
     run_snippet "WG_DIR='$wg_announce'; GETENT_BIN='$TMP_ROOT/getent-announce'; TS_NONINTERACTIVE=1; ${uninstall_flags}; cmd_uninstall"
     assert_equals 0 "$SN_RC" "Uninstall (LND on systemd) completes"
+    assert_contains "$SN_LOG" "rm -f $wg_announce/tunnelsatsv2.conf" "Uninstall removes tunnelsatsv2.conf by default (#217)"
     assert_contains "$SN_OUT" "lncli peers updatenodeannouncement --address_remove 1.2.3.4:24556" \
         "Uninstall (LND on systemd): the final instructions name the command for the former VPN address"
+
+    # --keep-config preserves WireGuard config files
+    run_snippet "WG_DIR='$wg_announce'; GETENT_BIN='$TMP_ROOT/getent-announce'; TS_NONINTERACTIVE=1; TS_OPT_KEEP_CONFIG=1; ${uninstall_flags}; cmd_uninstall"
+    assert_equals 0 "$SN_RC" "Uninstall with --keep-config completes"
+    assert_not_contains "$SN_LOG" "rm -f $wg_announce/tunnelsatsv2.conf" "Uninstall with --keep-config does not remove tunnelsatsv2.conf"
+    assert_contains "$SN_OUT" "Keeping WireGuard configuration files (--keep-config)" "Uninstall with --keep-config reports kept configs"
+
+    # .tunnelsats-resolvconf.installed marker is kept when packages are kept, and removed only when packages are removed (#217)
+    : > "$wg_announce/.tunnelsats-resolvconf.installed"
+    run_snippet "WG_DIR='$wg_announce'; ${uninstall_flags}; cmd_uninstall" $'n\n'
+    assert_equals "Remove cgroup-tools, nftables, resolvconf and wireguard-tools? (Y/N) " "$SN_PROMPTS" \
+        "Package removal prompt includes resolvconf when marker is present"
+    assert_not_contains "$SN_LOG" "rm -f $wg_announce/.tunnelsats-resolvconf.installed" \
+        "Uninstall keeps .tunnelsats-resolvconf.installed when user answers N to package removal"
+    run_snippet "WG_DIR='$wg_announce'; TS_NONINTERACTIVE=1; TS_OPT_PACKAGES=remove; ${uninstall_flags}; cmd_uninstall"
+    assert_contains "$SN_LOG" "apt-get remove -yqq cgroup-tools nftables resolvconf wireguard-tools" \
+        "Uninstall with .tunnelsats-resolvconf.installed removes resolvconf (#217)"
+    assert_contains "$SN_LOG" "rm -f $wg_announce/.tunnelsats-resolvconf.installed" \
+        "Uninstall removes .tunnelsats-resolvconf.installed marker after removing packages"
+
+    # T6b: standard uninstall inspects node configs read-only (including CLN includes), never runs sed -i or cp .bak,
+    # and disables the Lightning unit when clearnet settings remain
+    t6b_root="$TMP_ROOT/t6b_root"
+    mkdir -p "$t6b_root/mnt/hdd/lnd" "$t6b_root/mnt/hdd/app-data/.lightning" "$t6b_root/etc/systemd/system/blitzapi.service.d" "$t6b_root/home/admin/config.scripts"
+    printf '[Application Options]\nexternalhosts=de2.tunnelsats.com:24556\nlisten=0.0.0.0:9735\n' > "$t6b_root/mnt/hdd/lnd/lnd.conf"
+    printf 'bind-addr=127.0.0.1:9736\ninclude extra-cln.conf\n' > "$t6b_root/mnt/hdd/app-data/.lightning/config"
+    printf 'bind-addr=0.0.0.0:9735\nannounce-addr=203.0.113.10:24556\n' > "$t6b_root/mnt/hdd/app-data/.lightning/extra-cln.conf"
+    : > "$wg_announce/tunnelsats-route-guard.sh"
+    : > "$wg_announce/tunnelsats-create-cgroup.sh"
+    : > "$wg_announce/tunnelsatsv2.conf.bak.123"
+    : > "$wg_announce/.tunnelsats-ipv6-disabled"
+    : > "$t6b_root/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf"
+    : > "$t6b_root/home/admin/config.scripts/lnd.check.bak"
+    run_snippet "TS_FS_ROOT='$t6b_root'; WG_DIR='$wg_announce'; GETENT_BIN='$TMP_ROOT/getent-announce'; TS_NONINTERACTIVE=1; ${uninstall_flags}; cmd_uninstall"
+    assert_equals 0 "$SN_RC" "T6b LND uninstall completes"
+    assert_not_contains "$SN_LOG" "sed " "T6b LND uninstall runs no sed -i on node configs"
+    assert_not_contains "$SN_LOG" "cp " "T6b LND uninstall creates no .bak copies of node configs"
+    assert_contains "$SN_OUT" "externalhosts=de2.tunnelsats.com:24556" "T6b LND uninstall prints detected externalhosts line"
+    assert_contains "$SN_LOG" "systemctl disable lnd.service" "T6b LND uninstall disables lnd.service when clearnet settings remain"
+    assert_contains "$SN_LOG" "rm -f $wg_announce/tunnelsats-route-guard.sh" "Standard uninstall removes tunnelsats-route-guard.sh (#217)"
+    assert_contains "$SN_LOG" "rm -f $wg_announce/tunnelsats-create-cgroup.sh" "Standard uninstall removes tunnelsats-create-cgroup.sh (#217)"
+    assert_contains "$SN_LOG" "rm -f $wg_announce/tunnelsatsv2.conf.bak.123" "Standard uninstall removes .bak config copies (#217)"
+    assert_contains "$SN_LOG" "rm -f $wg_announce/.tunnelsats-ipv6-disabled" "Standard uninstall removes .tunnelsats-ipv6-disabled marker (#217)"
+    assert_contains "$SN_LOG" "rm -f $t6b_root/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf" "Standard uninstall removes blitzapi drop-in (#217)"
+    assert_contains "$SN_LOG" "mv $t6b_root/home/admin/config.scripts/lnd.check.bak $t6b_root/home/admin/config.scripts/lnd.check.sh" "Standard uninstall restores lnd.check.sh (#217)"
+    rm -f "$wg_announce/.tunnelsats-resolvconf.installed" "$wg_announce/tunnelsats-route-guard.sh" "$wg_announce/tunnelsats-create-cgroup.sh" "$wg_announce/tunnelsatsv2.conf.bak.123" "$wg_announce/.tunnelsats-ipv6-disabled"
+
+    run_snippet "TS_FS_ROOT='$t6b_root'; WG_DIR='$wg_announce'; TS_NONINTERACTIVE=1; TS_OPT_YES=1; TS_OPT_PLATFORM=baremetal; TS_OPT_IMPL=cln; ts_guess_ln_impl_systemd() { :; }; cmd_uninstall"
+    assert_equals 0 "$SN_RC" "T6b CLN uninstall completes"
+    assert_not_contains "$SN_LOG" "sed " "T6b CLN uninstall runs no sed -i on CLN config (preserves Tor bind-addr=127.0.0.1:9736)"
+    assert_contains "$SN_OUT" "extra-cln.conf:1:bind-addr=0.0.0.0:9735" "T6b CLN uninstall prints clearnet bind-addr from included CLN config"
+    assert_contains "$SN_LOG" "systemctl disable lightningd.service" "T6b CLN uninstall disables lightningd.service when clearnet settings remain"
+    assert_not_contains "$SN_OUT" "bind-addr=127.0.0.1:9736" "T6b CLN uninstall does not flag loopback Tor bind-addr"
+
     run_snippet "WG_DIR='$wg_announce'; GETENT_BIN='$TMP_ROOT/getent-announce'; TS_NONINTERACTIVE=1; TS_OPT_YES=1; TS_OPT_PLATFORM=umbrel; TS_OPT_IMPL=lnd
 docker() { stub_log \"docker \$*\"; case \"\$1 \${2:-}\" in 'ps --filter') echo c0ffee ;; 'inspect --format') echo /lightning_lnd_1 ;; esac; return 0; }
 cmd_uninstall"
