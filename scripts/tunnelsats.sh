@@ -44,6 +44,8 @@ TS_OPT_NO_PROBE=0
 TS_OPT_FALLBACK_UID=""
 # install --managed raspiblitz --network <chain>: the chain of the Lightning instance (default mainnet)
 TS_OPT_NETWORK=""
+TS_OPT_KEEP_CONFIG=0
+TS_OPT_LEGACY_ARTIFACTS=0
 TS_WANT_HELP=0
 TS_USAGE_ERROR=""
 TS_OPTS_GIVEN=()
@@ -941,6 +943,9 @@ Commands:
   install --managed raspiblitz --impl lnd|cln [--network mainnet|testnet|signet]
                             The same on RaspiBlitz, for the Lightning instance that
                             --impl and --network name (lnd.service, tlnd.service, ...)
+  adopt --managed baremetal|raspiblitz
+                            Replace an existing standard (legacy) install with the
+                            managed dataplane in one step
   pre-check                 Check system compatibility
   uninstall                 Remove TunnelSats installation
   uninstall --managed       Remove a managed install exactly as it was installed
@@ -955,25 +960,28 @@ Commands:
   help                      Show this help message
 
 Options (accepted before or after the command):
-  --config <file>           WireGuard config to use (install, status, restart)
+  --config <file>           WireGuard config to use (install, adopt, status, restart)
   --platform <id>           raspiblitz, umbrel, mynode or baremetal
-                            (install, uninstall, status, restart)
-  --impl <id>               lnd, cln or lit (install, uninstall, status, restart)
+                            (install, adopt, uninstall, status, restart)
+  --impl <id>               lnd, cln or lit (install, adopt, uninstall, status, restart)
   --yes                     Answer yes to confirmation prompts
   --remove-packages         uninstall: also remove nftables and wireguard-tools
                             (and cgroup-tools)
   --keep-packages           uninstall: keep system packages without asking
-  --managed [profile]       install (profile baremetal or raspiblitz), uninstall:
-                            managed mode
-  --network <chain>         install --managed raspiblitz: mainnet (default), testnet
-                            or signet
-  --uid-backstop            install --managed: also route the Lightning user's
+  --keep-config             uninstall: keep /etc/wireguard/tunnelsats*.conf on disk
+  --legacy-artifacts        uninstall --managed: also clean legacy v2/v3 artifacts
+                            (or clean a legacy install when no managed record exists)
+  --managed [profile]       install, adopt (profile baremetal or raspiblitz),
+                            uninstall: managed mode
+  --network <chain>         install/adopt --managed raspiblitz: mainnet (default),
+                            testnet or signet
+  --uid-backstop            install/adopt --managed: also route the Lightning user's
                             traffic into the tunnel by uid (see docs/managed-mode.md)
   --no-probe                verify: kernel checks only, no network probes
   --non-interactive         Never prompt: a question that no option answers fails
                             with exit code 2 before any change is made
   --json                    One JSON document on stdout, logs on stderr (version,
-                            detect, verify, install and uninstall --managed);
+                            detect, verify, and install, adopt, uninstall --managed);
                             implies --non-interactive
 
 Exit codes: 0 success, 1 failure, 2 usage error or interaction required
@@ -1508,9 +1516,14 @@ install_dependencies() {
     # Install resolvconf
     if ! command -v resolvconf &>/dev/null; then
         print_info "Installing resolvconf..."
-        apt-get install -y resolvconf > /dev/null 2>&1 && \
-            print_success "resolvconf installed" || \
-            { print_error "Failed to install resolvconf"; exit 1; }
+        if apt-get install -y resolvconf > /dev/null 2>&1; then
+            mkdir -p "${WG_DIR:-/etc/wireguard}" 2>/dev/null || true
+            : > "${WG_DIR:-/etc/wireguard}/.tunnelsats-resolvconf.installed" 2>/dev/null || true
+            print_success "resolvconf installed"
+        else
+            print_error "Failed to install resolvconf"
+            exit 1
+        fi
     else
         print_success "resolvconf already installed"
     fi
@@ -3065,22 +3078,23 @@ cmd_uninstall() {
              else
                  print_info "No lightning containers found"
              fi
-        elif [[ -f /etc/systemd/system/lnd.service ]]; then
+        elif [[ -f "${TS_FS_ROOT}/etc/systemd/system/lnd.service" ]]; then
              if systemctl is-active lnd.service &>/dev/null; then
                  systemctl stop lnd.service &>/dev/null && print_success "Stopped lnd.service"
              fi
         fi
         
         # Remove dependencies
-        if [[ -f /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf ]]; then
-             rm /etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf &>/dev/null
+        if [[ -f "${TS_FS_ROOT}/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf" ]]; then
+             rm -f "${TS_FS_ROOT}/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf" &>/dev/null
+             rmdir "${TS_FS_ROOT}/etc/systemd/system/lnd.service.d" &>/dev/null || true
              systemctl daemon-reload &>/dev/null
              print_success "Removed lnd.service dependency"
         fi
         
         # Restore original service file if backup exists
-        if [[ -f /etc/systemd/system/lnd.service.bak ]]; then
-             mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service
+        if [[ -f "${TS_FS_ROOT}/etc/systemd/system/lnd.service.bak" ]]; then
+             mv "${TS_FS_ROOT}/etc/systemd/system/lnd.service.bak" "${TS_FS_ROOT}/etc/systemd/system/lnd.service"
              print_success "Restored original lnd.service"
         fi
 
@@ -3106,115 +3120,134 @@ cmd_uninstall() {
              else
                  print_info "No lightning containers found"
              fi
-        elif [[ -f /etc/systemd/system/lightningd.service ]]; then
+        elif [[ -f "${TS_FS_ROOT}/etc/systemd/system/lightningd.service" ]]; then
              if systemctl is-active lightningd.service &>/dev/null; then
                  systemctl stop lightningd.service &>/dev/null && print_success "Stopped lightningd.service"
              fi
         fi
 
         # Remove dependencies
-        if [[ -f /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf ]]; then
-             rm /etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf &>/dev/null
+        if [[ -f "${TS_FS_ROOT}/etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf" ]]; then
+             rm -f "${TS_FS_ROOT}/etc/systemd/system/lightningd.service.d/tunnelsats-cgroup.conf" &>/dev/null
+             rmdir "${TS_FS_ROOT}/etc/systemd/system/lightningd.service.d" &>/dev/null || true
              systemctl daemon-reload &>/dev/null
              print_success "Removed lightningd.service dependency"
         fi
         
         # Restore original service file if backup exists
-        if [[ -f /etc/systemd/system/lightningd.service.bak ]]; then
-             mv /etc/systemd/system/lightningd.service.bak /etc/systemd/system/lightningd.service
+        if [[ -f "${TS_FS_ROOT}/etc/systemd/system/lightningd.service.bak" ]]; then
+             mv "${TS_FS_ROOT}/etc/systemd/system/lightningd.service.bak" "${TS_FS_ROOT}/etc/systemd/system/lightningd.service"
              print_success "Restored original lightningd.service"
         fi
 
         # Restore RaspiBlitz health services
         systemctl enable cl-health.service &>/dev/null || true
         systemctl start cl-health.service &>/dev/null || true
+
+    elif [[ "$ln_impl" == "lit" ]]; then
+        local lit_unit
+        for lit_unit in litd.service lit.service; do
+            if [[ -f "${TS_FS_ROOT}/etc/systemd/system/${lit_unit}" ]]; then
+                if systemctl is-active "$lit_unit" &>/dev/null; then
+                    systemctl stop "$lit_unit" &>/dev/null && print_success "Stopped ${lit_unit}"
+                fi
+            fi
+            if [[ -f "${TS_FS_ROOT}/etc/systemd/system/${lit_unit}.d/tunnelsats-cgroup.conf" ]]; then
+                rm -f "${TS_FS_ROOT}/etc/systemd/system/${lit_unit}.d/tunnelsats-cgroup.conf" &>/dev/null
+                rmdir "${TS_FS_ROOT}/etc/systemd/system/${lit_unit}.d" &>/dev/null || true
+                systemctl daemon-reload &>/dev/null
+                print_success "Removed ${lit_unit} dependency"
+            fi
+            if [[ -f "${TS_FS_ROOT}/etc/systemd/system/${lit_unit}.bak" ]]; then
+                mv "${TS_FS_ROOT}/etc/systemd/system/${lit_unit}.bak" "${TS_FS_ROOT}/etc/systemd/system/${lit_unit}"
+                print_success "Restored original ${lit_unit}"
+            fi
+        done
     fi
     echo ""
 
-    # 3. Restore Hybrid Mode Configuration
-    print_step 2 6 "Restoring configuration files..."
-    
+    # 3. Inspect Hybrid Mode Configuration (read-only: never edit operator config files)
+    print_step 2 6 "Checking configuration files..."
+    local -a detected_nc_lines=()
+    local nc_entry nc_num nc_key nc_val
     if [[ "$ln_impl" == "lnd" ]]; then
         local paths=(
-            "/mnt/hdd/lnd/lnd.conf"
+            "${TS_FS_ROOT}/mnt/hdd/lnd/lnd.conf"
             "$home_dir/.lnd/lnd.conf"
-            "/home/bitcoin/.lnd/lnd.conf"
+            "${TS_FS_ROOT}/home/bitcoin/.lnd/lnd.conf"
             "$home_dir/umbrel/lnd/lnd.conf"
             "$home_dir/umbrel/app-data/lightning/data/lnd/lnd.conf"
-            "/data/lnd/lnd.conf"
-            "/mnt/hdd/mynode/lnd/lnd.conf"
-        )
-        for path in "${paths[@]}"; do
-            if [[ -f "$path" ]]; then 
-                local cleaned=0
-                if grep -iq "externalhosts=" "$path" || grep -iq "tor.skip-proxy-for-clearnet-targets" "$path"; then
-                    # Backup before surgical cleaning
-                    cp "$path" "${path}.bak.$(date +%F_%H%M)"
-                    sed -i "/externalhosts=/Id" "$path"
-                    sed -i "/tor.skip-proxy-for-clearnet-targets/Id" "$path"
-                    sed -i "/tor.streamisolation=false/Id" "$path"
-                    cleaned=1
-                fi
-                if [[ $cleaned -eq 1 ]]; then
-                    print_success "Cleaned up $path"
-                fi
-            fi
-        done
-        
-    elif [[ "$ln_impl" == "cln" ]]; then
-        local paths=(
-            "/mnt/hdd/app-data/.lightning/config"
-            "$home_dir/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"
-            "/data/lightningd/config"
+            "${TS_FS_ROOT}/data/lnd/lnd.conf"
+            "${TS_FS_ROOT}/mnt/hdd/mynode/lnd/lnd.conf"
         )
         for path in "${paths[@]}"; do
             if [[ -f "$path" ]]; then
-                if grep -q "always-use-proxy=false" "$path"; then
-                    sed -i "s/always-use-proxy=false/always-use-proxy=true/g" "$path"
-                    sed -i "s/always-use-proxy=0/always-use-proxy=1/g" "$path"
-                    print_success "Restored Tor-only mode in $path"
-                fi
-                
-                # Cleanup TunnelSats specific CLN settings
-                if grep -qE "^bind-addr=|^announce-addr=" "$path"; then
-                    sed -i '/^bind-addr=/d' "$path" 2>/dev/null
-                    sed -i '/^announce-addr=/d' "$path" 2>/dev/null
-                    print_success "Removed TunnelSats address bindings in $path"
-                fi
+                while IFS= read -r nc_entry; do
+                    nc_num="${nc_entry%%|*}"
+                    nc_entry="${nc_entry#*|}"
+                    nc_key="${nc_entry%%|*}"
+                    nc_val="${nc_entry#*|}"
+                    if ts_m_nc_setting_hit "lnd" "$nc_key" "$nc_val"; then
+                        detected_nc_lines+=("${path}:${nc_num}:${nc_key}=${nc_val}")
+                    fi
+                done < <(ts_m_config_settings "$path")
             fi
         done
-        
-        if [[ -f "$home_dir/umbrel/app-data/core-lightning/exports.sh" ]]; then
-             sed -i 's/APP_CORE_LIGHTNING_DAEMON_PORT="9735"/APP_CORE_LIGHTNING_DAEMON_PORT="9736"/g' "$home_dir/umbrel/app-data/core-lightning/exports.sh"
-             print_success "Restored Umbrel exports.sh port"
+    elif [[ "$ln_impl" == "cln" ]]; then
+        local paths=(
+            "${TS_FS_ROOT}/mnt/hdd/app-data/.lightning/config"
+            "${TS_FS_ROOT}/home/bitcoin/.lightning/config"
+            "$home_dir/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"
+            "${TS_FS_ROOT}/data/lightningd/config"
+        )
+        for path in "${paths[@]}"; do
+            if [[ -f "$path" ]]; then
+                while IFS= read -r nc_entry; do
+                    nc_num="${nc_entry%%|*}"
+                    nc_entry="${nc_entry#*|}"
+                    nc_key="${nc_entry%%|*}"
+                    nc_val="${nc_entry#*|}"
+                    if ts_m_nc_setting_hit "cln" "$nc_key" "$nc_val"; then
+                        detected_nc_lines+=("${path}:${nc_num}:${nc_key}=${nc_val}")
+                    fi
+                done < <(ts_m_config_settings "$path")
+            fi
+        done
+        if [[ -f "$home_dir/umbrel/app-data/core-lightning/exports.sh" ]] && \
+            grep -q 'APP_CORE_LIGHTNING_DAEMON_PORT="9735"' "$home_dir/umbrel/app-data/core-lightning/exports.sh" 2>/dev/null; then
+            detected_nc_lines+=("$home_dir/umbrel/app-data/core-lightning/exports.sh:APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"")
         fi
-        
-        if [[ -f "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" ]]; then
-             # Robust uncomment: handles leading spaces, #, and potential quotes around the flag
-             sed -i "s/^[[:space:]]*#[[:space:]]*- ['\"]*--bind-addr/      - '--bind-addr/g" "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" &>/dev/null
-             print_success "Restored Umbrel docker-compose binding"
+        if [[ -f "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" ]] && \
+            grep -qE "^[[:space:]]*#[[:space:]]*-[[:space:]]*['\"]*--bind-addr" "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" 2>/dev/null; then
+            detected_nc_lines+=("$home_dir/umbrel/app-data/core-lightning/docker-compose.yml:commented --bind-addr")
         fi
     elif [[ "$ln_impl" == "lit" ]]; then
         local paths=(
             "$home_dir/.lit/lit.conf"
-            "/home/bitcoin/.lit/lit.conf"
-            "/data/lit/lit.conf"
+            "${TS_FS_ROOT}/home/bitcoin/.lit/lit.conf"
+            "${TS_FS_ROOT}/data/lit/lit.conf"
         )
         for path in "${paths[@]}"; do
-            if [[ -f "$path" ]]; then 
-                local cleaned=0
-                if grep -iq "externalhosts=" "$path" || grep -iq "tor.skip-proxy-for-clearnet-targets" "$path"; then
-                    cp "$path" "${path}.bak.$(date +%F_%H%M)"
-                    sed -i "/externalhosts=/Id" "$path"
-                    sed -i "/tor.skip-proxy-for-clearnet-targets/Id" "$path"
-                    sed -i "/tor.streamisolation=false/Id" "$path"
-                    cleaned=1
-                fi
-                if [[ $cleaned -eq 1 ]]; then
-                    print_success "Cleaned up $path"
-                fi
+            if [[ -f "$path" ]]; then
+                while IFS= read -r nc_entry; do
+                    nc_num="${nc_entry%%|*}"
+                    nc_entry="${nc_entry#*|}"
+                    nc_key="${nc_entry%%|*}"
+                    nc_val="${nc_entry#*|}"
+                    if ts_m_nc_setting_hit "lit" "$nc_key" "$nc_val"; then
+                        detected_nc_lines+=("${path}:${nc_num}:${nc_key}=${nc_val}")
+                    fi
+                done < <(ts_m_config_settings "$path")
             fi
         done
+    fi
+    if [[ ${#detected_nc_lines[@]} -gt 0 ]]; then
+        print_warning "TunnelSats clearnet settings found in your node configuration (not edited automatically):"
+        for nc_entry in "${detected_nc_lines[@]}"; do
+            echo "  - ${nc_entry}"
+        done
+    else
+        print_info "No TunnelSats clearnet settings detected in standard config locations"
     fi
     echo ""
 
@@ -3223,12 +3256,33 @@ cmd_uninstall() {
     if [[ $is_docker -eq 0 ]]; then
         # Check timers/services
         for svc in tunnelsats-splitting-processes.timer tunnelsats-splitting-processes.service tunnelsats-create-cgroup.service; do
-             if [[ -f /etc/systemd/system/$svc ]]; then
-                 systemctl stop $svc &>/dev/null || true
-                 systemctl disable $svc &>/dev/null || true
-                 rm -f /etc/systemd/system/$svc &>/dev/null
+             if [[ -f "${TS_FS_ROOT}/etc/systemd/system/$svc" ]]; then
+                 systemctl stop "$svc" &>/dev/null || true
+                 systemctl disable "$svc" &>/dev/null || true
+                 rm -f "${TS_FS_ROOT}/etc/systemd/system/$svc" &>/dev/null
+                 rm -f "${TS_FS_ROOT}/etc/systemd/system/multi-user.target.wants/$svc" &>/dev/null || true
+                 rm -f "${TS_FS_ROOT}/etc/systemd/system/timers.target.wants/$svc" &>/dev/null || true
                  print_success "Removed $svc"
              fi
+        done
+
+        if [[ -f "${TS_FS_ROOT}/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf" ]]; then
+            rm -f "${TS_FS_ROOT}/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf" &>/dev/null || true
+            rmdir "${TS_FS_ROOT}/etc/systemd/system/blitzapi.service.d" &>/dev/null || true
+            systemctl daemon-reload &>/dev/null || true
+            print_success "Removed blitzapi.service dependency"
+        fi
+
+        local check_base
+        for check_base in lnd.check cl.check; do
+            if [[ -f "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.bak" ]]; then
+                if [[ ! -f "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.sh" ]]; then
+                    mv "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.bak" "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.sh" &>/dev/null || true
+                    print_success "Restored ${check_base}.sh"
+                else
+                    rm -f "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.bak" &>/dev/null || true
+                fi
+            fi
         done
         
         # Remove cgroups
@@ -3238,17 +3292,21 @@ cmd_uninstall() {
     else
         # Docker cleanup
          for svc in tunnelsats-docker-network.timer tunnelsats-docker-network.service; do
-             if [[ -f /etc/systemd/system/$svc ]]; then
-                 systemctl stop $svc &>/dev/null || true
-                 systemctl disable $svc &>/dev/null || true
-                 rm -f /etc/systemd/system/$svc &>/dev/null
+             if [[ -f "${TS_FS_ROOT}/etc/systemd/system/$svc" ]]; then
+                 systemctl stop "$svc" &>/dev/null || true
+                 systemctl disable "$svc" &>/dev/null || true
+                 rm -f "${TS_FS_ROOT}/etc/systemd/system/$svc" &>/dev/null
+                 rm -f "${TS_FS_ROOT}/etc/systemd/system/multi-user.target.wants/$svc" &>/dev/null || true
+                 rm -f "${TS_FS_ROOT}/etc/systemd/system/timers.target.wants/$svc" &>/dev/null || true
                  print_success "Removed $svc"
              fi
         done
         
         # Umbrel Killswitch
-        rm -f /etc/systemd/system/umbrel.service.d/tunnelsats_killswitch.conf &>/dev/null
-        rm -f /etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf &>/dev/null
+        rm -f "${TS_FS_ROOT}/etc/systemd/system/umbrel.service.d/tunnelsats_killswitch.conf" &>/dev/null
+        rm -f "${TS_FS_ROOT}/etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf" &>/dev/null
+        rmdir "${TS_FS_ROOT}/etc/systemd/system/umbrel.service.d" &>/dev/null || true
+        rmdir "${TS_FS_ROOT}/etc/systemd/system/umbrel-startup.service.d" &>/dev/null || true
         print_success "Removed Umbrel killswitch"
     fi
     echo ""
@@ -3258,39 +3316,71 @@ cmd_uninstall() {
     
     # Every installed TunnelSats tunnel is removed: the configs found by ts_select_wg_config (the
     # list detect, status and restart choose from). tunnelsatsv2 is cleaned up even without a config.
+    local wg_dir="${WG_DIR:-${TS_FS_ROOT}/etc/wireguard}"
     local -a target_interfaces=()
-    local target_interface wg_conf
-    ts_select_wg_config "" "" "${WG_DIR:-/etc/wireguard}"
+    local target_interface wg_conf announce_out=""
+    ts_select_wg_config "" "" "$wg_dir"
     for wg_conf in "${TS_WG_CANDIDATES[@]}"; do
         target_interfaces+=("$(basename "$wg_conf" .conf)")
     done
     if [[ ${#target_interfaces[@]} -eq 0 ]]; then target_interfaces=("tunnelsatsv2"); fi
 
-    for target_interface in "${target_interfaces[@]}"; do
-        systemctl stop "wg-quick@${target_interface}" &>/dev/null || true
-        systemctl disable "wg-quick@${target_interface}" &>/dev/null || true
-    done
-    
-    if [[ -f /etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsats.service ]]; then
-         systemctl stop wg-quick@tunnelsats &>/dev/null || true
-         systemctl disable wg-quick@tunnelsats &>/dev/null || true
-    fi
-    
-    # Remove DNS resolver
-    if [[ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.service ]]; then
-         systemctl stop tunnelsats-resolve-dns-wg.service &>/dev/null
-         systemctl disable tunnelsats-resolve-dns-wg.service &>/dev/null
-         rm -f /etc/systemd/system/tunnelsats-resolve-dns-wg.service
-    fi
-    if [[ -f /etc/systemd/system/tunnelsats-resolve-dns-wg.timer ]]; then
-         systemctl stop tunnelsats-resolve-dns-wg.timer &>/dev/null
-         systemctl disable tunnelsats-resolve-dns-wg.timer &>/dev/null
-         rm -f /etc/systemd/system/tunnelsats-resolve-dns-wg.timer
+    if [[ "$ln_impl" == "lnd" ]] || [[ "$ln_impl" == "lit" ]]; then
+        announce_out=$(ts_print_announce_command "$is_docker" "$lnd_container" "${TS_WG_CANDIDATES[@]}")
     fi
 
     for target_interface in "${target_interfaces[@]}"; do
-        rm -rf "/etc/systemd/system/wg-quick@${target_interface}.service.d" &>/dev/null
+        systemctl stop "wg-quick@${target_interface}" &>/dev/null || true
+        systemctl disable "wg-quick@${target_interface}" &>/dev/null || true
+        if [[ -L "${TS_FS_ROOT}/etc/systemd/system/multi-user.target.wants/wg-quick@${target_interface}.service" ]] || [[ -e "${TS_FS_ROOT}/etc/systemd/system/multi-user.target.wants/wg-quick@${target_interface}.service" ]]; then
+            rm -f "${TS_FS_ROOT}/etc/systemd/system/multi-user.target.wants/wg-quick@${target_interface}.service" &>/dev/null || true
+        fi
     done
+    
+    if [[ -L "${TS_FS_ROOT}/etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsats.service" ]] || [[ -f "${TS_FS_ROOT}/etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsats.service" ]]; then
+         systemctl stop wg-quick@tunnelsats &>/dev/null || true
+         systemctl disable wg-quick@tunnelsats &>/dev/null || true
+         rm -f "${TS_FS_ROOT}/etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsats.service" &>/dev/null || true
+    fi
+    
+    # Remove DNS resolver
+    if [[ -f "${TS_FS_ROOT}/etc/systemd/system/tunnelsats-resolve-dns-wg.service" ]]; then
+         systemctl stop tunnelsats-resolve-dns-wg.service &>/dev/null
+         systemctl disable tunnelsats-resolve-dns-wg.service &>/dev/null
+         rm -f "${TS_FS_ROOT}/etc/systemd/system/tunnelsats-resolve-dns-wg.service"
+         rm -f "${TS_FS_ROOT}/etc/systemd/system/multi-user.target.wants/tunnelsats-resolve-dns-wg.service" &>/dev/null || true
+    fi
+    if [[ -f "${TS_FS_ROOT}/etc/systemd/system/tunnelsats-resolve-dns-wg.timer" ]]; then
+         systemctl stop tunnelsats-resolve-dns-wg.timer &>/dev/null
+         systemctl disable tunnelsats-resolve-dns-wg.timer &>/dev/null
+         rm -f "${TS_FS_ROOT}/etc/systemd/system/tunnelsats-resolve-dns-wg.timer"
+         rm -f "${TS_FS_ROOT}/etc/systemd/system/timers.target.wants/tunnelsats-resolve-dns-wg.timer" &>/dev/null || true
+    fi
+
+    for target_interface in "${target_interfaces[@]}"; do
+        rm -rf "${TS_FS_ROOT}/etc/systemd/system/wg-quick@${target_interface}.service.d" &>/dev/null
+    done
+
+    local helper_file
+    for helper_file in "$wg_dir/tunnelsats-route-guard.sh" "$wg_dir/tunnelsats-create-cgroup.sh" \
+        "$wg_dir/tunnelsats-splitting-processes.sh" "$wg_dir/tunnelsats-resolve-dns-wg.sh" \
+        "$wg_dir/tunnelsats-docker-network.sh"; do
+        if [[ -f "$helper_file" ]]; then
+            rm -f "$helper_file" &>/dev/null || true
+        fi
+    done
+    for helper_file in "$wg_dir"/tunnelsats*.conf.bak.*; do
+        if [[ -f "$helper_file" ]]; then
+            rm -f "$helper_file" &>/dev/null || true
+        fi
+    done
+    if [[ "$TS_OPT_KEEP_CONFIG" -eq 1 ]]; then
+        print_info "Keeping WireGuard configuration files (--keep-config)"
+    else
+        for wg_conf in "${TS_WG_CANDIDATES[@]}"; do
+            rm -f "$wg_conf" &>/dev/null || true
+        done
+    fi
     print_success "WireGuard services removed"
     echo ""
 
@@ -3307,8 +3397,8 @@ cmd_uninstall() {
         print_warning "Some emergency fail-closed rules could not be removed. Check 'ip -4 rule show'."
     fi
     
-    if [[ -f /etc/nftablespriortunnelsats.backup ]]; then
-         mv /etc/nftablespriortunnelsats.backup /etc/nftables.conf
+    if [[ -f "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" ]]; then
+         mv "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" "${TS_FS_ROOT}/etc/nftables.conf"
          print_success "Restored original nftables.conf"
     fi
 
@@ -3318,6 +3408,13 @@ cmd_uninstall() {
             print_warning "Some TunnelSats policy rules could not be removed. Check 'ip rule show'."
         fi
     done
+
+    if [[ $is_docker -eq 0 ]]; then
+        if [[ "$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || echo 0)" == "1" ]]; then
+            sysctl -w net.ipv6.conf.all.disable_ipv6=0 &>/dev/null || true
+            sysctl -w net.ipv6.conf.default.disable_ipv6=0 &>/dev/null || true
+        fi
+    fi
 
     if [[ $is_docker -eq 1 ]]; then
         print_info "Cleaning Docker network..."
@@ -3336,11 +3433,11 @@ cmd_uninstall() {
     echo ""
 
     # UFW Rules Cleanup
-    if command -v ufw >/dev/null 2>&1; then
-        local ufw_marker_file
-        for target_interface in "${target_interfaces[@]}"; do
-            ufw_marker_file=$(ufw_rule_marker_file "$target_interface")
-            if [[ -f "$ufw_marker_file" ]]; then
+    local ufw_marker_file
+    for target_interface in "${target_interfaces[@]}"; do
+        ufw_marker_file="$wg_dir/.tunnelsats-ufw-9735-${target_interface}.created"
+        if [[ -f "$ufw_marker_file" ]]; then
+            if command -v ufw >/dev/null 2>&1; then
                 print_info "Removing TunnelSats UFW rules..."
                 if ufw delete allow in on "${target_interface}" to any port 9735 proto tcp &>/dev/null; then
                     rm -f "$ufw_marker_file" &>/dev/null || true
@@ -3348,24 +3445,26 @@ cmd_uninstall() {
                 else
                     print_error "Failed to remove UFW rules for port 9735 on ${target_interface}"
                 fi
+            else
+                rm -f "$ufw_marker_file" &>/dev/null || true
             fi
-        done
-    fi
+        fi
+    done
     
     # 7. Restore Original Service Files
     if [[ $is_docker -eq 0 ]]; then
         print_step 6 6 "Restoring systemd service files..."
-        if [[ "$ln_impl" == "lnd" && -f /etc/systemd/system/lnd.service.bak ]]; then
-             mv /etc/systemd/system/lnd.service.bak /etc/systemd/system/lnd.service
+        if [[ "$ln_impl" == "lnd" && -f "${TS_FS_ROOT}/etc/systemd/system/lnd.service.bak" ]]; then
+             mv "${TS_FS_ROOT}/etc/systemd/system/lnd.service.bak" "${TS_FS_ROOT}/etc/systemd/system/lnd.service"
              print_success "Restored lnd.service backup"
         fi
-        if [[ "$ln_impl" == "cln" && -f /etc/systemd/system/lightningd.service.bak ]]; then
-             mv /etc/systemd/system/lightningd.service.bak /etc/systemd/system/lightningd.service
+        if [[ "$ln_impl" == "cln" && -f "${TS_FS_ROOT}/etc/systemd/system/lightningd.service.bak" ]]; then
+             mv "${TS_FS_ROOT}/etc/systemd/system/lightningd.service.bak" "${TS_FS_ROOT}/etc/systemd/system/lightningd.service"
              print_success "Restored lightningd.service backup"
         fi
         if [[ "$ln_impl" == "lit" ]]; then
-            local s_file="/etc/systemd/system/litd.service"
-            [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+            local s_file="${TS_FS_ROOT}/etc/systemd/system/litd.service"
+            [[ ! -f "$s_file" ]] && s_file="${TS_FS_ROOT}/etc/systemd/system/lit.service"
             if [[ -f "${s_file}.bak" ]]; then
                 mv "${s_file}.bak" "$s_file"
                 print_success "Restored ${s_file} backup"
@@ -3378,6 +3477,11 @@ cmd_uninstall() {
     # Optional Package Removal. This question comes after the removal steps above, so it never
     # fails: --remove-packages or --keep-packages answer it, while non-interactive mode and end
     # of input keep the packages (the safe answer).
+    local has_resolvconf_marker=0
+    if [[ -f "$wg_dir/.tunnelsats-resolvconf.installed" ]]; then
+        has_resolvconf_marker=1
+        rm -f "$wg_dir/.tunnelsats-resolvconf.installed" &>/dev/null || true
+    fi
     case "$TS_OPT_PACKAGES" in
         remove) answer="Y" ;;
         keep) answer="N" ;;
@@ -3388,9 +3492,17 @@ cmd_uninstall() {
             else
                 echo "Do you want to uninstall system packages?"
                 if [[ $is_docker -eq 1 ]]; then
-                    ts_ask answer "--remove-packages" "Remove nftables and wireguard-tools? (Y/N) " "N"
+                    if [[ "$has_resolvconf_marker" -eq 1 ]]; then
+                        ts_ask answer "--remove-packages" "Remove nftables, resolvconf and wireguard-tools? (Y/N) " "N"
+                    else
+                        ts_ask answer "--remove-packages" "Remove nftables and wireguard-tools? (Y/N) " "N"
+                    fi
                 else
-                    ts_ask answer "--remove-packages" "Remove cgroup-tools, nftables and wireguard-tools? (Y/N) " "N"
+                    if [[ "$has_resolvconf_marker" -eq 1 ]]; then
+                        ts_ask answer "--remove-packages" "Remove cgroup-tools, nftables, resolvconf and wireguard-tools? (Y/N) " "N"
+                    else
+                        ts_ask answer "--remove-packages" "Remove cgroup-tools, nftables and wireguard-tools? (Y/N) " "N"
+                    fi
                 fi
             fi
             ;;
@@ -3398,9 +3510,17 @@ cmd_uninstall() {
     
     if [[ "$answer" =~ ^[Yy] ]]; then
          if [[ $is_docker -eq 1 ]]; then
-             apt-get remove -yqq nftables wireguard-tools &>/dev/null
+             if [[ "$has_resolvconf_marker" -eq 1 ]]; then
+                 apt-get remove -yqq nftables resolvconf wireguard-tools &>/dev/null
+             else
+                 apt-get remove -yqq nftables wireguard-tools &>/dev/null
+             fi
          else
-             apt-get remove -yqq cgroup-tools nftables wireguard-tools &>/dev/null
+             if [[ "$has_resolvconf_marker" -eq 1 ]]; then
+                 apt-get remove -yqq cgroup-tools nftables resolvconf wireguard-tools &>/dev/null
+             else
+                 apt-get remove -yqq cgroup-tools nftables wireguard-tools &>/dev/null
+             fi
          fi
          print_success "Packages removed"
     else
@@ -3416,6 +3536,11 @@ cmd_uninstall() {
     echo -e "${BOLD}MANUAL CLEANUP REQUIRED:${NC}"
     echo "Please check your lightning configuration files and remove any leftover"
     echo "TunnelSats settings if they were not automatically restored:"
+    if [[ ${#detected_nc_lines[@]} -gt 0 ]]; then
+        for nc_entry in "${detected_nc_lines[@]}"; do
+            echo "  - ${nc_entry}"
+        done
+    fi
     if [[ "$ln_impl" == "lnd" ]]; then
         if [[ "$PLATFORM" == "umbrel" ]]; then
             echo -e "  Command: ${BOLD}nano $home_dir/umbrel/app-data/lightning/data/lnd/lnd.conf${NC}"
@@ -3434,7 +3559,7 @@ cmd_uninstall() {
     fi
     echo ""
     if [[ "$ln_impl" == "lnd" ]] || [[ "$ln_impl" == "lit" ]]; then
-        ts_print_announce_command "$is_docker" "$lnd_container" "${TS_WG_CANDIDATES[@]}"
+        printf '%s\n' "$announce_out"
         echo ""
     fi
     
@@ -3493,7 +3618,10 @@ cmd_install() {
     fi
     if ! command -v resolvconf &>/dev/null; then
         print_info "Installing resolvconf..."
-        apt-get install -yqq resolvconf &>/dev/null
+        if apt-get install -yqq resolvconf &>/dev/null; then
+            mkdir -p "${WG_DIR:-${TS_FS_ROOT}/etc/wireguard}"
+            : > "${WG_DIR:-${TS_FS_ROOT}/etc/wireguard}/.tunnelsats-resolvconf.installed"
+        fi
     fi
     
     # Only install cgroup-tools for non-Docker platforms (Umbrel uses Docker networking)
@@ -4963,13 +5091,17 @@ ts_detect_install_kind() {
         status="${TSD_ART_STATUS[$i]}"
         detail="${TSD_ART_DETAIL[$i]}"
         case "$status" in
-            present) any_present=1 ;;
+            present)
+                if [[ "$id" != "managed_script" ]]; then
+                    any_present=1
+                fi
+                ;;
             permission_denied|error) any_unreadable=1; continue ;;
             *) continue ;;
         esac
         case "$id" in
             managed_inventory) managed=1; ts_detect_evidence managed_inventory ;;
-            managed_unit|managed_ln_dropin|managed_script|managed_attestation) managed_art=1; ts_detect_evidence managed_artifacts ;;
+            managed_unit|managed_ln_dropin|managed_attestation) managed_art=1; ts_detect_evidence managed_artifacts ;;
             raspiblitz_check_renamed) v2=1; ts_detect_evidence v2_check_script_renamed ;;
             umbrel_killswitch_dropin) v2=1; ts_detect_evidence v2_umbrel_killswitch ;;
             nftables_conf_backup) v2=1; ts_detect_evidence v2_nftables_conf_backup ;;
@@ -5455,6 +5587,7 @@ cmd_detect() {
 ts_canonical_command() {
     case "$1" in
         install) echo "install" ;;
+        adopt) echo "adopt" ;;
         pre-check|precheck|check) echo "pre-check" ;;
         uninstall|remove) echo "uninstall" ;;
         status) echo "status" ;;
@@ -5472,11 +5605,11 @@ ts_canonical_command() {
 ts_option_supported() {
     case "$2" in
         --non-interactive|--yes|--json) return 0 ;;
-        --config) [[ "$1" == "install" || "$1" == "status" || "$1" == "restart" ]] ;;
-        --platform|--impl) [[ "$1" == "install" || "$1" == "uninstall" || "$1" == "status" || "$1" == "restart" ]] ;;
-        --remove-packages|--keep-packages) [[ "$1" == "uninstall" ]] ;;
-        --managed) [[ "$1" == "install" || "$1" == "uninstall" ]] ;;
-        --uid-backstop|--network) [[ "$1" == "install" ]] ;;
+        --config) [[ "$1" == "install" || "$1" == "adopt" || "$1" == "status" || "$1" == "restart" ]] ;;
+        --platform|--impl) [[ "$1" == "install" || "$1" == "adopt" || "$1" == "uninstall" || "$1" == "status" || "$1" == "restart" ]] ;;
+        --remove-packages|--keep-packages|--keep-config|--legacy-artifacts) [[ "$1" == "uninstall" ]] ;;
+        --managed) [[ "$1" == "install" || "$1" == "adopt" || "$1" == "uninstall" ]] ;;
+        --uid-backstop|--network) [[ "$1" == "install" || "$1" == "adopt" ]] ;;
         --no-probe) [[ "$1" == "verify" ]] ;;
         --fallback-uid) [[ "$1" == "managed-arm" ]] ;;
         *) return 1 ;;
@@ -5502,6 +5635,8 @@ ts_parse_cli() {
     TS_OPT_PLATFORM=""
     TS_OPT_IMPL=""
     TS_OPT_PACKAGES=""
+    TS_OPT_KEEP_CONFIG=0
+    TS_OPT_LEGACY_ARTIFACTS=0
     TS_OPT_MANAGED=0
     TS_OPT_PROFILE=""
     TS_OPT_UID_BACKSTOP=0
@@ -5523,6 +5658,14 @@ ts_parse_cli() {
                 ;;
             --yes)
                 TS_OPT_YES=1
+                TS_OPTS_GIVEN+=("$1")
+                ;;
+            --keep-config)
+                TS_OPT_KEEP_CONFIG=1
+                TS_OPTS_GIVEN+=("$1")
+                ;;
+            --legacy-artifacts)
+                TS_OPT_LEGACY_ARTIFACTS=1
                 TS_OPTS_GIVEN+=("$1")
                 ;;
             --managed)
@@ -5656,28 +5799,31 @@ ts_validate_cli() {
     elif [[ "$TS_OPT_UID_BACKSTOP" -eq 1 ]]; then
         ts_usage_error "--uid-backstop requires --managed"
     fi
+    if [[ "$TS_COMMAND" == "adopt" ]] && [[ "$TS_OPT_MANAGED" -ne 1 ]]; then
+        ts_usage_error "adopt requires --managed <baremetal|raspiblitz>"
+    fi
     # RaspiBlitz runs one Lightning unit per implementation and chain, so the raspiblitz profile
     # names it (--impl, --network) instead of picking one
-    if [[ "$TS_COMMAND" == "install" ]] && [[ "$TS_OPT_MANAGED" -eq 1 ]] && [[ "$TS_OPT_PROFILE" == "raspiblitz" ]]; then
+    if [[ "$TS_COMMAND" == "install" || "$TS_COMMAND" == "adopt" ]] && [[ "$TS_OPT_MANAGED" -eq 1 ]] && [[ "$TS_OPT_PROFILE" == "raspiblitz" ]]; then
         if [[ -z "$TS_OPT_IMPL" ]]; then
-            ts_usage_error "install --managed raspiblitz requires --impl lnd or --impl cln"
+            ts_usage_error "${TS_COMMAND} --managed raspiblitz requires --impl lnd or --impl cln"
         fi
         if [[ "$TS_OPT_IMPL" != "lnd" ]] && [[ "$TS_OPT_IMPL" != "cln" ]]; then
-            ts_usage_error "install --managed raspiblitz supports --impl lnd or --impl cln, not ${TS_OPT_IMPL}"
+            ts_usage_error "${TS_COMMAND} --managed raspiblitz supports --impl lnd or --impl cln, not ${TS_OPT_IMPL}"
         fi
     elif [[ -n "$TS_OPT_NETWORK" ]]; then
-        ts_usage_error "--network is used by 'install --managed raspiblitz' only"
+        ts_usage_error "--network is used by '${TS_COMMAND} --managed raspiblitz' only"
     fi
     if [[ "$TS_JSON" -eq 1 ]]; then
         case "$TS_COMMAND" in
             version|detect|verify) ;;
-            install|uninstall)
+            install|uninstall|adopt)
                 if [[ "$TS_OPT_MANAGED" -ne 1 ]]; then
-                    ts_fail 2 E_JSON_UNSUPPORTED usage "'${TS_COMMAND}' does not support --json yet (supported: version, detect, verify, install --managed, uninstall --managed)"
+                    ts_fail 2 E_JSON_UNSUPPORTED usage "'${TS_COMMAND}' does not support --json yet (supported: version, detect, verify, install --managed, adopt --managed, uninstall --managed)"
                 fi
                 ;;
             *)
-                ts_fail 2 E_JSON_UNSUPPORTED usage "'${TS_COMMAND}' does not support --json yet (supported: version, detect, verify, install --managed, uninstall --managed)"
+                ts_fail 2 E_JSON_UNSUPPORTED usage "'${TS_COMMAND}' does not support --json yet (supported: version, detect, verify, install --managed, adopt --managed, uninstall --managed)"
                 ;;
         esac
     fi
@@ -5756,6 +5902,9 @@ parse_args() {
             fi
             check_root "${TS_ARGV[@]}"
             cmd_install
+            ;;
+        adopt)
+            cmd_adopt_managed
             ;;
         pre-check)
             check_root "${TS_ARGV[@]}"
@@ -8423,6 +8572,9 @@ ts_m_existing_install() {
             case "${TSD_ART_STATUS[$i]}" in
                 absent|unavailable) continue ;;
             esac
+            if [[ "${TSD_ART_ID[$i]}" == "managed_script" ]]; then
+                continue
+            fi
             if [[ "$found" != *" ${TSD_ART_ID[$i]} "* ]]; then
                 found+="${TSD_ART_ID[$i]} "
             fi
@@ -8510,7 +8662,7 @@ ts_m_select_raspiblitz_unit() {
     local network="${TS_OPT_NETWORK:-mainnet}" unit entry other state
     TS_M_OTHER_UNITS=()
     if ! unit=$(ts_m_raspiblitz_unit "$TS_OPT_IMPL" "$network"); then
-        ts_usage_error "install --managed raspiblitz requires --impl lnd or --impl cln and --network mainnet, testnet or signet"
+        ts_usage_error "${TS_COMMAND} --managed raspiblitz requires --impl lnd or --impl cln and --network mainnet, testnet or signet"
     fi
     state=$(ts_m_unit_prop "$unit" LoadState)
     if [[ "$state" != "loaded" ]]; then
@@ -8904,6 +9056,9 @@ ts_m_remove_dataplane() {
     # 4. Files except the script copy, runtime files except the emergency records, units reloaded
     for rel in "${files[@]}"; do
         if [[ "$rel" != "$TS_M_BIN" ]]; then
+            if [[ "$TS_OPT_KEEP_CONFIG" -eq 1 ]] && [[ "$rel" == "$TS_M_WG_CONF" ]]; then
+                continue
+            fi
             rm -f "${TS_FS_ROOT}${rel}"
         fi
     done
@@ -8916,6 +9071,9 @@ ts_m_remove_dataplane() {
     # unit no longer loads the drop-in (its next start is outside the slice)
     for rel in "${files[@]}"; do
         if [[ "$rel" != "$TS_M_BIN" ]] && [[ -e "${TS_FS_ROOT}${rel}" ]]; then
+            if [[ "$TS_OPT_KEEP_CONFIG" -eq 1 ]] && [[ "$rel" == "$TS_M_WG_CONF" ]]; then
+                continue
+            fi
             TS_M_REMAINING+=("$rel")
         fi
     done
@@ -8955,6 +9113,9 @@ ts_m_remove_dataplane() {
     fi
     rm -f "${TS_FS_ROOT}${TS_M_INVENTORY}"
     for (( i = ${#TS_M_CREATED_DIRS[@]} - 1; i >= 0; i-- )); do
+        if [[ "$TS_OPT_KEEP_CONFIG" -eq 1 ]] && [[ "${TS_M_CREATED_DIRS[$i]}" == "$TS_M_WG_DIR" ]]; then
+            continue
+        fi
         rmdir "${TS_FS_ROOT}${TS_M_CREATED_DIRS[$i]}" 2>/dev/null || true
     done
     if [[ -e "${TS_FS_ROOT}${TS_M_INVENTORY}" ]]; then
@@ -9185,17 +9346,689 @@ cmd_install_managed() {
     exit "$rc"
 }
 
+TS_M_ADOPT_KIND=""
+
+# Every check that can refuse adopt --managed before anything changes.
+ts_m_adopt_preflight() {
+    local guess existing kind evidence found listing line ports p port_ok=0 fam profile="${TS_OPT_PROFILE:-baremetal}"
+    local wg_rel="${WG_DIR:-/etc/wireguard}"
+    wg_rel="${wg_rel#"$TS_FS_ROOT"}"
+    [[ -z "$wg_rel" ]] && wg_rel="/etc/wireguard"
+    guess=$(ts_guess_platform "$TS_FS_ROOT")
+    if [[ -n "$TS_OPT_PLATFORM" ]] && [[ "$TS_OPT_PLATFORM" != "$profile" ]]; then
+        ts_fail 7 E_PLATFORM_UNSUPPORTED refused "--platform ${TS_OPT_PLATFORM} does not match the managed profile ${profile}"
+    fi
+    case "$profile:$guess" in
+        baremetal:|raspiblitz:raspiblitz) ;;
+        baremetal:raspiblitz)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "This node is a RaspiBlitz: use 'adopt --managed raspiblitz --impl lnd|cln'"
+            ;;
+        raspiblitz:*)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "The raspiblitz profile needs a RaspiBlitz (detected: ${guess:-no RaspiBlitz})"
+            ;;
+        *)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Managed mode supports bare-metal systemd nodes and RaspiBlitz only for now (detected: ${guess})"
+            ;;
+    esac
+    if [[ ! -d "${TS_FS_ROOT}/run/systemd/system" ]]; then
+        ts_fail 6 E_SYSTEMD_MISSING capability "systemd is not running as PID 1"
+    fi
+    if ! ts_m_cgroup2_unified; then
+        ts_fail 6 E_CGROUP_V2_MISSING capability "A unified cgroup v2 hierarchy at ${TS_M_CGROUP_ROOT} is required"
+    fi
+    if ! command -v "$PERL_BIN" >/dev/null 2>&1; then
+        ts_fail 6 E_DEPENDENCY_MISSING capability "perl is missing; verify's kill switch and IPv6 probes need it (Debian and Ubuntu ship it as perl-base)"
+    fi
+    if ts_m_inventory_present; then
+        ts_fail 7 E_MANAGED_PRESENT refused "A managed install already exists (complete, interrupted or partly removed); run 'tunnelsats.sh uninstall --managed' first"
+    fi
+    existing=$(ts_m_existing_install) || existing="unknown||"
+    kind="${existing%%|*}"
+    existing="${existing#*|}"
+    evidence="${existing%%|*}"
+    found="${existing#*|}"
+    if [[ "$kind" == "unknown" ]] && [[ " $evidence " == *" managed_artifacts "* ]]; then
+        ts_fail 7 E_MANAGED_PRESENT refused "Managed artifacts already exist (${found:-managed_artifacts}); run 'tunnelsats.sh uninstall --managed --legacy-artifacts' first"
+    fi
+    if [[ -z "$CONFIG_FILE" ]]; then
+        ts_select_wg_config "" "$TS_FS_ROOT" "$wg_rel"
+        case "$TS_WG_SELECTION" in
+            canonical|single) CONFIG_FILE="${TS_FS_ROOT}${TS_WG_SELECTED}" ;;
+            ambiguous)
+                ts_fail 8 E_CONFIG_INVALID input "Multiple WireGuard configs found in ${wg_rel} (${TS_WG_CANDIDATES[*]}); pass the one to adopt with --config"
+                ;;
+        esac
+    fi
+    if [[ "$kind" == "none" ]] && [[ -z "$CONFIG_FILE" ]]; then
+        ts_fail 3 E_NOT_INSTALLED state "No existing TunnelSats install found to adopt"
+    fi
+    if [[ -z "$CONFIG_FILE" ]] || [[ ! -f "$CONFIG_FILE" ]]; then
+        ts_fail 8 E_CONFIG_INVALID input "WireGuard config not found: ${CONFIG_FILE:-none}"
+    fi
+    TS_M_ADOPT_KIND="$kind"
+    ts_m_select_ln_unit
+    ts_m_select_ln_user
+    listing=$("$IP_BIN" route show table 52 2>&1) || listing=""
+    if printf '%s\n' "$listing" | grep -qE '^(default|0\.0\.0\.0/0)[[:space:]]'; then
+        ts_fail 7 E_TAILSCALE_EXIT_NODE refused "A Tailscale exit node is active (default route in table 52); its rules come before the TunnelSats rules"
+    fi
+    for fam in 4 6; do
+        if [[ "$fam" == "6" ]] && ! ts_m_ipv6_available; then
+            continue
+        fi
+        if ! listing=$(ts_m_table_routes "$fam"); then
+            ts_fail 1 E_KERNEL_STATE operational "IPv${fam} routing table ${TS_M_RT_TABLE} cannot be read"
+        fi
+        if [[ -n "$listing" ]]; then
+            if [[ "$fam" == "6" ]]; then
+                ts_fail 7 E_TABLE_51820_IN_USE refused "IPv6 routing table ${TS_M_RT_TABLE} is in use: ${listing%%$'\n'*}"
+            fi
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                case "$line" in
+                    blackhole[[:space:]]*|*" dev tunnelsats"*) ;;
+                    *)
+                        ts_fail 7 E_TABLE_51820_IN_USE refused "IPv4 routing table ${TS_M_RT_TABLE} has a non-TunnelSats route: ${line}"
+                        ;;
+                esac
+            done < <(printf '%s\n' "$listing")
+        fi
+        if ! listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null); then
+            ts_fail 1 E_KERNEL_STATE operational "IPv${fam} policy rules cannot be read"
+        fi
+        while IFS= read -r line; do
+            case "$line" in
+                21818:*|21819:*|21820:*|21821:*|21822:*)
+                    if [[ "$fam" == "6" ]]; then
+                        ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv6 policy rule priority ${line%%:*} is in use: ${line}"
+                    fi
+                    case "$line" in
+                        21820:*lookup[[:space:]]main[[:space:]]suppress_prefixlength[[:space:]]0*) ;;
+                        21821:*0x1000000*lookup[[:space:]]51820*|21821:*uidrange*lookup[[:space:]]51820*) ;;
+                        21818:*unreachable*|21819:*unreachable*)
+                            if [[ ! -f "${TS_FS_ROOT}${wg_rel}/.tunnelsats-failclosed-rules" ]]; then
+                                ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv4 policy rule priority ${line%%:*} is in use: ${line}"
+                            fi
+                            ;;
+                        *)
+                            ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv4 policy rule priority ${line%%:*} is in use: ${line}"
+                            ;;
+                    esac
+                    ;;
+            esac
+        done < <(printf '%s\n' "$listing")
+    done
+    ports=$(ts_m_node_config_listen_ports "$TS_M_IMPL" "$TS_M_UNIT")
+    if [[ -n "$ports" ]]; then
+        for p in $ports; do
+            if [[ "$p" == "$TS_M_LN_PORT" ]]; then
+                port_ok=1
+            fi
+        done
+        if [[ "$port_ok" -eq 0 ]]; then
+            ts_fail 7 E_LN_PORT refused "Lightning listens on port(s) $(echo $ports); the TunnelSats server forwards to ${TS_M_LN_PORT}"
+        fi
+    fi
+    if [[ ! -f "$TS_SCRIPT_PATH" ]] || [[ ! -r "$TS_SCRIPT_PATH" ]]; then
+        ts_fail 2 E_USAGE usage "Run tunnelsats.sh from a file (not through a pipe): managed mode installs a copy of it"
+    fi
+    return 0
+}
+
+cmd_adopt_managed() {
+    local answer="" ln_was_active=0 ln_restarted=0 tunnel_started=0 rc=0 out fam listing line
+    local -a unit_edits=()
+    local unit_reverted=0
+    ts_m_require_root
+    case "$TS_OPT_PROFILE" in
+        baremetal|raspiblitz) ;;
+        umbrel|mynode)
+            ts_fail 7 E_PROFILE_UNSUPPORTED refused "Managed mode supports the baremetal and raspiblitz profiles only for now (requested: ${TS_OPT_PROFILE})"
+            ;;
+        *) ts_usage_error "--managed requires a profile for adopt (baremetal or raspiblitz)" ;;
+    esac
+    ts_m_lifecycle_lock
+    if [[ "$TS_JSON" -ne 1 ]]; then
+        print_header "Managed Adopt"
+    fi
+    trap ts_m_install_exit_trap EXIT
+    ts_m_adopt_preflight
+    ts_m_install_validate_config
+    if command -v "$NFT_BIN" >/dev/null 2>&1 && command -v "$UNSHARE_BIN" >/dev/null 2>&1; then
+        ts_m_capability_probe
+    fi
+    print_info "Adopting ${TS_M_ADOPT_KIND} install into managed mode (${TS_OPT_PROFILE}, ${TS_M_UNIT}, user ${TS_M_USER})"
+    if [[ ${#TS_M_OTHER_UNITS[@]} -gt 0 ]]; then
+        print_warning "Also installed: ${TS_M_OTHER_UNITS[*]}. Managed mode tunnels ${TS_M_UNIT} only; the other units are not tunneled."
+    fi
+    ts_confirm answer "Replace the existing ${TS_M_ADOPT_KIND} install with the managed dataplane for ${TS_M_UNIT}? [y/N]: "
+    if [[ ! "$answer" =~ ^[Yy] ]]; then
+        ts_fail 1 E_ABORTED operational "Adopt aborted; nothing was changed"
+    fi
+    ts_m_install_packages
+    ts_m_check_tools
+    ts_m_capability_probe
+
+    # 1. Stop the Lightning unit FIRST while the legacy tunnel/killswitch is still active so the
+    # daemon never runs without tunnel routing during legacy teardown
+    local ln_state ln_sub=""
+    ln_state=$(ts_m_unit_prop "$TS_M_UNIT" ActiveState)
+    if [[ "$ln_state" == "activating" ]] && [[ "$TS_OPT_PROFILE" == "raspiblitz" ]]; then
+        ln_sub=$(ts_m_unit_prop "$TS_M_UNIT" SubState)
+    fi
+    if ts_m_ln_restart_needed "$ln_state" "$ln_sub"; then
+        ln_was_active=1
+        print_info "Stopping ${TS_M_UNIT} before removing legacy artifacts..."
+        if ! "$SYSTEMCTL_BIN" stop "$TS_M_UNIT"; then
+            ts_fail 1 E_LN_STOP operational "Could not stop ${TS_M_UNIT} before removing legacy artifacts"
+        fi
+        ln_state=$(ts_m_unit_prop "$TS_M_UNIT" ActiveState)
+        case "$ln_state" in
+            inactive|failed) ;;
+            *)
+                ts_fail 1 E_LN_STOP operational "${TS_M_UNIT} is still ${ln_state:-active} after systemctl stop"
+                ;;
+        esac
+    fi
+
+    # 2. Revert legacy in-place edits on the guarded unit (never restoring from stale .service.bak)
+    # and clean all legacy artifacts (the config is already sanitized in TS_M_SANITIZED)
+    ts_m_revert_legacy_unit_edits "/etc/systemd/system/${TS_M_UNIT}" || true
+    unit_edits=("${TS_M_UNIT_EDITS_FOUND[@]}")
+    unit_reverted="$TS_M_UNIT_REVERTED"
+    TS_OPT_KEEP_CONFIG=0 ts_m_clean_legacy_artifacts
+    if [[ "$unit_reverted" -eq 1 ]] && [[ " ${TS_M_LEGACY_REMOVED[*]} " != *" /etc/systemd/system/${TS_M_UNIT} "* ]]; then
+        TS_M_LEGACY_REMOVED=("/etc/systemd/system/${TS_M_UNIT}" "${TS_M_LEGACY_REMOVED[@]}")
+    fi
+
+    # 3. Verify that routing table 51820 and rule priorities 21818-21822 are now empty
+    for fam in 4 6; do
+        if [[ "$fam" == "6" ]] && ! ts_m_ipv6_available; then
+            continue
+        fi
+        if ! listing=$(ts_m_table_routes "$fam"); then
+            ts_fail 1 E_KERNEL_STATE operational "IPv${fam} routing table ${TS_M_RT_TABLE} cannot be read"
+        fi
+        if [[ -n "$listing" ]]; then
+            ts_fail 7 E_TABLE_51820_IN_USE refused "IPv${fam} routing table ${TS_M_RT_TABLE} is still in use after legacy cleanup: ${listing%%$'\n'*}"
+        fi
+        if ! listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null); then
+            ts_fail 1 E_KERNEL_STATE operational "IPv${fam} policy rules cannot be read"
+        fi
+        while IFS= read -r line; do
+            case "$line" in
+                21818:*|21819:*|21820:*|21821:*|21822:*)
+                    ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv${fam} policy rule priority ${line%%:*} is still in use after legacy cleanup: ${line}"
+                    ;;
+            esac
+        done < <(printf '%s\n' "$listing")
+    done
+
+    # 4. Install the managed dataplane
+    TS_M_INV_PROFILE="$TS_OPT_PROFILE"
+    TS_M_INV_IMPL="$TS_M_IMPL"
+    TS_M_INV_UNIT="$TS_M_UNIT"
+    TS_M_INV_USER="$TS_M_USER"
+    TS_M_INV_UID="$TS_M_UID"
+    TS_M_INV_BACKSTOP="$TS_OPT_UID_BACKSTOP"
+    TS_M_FILES=()
+    TS_M_FILE_SHA=()
+    TS_M_CREATED_DIRS=()
+    TS_M_ENABLED_UNITS=()
+    TS_M_ROLLBACK_ARMED=1
+
+    print_info "Writing units, drop-ins and the tunnel config..."
+    if ! ts_m_install_files; then
+        ts_m_install_abort E_WRITE_FAILED "Writing the managed files failed"
+    fi
+    rm -rf "$TS_M_TMP_DIR"
+    TS_M_TMP_DIR=""
+    if ! "$SYSTEMCTL_BIN" daemon-reload; then
+        ts_m_install_abort E_SYSTEMD "systemctl daemon-reload failed"
+    fi
+    for out in "$TS_M_KILLSWITCH_UNIT" "$TS_M_TIMER_UNIT" "$TS_M_WG_UNIT"; do
+        TS_M_ENABLED_UNITS+=("$out")
+        if ! ts_m_inventory_write; then
+            ts_m_install_abort E_WRITE_FAILED "Writing the inventory failed"
+        fi
+        if ! "$SYSTEMCTL_BIN" enable "$out" >/dev/null 2>&1; then
+            ts_m_install_abort E_SYSTEMD "systemctl enable ${out} failed"
+        fi
+    done
+    TS_M_INV_STATE="installed"
+    if ! ts_m_inventory_write; then
+        ts_m_install_abort E_WRITE_FAILED "Writing the inventory failed"
+    fi
+
+    print_info "Arming the kill switch..."
+    if ! "$SYSTEMCTL_BIN" start "$TS_M_KILLSWITCH_UNIT"; then
+        ts_m_install_abort E_KILLSWITCH "The kill switch could not be armed (see: journalctl -u ${TS_M_KILLSWITCH_UNIT})"
+    fi
+    ts_m_read_attestation
+    if [[ "$TS_M_ATT_STATUS" != "valid" ]]; then
+        ts_m_install_abort E_KILLSWITCH "The kill switch unit ran, but the attestation is ${TS_M_ATT_STATUS//_/ }"
+    fi
+    print_success "Kill switch armed and attested"
+
+    print_info "Starting the tunnel..."
+    if "$SYSTEMCTL_BIN" start "$TS_M_WG_UNIT"; then
+        tunnel_started=1
+        print_success "${TS_M_WG_UNIT} started"
+    else
+        print_warning "${TS_M_WG_UNIT} did not start yet; it retries every 30 s and the kill switch blocks clearnet traffic meanwhile"
+    fi
+    if [[ "$ln_was_active" -eq 1 ]]; then
+        print_info "Starting ${TS_M_UNIT} inside ${TS_M_SLICE}..."
+        if "$SYSTEMCTL_BIN" start "$TS_M_UNIT"; then
+            ln_restarted=1
+        else
+            rc=1
+            print_error "${TS_M_UNIT} did not start; the managed dataplane stays installed (see: journalctl -u ${TS_M_UNIT})"
+        fi
+    else
+        print_info "${TS_M_UNIT} was not running; adopt does not start it, and its next start runs inside ${TS_M_SLICE}"
+    fi
+    if ! "$SYSTEMCTL_BIN" start "$TS_M_TIMER_UNIT"; then
+        rc=1
+        print_error "${TS_M_TIMER_UNIT} did not start"
+    fi
+    TS_M_ROLLBACK_ARMED=0
+    trap - EXIT
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        trap ts_json_exit_guard EXIT
+    fi
+
+    ts_m_node_config_clearnet "$TS_M_IMPL" "$TS_M_UNIT" "$TS_OPT_PROFILE"
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        local errors="[]" items=() other_j legacy_j edits_j nc_lines_j
+        if [[ "$rc" -ne 0 ]]; then
+            ts_j_error E_PARTIAL operational "Adopted, but ${TS_M_UNIT} or ${TS_M_TIMER_UNIT} did not start"
+            errors="[${TS_R}]"
+        fi
+        for out in "${TS_M_OTHER_UNITS[@]}"; do
+            ts_j_str "$out"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        other_j="$TS_R"
+        items=()
+        for out in "${TS_M_LEGACY_REMOVED[@]}"; do
+            ts_j_str "$out"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        legacy_j="$TS_R"
+        items=()
+        for out in "${unit_edits[@]}"; do
+            ts_j_str "$out"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        edits_j="$TS_R"
+        items=()
+        for out in "${TS_M_NC_LINES[@]}"; do
+            ts_j_str "$out"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        nc_lines_j="$TS_R"
+        ts_j_obj b:adopted true b:managed true s:legacy_kind "$TS_M_ADOPT_KIND" \
+            r:legacy_removed "$legacy_j" r:unit_edits "$edits_j" b:unit_reverted "$unit_reverted" \
+            s:profile "$TS_OPT_PROFILE" s:impl "$TS_M_IMPL" s:unit "$TS_M_UNIT" s:node_user "$TS_M_USER" \
+            b:uid_backstop "$TS_OPT_UID_BACKSTOP" s:iface "$TS_M_IFACE" s:slice "$TS_M_SLICE" \
+            b:tunnel_started "$tunnel_started" b:ln_was_active "$ln_was_active" b:ln_restarted "$ln_restarted" \
+            s:node_config "$TS_M_NC_STATUS" r:node_config_lines "$nc_lines_j" r:other_ln_units "$other_j"
+        ts_json_document "$rc" "$errors" "${TS_R:1:${#TS_R}-2}"
+        exit "$rc"
+    fi
+    echo ""
+    print_line
+    print_success "Adopted ${TS_M_ADOPT_KIND} install into managed mode"
+    print_line
+    echo ""
+    echo "Check it at any time with: sudo tunnelsats verify"
+    echo ""
+    exit "$rc"
+}
+
 # ---------------------------------------------------------------------------
 # Managed mode: uninstall --managed, status and restart on a managed install
 # ---------------------------------------------------------------------------
+
+TS_M_LEGACY_REMOVED=()
+TS_M_UNIT_EDITS_FOUND=()
+TS_M_UNIT_REVERTED=0
+
+# Reverts legacy in-place edits in Lightning unit file $1 (relative to TS_FS_ROOT, e.g.
+# /etc/systemd/system/lnd.service) without ever overwriting the unit from a stale .service.bak:
+# strips "/usr/bin/cgexec -g net_cls:splitted_processes " from ExecStart= and uncomments
+# "#ExecStartPre=...check.sh". Populates TS_M_UNIT_EDITS_FOUND and TS_M_UNIT_REVERTED.
+ts_m_revert_legacy_unit_edits() {
+    local rel="$1" full="${TS_FS_ROOT}${1}" tmp="${TS_FS_ROOT}${1}.tunnelsats.tmp.$$"
+    TS_M_UNIT_EDITS_FOUND=()
+    TS_M_UNIT_REVERTED=0
+    if [[ ! -f "$full" ]] || [[ -L "$full" ]]; then
+        return 0
+    fi
+    if grep -qE '^[[:space:]]*ExecStart[[:space:]]*=.*cgexec' "$full" 2>/dev/null; then
+        TS_M_UNIT_EDITS_FOUND+=("ln_unit_cgexec")
+    fi
+    if grep -qE '^[[:space:]]*#[[:space:]]*ExecStartPre[[:space:]]*=.*(lnd|cl)\.check\.sh' "$full" 2>/dev/null; then
+        TS_M_UNIT_EDITS_FOUND+=("ln_unit_check_disabled")
+    fi
+    if [[ ${#TS_M_UNIT_EDITS_FOUND[@]} -eq 0 ]]; then
+        return 0
+    fi
+    if sed -E \
+        -e 's|^([[:space:]]*ExecStart[[:space:]]*=[[:space:]]*[-@+:!]*[[:space:]]*)([^[:space:]]*/)?cgexec[[:space:]]+-g[[:space:]]+net_cls:splitted_processes[[:space:]]+|\1|' \
+        -e 's/^([[:space:]]*)#[[:space:]]*(ExecStartPre[[:space:]]*=.*(lnd|cl)\.check\.sh)/\1\2/' \
+        "$full" > "$tmp" && mv -f "$tmp" "$full"; then
+        TS_M_UNIT_REVERTED=1
+        return 0
+    fi
+    rm -f "$tmp" 2>/dev/null || true
+    return 1
+}
+
+# Cleans legacy (v2/v3) artifacts from TS_FS_ROOT and kernel state, recording removed items in
+# TS_M_LEGACY_REMOVED. Respects TS_OPT_KEEP_CONFIG for /etc/wireguard/tunnelsats*.conf.
+ts_m_clean_legacy_artifacts() {
+    local wg_rel="${WG_DIR:-/etc/wireguard}"
+    wg_rel="${wg_rel#"$TS_FS_ROOT"}"
+    [[ -z "$wg_rel" ]] && wg_rel="/etc/wireguard"
+    local wg_full="${TS_FS_ROOT}${wg_rel}"
+    local sd_rel="/etc/systemd/system"
+    local sd_full="${TS_FS_ROOT}${sd_rel}"
+    local unit f rel iface tbl_out line prio
+    local -a ifaces=("tunnelsatsv2")
+    TS_M_LEGACY_REMOVED=()
+
+    # Discover legacy TunnelSats interfaces from configs and wants symlinks before removing files
+    for f in "$wg_full"/tunnelsatsv2.conf "$wg_full"/tunnelsats-*.conf; do
+        if [[ -f "$f" ]] || [[ -L "$f" ]]; then
+            iface=$(basename "$f" .conf)
+            if [[ " ${ifaces[*]} " != *" ${iface} "* ]]; then
+                ifaces+=("$iface")
+            fi
+        fi
+    done
+    for f in "$sd_full"/multi-user.target.wants/wg-quick@tunnelsats*.service; do
+        if [[ -e "$f" ]] || [[ -L "$f" ]]; then
+            iface=$(basename "$f" .service)
+            iface="${iface#wg-quick@}"
+            if [[ " ${ifaces[*]} " != *" ${iface} "* ]]; then
+                ifaces+=("$iface")
+            fi
+        fi
+    done
+
+    # 1. Legacy systemd units and timers
+    for unit in tunnelsats-splitting-processes.timer tunnelsats-splitting-processes.service \
+        tunnelsats-create-cgroup.service tunnelsats-resolve-dns-wg.timer \
+        tunnelsats-resolve-dns-wg.service tunnelsats-docker-network.timer \
+        tunnelsats-docker-network.service; do
+        if [[ -e "${sd_full}/${unit}" ]] || [[ -L "${sd_full}/${unit}" ]]; then
+            "$SYSTEMCTL_BIN" stop "$unit" >/dev/null 2>&1 || true
+            "$SYSTEMCTL_BIN" disable "$unit" >/dev/null 2>&1 || true
+            rm -f "${sd_full}/${unit}"
+            rm -f "${sd_full}/multi-user.target.wants/${unit}" "${sd_full}/timers.target.wants/${unit}" 2>/dev/null || true
+            TS_M_LEGACY_REMOVED+=("${sd_rel}/${unit}")
+        fi
+    done
+
+    # 2. Legacy wg-quick enablement symlinks and drop-ins (when not managed)
+    if ! ts_m_inventory_present; then
+        for iface in "${ifaces[@]}"; do
+            "$SYSTEMCTL_BIN" stop "wg-quick@${iface}.service" >/dev/null 2>&1 || true
+            "$SYSTEMCTL_BIN" disable "wg-quick@${iface}.service" >/dev/null 2>&1 || true
+        done
+        for f in "$sd_full"/multi-user.target.wants/wg-quick@tunnelsats*.service; do
+            if [[ -e "$f" ]] || [[ -L "$f" ]]; then
+                rel="${f#"$TS_FS_ROOT"}"
+                rm -f "$f"
+                TS_M_LEGACY_REMOVED+=("$rel")
+            fi
+        done
+        for f in "$sd_full"/wg-quick@tunnelsats*.service.d; do
+            if [[ -d "$f" ]]; then
+                rel="${f#"$TS_FS_ROOT"}"
+                rm -rf "$f"
+                TS_M_LEGACY_REMOVED+=("$rel")
+            fi
+        done
+    fi
+
+    # 3. Legacy drop-ins, in-place unit edits, and stale .service.bak files
+    for unit in lnd.service tlnd.service slnd.service lightningd.service tlightningd.service slightningd.service litd.service lit.service; do
+        rel="${sd_rel}/${unit}.d/tunnelsats-cgroup.conf"
+        if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
+            rm -f "${TS_FS_ROOT}${rel}"
+            rmdir "${TS_FS_ROOT}${sd_rel}/${unit}.d" 2>/dev/null || true
+            TS_M_LEGACY_REMOVED+=("$rel")
+        fi
+        ts_m_revert_legacy_unit_edits "${sd_rel}/${unit}" || true
+        if [[ "$TS_M_UNIT_REVERTED" -eq 1 ]]; then
+            TS_M_LEGACY_REMOVED+=("${sd_rel}/${unit}")
+        fi
+        rel="${sd_rel}/${unit}.bak"
+        if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
+            rm -f "${TS_FS_ROOT}${rel}"
+            TS_M_LEGACY_REMOVED+=("$rel")
+        fi
+    done
+    for rel in "${sd_rel}/blitzapi.service.d/tunnelsats-wg.conf" \
+        "${sd_rel}/umbrel.service.d/tunnelsats_killswitch.conf" \
+        "${sd_rel}/umbrel-startup.service.d/tunnelsats_killswitch.conf"; do
+        if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
+            rm -f "${TS_FS_ROOT}${rel}"
+            rmdir "$(dirname "${TS_FS_ROOT}${rel}")" 2>/dev/null || true
+            TS_M_LEGACY_REMOVED+=("$rel")
+        fi
+    done
+
+    # 4. RaspiBlitz v2 renamed check scripts and nftables backup
+    local check_base
+    for check_base in lnd.check cl.check; do
+        rel="/home/admin/config.scripts/${check_base}.bak"
+        if [[ -f "${TS_FS_ROOT}${rel}" ]]; then
+            if [[ ! -f "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.sh" ]]; then
+                mv "${TS_FS_ROOT}${rel}" "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.sh" 2>/dev/null || true
+            else
+                rm -f "${TS_FS_ROOT}${rel}" 2>/dev/null || true
+            fi
+            TS_M_LEGACY_REMOVED+=("$rel")
+        fi
+    done
+    if [[ -f "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" ]]; then
+        if [[ ! -f "${TS_FS_ROOT}/etc/nftables.conf" ]]; then
+            mv "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" "${TS_FS_ROOT}/etc/nftables.conf" 2>/dev/null || true
+        else
+            rm -f "${TS_FS_ROOT}/etc/nftablespriortunnelsats.backup" 2>/dev/null || true
+        fi
+        TS_M_LEGACY_REMOVED+=("/etc/nftablespriortunnelsats.backup")
+    fi
+
+    # 5. Legacy helper scripts, backups, markers, and (unless --keep-config) WireGuard configs
+    for unit in tunnelsats-route-guard.sh tunnelsats-create-cgroup.sh \
+        tunnelsats-splitting-processes.sh tunnelsats-resolve-dns-wg.sh \
+        tunnelsats-docker-network.sh .tunnelsats-resolvconf.installed; do
+        rel="${wg_rel}/${unit}"
+        if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
+            rm -f "${TS_FS_ROOT}${rel}"
+            TS_M_LEGACY_REMOVED+=("$rel")
+        fi
+    done
+    for f in "$wg_full"/tunnelsats*.conf.bak.* "$wg_full"/.tunnelsats-ufw-9735-*.created; do
+        if [[ -e "$f" ]] || [[ -L "$f" ]]; then
+            rel="${f#"$TS_FS_ROOT"}"
+            rm -f "$f"
+            TS_M_LEGACY_REMOVED+=("$rel")
+        fi
+    done
+    if [[ "$TS_OPT_KEEP_CONFIG" -ne 1 ]]; then
+        for f in "$wg_full"/tunnelsatsv2.conf "$wg_full"/tunnelsats-*.conf; do
+            if [[ -e "$f" ]] || [[ -L "$f" ]]; then
+                rel="${f#"$TS_FS_ROOT"}"
+                rm -f "$f"
+                TS_M_LEGACY_REMOVED+=("$rel")
+            fi
+        done
+    fi
+
+    # 6. Legacy kernel state: nft tables, failclosed rules, legacy ip rules, and table 51820 routes
+    if command -v "$NFT_BIN" >/dev/null 2>&1; then
+        tbl_out=$("$NFT_BIN" list tables 2>/dev/null) || tbl_out=""
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^table[[:space:]]+(ip|ip6|inet)[[:space:]]+(tunnelsats[A-Za-z0-9_.-]*)[[:space:]]*$ ]]; then
+                if [[ "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}" == "inet ${TS_M_NFT_TABLE}" ]] && ts_m_inventory_present; then
+                    continue
+                fi
+                if "$NFT_BIN" delete table "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" 2>/dev/null; then
+                    TS_M_LEGACY_REMOVED+=("nft table ${BASH_REMATCH[1]} ${BASH_REMATCH[2]}")
+                fi
+            fi
+        done < <(printf '%s\n' "$tbl_out")
+    fi
+
+    if [[ -f "${wg_full}/.tunnelsats-failclosed-rules" ]]; then
+        if command -v "$IP_BIN" >/dev/null 2>&1; then
+            local fc_entry
+            while IFS= read -r fc_entry || [[ -n "$fc_entry" ]]; do
+                case "$fc_entry" in
+                    "from "[0-9]*.[0-9]*.[0-9]*.[0-9]*/*)
+                        "$IP_BIN" -4 rule del priority 21818 from "${fc_entry#from }" blackhole 2>/dev/null || true
+                        ;;
+                    "uidrange "[1-9][0-9]*-[1-9][0-9]*)
+                        "$IP_BIN" -4 rule del priority 21819 uidrange "${fc_entry#uidrange }" blackhole 2>/dev/null || true
+                        ;;
+                esac
+            done < "${wg_full}/.tunnelsats-failclosed-rules"
+        fi
+        rm -f "${wg_full}/.tunnelsats-failclosed-rules"
+        TS_M_LEGACY_REMOVED+=("${wg_rel}/.tunnelsats-failclosed-rules")
+    fi
+
+    if command -v "$IP_BIN" >/dev/null 2>&1 && ! ts_m_inventory_present; then
+        local rules_out had_legacy_fwmark=0 n
+        for n in 1 2 3 4 5; do
+            rules_out=$("$IP_BIN" -4 rule show 2>/dev/null) || break
+            local removed_any=0
+            while IFS= read -r line; do
+                if [[ "$line" =~ ^([0-9]+):[[:space:]]+from\ all\ fwmark\ 0x1000000/0xff000000\ lookup\ 51820([[:space:]]|$) ]]; then
+                    prio="${BASH_REMATCH[1]}"
+                    if "$IP_BIN" -4 rule del from all fwmark 0x1000000/0xff000000 lookup 51820 priority "$prio" 2>/dev/null; then
+                        had_legacy_fwmark=1
+                        removed_any=1
+                        TS_M_LEGACY_REMOVED+=("ip -4 rule ${prio} (fwmark 0x1000000/0xff000000 lookup 51820)")
+                    fi
+                elif [[ "$line" =~ ^21821:[[:space:]]+from\ all\ uidrange\ ([0-9]+-[0-9]+)\ lookup\ 51820([[:space:]]|$) ]]; then
+                    if "$IP_BIN" -4 rule del from all uidrange "${BASH_REMATCH[1]}" lookup 51820 priority 21821 2>/dev/null; then
+                        removed_any=1
+                        TS_M_LEGACY_REMOVED+=("ip -4 rule 21821 (uidrange ${BASH_REMATCH[1]} lookup 51820)")
+                    fi
+                elif [[ "$line" =~ ^21820:[[:space:]]+from\ all\ lookup\ main\ suppress_prefixlength\ 0([[:space:]]|$) ]]; then
+                    if "$IP_BIN" -4 rule del from all lookup main suppress_prefixlength 0 priority 21820 2>/dev/null; then
+                        removed_any=1
+                        TS_M_LEGACY_REMOVED+=("ip -4 rule 21820 (lookup main suppress_prefixlength 0)")
+                    fi
+                fi
+            done < <(printf '%s\n' "$rules_out")
+            [[ "$removed_any" -eq 0 ]] && break
+        done
+        if [[ "$had_legacy_fwmark" -eq 1 ]]; then
+            rules_out=$("$IP_BIN" -4 rule show 2>/dev/null) || rules_out=""
+            while IFS= read -r line; do
+                if [[ "$line" =~ ^([0-9]+):[[:space:]]+from\ all\ lookup\ main\ suppress_prefixlength\ 0([[:space:]]|$) ]]; then
+                    prio="${BASH_REMATCH[1]}"
+                    if "$IP_BIN" -4 rule del from all lookup main suppress_prefixlength 0 priority "$prio" 2>/dev/null; then
+                        TS_M_LEGACY_REMOVED+=("ip -4 rule ${prio} (lookup main suppress_prefixlength 0)")
+                    fi
+                fi
+            done < <(printf '%s\n' "$rules_out")
+        fi
+
+        local routes_out
+        routes_out=$("$IP_BIN" -4 route show table 51820 2>/dev/null) || routes_out=""
+        if printf '%s\n' "$routes_out" | grep -qE '^blackhole[[:space:]]+default[[:space:]]+metric[[:space:]]+3([[:space:]]|$)'; then
+            if "$IP_BIN" -4 route del blackhole default metric 3 table 51820 2>/dev/null; then
+                TS_M_LEGACY_REMOVED+=("ip -4 route table 51820 blackhole metric 3")
+            fi
+        fi
+        for iface in "${ifaces[@]}"; do
+            if printf '%s\n' "$routes_out" | grep -qE "^default[[:space:]]+dev[[:space:]]+${iface}([[:space:]]|$)"; then
+                if "$IP_BIN" -4 route del default dev "$iface" table 51820 2>/dev/null; then
+                    TS_M_LEGACY_REMOVED+=("ip -4 route table 51820 default dev ${iface}")
+                fi
+            fi
+        done
+    fi
+
+    "$SYSTEMCTL_BIN" daemon-reload >/dev/null 2>&1 || true
+    return 0
+}
 
 cmd_uninstall_managed() {
     local answer="" ln_was_active=0 ln_was_stopped=0 ln_state="" locked=0 ln_started=0 ln_disabled=0 disable_err="" reason="" rc=0 rb_env="" i
     ts_m_require_root
     if ! ts_m_inventory_present; then
-        ts_fail 3 E_NOT_INSTALLED not_installed "No managed install found (${TS_M_INVENTORY})"
+        if [[ "$TS_OPT_LEGACY_ARTIFACTS" -eq 1 ]]; then
+            ts_m_lifecycle_lock
+            if ! ts_m_inventory_present; then
+                if [[ "$TS_JSON" -ne 1 ]]; then
+                    print_header "Managed Uninstall (legacy artifact cleanup)"
+                fi
+                ts_confirm answer "Clean legacy TunnelSats artifacts? [y/N]: "
+                if [[ ! "$answer" =~ ^[Yy] ]]; then
+                    ts_m_lifecycle_cleanup
+                    ts_fail 1 E_ABORTED operational "Uninstall aborted; nothing was changed"
+                fi
+                TS_M_REMAINING=()
+                ts_m_clean_legacy_artifacts
+                if [[ -e "${TS_FS_ROOT}${TS_M_BIN}" ]] || [[ -L "${TS_FS_ROOT}${TS_M_BIN}" ]]; then
+                    rm -f "${TS_FS_ROOT}${TS_M_BIN}"
+                    if [[ -e "${TS_FS_ROOT}${TS_M_BIN}" ]]; then
+                        TS_M_REMAINING+=("$TS_M_BIN")
+                    else
+                        TS_M_LEGACY_REMOVED+=("$TS_M_BIN")
+                    fi
+                fi
+                ts_m_lifecycle_cleanup
+                if [[ ${#TS_M_REMAINING[@]} -gt 0 ]]; then
+                    rc=1
+                fi
+                if [[ "$TS_JSON" -eq 1 ]]; then
+                    local items=() errors=() remaining_j legacy_j
+                    for i in "${TS_M_REMAINING[@]}"; do
+                        ts_j_str "$i"
+                        items+=("$TS_R")
+                    done
+                    ts_j_arr "${items[@]}"
+                    remaining_j="$TS_R"
+                    items=()
+                    for i in "${TS_M_LEGACY_REMOVED[@]}"; do
+                        ts_j_str "$i"
+                        items+=("$TS_R")
+                    done
+                    ts_j_arr "${items[@]}"
+                    legacy_j="$TS_R"
+                    if [[ "$rc" -ne 0 ]]; then
+                        ts_j_error E_UNINSTALL_INCOMPLETE operational "Could not remove: ${TS_M_REMAINING[*]}"
+                        errors+=("$TS_R")
+                    fi
+                    ts_j_obj b:managed false b:removed "$([[ "$rc" -eq 0 ]] && echo 1 || echo 0)" \
+                        r:remaining "$remaining_j" r:legacy_removed "$legacy_j" b:config_kept "$TS_OPT_KEEP_CONFIG"
+                    ts_json_document "$rc" "$(IFS=,; echo "[${errors[*]}]")" "${TS_R:1:${#TS_R}-2}"
+                else
+                    print_success "Legacy TunnelSats artifacts cleaned (${#TS_M_LEGACY_REMOVED[@]} item(s) removed)"
+                fi
+                exit "$rc"
+            fi
+        else
+            ts_fail 3 E_NOT_INSTALLED not_installed "No managed install found (${TS_M_INVENTORY})"
+        fi
+    else
+        ts_m_lifecycle_lock
     fi
-    ts_m_lifecycle_lock
     if ! ts_m_inventory_present; then
         # Another uninstall finished between the check and the lock
         ts_m_lifecycle_cleanup
@@ -9269,6 +10102,10 @@ cmd_uninstall_managed() {
     fi
     print_info "Removing the managed dataplane..."
     ts_m_remove_dataplane
+    TS_M_LEGACY_REMOVED=()
+    if [[ "$TS_OPT_LEGACY_ARTIFACTS" -eq 1 ]]; then
+        ts_m_clean_legacy_artifacts
+    fi
     if [[ ${#TS_M_REMAINING[@]} -gt 0 ]]; then
         rc=1
         print_error "Could not remove: ${TS_M_REMAINING[*]}"
@@ -9324,13 +10161,20 @@ cmd_uninstall_managed() {
     ts_m_announce_cleanup
 
     if [[ "$TS_JSON" -eq 1 ]]; then
-        local items=() errors=() remaining_j lines_j action_j="null" then_cmd warnings_j
+        local items=() errors=() remaining_j lines_j action_j="null" then_cmd warnings_j legacy_j
         for i in "${TS_M_REMAINING[@]}"; do
             ts_j_str "$i"
             items+=("$TS_R")
         done
         ts_j_arr "${items[@]}"
         remaining_j="$TS_R"
+        items=()
+        for i in "${TS_M_LEGACY_REMOVED[@]}"; do
+            ts_j_str "$i"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        legacy_j="$TS_R"
         items=()
         for i in "${TS_M_ANN_WARNINGS[@]}"; do
             ts_j_str "$i"
@@ -9362,7 +10206,8 @@ cmd_uninstall_managed() {
             ts_j_error E_LN_DISABLE operational "${TS_M_INV_UNIT} could not be disabled (${disable_err:-no reason given}); it would start with TunnelSats clearnet settings outside the tunnel on the next boot: run 'systemctl disable ${TS_M_INV_UNIT}'"
             errors+=("$TS_R")
         fi
-        ts_j_obj b:managed true s:unit "$TS_M_INV_UNIT" r:remaining "$remaining_j" b:ln_was_active "$ln_was_active" \
+        ts_j_obj b:managed true s:unit "$TS_M_INV_UNIT" r:remaining "$remaining_j" r:legacy_removed "$legacy_j" \
+            b:config_kept "$TS_OPT_KEEP_CONFIG" b:ln_was_active "$ln_was_active" \
             b:ln_started "$ln_started" b:ln_disabled "$ln_disabled" s:node_config "$TS_M_NC_STATUS" r:action_required "$action_j" \
             s:announce_cleanup "$TS_M_ANN_RESULT" r:warnings "$warnings_j"
         ts_json_document "$rc" "$(IFS=,; echo "[${errors[*]}]")" "${TS_R:1:${#TS_R}-2}"
