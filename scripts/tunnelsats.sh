@@ -3612,7 +3612,10 @@ cmd_install() {
     fi
     if ! command -v resolvconf &>/dev/null; then
         print_info "Installing resolvconf..."
-        apt-get install -yqq resolvconf &>/dev/null
+        if apt-get install -yqq resolvconf &>/dev/null; then
+            mkdir -p "${WG_DIR:-${TS_FS_ROOT}/etc/wireguard}"
+            : > "${WG_DIR:-${TS_FS_ROOT}/etc/wireguard}/.tunnelsats-resolvconf.installed"
+        fi
     fi
     
     # Only install cgroup-tools for non-Docker platforms (Umbrel uses Docker networking)
@@ -5578,6 +5581,7 @@ cmd_detect() {
 ts_canonical_command() {
     case "$1" in
         install) echo "install" ;;
+        adopt) echo "adopt" ;;
         pre-check|precheck|check) echo "pre-check" ;;
         uninstall|remove) echo "uninstall" ;;
         status) echo "status" ;;
@@ -5595,11 +5599,11 @@ ts_canonical_command() {
 ts_option_supported() {
     case "$2" in
         --non-interactive|--yes|--json) return 0 ;;
-        --config) [[ "$1" == "install" || "$1" == "status" || "$1" == "restart" ]] ;;
-        --platform|--impl) [[ "$1" == "install" || "$1" == "uninstall" || "$1" == "status" || "$1" == "restart" ]] ;;
+        --config) [[ "$1" == "install" || "$1" == "adopt" || "$1" == "status" || "$1" == "restart" ]] ;;
+        --platform|--impl) [[ "$1" == "install" || "$1" == "adopt" || "$1" == "uninstall" || "$1" == "status" || "$1" == "restart" ]] ;;
         --remove-packages|--keep-packages|--keep-config|--legacy-artifacts) [[ "$1" == "uninstall" ]] ;;
-        --managed) [[ "$1" == "install" || "$1" == "uninstall" ]] ;;
-        --uid-backstop|--network) [[ "$1" == "install" ]] ;;
+        --managed) [[ "$1" == "install" || "$1" == "adopt" || "$1" == "uninstall" ]] ;;
+        --uid-backstop|--network) [[ "$1" == "install" || "$1" == "adopt" ]] ;;
         --no-probe) [[ "$1" == "verify" ]] ;;
         --fallback-uid) [[ "$1" == "managed-arm" ]] ;;
         *) return 1 ;;
@@ -5789,28 +5793,31 @@ ts_validate_cli() {
     elif [[ "$TS_OPT_UID_BACKSTOP" -eq 1 ]]; then
         ts_usage_error "--uid-backstop requires --managed"
     fi
+    if [[ "$TS_COMMAND" == "adopt" ]] && [[ "$TS_OPT_MANAGED" -ne 1 ]]; then
+        ts_usage_error "adopt requires --managed <baremetal|raspiblitz>"
+    fi
     # RaspiBlitz runs one Lightning unit per implementation and chain, so the raspiblitz profile
     # names it (--impl, --network) instead of picking one
-    if [[ "$TS_COMMAND" == "install" ]] && [[ "$TS_OPT_MANAGED" -eq 1 ]] && [[ "$TS_OPT_PROFILE" == "raspiblitz" ]]; then
+    if [[ "$TS_COMMAND" == "install" || "$TS_COMMAND" == "adopt" ]] && [[ "$TS_OPT_MANAGED" -eq 1 ]] && [[ "$TS_OPT_PROFILE" == "raspiblitz" ]]; then
         if [[ -z "$TS_OPT_IMPL" ]]; then
-            ts_usage_error "install --managed raspiblitz requires --impl lnd or --impl cln"
+            ts_usage_error "${TS_COMMAND} --managed raspiblitz requires --impl lnd or --impl cln"
         fi
         if [[ "$TS_OPT_IMPL" != "lnd" ]] && [[ "$TS_OPT_IMPL" != "cln" ]]; then
-            ts_usage_error "install --managed raspiblitz supports --impl lnd or --impl cln, not ${TS_OPT_IMPL}"
+            ts_usage_error "${TS_COMMAND} --managed raspiblitz supports --impl lnd or --impl cln, not ${TS_OPT_IMPL}"
         fi
     elif [[ -n "$TS_OPT_NETWORK" ]]; then
-        ts_usage_error "--network is used by 'install --managed raspiblitz' only"
+        ts_usage_error "--network is used by '${TS_COMMAND} --managed raspiblitz' only"
     fi
     if [[ "$TS_JSON" -eq 1 ]]; then
         case "$TS_COMMAND" in
             version|detect|verify) ;;
-            install|uninstall)
+            install|uninstall|adopt)
                 if [[ "$TS_OPT_MANAGED" -ne 1 ]]; then
-                    ts_fail 2 E_JSON_UNSUPPORTED usage "'${TS_COMMAND}' does not support --json yet (supported: version, detect, verify, install --managed, uninstall --managed)"
+                    ts_fail 2 E_JSON_UNSUPPORTED usage "'${TS_COMMAND}' does not support --json yet (supported: version, detect, verify, install --managed, adopt --managed, uninstall --managed)"
                 fi
                 ;;
             *)
-                ts_fail 2 E_JSON_UNSUPPORTED usage "'${TS_COMMAND}' does not support --json yet (supported: version, detect, verify, install --managed, uninstall --managed)"
+                ts_fail 2 E_JSON_UNSUPPORTED usage "'${TS_COMMAND}' does not support --json yet (supported: version, detect, verify, install --managed, adopt --managed, uninstall --managed)"
                 ;;
         esac
     fi
@@ -5889,6 +5896,9 @@ parse_args() {
             fi
             check_root "${TS_ARGV[@]}"
             cmd_install
+            ;;
+        adopt)
+            cmd_adopt_managed
             ;;
         pre-check)
             check_root "${TS_ARGV[@]}"
@@ -8646,7 +8656,7 @@ ts_m_select_raspiblitz_unit() {
     local network="${TS_OPT_NETWORK:-mainnet}" unit entry other state
     TS_M_OTHER_UNITS=()
     if ! unit=$(ts_m_raspiblitz_unit "$TS_OPT_IMPL" "$network"); then
-        ts_usage_error "install --managed raspiblitz requires --impl lnd or --impl cln and --network mainnet, testnet or signet"
+        ts_usage_error "${TS_COMMAND} --managed raspiblitz requires --impl lnd or --impl cln and --network mainnet, testnet or signet"
     fi
     state=$(ts_m_unit_prop "$unit" LoadState)
     if [[ "$state" != "loaded" ]]; then
@@ -9330,6 +9340,351 @@ cmd_install_managed() {
     exit "$rc"
 }
 
+TS_M_ADOPT_KIND=""
+
+# Every check that can refuse adopt --managed before anything changes.
+ts_m_adopt_preflight() {
+    local guess existing kind evidence found listing line ports p port_ok=0 fam profile="${TS_OPT_PROFILE:-baremetal}"
+    local wg_rel="${WG_DIR:-/etc/wireguard}"
+    wg_rel="${wg_rel#"$TS_FS_ROOT"}"
+    [[ -z "$wg_rel" ]] && wg_rel="/etc/wireguard"
+    guess=$(ts_guess_platform "$TS_FS_ROOT")
+    if [[ -n "$TS_OPT_PLATFORM" ]] && [[ "$TS_OPT_PLATFORM" != "$profile" ]]; then
+        ts_fail 7 E_PLATFORM_UNSUPPORTED refused "--platform ${TS_OPT_PLATFORM} does not match the managed profile ${profile}"
+    fi
+    case "$profile:$guess" in
+        baremetal:|raspiblitz:raspiblitz) ;;
+        baremetal:raspiblitz)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "This node is a RaspiBlitz: use 'adopt --managed raspiblitz --impl lnd|cln'"
+            ;;
+        raspiblitz:*)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "The raspiblitz profile needs a RaspiBlitz (detected: ${guess:-no RaspiBlitz})"
+            ;;
+        *)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Managed mode supports bare-metal systemd nodes and RaspiBlitz only for now (detected: ${guess})"
+            ;;
+    esac
+    if [[ ! -d "${TS_FS_ROOT}/run/systemd/system" ]]; then
+        ts_fail 6 E_SYSTEMD_MISSING capability "systemd is not running as PID 1"
+    fi
+    if ! ts_m_cgroup2_unified; then
+        ts_fail 6 E_CGROUP_V2_MISSING capability "A unified cgroup v2 hierarchy at ${TS_M_CGROUP_ROOT} is required"
+    fi
+    if ! command -v "$PERL_BIN" >/dev/null 2>&1; then
+        ts_fail 6 E_DEPENDENCY_MISSING capability "perl is missing; verify's kill switch and IPv6 probes need it (Debian and Ubuntu ship it as perl-base)"
+    fi
+    if ts_m_inventory_present; then
+        ts_fail 7 E_MANAGED_PRESENT refused "A managed install already exists (complete, interrupted or partly removed); run 'tunnelsats.sh uninstall --managed' first"
+    fi
+    existing=$(ts_m_existing_install) || existing="unknown||"
+    kind="${existing%%|*}"
+    existing="${existing#*|}"
+    evidence="${existing%%|*}"
+    found="${existing#*|}"
+    if [[ "$kind" == "unknown" ]] && [[ " $evidence " == *" managed_artifacts "* ]]; then
+        ts_fail 7 E_MANAGED_PRESENT refused "Managed artifacts already exist (${found:-managed_artifacts}); run 'tunnelsats.sh uninstall --managed --legacy-artifacts' first"
+    fi
+    if [[ -z "$CONFIG_FILE" ]]; then
+        ts_select_wg_config "" "$TS_FS_ROOT" "$wg_rel"
+        case "$TS_WG_SELECTION" in
+            canonical|single) CONFIG_FILE="${TS_FS_ROOT}${TS_WG_SELECTED}" ;;
+            ambiguous)
+                ts_fail 8 E_CONFIG_INVALID input "Multiple WireGuard configs found in ${wg_rel} (${TS_WG_CANDIDATES[*]}); pass the one to adopt with --config"
+                ;;
+        esac
+    fi
+    if [[ "$kind" == "none" ]] && [[ -z "$CONFIG_FILE" ]]; then
+        ts_fail 3 E_NOT_INSTALLED state "No existing TunnelSats install found to adopt"
+    fi
+    if [[ -z "$CONFIG_FILE" ]] || [[ ! -f "$CONFIG_FILE" ]]; then
+        ts_fail 8 E_CONFIG_INVALID input "WireGuard config not found: ${CONFIG_FILE:-none}"
+    fi
+    TS_M_ADOPT_KIND="$kind"
+    ts_m_select_ln_unit
+    ts_m_select_ln_user
+    listing=$("$IP_BIN" route show table 52 2>&1) || listing=""
+    if printf '%s\n' "$listing" | grep -qE '^(default|0\.0\.0\.0/0)[[:space:]]'; then
+        ts_fail 7 E_TAILSCALE_EXIT_NODE refused "A Tailscale exit node is active (default route in table 52); its rules come before the TunnelSats rules"
+    fi
+    for fam in 4 6; do
+        if [[ "$fam" == "6" ]] && ! ts_m_ipv6_available; then
+            continue
+        fi
+        if ! listing=$(ts_m_table_routes "$fam"); then
+            ts_fail 1 E_KERNEL_STATE operational "IPv${fam} routing table ${TS_M_RT_TABLE} cannot be read"
+        fi
+        if [[ -n "$listing" ]]; then
+            if [[ "$fam" == "6" ]]; then
+                ts_fail 7 E_TABLE_51820_IN_USE refused "IPv6 routing table ${TS_M_RT_TABLE} is in use: ${listing%%$'\n'*}"
+            fi
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                case "$line" in
+                    blackhole[[:space:]]*|*" dev tunnelsats"*) ;;
+                    *)
+                        ts_fail 7 E_TABLE_51820_IN_USE refused "IPv4 routing table ${TS_M_RT_TABLE} has a non-TunnelSats route: ${line}"
+                        ;;
+                esac
+            done < <(printf '%s\n' "$listing")
+        fi
+        if ! listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null); then
+            ts_fail 1 E_KERNEL_STATE operational "IPv${fam} policy rules cannot be read"
+        fi
+        while IFS= read -r line; do
+            case "$line" in
+                21818:*|21819:*|21820:*|21821:*|21822:*)
+                    if [[ "$fam" == "6" ]]; then
+                        ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv6 policy rule priority ${line%%:*} is in use: ${line}"
+                    fi
+                    case "$line" in
+                        21820:*lookup[[:space:]]main[[:space:]]suppress_prefixlength[[:space:]]0*) ;;
+                        21821:*0x1000000*lookup[[:space:]]51820*|21821:*uidrange*lookup[[:space:]]51820*) ;;
+                        21818:*unreachable*|21819:*unreachable*)
+                            if [[ ! -f "${TS_FS_ROOT}${wg_rel}/.tunnelsats-failclosed-rules" ]]; then
+                                ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv4 policy rule priority ${line%%:*} is in use: ${line}"
+                            fi
+                            ;;
+                        *)
+                            ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv4 policy rule priority ${line%%:*} is in use: ${line}"
+                            ;;
+                    esac
+                    ;;
+            esac
+        done < <(printf '%s\n' "$listing")
+    done
+    ports=$(ts_m_node_config_listen_ports "$TS_M_IMPL" "$TS_M_UNIT")
+    if [[ -n "$ports" ]]; then
+        for p in $ports; do
+            if [[ "$p" == "$TS_M_LN_PORT" ]]; then
+                port_ok=1
+            fi
+        done
+        if [[ "$port_ok" -eq 0 ]]; then
+            ts_fail 7 E_LN_PORT refused "Lightning listens on port(s) $(echo $ports); the TunnelSats server forwards to ${TS_M_LN_PORT}"
+        fi
+    fi
+    if [[ ! -f "$TS_SCRIPT_PATH" ]] || [[ ! -r "$TS_SCRIPT_PATH" ]]; then
+        ts_fail 2 E_USAGE usage "Run tunnelsats.sh from a file (not through a pipe): managed mode installs a copy of it"
+    fi
+    return 0
+}
+
+cmd_adopt_managed() {
+    local answer="" ln_was_active=0 ln_restarted=0 tunnel_started=0 rc=0 out fam listing line
+    local -a unit_edits=()
+    local unit_reverted=0
+    ts_m_require_root
+    case "$TS_OPT_PROFILE" in
+        baremetal|raspiblitz) ;;
+        umbrel|mynode)
+            ts_fail 7 E_PROFILE_UNSUPPORTED refused "Managed mode supports the baremetal and raspiblitz profiles only for now (requested: ${TS_OPT_PROFILE})"
+            ;;
+        *) ts_usage_error "--managed requires a profile for adopt (baremetal or raspiblitz)" ;;
+    esac
+    ts_m_lifecycle_lock
+    if [[ "$TS_JSON" -ne 1 ]]; then
+        print_header "Managed Adopt"
+    fi
+    trap ts_m_install_exit_trap EXIT
+    ts_m_adopt_preflight
+    ts_m_install_validate_config
+    if command -v "$NFT_BIN" >/dev/null 2>&1 && command -v "$UNSHARE_BIN" >/dev/null 2>&1; then
+        ts_m_capability_probe
+    fi
+    print_info "Adopting ${TS_M_ADOPT_KIND} install into managed mode (${TS_OPT_PROFILE}, ${TS_M_UNIT}, user ${TS_M_USER})"
+    if [[ ${#TS_M_OTHER_UNITS[@]} -gt 0 ]]; then
+        print_warning "Also installed: ${TS_M_OTHER_UNITS[*]}. Managed mode tunnels ${TS_M_UNIT} only; the other units are not tunneled."
+    fi
+    ts_confirm answer "Replace the existing ${TS_M_ADOPT_KIND} install with the managed dataplane for ${TS_M_UNIT}? [y/N]: "
+    if [[ ! "$answer" =~ ^[Yy] ]]; then
+        ts_fail 1 E_ABORTED operational "Adopt aborted; nothing was changed"
+    fi
+    ts_m_install_packages
+    ts_m_check_tools
+    ts_m_capability_probe
+
+    # 1. Stop the Lightning unit FIRST while the legacy tunnel/killswitch is still active so the
+    # daemon never runs without tunnel routing during legacy teardown
+    local ln_state ln_sub=""
+    ln_state=$(ts_m_unit_prop "$TS_M_UNIT" ActiveState)
+    if [[ "$ln_state" == "activating" ]] && [[ "$TS_OPT_PROFILE" == "raspiblitz" ]]; then
+        ln_sub=$(ts_m_unit_prop "$TS_M_UNIT" SubState)
+    fi
+    if ts_m_ln_restart_needed "$ln_state" "$ln_sub"; then
+        ln_was_active=1
+        print_info "Stopping ${TS_M_UNIT} before removing legacy artifacts..."
+        if ! "$SYSTEMCTL_BIN" stop "$TS_M_UNIT"; then
+            ts_fail 1 E_LN_STOP operational "Could not stop ${TS_M_UNIT} before removing legacy artifacts"
+        fi
+        ln_state=$(ts_m_unit_prop "$TS_M_UNIT" ActiveState)
+        case "$ln_state" in
+            inactive|failed) ;;
+            *)
+                ts_fail 1 E_LN_STOP operational "${TS_M_UNIT} is still ${ln_state:-active} after systemctl stop"
+                ;;
+        esac
+    fi
+
+    # 2. Revert legacy in-place edits on the guarded unit (never restoring from stale .service.bak)
+    # and clean all legacy artifacts (the config is already sanitized in TS_M_SANITIZED)
+    ts_m_revert_legacy_unit_edits "/etc/systemd/system/${TS_M_UNIT}" || true
+    unit_edits=("${TS_M_UNIT_EDITS_FOUND[@]}")
+    unit_reverted="$TS_M_UNIT_REVERTED"
+    TS_OPT_KEEP_CONFIG=0 ts_m_clean_legacy_artifacts
+    if [[ "$unit_reverted" -eq 1 ]] && [[ " ${TS_M_LEGACY_REMOVED[*]} " != *" /etc/systemd/system/${TS_M_UNIT} "* ]]; then
+        TS_M_LEGACY_REMOVED=("/etc/systemd/system/${TS_M_UNIT}" "${TS_M_LEGACY_REMOVED[@]}")
+    fi
+
+    # 3. Verify that routing table 51820 and rule priorities 21818-21822 are now empty
+    for fam in 4 6; do
+        if [[ "$fam" == "6" ]] && ! ts_m_ipv6_available; then
+            continue
+        fi
+        if ! listing=$(ts_m_table_routes "$fam"); then
+            ts_fail 1 E_KERNEL_STATE operational "IPv${fam} routing table ${TS_M_RT_TABLE} cannot be read"
+        fi
+        if [[ -n "$listing" ]]; then
+            ts_fail 7 E_TABLE_51820_IN_USE refused "IPv${fam} routing table ${TS_M_RT_TABLE} is still in use after legacy cleanup: ${listing%%$'\n'*}"
+        fi
+        if ! listing=$("$IP_BIN" "-${fam}" rule show 2>/dev/null); then
+            ts_fail 1 E_KERNEL_STATE operational "IPv${fam} policy rules cannot be read"
+        fi
+        while IFS= read -r line; do
+            case "$line" in
+                21818:*|21819:*|21820:*|21821:*|21822:*)
+                    ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv${fam} policy rule priority ${line%%:*} is still in use after legacy cleanup: ${line}"
+                    ;;
+            esac
+        done < <(printf '%s\n' "$listing")
+    done
+
+    # 4. Install the managed dataplane
+    TS_M_INV_PROFILE="$TS_OPT_PROFILE"
+    TS_M_INV_IMPL="$TS_M_IMPL"
+    TS_M_INV_UNIT="$TS_M_UNIT"
+    TS_M_INV_USER="$TS_M_USER"
+    TS_M_INV_UID="$TS_M_UID"
+    TS_M_INV_BACKSTOP="$TS_OPT_UID_BACKSTOP"
+    TS_M_FILES=()
+    TS_M_FILE_SHA=()
+    TS_M_CREATED_DIRS=()
+    TS_M_ENABLED_UNITS=()
+    TS_M_ROLLBACK_ARMED=1
+
+    print_info "Writing units, drop-ins and the tunnel config..."
+    if ! ts_m_install_files; then
+        ts_m_install_abort E_WRITE_FAILED "Writing the managed files failed"
+    fi
+    rm -rf "$TS_M_TMP_DIR"
+    TS_M_TMP_DIR=""
+    if ! "$SYSTEMCTL_BIN" daemon-reload; then
+        ts_m_install_abort E_SYSTEMD "systemctl daemon-reload failed"
+    fi
+    for out in "$TS_M_KILLSWITCH_UNIT" "$TS_M_TIMER_UNIT" "$TS_M_WG_UNIT"; do
+        TS_M_ENABLED_UNITS+=("$out")
+        if ! ts_m_inventory_write; then
+            ts_m_install_abort E_WRITE_FAILED "Writing the inventory failed"
+        fi
+        if ! "$SYSTEMCTL_BIN" enable "$out" >/dev/null 2>&1; then
+            ts_m_install_abort E_SYSTEMD "systemctl enable ${out} failed"
+        fi
+    done
+    TS_M_INV_STATE="installed"
+    if ! ts_m_inventory_write; then
+        ts_m_install_abort E_WRITE_FAILED "Writing the inventory failed"
+    fi
+
+    print_info "Arming the kill switch..."
+    if ! "$SYSTEMCTL_BIN" start "$TS_M_KILLSWITCH_UNIT"; then
+        ts_m_install_abort E_KILLSWITCH "The kill switch could not be armed (see: journalctl -u ${TS_M_KILLSWITCH_UNIT})"
+    fi
+    ts_m_read_attestation
+    if [[ "$TS_M_ATT_STATUS" != "valid" ]]; then
+        ts_m_install_abort E_KILLSWITCH "The kill switch unit ran, but the attestation is ${TS_M_ATT_STATUS//_/ }"
+    fi
+    print_success "Kill switch armed and attested"
+
+    print_info "Starting the tunnel..."
+    if "$SYSTEMCTL_BIN" start "$TS_M_WG_UNIT"; then
+        tunnel_started=1
+        print_success "${TS_M_WG_UNIT} started"
+    else
+        print_warning "${TS_M_WG_UNIT} did not start yet; it retries every 30 s and the kill switch blocks clearnet traffic meanwhile"
+    fi
+    if [[ "$ln_was_active" -eq 1 ]]; then
+        print_info "Starting ${TS_M_UNIT} inside ${TS_M_SLICE}..."
+        if "$SYSTEMCTL_BIN" start "$TS_M_UNIT"; then
+            ln_restarted=1
+        else
+            rc=1
+            print_error "${TS_M_UNIT} did not start; the managed dataplane stays installed (see: journalctl -u ${TS_M_UNIT})"
+        fi
+    else
+        print_info "${TS_M_UNIT} was not running; adopt does not start it, and its next start runs inside ${TS_M_SLICE}"
+    fi
+    if ! "$SYSTEMCTL_BIN" start "$TS_M_TIMER_UNIT"; then
+        rc=1
+        print_error "${TS_M_TIMER_UNIT} did not start"
+    fi
+    TS_M_ROLLBACK_ARMED=0
+    trap - EXIT
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        trap ts_json_exit_guard EXIT
+    fi
+
+    ts_m_node_config_clearnet "$TS_M_IMPL" "$TS_M_UNIT" "$TS_OPT_PROFILE"
+    if [[ "$TS_JSON" -eq 1 ]]; then
+        local errors="[]" items=() other_j legacy_j edits_j nc_lines_j
+        if [[ "$rc" -ne 0 ]]; then
+            ts_j_error E_PARTIAL operational "Adopted, but ${TS_M_UNIT} or ${TS_M_TIMER_UNIT} did not start"
+            errors="[${TS_R}]"
+        fi
+        for out in "${TS_M_OTHER_UNITS[@]}"; do
+            ts_j_str "$out"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        other_j="$TS_R"
+        items=()
+        for out in "${TS_M_LEGACY_REMOVED[@]}"; do
+            ts_j_str "$out"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        legacy_j="$TS_R"
+        items=()
+        for out in "${unit_edits[@]}"; do
+            ts_j_str "$out"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        edits_j="$TS_R"
+        items=()
+        for out in "${TS_M_NC_LINES[@]}"; do
+            ts_j_str "$out"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        nc_lines_j="$TS_R"
+        ts_j_obj b:adopted true b:managed true s:legacy_kind "$TS_M_ADOPT_KIND" \
+            r:legacy_removed "$legacy_j" r:unit_edits "$edits_j" b:unit_reverted "$unit_reverted" \
+            s:profile "$TS_OPT_PROFILE" s:impl "$TS_M_IMPL" s:unit "$TS_M_UNIT" s:node_user "$TS_M_USER" \
+            b:uid_backstop "$TS_OPT_UID_BACKSTOP" s:iface "$TS_M_IFACE" s:slice "$TS_M_SLICE" \
+            b:tunnel_started "$tunnel_started" b:ln_was_active "$ln_was_active" b:ln_restarted "$ln_restarted" \
+            s:node_config "$TS_M_NC_STATUS" r:node_config_lines "$nc_lines_j" r:other_ln_units "$other_j"
+        ts_json_document "$rc" "$errors" "${TS_R:1:${#TS_R}-2}"
+        exit "$rc"
+    fi
+    echo ""
+    print_line
+    print_success "Adopted ${TS_M_ADOPT_KIND} install into managed mode"
+    print_line
+    echo ""
+    echo "Check it at any time with: sudo tunnelsats verify"
+    echo ""
+    exit "$rc"
+}
+
 # ---------------------------------------------------------------------------
 # Managed mode: uninstall --managed, status and restart on a managed install
 # ---------------------------------------------------------------------------
@@ -9378,7 +9733,7 @@ ts_m_clean_legacy_artifacts() {
     local wg_full="${TS_FS_ROOT}${wg_rel}"
     local sd_rel="/etc/systemd/system"
     local sd_full="${TS_FS_ROOT}${sd_rel}"
-    local unit f rel iface tbl_out line prio sel
+    local unit f rel iface tbl_out line prio
     local -a ifaces=("tunnelsatsv2")
     TS_M_LEGACY_REMOVED=()
 
@@ -9438,7 +9793,7 @@ ts_m_clean_legacy_artifacts() {
     fi
 
     # 3. Legacy drop-ins, in-place unit edits, and stale .service.bak files
-    for unit in lnd.service lightningd.service litd.service lit.service; do
+    for unit in lnd.service tlnd.service slnd.service lightningd.service tlightningd.service slightningd.service litd.service lit.service; do
         rel="${sd_rel}/${unit}.d/tunnelsats-cgroup.conf"
         if [[ -e "${TS_FS_ROOT}${rel}" ]] || [[ -L "${TS_FS_ROOT}${rel}" ]]; then
             rm -f "${TS_FS_ROOT}${rel}"
@@ -9559,6 +9914,11 @@ ts_m_clean_legacy_artifacts() {
                         had_legacy_fwmark=1
                         removed_any=1
                         TS_M_LEGACY_REMOVED+=("ip -4 rule ${prio} (fwmark 0x1000000/0xff000000 lookup 51820)")
+                    fi
+                elif [[ "$line" =~ ^21821:[[:space:]]+from\ all\ uidrange\ ([0-9]+-[0-9]+)\ lookup\ 51820([[:space:]]|$) ]]; then
+                    if "$IP_BIN" -4 rule del from all uidrange "${BASH_REMATCH[1]}" lookup 51820 priority 21821 2>/dev/null; then
+                        removed_any=1
+                        TS_M_LEGACY_REMOVED+=("ip -4 rule 21821 (uidrange ${BASH_REMATCH[1]} lookup 51820)")
                     fi
                 elif [[ "$line" =~ ^21820:[[:space:]]+from\ all\ lookup\ main\ suppress_prefixlength\ 0([[:space:]]|$) ]]; then
                     if "$IP_BIN" -4 rule del from all lookup main suppress_prefixlength 0 priority 21820 2>/dev/null; then

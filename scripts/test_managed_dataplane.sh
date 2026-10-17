@@ -3470,6 +3470,172 @@ fi
 run_snippet "$fx" "TS_COMMAND=detect; TS_JSON=1; TS_OUT_FD=1; cmd_detect"
 assert_json "$SN_OUT" 'd["install"]["kind"]' "none" "15b: detect --json reports kind=none after --legacy-artifacts cleanup"
 
+# ---------------------------------------------------------------------------
+# Group 16: adopt --managed for baremetal and raspiblitz
+# ---------------------------------------------------------------------------
+echo "=== Group 16: adopt --managed ==="
+
+# 16a: adopt --managed preflight refusals (no install -> exit 3 E_NOT_INSTALLED; managed present -> exit 7 E_MANAGED_PRESENT; foreign route/rule -> exit 7)
+fx=$(preflight_fixture adopt-empty)
+mkdir -p "$fx/tmp"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[3, "E_NOT_INSTALLED"]' \
+    "16a: adopt --managed refuses with exit 3 E_NOT_INSTALLED when no install or config exists"
+
+fx=$(preflight_fixture adopt-managed-present)
+mkdir -p "$fx/tmp" "$fx/fs/etc/tunnelsats"
+write_inventory "$fx"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[7, "E_MANAGED_PRESENT"]' \
+    "16a: adopt --managed refuses with exit 7 E_MANAGED_PRESENT when managed.json exists"
+
+fx=$(preflight_fixture adopt-foreign-route)
+mkdir -p "$fx/tmp" "$fx/fs/etc/wireguard"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+printf '10.20.0.0/16 dev wg9 scope link \n' > "$fx/state/routes4"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[7, "E_TABLE_51820_IN_USE"]' \
+    "16a: adopt --managed refuses foreign route in table 51820"
+
+fx=$(preflight_fixture adopt-foreign-rule)
+mkdir -p "$fx/tmp" "$fx/fs/etc/wireguard"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+printf '21822:\tfrom all uidrange 1001-1001 lookup 51820\n' > "$fx/state/rules4"
+run_snippet "$fx" "export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[7, "E_RULE_PRIORITY_IN_USE"]' \
+    "16a: adopt --managed refuses foreign rule at priority 21818-21822"
+
+# 16b: adopt --managed baremetal on legacy_v3_post_204 (active lnd.service, cgexec edit, stale .bak, legacy rules/routes)
+fx=$(preflight_fixture adopt-bm)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard" "$fx/fs/etc/systemd/system/multi-user.target.wants" \
+    "$fx/fs/etc/systemd/system/lnd.service.d" "$fx/fs/home/bitcoin/.lnd"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf.bak.Ab12Cd"
+: > "$fx/fs/etc/wireguard/tunnelsats-route-guard.sh"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+: > "$fx/fs/etc/wireguard/tunnelsats-splitting-processes.sh"
+for u in tunnelsats-create-cgroup.service tunnelsats-splitting-processes.service tunnelsats-splitting-processes.timer; do
+    printf '[Unit]\n' > "$fx/fs/etc/systemd/system/$u"
+done
+ln -s /lib/systemd/system/wg-quick@.service "$fx/fs/etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsatsv2.service"
+printf '[Unit]\nWants=tunnelsats-create-cgroup.service\n' > "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf"
+cat > "$fx/fs/etc/systemd/system/lnd.service" <<'EOF'
+[Unit]
+Description=LND Lightning Network Daemon
+[Service]
+User=bitcoin
+ExecStart=/usr/bin/cgexec -g net_cls:splitted_processes /usr/local/bin/lnd --configfile=/home/bitcoin/.lnd/lnd.conf
+EOF
+printf '[Unit]\n# stale backup\n' > "$fx/fs/etc/systemd/system/lnd.service.bak"
+cat > "$fx/fs/home/bitcoin/.lnd/lnd.conf" <<'EOF'
+[Application Options]
+listen=0.0.0.0:9735
+externalhosts=vpn.example.com:35678
+[Tor]
+tor.active=true
+tor.streamisolation=false
+tor.skip-proxy-for-clearnet-targets=true
+EOF
+: > "$fx/state/stateful_units"
+echo "active" > "$fx/state/unit_lnd.service_ActiveState"
+echo "running" > "$fx/state/unit_lnd.service_SubState"
+printf '{ path=/usr/local/bin/lnd ; argv[]=/usr/local/bin/lnd --configfile=/home/bitcoin/.lnd/lnd.conf ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n' > "$fx/state/unit_lnd.service_ExecStart"
+: > "$fx/state/legacy_table_ip_tunnelsatsv2"
+printf '21820:\tfrom all lookup main suppress_prefixlength 0\n21821:\tfrom all fwmark 0x1000000/0xff000000 lookup 51820\n' > "$fx/state/rules4"
+printf 'default dev tunnelsatsv2 scope link \n' > "$fx/state/routes4"
+
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "16b: adopt --managed baremetal exits 0"
+assert_json "$doc" '[d["ok"], d["adopted"], d["managed"], d["legacy_kind"], d["unit_edits"], d["unit_reverted"], d["ln_was_active"], d["ln_restarted"], d["node_config"]]' \
+    '[true, true, true, "legacy_v3_post_204", ["ln_unit_cgexec"], true, true, true, "clearnet"]' \
+    "16b: adopt JSON reports adopted=true, legacy_kind=legacy_v3_post_204, unit_edits=[ln_unit_cgexec], unit_reverted=true, node_config=clearnet"
+assert_json "$doc" 'len(d["node_config_lines"]) == 2' "true" "16b: adopt JSON includes node_config_lines"
+stop_ln_line=$(grep -n '^systemctl stop lnd\.service$' "$fx/state/calls" | head -n 1 | cut -d: -f1 || true)
+stop_wg_line=$(grep -n '^systemctl stop wg-quick@tunnelsatsv2\.service$' "$fx/state/calls" | head -n 1 | cut -d: -f1 || true)
+if [[ -n "$stop_ln_line" ]] && [[ -n "$stop_wg_line" ]] && [[ "$stop_ln_line" -lt "$stop_wg_line" ]]; then
+    pass "16b: lnd.service stopped before legacy wg-quick@tunnelsatsv2.service teardown"
+else
+    fail "16b: lnd.service stopped before legacy wg-quick@tunnelsatsv2.service teardown (ln=$stop_ln_line wg=$stop_wg_line)"
+fi
+if grep -q '^ExecStart=/usr/local/bin/lnd ' "$fx/fs/etc/systemd/system/lnd.service" && \
+    [[ ! -e "$fx/fs/etc/systemd/system/lnd.service.bak" ]] && \
+    [[ ! -e "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf" ]] && \
+    [[ -f "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-managed.conf" ]] && \
+    [[ -f "$fx/fs/etc/tunnelsats/managed.json" ]]; then
+    pass "16b: cgexec stripped in-place, stale .bak and legacy drop-in removed, managed drop-in and inventory installed"
+else
+    fail "16b: cgexec stripped in-place, stale .bak and legacy drop-in removed, managed drop-in and inventory installed"
+fi
+
+# 16c: adopt --managed raspiblitz --impl lnd on legacy_v3_pre_204 (uncomments lnd.check.sh, strips cgexec)
+fx=$(rb_preflight_fixture adopt-rb-v3pre)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard" "$fx/fs/etc/systemd/system/lnd.service.d"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+printf '#Tunnelsats-Setupv2-Non-Docker\n' >> "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+printf '[Unit]\nWants=tunnelsats-create-cgroup.service\n' > "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf"
+cat > "$fx/fs/etc/systemd/system/lnd.service" <<'EOF'
+[Unit]
+Description=LND on RaspiBlitz
+[Service]
+User=bitcoin
+#ExecStartPre=-/home/admin/config.scripts/lnd.check.sh prestart mainnet
+ExecStart=/usr/bin/cgexec -g net_cls:splitted_processes /usr/local/bin/lnd --configfile=/mnt/hdd/app-data/lnd/lnd.conf
+EOF
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "16c: adopt --managed raspiblitz (legacy_v3_pre_204) exits 0"
+assert_json "$doc" '[d["ok"], d["adopted"], d["profile"], d["impl"], d["unit"], d["legacy_kind"], d["unit_edits"], d["unit_reverted"]]' \
+    '[true, true, "raspiblitz", "lnd", "lnd.service", "legacy_v3_pre_204", ["ln_unit_cgexec", "ln_unit_check_disabled"], true]' \
+    "16c: adopt JSON on RaspiBlitz reports legacy_v3_pre_204 and both unit edits reverted"
+if grep -q '^ExecStartPre=-/home/admin/config.scripts/lnd.check.sh prestart mainnet$' "$fx/fs/etc/systemd/system/lnd.service" && \
+    grep -q '^ExecStart=/usr/local/bin/lnd ' "$fx/fs/etc/systemd/system/lnd.service"; then
+    pass "16c: RaspiBlitz lnd.check.sh uncommented and cgexec stripped"
+else
+    fail "16c: RaspiBlitz lnd.check.sh uncommented and cgexec stripped"
+fi
+run_snippet "$fx" "$rb_env TS_COMMAND=detect; TS_JSON=1; TS_OUT_FD=1; cmd_detect"
+assert_json "$SN_OUT" 'd["install"]["kind"]' "managed" "16c: detect --json reports kind=managed after adopt"
+
+# 16d: adopt --managed raspiblitz --impl lnd on legacy_v2 (restores lnd.check.bak -> lnd.check.sh, removes blitzapi drop-in)
+fx=$(rb_preflight_fixture adopt-rb-v2)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard" "$fx/fs/etc/systemd/system/lnd.service.d" \
+    "$fx/fs/etc/systemd/system/blitzapi.service.d" "$fx/fs/home/admin/config.scripts"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+printf '[Unit]\nRequires=tunnelsats-create-cgroup.service\n' > "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf"
+printf '[Unit]\n' > "$fx/fs/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf"
+printf '#!/bin/bash\n' > "$fx/fs/home/admin/config.scripts/lnd.check.bak"
+cat > "$fx/fs/etc/systemd/system/lnd.service" <<'EOF'
+[Unit]
+Description=LND on RaspiBlitz
+[Service]
+User=bitcoin
+ExecStartPre=-/home/admin/config.scripts/lnd.check.sh prestart mainnet
+ExecStart=/usr/bin/cgexec -g net_cls:splitted_processes /usr/local/bin/lnd --configfile=/mnt/hdd/app-data/lnd/lnd.conf
+EOF
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "16d: adopt --managed raspiblitz (legacy_v2) exits 0"
+assert_json "$doc" '[d["ok"], d["adopted"], d["legacy_kind"], d["unit_edits"], d["unit_reverted"]]' \
+    '[true, true, "legacy_v2", ["ln_unit_cgexec"], true]' \
+    "16d: adopt JSON on RaspiBlitz reports legacy_v2 and ln_unit_cgexec reverted"
+if [[ -f "$fx/fs/home/admin/config.scripts/lnd.check.sh" ]] && \
+    [[ ! -e "$fx/fs/home/admin/config.scripts/lnd.check.bak" ]] && \
+    [[ ! -e "$fx/fs/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf" ]]; then
+    pass "16d: RaspiBlitz lnd.check.sh restored from lnd.check.bak and blitzapi drop-in removed"
+else
+    fail "16d: RaspiBlitz lnd.check.sh restored from lnd.check.bak and blitzapi drop-in removed"
+fi
+
 echo ""
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"
