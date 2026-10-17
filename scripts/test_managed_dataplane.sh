@@ -366,9 +366,12 @@ EOF
 
 cat > "$STUB_BIN/ufw" <<'EOF'
 #!/bin/bash
-# Stub for ufw: logs the call and exits with ufw_rc (default 0)
+# Stub for ufw: logs the call, prints ufw_status on 'status', and exits with ufw_rc (default 0)
 s="${STUB_STATE:?}"
 printf 'ufw %s\n' "$*" >> "$s/calls"
+if [[ "${1:-}" == "status" ]] && [[ -f "$s/ufw_status" ]]; then
+    cat "$s/ufw_status"
+fi
 exit "$(cat "$s/ufw_rc" 2>/dev/null || echo 0)"
 EOF
 chmod +x "$STUB_BIN"/*
@@ -3723,6 +3726,53 @@ if [[ -f "$fx/fs/etc/wireguard/tunnelsatsv2.conf" ]] && \
 else
     fail "16e: failed adopt stops activating/auto-restart lnd.service, leaves it disabled, and restores /etc/wireguard/tunnelsatsv2.conf"
 fi
+run_snippet "$fx" "SYSTEMCTL_BIN='$STUB_BIN/systemctl'; WG_BIN='$RB_BIN/wg'; WG_QUICK_BIN='$RB_BIN/wg-quick'; export TMPDIR='$fx/tmp'; parse_args adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+assert_contains "$SN_OUT" "Adopt did not complete: $fx/fs/etc/wireguard/tunnelsatsv2.conf is restored, and lnd.service stays stopped and disabled" \
+    "16e: failed adopt human output warns that config is restored and unit stays stopped and disabled"
+
+# 16f: adopt --managed UFW ownership marker migration and legacy_remaining reporting
+fx=$(rb_preflight_fixture adopt-ufw-op)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+: > "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsats-old.created"
+cat > "$fx/state/ufw_status" <<'EOF'
+Status: active
+
+To                         Action      From
+--                         ------      ----
+9735/tcp on tunnelsatsv2   ALLOW IN    Anywhere
+EOF
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["ok"], d["legacy_remaining"]]' '[true, []]' "16f: adopt --managed succeeds with empty legacy_remaining"
+if [[ ! -e "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsatsv2.created" ]] && \
+    [[ ! -e "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsats-old.created" ]] && \
+    ! grep -q '^ufw allow in on tunnelsatsv2 ' "$fx/state/calls"; then
+    pass "16f: adopt does not claim operator-existing UFW rule on tunnelsatsv2"
+else
+    fail "16f: adopt does not claim operator-existing UFW rule on tunnelsatsv2"
+fi
+
+fx=$(rb_preflight_fixture adopt-ufw-migrate)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+: > "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsats-old.created"
+cat > "$fx/state/ufw_status" <<'EOF'
+Status: active
+
+To                         Action      From
+--                         ------      ----
+9735/tcp on tunnelsats-old ALLOW IN    Anywhere
+EOF
+echo "1" > "$fx/state/ufw_rc"
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["ok"], d["legacy_remaining"]]' '[true, ["/etc/wireguard/.tunnelsats-ufw-9735-tunnelsats-old.created"]]' \
+    "16f: adopt --managed reports unremoved UFW marker in legacy_remaining when ufw fails"
 
 echo ""
 echo "Passed: $pass_count"

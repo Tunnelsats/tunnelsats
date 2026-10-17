@@ -9213,6 +9213,7 @@ ts_m_install_exit_trap() {
             mkdir -p "$(dirname "$TS_M_ADOPT_ORIG_CONF")" 2>/dev/null || true
             mv -f "$TS_M_ADOPT_BACKUP" "$TS_M_ADOPT_ORIG_CONF" 2>/dev/null || true
             chmod 0600 "$TS_M_ADOPT_ORIG_CONF" 2>/dev/null || true
+            print_warning "Adopt did not complete: ${TS_M_ADOPT_ORIG_CONF} is restored, and ${TS_M_UNIT} stays stopped and disabled because the legacy tunnel setup may already be removed. Fix the cause and run adopt again; enable ${TS_M_UNIT} only once it is tunneled again or its TunnelSats clearnet settings are removed."
         else
             rm -f "$TS_M_ADOPT_BACKUP" 2>/dev/null || true
         fi
@@ -9651,6 +9652,7 @@ cmd_adopt_managed() {
     unit_edits=("${TS_M_UNIT_EDITS_FOUND[@]}")
     unit_reverted="$TS_M_UNIT_REVERTED"
     TS_OPT_KEEP_CONFIG=1 ts_m_clean_legacy_artifacts
+    local legacy_remaining=("${TS_M_REMAINING[@]}")
     if [[ "$unit_reverted" -eq 1 ]] && [[ " ${TS_M_LEGACY_REMOVED[*]} " != *" /etc/systemd/system/${TS_M_UNIT} "* ]]; then
         TS_M_LEGACY_REMOVED=("/etc/systemd/system/${TS_M_UNIT}" "${TS_M_LEGACY_REMOVED[@]}")
     fi
@@ -9730,11 +9732,17 @@ cmd_adopt_managed() {
     for out in "$wg_full"/tunnelsats-*.conf; do
         if [[ -e "$out" ]] || [[ -L "$out" ]]; then
             if [[ "$out" != "${TS_FS_ROOT}${TS_M_WG_CONF}" ]]; then
-                rm -f "$out" 2>/dev/null || true
-                TS_M_LEGACY_REMOVED+=("${out#"$TS_FS_ROOT"}")
+                if rm -f "$out" 2>/dev/null; then
+                    TS_M_LEGACY_REMOVED+=("${out#"$TS_FS_ROOT"}")
+                else
+                    legacy_remaining+=("${out#"$TS_FS_ROOT"}")
+                fi
             fi
         fi
     done
+    if [[ ${#legacy_remaining[@]} -gt 0 ]]; then
+        print_warning "Could not remove legacy artifacts: ${legacy_remaining[*]}"
+    fi
 
     if [[ "$ln_was_enabled" -eq 1 ]]; then
         if ! "$SYSTEMCTL_BIN" enable "$TS_M_UNIT" >/dev/null 2>&1; then
@@ -9773,7 +9781,7 @@ cmd_adopt_managed() {
 
     ts_m_node_config_clearnet "$TS_M_IMPL" "$TS_M_UNIT" "$TS_OPT_PROFILE"
     if [[ "$TS_JSON" -eq 1 ]]; then
-        local errors="[]" items=() other_j legacy_j edits_j nc_lines_j
+        local errors="[]" items=() other_j legacy_j legacy_rem_j edits_j nc_lines_j
         if [[ "$rc" -ne 0 ]]; then
             ts_j_error E_PARTIAL operational "Adopted, but ${TS_M_UNIT} or ${TS_M_TIMER_UNIT} did not start"
             errors="[${TS_R}]"
@@ -9792,6 +9800,13 @@ cmd_adopt_managed() {
         ts_j_arr "${items[@]}"
         legacy_j="$TS_R"
         items=()
+        for out in "${legacy_remaining[@]}"; do
+            ts_j_str "$out"
+            items+=("$TS_R")
+        done
+        ts_j_arr "${items[@]}"
+        legacy_rem_j="$TS_R"
+        items=()
         for out in "${unit_edits[@]}"; do
             ts_j_str "$out"
             items+=("$TS_R")
@@ -9806,7 +9821,7 @@ cmd_adopt_managed() {
         ts_j_arr "${items[@]}"
         nc_lines_j="$TS_R"
         ts_j_obj b:adopted true b:managed true s:legacy_kind "$TS_M_ADOPT_KIND" \
-            r:legacy_removed "$legacy_j" r:unit_edits "$edits_j" b:unit_reverted "$unit_reverted" \
+            r:legacy_removed "$legacy_j" r:legacy_remaining "$legacy_rem_j" r:unit_edits "$edits_j" b:unit_reverted "$unit_reverted" \
             s:profile "$TS_OPT_PROFILE" s:impl "$TS_M_IMPL" s:unit "$TS_M_UNIT" s:node_user "$TS_M_USER" \
             b:uid_backstop "$TS_OPT_UID_BACKSTOP" s:iface "$TS_M_IFACE" s:slice "$TS_M_SLICE" \
             b:tunnel_started "$tunnel_started" b:ln_was_active "$ln_was_active" b:ln_restarted "$ln_restarted" \
@@ -10062,7 +10077,7 @@ ts_m_clean_legacy_artifacts() {
                 if [[ "$ufw_iface" == "$TS_M_IFACE" ]]; then
                     continue
                 fi
-                if command -v ufw >/dev/null 2>&1; then
+                if command -v ufw >/dev/null 2>&1 && ! is_port_allowed_in_ufw "$TS_M_IFACE" "9735"; then
                     if ufw allow in on "$TS_M_IFACE" to any port 9735 proto tcp >/dev/null 2>&1; then
                         : > "${wg_full}/.tunnelsats-ufw-9735-${TS_M_IFACE}.created" 2>/dev/null || true
                     fi

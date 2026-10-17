@@ -38,7 +38,7 @@ sudo bash tunnelsats.sh adopt --managed raspiblitz --impl lnd [--network mainnet
 2. If the Lightning unit is running, it stops the unit first while the legacy tunnel and rules are still in place.
 3. It strips legacy in-place edits (`cgexec` on `ExecStart=` and a commented `ExecStartPre=...check.sh` on RaspiBlitz) from `/etc/systemd/system/<unit>` without ever overwriting the unit from a stale `.service.bak` file, and removes all legacy units, timers, drop-ins, helper scripts, `.bak` files, nft tables and policy rules.
 4. It installs the managed dataplane, arms and attests the kill switch, starts the tunnel, starts the Lightning unit inside `tunnelsats.slice` if it was running before, and starts the verifier timer.
-5. In `--json` mode it emits the Contract 1 install fields plus `adopted: true`, `legacy_kind`, `legacy_removed`, `unit_edits`, `unit_reverted`, and `node_config_lines`.
+5. In `--json` mode it emits the Contract 1 install fields plus `adopted: true`, `legacy_kind`, `legacy_removed`, `legacy_remaining`, `unit_edits`, `unit_reverted`, and `node_config_lines`.
 
 ## When the subscription ends or the VPN server is unreachable
 
