@@ -142,12 +142,27 @@ case "$obj:$verb" in
         cat "$s/routes${fam}"
         ;;
     route:add|route:del)
-        if [[ "$fam" == 4 ]]; then r="blackhole default metric 4294967295 "; else r="blackhole default dev lo metric 4294967295 pref medium"; fi
+        if [[ "$*" == "blackhole default metric 3 "* ]]; then
+            r="blackhole default metric 3 "
+        elif [[ "$*" == "default dev "* ]]; then
+            set -- $*
+            r="default dev ${3} "
+        elif [[ "$fam" == 4 ]]; then
+            r="blackhole default metric 4294967295 "
+        else
+            r="blackhole default dev lo metric 4294967295 pref medium"
+        fi
         touch "$s/routes${fam}"
         if [[ "$verb" == "add" ]]; then
             if grep -qxF "$r" "$s/routes${fam}"; then echo "RTNETLINK answers: File exists" >&2; exit 2; fi
             printf '%s\n' "$r" >> "$s/routes${fam}"
         else
+            if [[ "$r" == "default dev "* ]]; then
+                if ! grep -qE "^${r}(scope link )?$" "$s/routes${fam}"; then echo "RTNETLINK answers: No such process" >&2; exit 2; fi
+                awk -v p="^${r}(scope link )?$" '$0 ~ p && !done { done = 1; next } { print }' "$s/routes${fam}" > "$s/routes.tmp"
+                mv "$s/routes.tmp" "$s/routes${fam}"
+                exit 0
+            fi
             if ! grep -qxF "$r" "$s/routes${fam}"; then echo "RTNETLINK answers: No such process" >&2; exit 2; fi
             awk -v e="$r" '$0 == e && !done { done = 1; next } { print }' "$s/routes${fam}" > "$s/routes.tmp"
             mv "$s/routes.tmp" "$s/routes${fam}"
@@ -195,12 +210,28 @@ case "$*" in
         ;;
     "list tables")
         if [[ -s "$table" ]]; then echo "table inet tunnelsats"; fi
+        for lt in "$s"/legacy_table_*; do
+            if [[ -f "$lt" ]]; then
+                lt_base="${lt##*/legacy_table_}"
+                echo "table ${lt_base%%_*} ${lt_base#*_}"
+            fi
+        done
         ;;
-    "list table ip tunnelsats_failclosed") exit 1 ;;
-    "delete table ip tunnelsats_failclosed") exit 1 ;;
+    "list table ip tunnelsats_failclosed")
+        if [[ -f "$s/legacy_table_ip_tunnelsats_failclosed" ]]; then echo "table ip tunnelsats_failclosed {"; echo "}"; exit 0; fi
+        exit 1
+        ;;
+    "delete table ip tunnelsats_failclosed")
+        rm -f "$s/legacy_table_ip_tunnelsats_failclosed"
+        exit 0
+        ;;
     "list table ip "*|"list table inet "*)
         # A legacy kill switch table (named after the tunnel interface) when the fixture has one
         if [[ -f "$s/legacy_table_${3}_${4}" ]]; then echo "table ${3} ${4} {"; echo "}"; exit 0; fi
+        exit 1
+        ;;
+    "delete table ip "*|"delete table inet "*)
+        if [[ -f "$s/legacy_table_${3}_${4}" ]]; then rm -f "$s/legacy_table_${3}_${4}"; exit 0; fi
         exit 1
         ;;
     *) echo "nft stub: unexpected call: $*" >&2; exit 1 ;;
@@ -3359,6 +3390,85 @@ if [[ ! -e "$fx/fs/etc/tunnelsats" ]] && [[ ! -e "$fx/fs/run/tunnelsats" ]]; the
 else
     fail "Bare-metal install: and nothing is left behind"
 fi
+
+# ---------------------------------------------------------------------------
+# Group 15: --keep-config and --legacy-artifacts on uninstall --managed (#217)
+# ---------------------------------------------------------------------------
+echo "=== Group 15: --keep-config and --legacy-artifacts (#217) ==="
+
+# 15a: uninstall --managed --keep-config keeps /etc/wireguard/tunnelsatsv2.conf
+fx=$(rb_preflight_fixture keep-cfg)
+rb_install "$fx" lnd mainnet
+assert_equals "0" "$SN_RC" "15a: setup managed install"
+run_snippet "$fx" "$rb_env parse_args --json uninstall --managed --keep-config --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "15a: uninstall --managed --keep-config exits 0"
+assert_json "$doc" '[d["ok"], d["managed"], d["config_kept"], d["remaining"]]' '[true, true, true, []]' \
+    "15a: JSON reports config_kept=true and remaining=[]"
+if [[ -f "$fx/fs/etc/wireguard/tunnelsatsv2.conf" ]] && [[ ! -e "$fx/fs/etc/tunnelsats/managed.json" ]]; then
+    pass "15a: /etc/wireguard/tunnelsatsv2.conf stays on disk while managed.json is removed"
+else
+    fail "15a: /etc/wireguard/tunnelsatsv2.conf stays on disk while managed.json is removed"
+fi
+
+# 15b: uninstall --managed --legacy-artifacts without a managed inventory cleans full legacy v2/v3 state
+fx=$(new_fixture legacy-clean)
+mkdir -p "$fx/fs/etc/wireguard" "$fx/fs/etc/systemd/system/multi-user.target.wants" \
+    "$fx/fs/etc/systemd/system/lnd.service.d" "$fx/fs/etc/systemd/system/blitzapi.service.d" \
+    "$fx/fs/home/admin/config.scripts" "$fx/fs/usr/local/sbin"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf.bak.Ab12Cd"
+: > "$fx/fs/etc/wireguard/tunnelsats-route-guard.sh"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+: > "$fx/fs/etc/wireguard/tunnelsats-splitting-processes.sh"
+: > "$fx/fs/etc/wireguard/tunnelsats-resolve-dns-wg.sh"
+: > "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsatsv2.created"
+: > "$fx/fs/etc/wireguard/.tunnelsats-resolvconf.installed"
+printf 'from 10.9.9.0/25\nuidrange 1001-1001\n' > "$fx/fs/etc/wireguard/.tunnelsats-failclosed-rules"
+for u in tunnelsats-create-cgroup.service tunnelsats-splitting-processes.service tunnelsats-splitting-processes.timer \
+    tunnelsats-resolve-dns-wg.service tunnelsats-resolve-dns-wg.timer; do
+    printf '[Unit]\n' > "$fx/fs/etc/systemd/system/$u"
+done
+ln -s /lib/systemd/system/wg-quick@.service "$fx/fs/etc/systemd/system/multi-user.target.wants/wg-quick@tunnelsatsv2.service"
+printf '[Unit]\nRequires=tunnelsats-create-cgroup.service\n' > "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf"
+printf '[Unit]\n' > "$fx/fs/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf"
+cat > "$fx/fs/etc/systemd/system/lnd.service" <<'EOF'
+[Unit]
+Description=LND Lightning Network Daemon
+[Service]
+User=bitcoin
+#ExecStartPre=-/home/admin/config.scripts/lnd.check.sh prestart mainnet
+ExecStart=/usr/bin/cgexec -g net_cls:splitted_processes /usr/local/bin/lnd --configfile=/mnt/hdd/app-data/lnd/lnd.conf
+EOF
+printf '[Unit]\n# stale backup\n' > "$fx/fs/etc/systemd/system/lnd.service.bak"
+printf '#!/bin/bash\n' > "$fx/fs/home/admin/config.scripts/lnd.check.bak"
+printf '#!/usr/sbin/nft -f\n' > "$fx/fs/etc/nftablespriortunnelsats.backup"
+printf '#!/bin/bash\n' > "$fx/fs/usr/local/sbin/tunnelsats"
+: > "$fx/state/legacy_table_ip_tunnelsatsv2"
+: > "$fx/state/legacy_table_ip_tunnelsats_failclosed"
+printf '21818:\tfrom 10.9.9.0/25 blackhole\n21819:\tfrom all uidrange 1001-1001 blackhole\n21820:\tfrom all lookup main suppress_prefixlength 0\n21821:\tfrom all fwmark 0x1000000/0xff000000 lookup 51820\n' > "$fx/state/rules4"
+printf 'default dev tunnelsatsv2 scope link \n' > "$fx/state/routes4"
+
+run_snippet "$fx" "TS_COMMAND=detect; TS_JSON=1; TS_OUT_FD=1; cmd_detect"
+assert_json "$SN_OUT" 'd["install"]["kind"]' "legacy_v3_post_204" "15b: fixture starts as legacy_v3_post_204"
+
+run_snippet "$fx" "parse_args --json uninstall --managed --legacy-artifacts --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "15b: uninstall --managed --legacy-artifacts without inventory exits 0"
+assert_json "$doc" '[d["ok"], d["managed"], d["removed"], d["config_kept"], d["remaining"]]' \
+    '[true, false, true, false, []]' "15b: JSON reports managed=false, removed=true, config_kept=false, remaining=[]"
+assert_json "$doc" 'len(d["legacy_removed"]) > 10' "true" "15b: legacy_removed lists cleaned items"
+if grep -q '^ExecStart=/usr/local/bin/lnd ' "$fx/fs/etc/systemd/system/lnd.service" && \
+    grep -q '^ExecStartPre=-/home/admin/config.scripts/lnd.check.sh prestart mainnet$' "$fx/fs/etc/systemd/system/lnd.service" && \
+    [[ ! -e "$fx/fs/etc/systemd/system/lnd.service.bak" ]] && \
+    [[ -f "$fx/fs/home/admin/config.scripts/lnd.check.sh" ]]; then
+    pass "15b: lnd.service reverted in-place (not overwritten by stale .bak) and lnd.check.sh restored"
+else
+    fail "15b: lnd.service reverted in-place (not overwritten by stale .bak) and lnd.check.sh restored"
+fi
+
+run_snippet "$fx" "TS_COMMAND=detect; TS_JSON=1; TS_OUT_FD=1; cmd_detect"
+assert_json "$SN_OUT" 'd["install"]["kind"]' "none" "15b: detect --json reports kind=none after --legacy-artifacts cleanup"
 
 echo ""
 echo "Passed: $pass_count"
