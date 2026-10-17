@@ -4963,13 +4963,17 @@ ts_detect_install_kind() {
         status="${TSD_ART_STATUS[$i]}"
         detail="${TSD_ART_DETAIL[$i]}"
         case "$status" in
-            present) any_present=1 ;;
+            present)
+                if [[ "$id" != "managed_script" ]]; then
+                    any_present=1
+                fi
+                ;;
             permission_denied|error) any_unreadable=1; continue ;;
             *) continue ;;
         esac
         case "$id" in
             managed_inventory) managed=1; ts_detect_evidence managed_inventory ;;
-            managed_unit|managed_ln_dropin|managed_script|managed_attestation) managed_art=1; ts_detect_evidence managed_artifacts ;;
+            managed_unit|managed_ln_dropin|managed_attestation) managed_art=1; ts_detect_evidence managed_artifacts ;;
             raspiblitz_check_renamed) v2=1; ts_detect_evidence v2_check_script_renamed ;;
             umbrel_killswitch_dropin) v2=1; ts_detect_evidence v2_umbrel_killswitch ;;
             nftables_conf_backup) v2=1; ts_detect_evidence v2_nftables_conf_backup ;;
@@ -8423,6 +8427,9 @@ ts_m_existing_install() {
             case "${TSD_ART_STATUS[$i]}" in
                 absent|unavailable) continue ;;
             esac
+            if [[ "${TSD_ART_ID[$i]}" == "managed_script" ]]; then
+                continue
+            fi
             if [[ "$found" != *" ${TSD_ART_ID[$i]} "* ]]; then
                 found+="${TSD_ART_ID[$i]} "
             fi

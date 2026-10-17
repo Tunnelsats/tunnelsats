@@ -2041,6 +2041,50 @@ run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=detect; TS_OUT_FD=1; cmd_detect'
 doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
 assert_json "$doc" '[d["install"]["kind"], d["install"]["candidates"]]' '["unknown", ["managed"]]' "detect: managed units without the inventory are unknown (candidate managed)"
 
+# Isolation: A lone managed_script without the inventory is kind "none"
+fx=$(new_fixture detect-lone)
+echo "loaded" > "$fx/state/unit_lnd.service_LoadState"
+echo "bitcoin" > "$fx/state/unit_lnd.service_User"
+mkdir -p "$fx/fs/usr/local/sbin"
+touch "$fx/fs/usr/local/sbin/tunnelsats"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=detect; TS_OUT_FD=1; cmd_detect'
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" 'd["install"]["kind"]' "none" "detect: a lone managed_script is kind none"
+assert_json "$doc" 'next(a["status"] for a in d["install"]["artifacts"] if a["id"] == "managed_script")' "present" "detect: the lone managed_script is listed as present"
+
+# Verify exits 3 (E_NOT_INSTALLED) for a lone managed_script
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=verify; TS_OUT_FD=1; cmd_verify'
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "3" "$SN_RC" "verify: a lone managed_script exits 3"
+assert_json "$doc" 'd["errors"][0]["code"]' "E_NOT_INSTALLED" "verify: a lone managed_script reports E_NOT_INSTALLED"
+
+# If another managed artifact exists alongside it without inventory, it is "unknown"
+mkdir -p "$fx/fs/etc/systemd/system"
+touch "$fx/fs/etc/systemd/system/tunnelsats.slice"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=detect; TS_OUT_FD=1; cmd_detect'
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" 'd["install"]["kind"]' "unknown" "detect: managed_script plus slice is unknown"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=verify; TS_OUT_FD=1; cmd_verify'
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "9" "$SN_RC" "verify: managed_script plus slice exits 9 (unmanaged)"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=install; TS_OPT_MANAGED=1; TS_OUT_FD=1; ts_m_install_preflight'
+assert_equals "7" "$SN_RC" "install: managed_script plus slice exits 7 (E_LEGACY_INSTALL)"
+
+# If wg_config exists alongside managed_script, install --managed refuses with E_CONFIG_PRESENT
+rm -f "$fx/fs/etc/systemd/system/tunnelsats.slice"
+mkdir -p "$fx/fs/etc/wireguard"
+touch "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=install; TS_OPT_MANAGED=1; TS_OUT_FD=1; ts_m_install_preflight'
+assert_equals "7" "$SN_RC" "install: managed_script plus wg_config exits 7"
+assert_contains "$SN_OUT" "E_CONFIG_PRESENT" "install: managed_script plus wg_config reports E_CONFIG_PRESENT"
+
+# If ONLY managed_script exists, install --managed passes preflight
+rm -f "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=install; TS_OPT_MANAGED=1; TS_OUT_FD=1; ts_m_install_preflight && echo PREFLIGHT_OK'
+assert_equals "0" "$SN_RC" "install: lone managed_script passes preflight"
+assert_contains "$SN_OUT" "PREFLIGHT_OK" "install: lone managed_script preflight completes"
+
+
 # ---------------------------------------------------------------------------
 # GROUP 9: Install files and removal
 # ---------------------------------------------------------------------------
