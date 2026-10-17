@@ -3774,6 +3774,30 @@ doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
 assert_json "$doc" '[d["ok"], d["legacy_remaining"]]' '[true, ["/etc/wireguard/.tunnelsats-ufw-9735-tunnelsats-old.created"]]' \
     "16f: adopt --managed reports unremoved UFW marker in legacy_remaining when ufw fails"
 
+fx=$(rb_preflight_fixture adopt-ufw-narrow)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+: > "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsats-old.created"
+cat > "$fx/state/ufw_status" <<'EOF'
+Status: active
+
+To                         Action      From
+--                         ------      ----
+9735/udp on tunnelsatsv2   ALLOW IN    Anywhere
+9735/tcp                   ALLOW IN    192.168.1.0/24
+EOF
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed raspiblitz --impl lnd --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["ok"], d["legacy_remaining"]]' '[true, []]' "16f: adopt --managed succeeds when narrower UFW rules exist"
+if [[ -f "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsatsv2.created" ]] && \
+    grep -q '^ufw allow in on tunnelsatsv2 to any port 9735 proto tcp$' "$fx/state/calls"; then
+    pass "16f: narrower UDP or source-limited TCP UFW rules do not prevent adding unrestricted TCP 9735 allow on tunnelsatsv2"
+else
+    fail "16f: narrower UDP or source-limited TCP UFW rules do not prevent adding unrestricted TCP 9735 allow on tunnelsatsv2"
+fi
+
 echo ""
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"

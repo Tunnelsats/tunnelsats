@@ -10077,9 +10077,15 @@ ts_m_clean_legacy_artifacts() {
                 if [[ "$ufw_iface" == "$TS_M_IFACE" ]]; then
                     continue
                 fi
-                if command -v ufw >/dev/null 2>&1 && ! is_port_allowed_in_ufw "$TS_M_IFACE" "9735"; then
-                    if ufw allow in on "$TS_M_IFACE" to any port 9735 proto tcp >/dev/null 2>&1; then
-                        : > "${wg_full}/.tunnelsats-ufw-9735-${TS_M_IFACE}.created" 2>/dev/null || true
+                if command -v ufw >/dev/null 2>&1; then
+                    local ufw_st ufw_out
+                    ufw_st=$(LC_ALL=C ufw status 2>/dev/null || true)
+                    if ! printf '%s\n' "$ufw_st" | grep -qE "^[[:space:]]*9735/tcp[[:space:]]+on[[:space:]]+${TS_M_IFACE}[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+Anywhere([[:space:]]|\$)"; then
+                        if ufw_out=$(LC_ALL=C ufw allow in on "$TS_M_IFACE" to any port 9735 proto tcp 2>/dev/null); then
+                            if [[ "$ufw_out" != *"Skipping"* ]]; then
+                                : > "${wg_full}/.tunnelsats-ufw-9735-${TS_M_IFACE}.created" 2>/dev/null || true
+                            fi
+                        fi
                     fi
                 fi
             fi
