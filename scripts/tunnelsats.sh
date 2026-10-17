@@ -9112,6 +9112,18 @@ ts_m_remove_dataplane() {
             rm -f "${TS_FS_ROOT}${rel}"
         fi
     done
+    local ufw_m="${TS_FS_ROOT}/etc/wireguard/.tunnelsats-ufw-9735-${TS_M_IFACE}.created"
+    if [[ -e "$ufw_m" ]] || [[ -L "$ufw_m" ]]; then
+        if command -v ufw >/dev/null 2>&1; then
+            if ufw delete allow in on "$TS_M_IFACE" to any port 9735 proto tcp >/dev/null 2>&1; then
+                rm -f "$ufw_m"
+            else
+                TS_M_REMAINING+=("/etc/wireguard/.tunnelsats-ufw-9735-${TS_M_IFACE}.created")
+            fi
+        else
+            rm -f "$ufw_m"
+        fi
+    fi
     rm -f "${TS_FS_ROOT}${TS_M_ATTEST}" "${TS_FS_ROOT}${TS_M_RULESET_FILE}" "${TS_FS_ROOT}${TS_M_VERIFIER_STATE}" "${TS_FS_ROOT}${TS_M_STOPPED}" "${TS_FS_ROOT}${TS_M_STOPPED}.tmp"
     "$SYSTEMCTL_BIN" daemon-reload >/dev/null 2>&1 || true
     for unit in "$TS_M_WG_UNIT" "$TS_M_TIMER_UNIT" "$TS_M_VERIFIER_UNIT" "$TS_M_KILLSWITCH_UNIT" "$TS_M_SLICE_UNIT"; do
@@ -10046,6 +10058,16 @@ ts_m_clean_legacy_artifacts() {
             rel="${f#"$TS_FS_ROOT"}"
             local ufw_iface="${f##*/.tunnelsats-ufw-9735-}"
             ufw_iface="${ufw_iface%.created}"
+            if [[ "${TS_COMMAND:-}" == "adopt" ]]; then
+                if [[ "$ufw_iface" == "$TS_M_IFACE" ]]; then
+                    continue
+                fi
+                if command -v ufw >/dev/null 2>&1; then
+                    if ufw allow in on "$TS_M_IFACE" to any port 9735 proto tcp >/dev/null 2>&1; then
+                        : > "${wg_full}/.tunnelsats-ufw-9735-${TS_M_IFACE}.created" 2>/dev/null || true
+                    fi
+                fi
+            fi
             if command -v ufw >/dev/null 2>&1; then
                 if ufw delete allow in on "$ufw_iface" to any port 9735 proto tcp >/dev/null 2>&1; then
                     rm -f "$f"
@@ -10216,8 +10238,8 @@ cmd_uninstall_managed() {
                     ts_m_lifecycle_cleanup
                     ts_fail 1 E_ABORTED operational "Uninstall aborted; nothing was changed"
                 fi
-                local -a leg_units=() leg_active_units=()
-                local leg_u leg_state leg_impl leg_prof
+                local -a leg_units=() leg_active_units=() leg_disabled_units=() leg_nc_lines=()
+                local leg_u leg_state leg_impl leg_prof leg_nc_reason=""
                 leg_prof=$(ts_guess_platform "$TS_FS_ROOT")
                 [[ "$leg_prof" != "raspiblitz" ]] && leg_prof="baremetal"
                 for leg_u in lnd.service tlnd.service slnd.service lightningd.service tlightningd.service slightningd.service litd.service lit.service; do
@@ -10262,7 +10284,17 @@ cmd_uninstall_managed() {
                     esac
                     ts_m_node_config_clearnet "$leg_impl" "$leg_u" "$leg_prof"
                     if [[ "$TS_M_NC_STATUS" != "clean" ]]; then
-                        if ! "$SYSTEMCTL_BIN" disable "$leg_u" >/dev/null 2>&1; then
+                        [[ -z "$leg_nc_reason" ]] && leg_nc_reason="node_config_${TS_M_NC_STATUS}"
+                        leg_nc_lines+=("${TS_M_NC_LINES[@]}")
+                        print_warning "${leg_u} stays stopped: without the tunnel, its clearnet settings would use the regular internet connection."
+                        ts_m_uninstall_print_lines
+                        if "$SYSTEMCTL_BIN" disable "$leg_u" >/dev/null 2>&1; then
+                            leg_disabled_units+=("$leg_u")
+                            if [[ "$TS_JSON" -ne 1 ]]; then
+                                echo "The unit was disabled, so it does not start with these settings on the next boot." >&2
+                                echo "Once clean, enable and start it with: sudo systemctl enable --now ${leg_u}" >&2
+                            fi
+                        else
                             TS_M_REMAINING+=("${leg_u} (could not be disabled)")
                         fi
                     elif [[ " ${leg_active_units[*]} " == *" ${leg_u} "* ]] && [[ ${#TS_M_REMAINING[@]} -eq 0 ]]; then
@@ -10276,7 +10308,7 @@ cmd_uninstall_managed() {
                     rc=1
                 fi
                 if [[ "$TS_JSON" -eq 1 ]]; then
-                    local items=() errors=() remaining_j legacy_j
+                    local items=() errors=() remaining_j legacy_j disabled_j nc_lines_j action_j="null"
                     for i in "${TS_M_REMAINING[@]}"; do
                         ts_j_str "$i"
                         items+=("$TS_R")
@@ -10290,12 +10322,32 @@ cmd_uninstall_managed() {
                     done
                     ts_j_arr "${items[@]}"
                     legacy_j="$TS_R"
+                    items=()
+                    for i in "${leg_disabled_units[@]}"; do
+                        ts_j_str "$i"
+                        items+=("$TS_R")
+                    done
+                    ts_j_arr "${items[@]}"
+                    disabled_j="$TS_R"
+                    items=()
+                    for i in "${leg_nc_lines[@]}"; do
+                        ts_j_str "$i"
+                        items+=("$TS_R")
+                    done
+                    ts_j_arr "${items[@]}"
+                    nc_lines_j="$TS_R"
+                    if [[ ${#leg_disabled_units[@]} -gt 0 ]]; then
+                        ts_j_obj s:reason "${leg_nc_reason:-node_config_clearnet}" r:units "$disabled_j" \
+                            r:lines "$nc_lines_j" s:then "systemctl enable --now ${leg_disabled_units[*]}"
+                        action_j="$TS_R"
+                    fi
                     if [[ "$rc" -ne 0 ]]; then
                         ts_j_error E_UNINSTALL_INCOMPLETE operational "Could not remove: ${TS_M_REMAINING[*]}"
                         errors+=("$TS_R")
                     fi
                     ts_j_obj b:managed false b:removed "$([[ "$rc" -eq 0 ]] && echo 1 || echo 0)" \
-                        r:remaining "$remaining_j" r:legacy_removed "$legacy_j" b:config_kept "$TS_OPT_KEEP_CONFIG"
+                        r:remaining "$remaining_j" r:legacy_removed "$legacy_j" b:config_kept "$TS_OPT_KEEP_CONFIG" \
+                        r:disabled_units "$disabled_j" r:node_config_lines "$nc_lines_j" r:action_required "$action_j"
                     ts_json_document "$rc" "$(IFS=,; echo "[${errors[*]}]")" "${TS_R:1:${#TS_R}-2}"
                 else
                     print_success "Legacy TunnelSats artifacts cleaned (${#TS_M_LEGACY_REMOVED[@]} item(s) removed)"

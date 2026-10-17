@@ -363,6 +363,14 @@ while [[ $# -gt 0 ]] && [[ "$1" != "--" ]]; do shift; done
 shift
 exec "$@"
 EOF
+
+cat > "$STUB_BIN/ufw" <<'EOF'
+#!/bin/bash
+# Stub for ufw: logs the call and exits with ufw_rc (default 0)
+s="${STUB_STATE:?}"
+printf 'ufw %s\n' "$*" >> "$s/calls"
+exit "$(cat "$s/ufw_rc" 2>/dev/null || echo 0)"
+EOF
 chmod +x "$STUB_BIN"/*
 
 # Creates a fresh fixture: the TS_FS_ROOT tree (fs/) and the stub state (state/). Prints its path.
@@ -3573,13 +3581,14 @@ else
     fail "16b: cgexec stripped in-place, stale .bak and legacy drop-in removed, managed drop-in and inventory installed"
 fi
 
-# 16c: adopt --managed raspiblitz --impl lnd on legacy_v3_pre_204 (uncomments lnd.check.sh, strips cgexec)
+# 16c: adopt --managed raspiblitz --impl lnd on legacy_v3_pre_204 (uncomments lnd.check.sh, strips cgexec, keeps UFW allow on tunnelsatsv2)
 fx=$(rb_preflight_fixture adopt-rb-v3pre)
 mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard" "$fx/fs/etc/systemd/system/lnd.service.d"
 : > "$fx/fs/lib/systemd/system/wg-quick@.service"
 cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
 printf '#Tunnelsats-Setupv2-Non-Docker\n' >> "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
 : > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+: > "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsatsv2.created"
 printf '[Unit]\nWants=tunnelsats-create-cgroup.service\n' > "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf"
 cat > "$fx/fs/etc/systemd/system/lnd.service" <<'EOF'
 [Unit]
@@ -3596,10 +3605,12 @@ assert_json "$doc" '[d["ok"], d["adopted"], d["profile"], d["impl"], d["unit"], 
     '[true, true, "raspiblitz", "lnd", "lnd.service", "legacy_v3_pre_204", ["ln_unit_cgexec", "ln_unit_check_disabled"], true]' \
     "16c: adopt JSON on RaspiBlitz reports legacy_v3_pre_204 and both unit edits reverted"
 if grep -q '^ExecStartPre=-/home/admin/config.scripts/lnd.check.sh prestart mainnet$' "$fx/fs/etc/systemd/system/lnd.service" && \
-    grep -q '^ExecStart=/usr/local/bin/lnd ' "$fx/fs/etc/systemd/system/lnd.service"; then
-    pass "16c: RaspiBlitz lnd.check.sh uncommented and cgexec stripped"
+    grep -q '^ExecStart=/usr/local/bin/lnd ' "$fx/fs/etc/systemd/system/lnd.service" && \
+    [[ -f "$fx/fs/etc/wireguard/.tunnelsats-ufw-9735-tunnelsatsv2.created" ]] && \
+    ! grep -q '^ufw delete ' "$fx/state/calls"; then
+    pass "16c: RaspiBlitz lnd.check.sh uncommented, cgexec stripped, and UFW allow rule on tunnelsatsv2 preserved"
 else
-    fail "16c: RaspiBlitz lnd.check.sh uncommented and cgexec stripped"
+    fail "16c: RaspiBlitz lnd.check.sh uncommented, cgexec stripped, and UFW allow rule on tunnelsatsv2 preserved"
 fi
 run_snippet "$fx" "$rb_env TS_COMMAND=detect; TS_JSON=1; TS_OUT_FD=1; cmd_detect"
 assert_json "$SN_OUT" 'd["install"]["kind"]' "managed" "16c: detect --json reports kind=managed after adopt"
@@ -3658,8 +3669,9 @@ printf 'table inet old_backup {}\n' > "$fx/fs/etc/nftablespriortunnelsats.backup
 run_snippet "$fx" "parse_args --json uninstall --managed --legacy-artifacts --non-interactive --yes"
 doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
 assert_equals "1" "$SN_RC" "15c: --legacy-artifacts exits 1 when custom /etc/nftables.conf prevents overwriting from backup"
-assert_json "$doc" '[d["ok"], d["removed"], d["remaining"]]' '[false, false, ["/etc/nftablespriortunnelsats.backup"]]' \
-    "15c: JSON reports /etc/nftablespriortunnelsats.backup in remaining"
+assert_json "$doc" '[d["ok"], d["removed"], d["remaining"], d["disabled_units"], d["action_required"]["reason"], d["action_required"]["then"]]' \
+    '[false, false, ["/etc/nftablespriortunnelsats.backup"], ["lnd.service"], "node_config_clearnet", "systemctl enable --now lnd.service"]' \
+    "15c: JSON reports /etc/nftablespriortunnelsats.backup in remaining and disabled_units/action_required for lnd.service"
 assert_equals "table inet custom_fw {}" "$(cat "$fx/fs/etc/nftables.conf")" "15c: custom /etc/nftables.conf is preserved"
 if calls_before "$fx" "systemctl stop lnd.service" "systemctl stop wg-quick@tunnelsatsv2.service" && \
     grep -q '^systemctl disable lnd\.service$' "$fx/state/calls"; then
