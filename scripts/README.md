@@ -40,7 +40,7 @@ Options are accepted before or after the command:
 | `--yes` | Answers the confirmations (uninstall, restart: stop the node first, LIT, managed install, adopt and uninstall) |
 | `--remove-packages`, `--keep-packages` | Answer the uninstall package question; non-interactive mode keeps the packages |
 | `--keep-config` | `uninstall` and `uninstall --managed`: keep the WireGuard configuration in `/etc/wireguard` on disk |
-| `--legacy-artifacts` | `uninstall` and `uninstall --managed`: also remove leftover artifacts from earlier v2/v3 standard installs |
+| `--legacy-artifacts` | `uninstall --managed`: also remove leftover artifacts from earlier v2/v3 standard installs (or clean a legacy install when no managed record exists) |
 | `--managed [profile]` | Managed mode for `install` and `adopt` (profile `baremetal` or `raspiblitz`) and `uninstall` |
 | `--uid-backstop` | `install --managed` and `adopt --managed`: also routes the Lightning user's traffic into the tunnel by uid (side effects in [docs/managed-mode.md](../docs/managed-mode.md)) |
 | `--no-probe` | `verify`: kernel checks only, no network probes |
@@ -60,7 +60,7 @@ We are iteratively validating `tunnelsats.sh` across various Node OS platforms. 
 | :---------------- | :------------------- | :----------------- | :---------------------------: | :--------------------------------------------------------------: |
 | Raspberry Pi / PC | **Umbrel**           | umbrelOS 1.0+      |     N/A (Use Native App)      | ✅ Native Umbrel App (Community Store / Official Review Pending) |
 | Any Hardware      | **StartOS (Start9)** | 0.4.0+             |   N/A (Use Native Package)    |   ✅ Native StartOS Package (Start9 Community Registry)   |
-| Raspberry Pi      | **RaspiBlitz**       | v1.11.x+           |         ✅ Supported          |         ✅ Built-in SSH Menu (`SUBSCRIBE > TunnelSats`)          |
+| Raspberry Pi      | **RaspiBlitz**       | v1.11.x+           |         ✅ Supported          |    ✅ Built-in SSH Menu (`SUBSCRIBE > TunnelSats` on v1.12+)     |
 | PC / VPS          | **Bare Metal**       | Debian 12 / Ubuntu |         ✅ Supported          |                               N/A                                |
 | Pi / PC (x86)     | **myNode**           | v0.3.x             |        ⚠️ Experimental        |                               N/A                                |
 
