@@ -490,12 +490,12 @@ test_failclosed_covers_forward_and_output() {
 
     assert_status 1 "$status" "enable_services fails closed when WireGuard start fails"
 
-    if echo "$output" | grep -q "NFT_CALLED:add chain ip tunnelsats_failclosed forward" && \
-       echo "$output" | grep -q "NFT_CALLED:add rule ip tunnelsats_failclosed forward ip saddr 10.9.9.0/25 fib daddr type != local counter drop"; then
-        echo "PASS: Emergency fail-closed drop covers forwarded Docker traffic"
+    if echo "$output" | grep -q "NFT_CALLED:add chain inet tunnelsats_failclosed forward" && \
+       echo "$output" | grep -q "NFT_CALLED:add rule inet tunnelsats_failclosed forward ip saddr 10.9.9.0/25 fib daddr type != local counter drop"; then
+        echo "PASS: Emergency fail-closed drop covers forwarded Docker traffic in inet table"
         pass_count=$((pass_count + 1))
     else
-        echo "FAIL: Emergency fail-closed did not configure Docker forward chain drop"
+        echo "FAIL: Emergency fail-closed did not configure inet Docker forward chain drop"
         fail_count=$((fail_count + 1))
     fi
 }
@@ -998,11 +998,22 @@ make_fake_net_bin() {
     cat > "$bin/ip" <<'FAKEIP'
 #!/bin/bash
 echo "IP:$*" >> "$HOOK_LOG"
-[[ "$1" == "-4" ]] && shift
+fam="4"
+if [[ "$1" == "-4" ]]; then
+    shift
+elif [[ "$1" == "-6" ]]; then
+    fam="6"
+    shift
+fi
 args="$*"
-# Blackhole policy rules live in $RULES in `ip -4 rule show` format ("21818:<TAB>from X blackhole").
+# Blackhole policy rules live in $RULES (IPv4) and ${RULES6:-${RULES:+${RULES}6}} (IPv6) in `ip rule show` format.
 # IP_FAIL_RULE_ADD=1 / IP_FAIL_RULE_DEL=1 / IP_FAIL_RULE_SHOW=1 simulate kernel/permission failures.
-rules="${RULES:-/dev/null}"
+if [[ "$fam" == "6" ]]; then
+    rules="${RULES6:-${RULES:+${RULES}6}}"
+    rules="${rules:-/dev/null}"
+else
+    rules="${RULES:-/dev/null}"
+fi
 case "$args" in
     "rule show")
         [[ "${IP_FAIL_RULE_SHOW:-0}" == 1 ]] && { echo "RTNETLINK answers: Operation not permitted" >&2; exit 2; }
@@ -1075,25 +1086,34 @@ case "$1 $2" in
 esac
 exit 0
 FAKEIP
-    for tool in iptables sysctl ping; do
+    for tool in iptables ip6tables sysctl ping; do
         printf '#!/bin/bash\necho "%s:$*" >> "$HOOK_LOG"\nexit 0\n' "${tool^^}" > "$bin/$tool"
     done
     cat > "$bin/nft" <<'FAKENFT'
 #!/bin/bash
-# Stateful nft for table "ip tunnelsats_failclosed", kept in $NFT_STATE (absent = no table).
+# Stateful nft for table "inet tunnelsats_failclosed" ($NFT_STATE) and legacy "ip tunnelsats_failclosed" (${NFT_STATE}_ip).
 # NFT_FAIL_RULES=1 makes nft reject "add rule" (e.g. nf_tables failed to load).
 echo "NFT:$*" >> "$HOOK_LOG"
 state="${NFT_STATE:-/dev/null}"
+state_ip="${state}_ip"
 args="$*"
 case "$args" in
-    "add table ip tunnelsats_failclosed") touch "$state"; exit 0 ;;
-    "add chain ip tunnelsats_failclosed "*) [[ -f "$state" ]] || exit 1; echo "chain ${args#add chain ip tunnelsats_failclosed }" >> "$state"; exit 0 ;;
-    "add rule ip tunnelsats_failclosed "*)
+    "add table inet tunnelsats_failclosed") touch "$state"; exit 0 ;;
+    "add table ip tunnelsats_failclosed") touch "$state_ip"; exit 0 ;;
+    "add chain inet tunnelsats_failclosed "*) [[ -f "$state" ]] || exit 1; echo "chain ${args#add chain inet tunnelsats_failclosed }" >> "$state"; exit 0 ;;
+    "add chain ip tunnelsats_failclosed "*) [[ -f "$state_ip" ]] || exit 1; echo "chain ${args#add chain ip tunnelsats_failclosed }" >> "$state_ip"; exit 0 ;;
+    "add rule inet tunnelsats_failclosed "*)
         [[ "${NFT_FAIL_RULES:-0}" == 1 ]] && { echo "Error: Could not process rule: No such file or directory" >&2; exit 1; }
         [[ -f "$state" ]] || exit 1
-        echo "rule ${args#add rule ip tunnelsats_failclosed }" >> "$state"; exit 0 ;;
-    "list table ip tunnelsats_failclosed") [[ -f "$state" ]] || { echo "Error: No such file or directory" >&2; exit 1; }; cat "$state"; exit 0 ;;
-    "delete table ip tunnelsats_failclosed") [[ -f "$state" ]] || exit 1; rm -f "$state"; exit 0 ;;
+        echo "rule ${args#add rule inet tunnelsats_failclosed }" >> "$state"; exit 0 ;;
+    "add rule ip tunnelsats_failclosed "*)
+        [[ "${NFT_FAIL_RULES:-0}" == 1 ]] && { echo "Error: Could not process rule: No such file or directory" >&2; exit 1; }
+        [[ -f "$state_ip" ]] || exit 1
+        echo "rule ${args#add rule ip tunnelsats_failclosed }" >> "$state_ip"; exit 0 ;;
+    "list table inet tunnelsats_failclosed") [[ -f "$state" ]] || { echo "Error: No such file or directory" >&2; exit 1; }; cat "$state"; exit 0 ;;
+    "list table ip tunnelsats_failclosed") [[ -f "$state_ip" ]] || { echo "Error: No such file or directory" >&2; exit 1; }; cat "$state_ip"; exit 0 ;;
+    "delete table inet tunnelsats_failclosed") [[ -f "$state" ]] || exit 1; rm -f "$state"; exit 0 ;;
+    "delete table ip tunnelsats_failclosed") [[ -f "$state_ip" ]] || exit 1; rm -f "$state_ip"; exit 0 ;;
 esac
 exit 0
 FAKENFT
@@ -1163,7 +1183,7 @@ test_runtime_hooks_scope() {
     set +e; run_wg_hooks PostUp "$conf" "$bin" &>/dev/null; status=$?; set -e
     assert_status 0 "$status" "[$label] PostUp succeeds on an empty table"
     assert_file_contains_line "$ROUTES" "default dev tunnelsatsv2" "[$label] PostUp installs the tunnel default route in table 51820"
-    assert_log_contains "$HOOK_LOG" "NFT:delete table ip tunnelsats_failclosed" "[$label] Successful PostUp releases any emergency fail-closed drop"
+    assert_log_contains "$HOOK_LOG" "NFT:delete table inet tunnelsats_failclosed" "[$label] Successful PostUp releases any emergency fail-closed drop"
     local route_line rule_line
     route_line=$(grep -n "IP:route add default dev tunnelsatsv2" "$HOOK_LOG" | head -n 1 | cut -d: -f1)
     rule_line=$(grep -n "IP:rule add .*table 51820" "$HOOK_LOG" | head -n 1 | cut -d: -f1)
@@ -1202,9 +1222,9 @@ test_runtime_hooks_scope() {
     fi
     assert_file_contains_line "$ROUTES" "default dev wg1" "[$label] Foreign route survives the refused PostUp"
     assert_log_not_contains "$HOOK_LOG" "IP:rule add" "[$label] No policy rule steers traffic into a foreign-owned table"
-    assert_log_contains "$HOOK_LOG" "NFT:add rule ip tunnelsats_failclosed output meta cgroup 1118498 fib daddr type != local counter drop" "[$label] Refused PostUp arms the emergency fail-closed drop"
-    assert_log_contains "$HOOK_LOG" "NFT:add rule ip tunnelsats_failclosed forward ip saddr 10.9.9.0/25 fib daddr type != local counter drop" "[$label] Emergency drop also covers forwarded Docker traffic"
-    assert_log_contains "$HOOK_LOG" "NFT:list table ip tunnelsats_failclosed" "[$label] Emergency drop is verified with a real ruleset read"
+    assert_log_contains "$HOOK_LOG" "NFT:add rule inet tunnelsats_failclosed output meta cgroup 1118498 fib daddr type != local counter drop" "[$label] Refused PostUp arms the emergency fail-closed drop"
+    assert_log_contains "$HOOK_LOG" "NFT:add rule inet tunnelsats_failclosed forward ip saddr 10.9.9.0/25 fib daddr type != local counter drop" "[$label] Emergency drop also covers forwarded Docker traffic"
+    assert_log_contains "$HOOK_LOG" "NFT:list table inet tunnelsats_failclosed" "[$label] Emergency drop is verified with a real ruleset read"
     assert_log_not_contains "$HOOK_LOG" "blackhole priority" "[$label] Verified nft drop needs no blackhole rule fallback"
 
     # 5) Unreadable table state is unverified: fail closed
@@ -1328,21 +1348,26 @@ test_failclosed_rule_fallback_non_docker() {
 
     replay_postup "$conf" "$bin"
     assert_status 1 "$hook_status" "[Non-Docker] nft failure: refused PostUp is armed via the blackhole rule fallback (exit 1)"
-    assert_file_contains_line "$RULES" "21819:${TAB}from all uidrange 4242-4242 blackhole" "[Non-Docker] Fallback blackholes the host Lightning daemon's uid"
+    assert_file_contains_line "$RULES" "21819:${TAB}from all uidrange 4242-4242 blackhole" "[Non-Docker] Fallback blackholes the host Lightning daemon's uid (IPv4)"
+    assert_file_contains_line "${RULES}6" "21819:${TAB}from all uidrange 4242-4242 blackhole" "[Non-Docker] Fallback blackholes the host Lightning daemon's uid (IPv6)"
     assert_file_contains_line "$RULES" "21818:${TAB}from 10.9.9.0/25 blackhole" "[Non-Docker] Fallback also blackholes the tunnel subnet"
 
     replay_postup "$conf" "$bin"
-    assert_equals "1" "$(count_lines "$RULES" "21819:${TAB}from all uidrange 4242-4242 blackhole")" "[Non-Docker] Repeated refusal adds no duplicate uid rule"
+    assert_equals "1" "$(count_lines "$RULES" "21819:${TAB}from all uidrange 4242-4242 blackhole")" "[Non-Docker] Repeated refusal adds no duplicate IPv4 uid rule"
+    assert_equals "1" "$(count_lines "${RULES}6" "21819:${TAB}from all uidrange 4242-4242 blackhole")" "[Non-Docker] Repeated refusal adds no duplicate IPv6 uid rule"
 
     # Another service has its own UID-range blackhole at 21819: release must keep it
     printf '21819:\tfrom all uidrange 9999-9999 blackhole\n' >> "$RULES"
+    printf '21819:\tfrom all uidrange 9999-9999 blackhole\n' >> "${RULES}6"
     unset NFT_FAIL_RULES
     rm -f "$ROUTES"
     replay_postup "$conf" "$bin"
     assert_status 0 "$hook_status" "[Non-Docker] PostUp succeeds once table 51820 is free"
     assert_file_not_contains_line "$RULES" "21818:${TAB}from 10.9.9.0/25 blackhole" "[Non-Docker] Successful PostUp releases the TunnelSats subnet blackhole"
-    assert_file_not_contains_line "$RULES" "21819:${TAB}from all uidrange 4242-4242 blackhole" "[Non-Docker] Successful PostUp releases the TunnelSats node UID blackhole"
-    assert_file_contains_line "$RULES" "21819:${TAB}from all uidrange 9999-9999 blackhole" "[Non-Docker] Release preserves a foreign UID blackhole rule at priority 21819"
+    assert_file_not_contains_line "$RULES" "21819:${TAB}from all uidrange 4242-4242 blackhole" "[Non-Docker] Successful PostUp releases the TunnelSats node UID IPv4 blackhole"
+    assert_file_not_contains_line "${RULES}6" "21819:${TAB}from all uidrange 4242-4242 blackhole" "[Non-Docker] Successful PostUp releases the TunnelSats node UID IPv6 blackhole"
+    assert_file_contains_line "$RULES" "21819:${TAB}from all uidrange 9999-9999 blackhole" "[Non-Docker] Release preserves a foreign IPv4 UID blackhole rule at priority 21819"
+    assert_file_contains_line "${RULES}6" "21819:${TAB}from all uidrange 9999-9999 blackhole" "[Non-Docker] Release preserves a foreign IPv6 UID blackhole rule at priority 21819"
 
     unset HOOK_LOG ROUTES NFT_STATE RULES
     rm -rf "$dir" "$bin"
@@ -1776,6 +1801,102 @@ EOF
     assert_status 1 "$status" "Verification still requires containers the installer restarted to be running"
 }
 test_verify_rejects_restarted_container_not_running
+
+test_boot_preup_and_cgroup_arm_failclosed() {
+    local dir bin conf status
+    dir=$(mktemp -d); bin=$(mktemp -d)
+    NODE_USER_T=lnd NODE_UID_T=4242 generate_tunnel_config baremetal "$dir"
+    make_fake_net_bin "$bin"
+    conf="$dir/tunnelsatsv2.conf"
+    export HOOK_LOG="$dir/hooks.log" ROUTES="$dir/table51820" NFT_STATE="$dir/nft_failclosed" RULES="$dir/rules"
+
+    set +e; run_wg_hooks PreUp "$conf" "$bin" &>/dev/null; status=$?; set -e
+    assert_status 0 "$status" "[Boot PreUp] PreUp hook arms emergency fail-closed block before wg setconf"
+    assert_log_contains "$HOOK_LOG" "NFT:add table inet tunnelsats_failclosed" "[Boot PreUp] PreUp creates inet tunnelsats_failclosed table"
+    assert_log_contains "$HOOK_LOG" "NFT:add rule inet tunnelsats_failclosed output meta skuid 4242 fib daddr type != local counter drop" "[Boot PreUp] PreUp drops non-local output for node UID across IPv4/IPv6"
+
+    # Also verify that ts_release_failclosed removes both inet and legacy ip tables when both exist
+    touch "${NFT_STATE}_ip"
+    rm -f "$ROUTES"
+    set +e; run_wg_hooks PostUp "$conf" "$bin" &>/dev/null; status=$?; set -e
+    assert_status 0 "$status" "[Boot PreUp] PostUp releases both inet and legacy ip failclosed tables"
+    if [[ ! -e "$NFT_STATE" ]] && [[ ! -e "${NFT_STATE}_ip" ]]; then
+        echo "PASS: [Boot PreUp] Both inet and legacy ip failclosed tables removed"
+        pass_count=$((pass_count + 1))
+    else
+        echo "FAIL: [Boot PreUp] Leftover failclosed table state after release"
+        fail_count=$((fail_count + 1))
+    fi
+
+    unset HOOK_LOG ROUTES NFT_STATE RULES
+    rm -rf "$dir" "$bin"
+}
+test_boot_preup_and_cgroup_arm_failclosed
+
+test_uninstall_restores_legacy_ipv6_on_docker_and_nondocker() {
+    local tmp log
+    for plat in umbrel baremetal; do
+        tmp=$(mktemp -d); log=$(mktemp)
+        mkdir -p "$tmp/etc/wireguard" "$tmp/etc/systemd/system"
+        cat > "$tmp/etc/wireguard/tunnelsatsv2.conf" <<'EOF'
+#Tunnelsats-Setupv2-Docker
+[Interface]
+PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
+EOF
+        : > "$tmp/etc/wireguard/.tunnelsats-ipv6-disabled"
+        TMP_T="$tmp" PLAT_T="$plat" run_case "$log" <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+TS_FS_ROOT="$TMP_T"
+WG_DIR="$TMP_T/etc/wireguard"
+PLATFORM="$PLAT_T"
+LN_IMPL="lnd"
+TS_OPT_YES=1
+TS_OPT_NON_INTERACTIVE=1
+check_root() { :; }
+detect_platform() { :; }
+detect_ln_implementation() { :; }
+systemctl() { return 0; }
+nft() { return 0; }
+ip() { return 0; }
+docker() { return 0; }
+sysctl() { echo "SYSCTL:$*" >> "$LOG"; return 0; }
+cmd_uninstall
+EOF
+        assert_log_contains "$log" "SYSCTL:-w net.ipv6.conf.all.disable_ipv6=0" "[$plat] cmd_uninstall restores net.ipv6.conf.all.disable_ipv6=0 when marker exists"
+        assert_log_contains "$log" "SYSCTL:-w net.ipv6.conf.default.disable_ipv6=0" "[$plat] cmd_uninstall restores net.ipv6.conf.default.disable_ipv6=0 when marker exists"
+        rm -rf "$tmp" "$log"
+
+        # Without .tunnelsats-ipv6-disabled (operator had IPv6 disabled prior to install), uninstall must not enable IPv6
+        tmp=$(mktemp -d); log=$(mktemp)
+        mkdir -p "$tmp/etc/wireguard" "$tmp/etc/systemd/system"
+        cat > "$tmp/etc/wireguard/tunnelsatsv2.conf" <<'EOF'
+#Tunnelsats-Setupv2-Docker
+[Interface]
+PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
+EOF
+        TMP_T="$tmp" PLAT_T="$plat" run_case "$log" <<'EOF' &>/dev/null
+source "$SCRIPT_UNDER_TEST"
+TS_FS_ROOT="$TMP_T"
+WG_DIR="$TMP_T/etc/wireguard"
+PLATFORM="$PLAT_T"
+LN_IMPL="lnd"
+TS_OPT_YES=1
+TS_OPT_NON_INTERACTIVE=1
+check_root() { :; }
+detect_platform() { :; }
+detect_ln_implementation() { :; }
+systemctl() { return 0; }
+nft() { return 0; }
+ip() { return 0; }
+docker() { return 0; }
+sysctl() { echo "SYSCTL:$*" >> "$LOG"; return 0; }
+cmd_uninstall
+EOF
+        assert_log_not_contains "$log" "SYSCTL:-w net.ipv6.conf.all.disable_ipv6=0" "[$plat] cmd_uninstall preserves operator-disabled IPv6 when marker is absent"
+        rm -rf "$tmp" "$log"
+    done
+}
+test_uninstall_restores_legacy_ipv6_on_docker_and_nondocker
 
 echo ""
 echo "--------------------------------"

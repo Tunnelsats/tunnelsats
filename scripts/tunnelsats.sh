@@ -1662,7 +1662,7 @@ configure_wireguard() {
 
     # Check if IPv6 is disabled on the host (check procfs and sysctl)
     local ipv6_disabled=0
-    if [ ! -f /proc/net/if_inet6 ]; then
+    if [ ! -f "${TS_FS_ROOT:-}/proc/net/if_inet6" ]; then
         ipv6_disabled=1
     elif [ "$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null)" == "1" ]; then
         ipv6_disabled=1
@@ -1698,6 +1698,9 @@ configure_wireguard() {
     # Apply network rules based on platform
     if [[ "$PLATFORM" == "umbrel" ]]; then
         print_info "Applying Docker network rules..."
+        if [ "$ipv6_disabled" -eq 0 ]; then
+            touch "${WG_DIR:-/etc/wireguard}/.tunnelsats-ipv6-disabled" 2>/dev/null || true
+        fi
         
         # Pre-resolve subnet to avoid command failure in PostUp
         # Pre-resolve subnet and bridge_id to avoid command failure in PostUp
@@ -1728,6 +1731,8 @@ configure_wireguard() {
 DNS = 8.8.8.8
 Table = off
 
+PreUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1; sysctl -w net.ipv6.conf.default.disable_ipv6=1
+PreUp = $route_guard arm $dockersubnet
 PostUp = $route_guard check %i $dockersubnet
 PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || break; done
 PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21821 from $dockersubnet table 51820 2>/dev/null || break; done
@@ -1742,6 +1747,8 @@ PostUp = ip route add 10.9.0.0/24 dev %i proto kernel scope link; ping -c1 10.9.
 PostUp = iptables -t nat -I PREROUTING -i %i -p tcp --dport $vpn_port -j DNAT --to-destination 10.9.9.9:9735
 PostUp = iptables -I FORWARD -i %i -o $bridge_name -j ACCEPT
 PostUp = iptables -I FORWARD -i $bridge_name -o %i -j ACCEPT
+PostUp = ip6tables -I FORWARD -i $bridge_name -j DROP 2>/dev/null || true
+PostUp = ip6tables -I FORWARD -o $bridge_name -j DROP 2>/dev/null || true
 
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
 PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
@@ -1751,6 +1758,8 @@ PostUp = $route_guard release $dockersubnet
 PostDown = iptables -t nat -D PREROUTING -i %i -p tcp --dport $vpn_port -j DNAT --to-destination 10.9.9.9:9735
 PostDown = iptables -D FORWARD -i %i -o $bridge_name -j ACCEPT
 PostDown = iptables -D FORWARD -i $bridge_name -o %i -j ACCEPT
+PostDown = ip6tables -D FORWARD -i $bridge_name -j DROP 2>/dev/null || true
+PostDown = ip6tables -D FORWARD -o $bridge_name -j DROP 2>/dev/null || true
 
 PostDown = ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || true
 PostDown = ip rule del priority 21821 from $dockersubnet table 51820 2>/dev/null || true
@@ -1763,9 +1772,13 @@ PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
         print_info "Applying non-Docker network rules..."
         
         local killswitchNonDocker=""
+        local killswitchNonDocker6=""
         # Node uid for the guard's blackhole ip rule fallback (emergency block without nft)
         local failclosed_host_uid
         failclosed_host_uid=$(resolve_failclosed_host_uid)
+        if [[ "$failclosed_host_uid" =~ ^[1-9][0-9]{0,9}$ ]]; then
+            killswitchNonDocker6=" ; add rule inet %i out6 meta skuid ${failclosed_host_uid} ip6 daddr != { ::1/128, fc00::/7, fe80::/10 } counter drop"
+        fi
         # Enable cgroup-aware killswitch for all non-Docker systemd platforms
         if [[ "$PLATFORM" == "raspiblitz" || "$PLATFORM" == "baremetal" || "$PLATFORM" == "mynode" ]]; then
             # Cgroup-aware killswitch: Only drop if user is node_user AND packet is in the tunnelsats cgroup (1118498)
@@ -1782,6 +1795,7 @@ FwMark = 0x2000000
 Table = off
 
 
+PreUp = $route_guard arm 10.9.9.0/25 $failclosed_host_uid
 PostUp = $route_guard check %i 10.9.9.0/25 $failclosed_host_uid
 PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || break; done
 PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21821 from all fwmark 0x1000000/0xff000000 table 51820 2>/dev/null || break; done
@@ -1792,8 +1806,6 @@ PostUp = ip rule add from all table main suppress_prefixlength 0 priority 21820
 PostUp = ip rule add from all fwmark 0x1000000/0xff000000 table 51820 priority 21821
 PostUp = ip route add  10.9.0.0/24 dev %i  proto kernel scope link; ping -c1 10.9.0.1
 PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
-PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
-PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
 
 PostUp = nft add table ip %i
 PostUp = nft add chain ip %i prerouting '{ type filter hook prerouting priority mangle -1; policy accept; }'; nft add rule ip %i prerouting meta mark set ct mark
@@ -1801,19 +1813,19 @@ PostUp = nft add chain ip %i mangle '{ type route hook output priority mangle -1
 PostUp = nft \"add chain ip %i nat { type nat hook postrouting priority srcnat -1; policy accept; } ; insert rule ip %i nat fib daddr type != local ip daddr != { $localNetworks } oifname != %i ct mark and 0xff000000 == 0x1000000 drop ; add rule ip %i nat oifname %i ct mark and 0xff000000 == 0x1000000 masquerade\"
 ${killswitchNonDocker}PostUp = nft \"add chain ip %i postroutingmangle { type filter hook postrouting priority mangle -1; policy accept; } ; add rule ip %i postroutingmangle meta mark and 0xff000000 == 0x1000000 ct mark set meta mark and 0x00ffffff xor 0x1000000\"
 PostUp = nft \"add chain ip %i input { type filter hook input priority filter -1; policy accept; } ; add rule ip %i input iifname %i ct state established,related counter accept ; add rule ip %i input iifname %i tcp dport != 9735 counter drop ; add rule ip %i input iifname %i udp dport != 9735 counter drop\"
+PostUp = nft add table inet %i
+PostUp = nft \"add chain inet %i out6 { type filter hook output priority filter - 1; policy accept; } ; add rule inet %i out6 meta cgroup 1118498 ip6 daddr != { ::1/128, fc00::/7, fe80::/10 } counter drop${killswitchNonDocker6}\"
 PostUp = $route_guard release 10.9.9.0/25 $failclosed_host_uid
 
 
 PostDown = nft delete table ip %i
+PostDown = nft delete table inet %i 2>/dev/null || true
 PostDown = ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || true
 PostDown = ip rule del priority 21821 from all fwmark 0x1000000/0xff000000 table 51820 2>/dev/null || true
 PostDown = $route_guard clean %i || true
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 "
         echo -e "$inputNonDocker" >> "$target_path"
-        if [[ "$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || echo 0)" == "0" ]]; then
-            touch "${WG_DIR:-${TS_FS_ROOT}/etc/wireguard}/.tunnelsats-ipv6-disabled" 2>/dev/null || true
-        fi
     fi
     
     # Verify rules were applied
@@ -1827,28 +1839,40 @@ PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 
 setup_cgroups() {
     print_info "Creating cgroup for traffic splitting..."
+    local failclosed_host_uid
+    failclosed_host_uid=$(resolve_failclosed_host_uid)
+    local wg_unit="wg-quick@${WG_INTERFACE:-tunnelsatsv2}.service"
     
     # Create cgroup script
-    cat > /etc/wireguard/tunnelsats-create-cgroup.sh << 'EOF'
+    cat > /etc/wireguard/tunnelsats-create-cgroup.sh << EOF
 #!/bin/sh
 set -e
 modprobe cls_cgroup || true
 dir_netcls="/sys/fs/cgroup/net_cls"
 splitted_processes="/sys/fs/cgroup/net_cls/splitted_processes"
 
-if [ ! -d "$dir_netcls" ]; then
-    mkdir $dir_netcls
-    mount -t cgroup -o net_cls none $dir_netcls
-    echo "> Successfully added cgroup net_cls subsystem"
+if [ ! -d "\$dir_netcls" ]; then
+    mkdir -p "\$dir_netcls" 2>/dev/null || true
+    if mount -t cgroup -o net_cls none "\$dir_netcls" 2>/dev/null; then
+        echo "> Successfully added cgroup net_cls subsystem"
+    else
+        rmdir "\$dir_netcls" 2>/dev/null || true
+    fi
 fi
 
-if [ ! -d "$splitted_processes" ]; then
-    mkdir /sys/fs/cgroup/net_cls/splitted_processes
-    echo 1118498 > /sys/fs/cgroup/net_cls/splitted_processes/net_cls.classid
-    chmod 666 /sys/fs/cgroup/net_cls/splitted_processes/tasks
-    echo "> Successfully added Mark for net_cls subsystem"
-else
-    echo "> Mark for net_cls subsystem already present"
+if [ -d "\$dir_netcls" ] && [ -e "\$dir_netcls/net_cls.classid" ]; then
+    if [ ! -d "\$splitted_processes" ]; then
+        mkdir /sys/fs/cgroup/net_cls/splitted_processes
+        echo 1118498 > /sys/fs/cgroup/net_cls/splitted_processes/net_cls.classid
+        chmod 666 /sys/fs/cgroup/net_cls/splitted_processes/tasks
+        echo "> Successfully added Mark for net_cls subsystem"
+    else
+        echo "> Mark for net_cls subsystem already present"
+    fi
+fi
+
+if [ -x /etc/wireguard/tunnelsats-route-guard.sh ] && ! systemctl is-active --quiet "${wg_unit}" 2>/dev/null; then
+    /etc/wireguard/tunnelsats-route-guard.sh arm 10.9.9.0/25 "${failclosed_host_uid}" || true
 fi
 EOF
     
@@ -1856,9 +1880,10 @@ EOF
     /etc/wireguard/tunnelsats-create-cgroup.sh
     
     # Create systemd service for cgroup
-    cat > /etc/systemd/system/tunnelsats-create-cgroup.service << 'EOF'
+    cat > /etc/systemd/system/tunnelsats-create-cgroup.service << EOF
 [Unit]
 Description=Creating cgroup for Splitting lightning traffic
+Before=${wg_unit}
 StartLimitInterval=200
 StartLimitBurst=5
 [Service]
@@ -2040,36 +2065,44 @@ ts_table51820_remove_owned() {
 # "fib daddr type != local". Every state is verified with a real read (nft list / ip rule show)
 # before it is reported as armed.
 
-# $1 = Docker tunnel subnet. Succeeds only if a real read of the ruleset shows both drop rules.
+# $1 = Docker tunnel subnet, $2 = optional host uid. Succeeds only if a real read of the ruleset shows all drop rules.
 ts_failclosed_nft_verified() {
-    local subnet="$1" out subnet_re
+    local subnet="$1" host_uid="${2:-}" out subnet_re
     command -v nft >/dev/null 2>&1 || return 1
-    out=$(nft list table ip tunnelsats_failclosed 2>/dev/null) || return 1
+    out=$(nft list table inet tunnelsats_failclosed 2>/dev/null) || return 1
     subnet_re=$(printf '%s' "$subnet" | sed 's/[.]/\\./g')
     printf '%s\n' "$out" | grep -Eq 'meta cgroup 1118498 .*drop' || return 1
+    case "$host_uid" in
+        ""|0|*[!0-9]*) ;;
+        *) printf '%s\n' "$out" | grep -Eq "meta skuid ${host_uid} .*drop" || return 1 ;;
+    esac
     printf '%s\n' "$out" | grep -Eq "ip saddr ${subnet_re} .*drop" || return 1
     return 0
 }
 
-# Arms the nft drop ($1 = Docker tunnel subnet). Returns 1 unless the drop is verified in place.
+# Arms the nft drop ($1 = Docker tunnel subnet, $2 = optional host uid). Returns 1 unless the drop is verified in place.
 ts_arm_failclosed_nft() {
-    local subnet="$1" failed=0
+    local subnet="$1" host_uid="${2:-}" failed=0
     if ! command -v nft >/dev/null 2>&1; then
         echo "TunnelSats: nft not available; nft emergency drop could NOT be armed" >&2
         return 1
     fi
     # Already armed and verified (e.g. a repeated refusal): do not stack duplicate rules.
-    ts_failclosed_nft_verified "$subnet" && return 0
-    nft add table ip tunnelsats_failclosed || failed=1
-    nft "add chain ip tunnelsats_failclosed output { type filter hook output priority -100; policy accept; }" || failed=1
-    nft "add rule ip tunnelsats_failclosed output meta cgroup 1118498 fib daddr type != local counter drop" || failed=1
-    nft "add chain ip tunnelsats_failclosed forward { type filter hook forward priority -100; policy accept; }" || failed=1
-    nft "add rule ip tunnelsats_failclosed forward ip saddr ${subnet} fib daddr type != local counter drop" || failed=1
+    ts_failclosed_nft_verified "$subnet" "$host_uid" && return 0
+    nft add table inet tunnelsats_failclosed || failed=1
+    nft "add chain inet tunnelsats_failclosed output { type filter hook output priority -100; policy accept; }" || failed=1
+    nft "add rule inet tunnelsats_failclosed output meta cgroup 1118498 fib daddr type != local counter drop" || failed=1
+    case "$host_uid" in
+        ""|0|*[!0-9]*) ;;
+        *) nft "add rule inet tunnelsats_failclosed output meta skuid ${host_uid} fib daddr type != local counter drop" || failed=1 ;;
+    esac
+    nft "add chain inet tunnelsats_failclosed forward { type filter hook forward priority -100; policy accept; }" || failed=1
+    nft "add rule inet tunnelsats_failclosed forward ip saddr ${subnet} fib daddr type != local counter drop" || failed=1
     if [ "$failed" -ne 0 ]; then
         echo "TunnelSats: nft rejected an emergency drop rule; nft emergency drop could NOT be armed" >&2
         return 1
     fi
-    if ! ts_failclosed_nft_verified "$subnet"; then
+    if ! ts_failclosed_nft_verified "$subnet" "$host_uid"; then
         echo "TunnelSats: nft accepted the emergency drop but it is not in the ruleset; nft emergency drop could NOT be verified" >&2
         return 1
     fi
@@ -2098,14 +2131,18 @@ ts_record_failclosed_rule() {
 }
 
 # $1 = Docker tunnel subnet, $2 = host uid ("" when there is no host daemon to cover).
-# Succeeds only if a real read of the IPv4 policy rules shows every required blackhole rule.
+# Succeeds only if a real read of the IPv4 (and IPv6 when available) policy rules shows every required blackhole rule.
 ts_failclosed_rules_verified() {
-    local subnet="$1" uid="$2" rules subnet_re
-    rules=$(ip -4 rule show 2>/dev/null) || return 1
+    local subnet="$1" uid="$2" rules rules6 subnet_re ip_cmd="${IP_BIN:-ip}"
+    rules=$("$ip_cmd" -4 rule show 2>/dev/null) || return 1
     subnet_re=$(printf '%s' "$subnet" | sed 's/[.]/\\./g')
     printf '%s\n' "$rules" | grep -Eq "^21818:[[:space:]]+from ${subnet_re}[[:space:]]+blackhole[[:space:]]*$" || return 1
     if [ -n "$uid" ]; then
         printf '%s\n' "$rules" | grep -Eq "^21819:[[:space:]]+from all uidrange ${uid}-${uid}[[:space:]]+blackhole[[:space:]]*$" || return 1
+        if [ -e "${TS_FS_ROOT:-}/proc/net/if_inet6" ]; then
+            rules6=$("$ip_cmd" -6 rule show 2>/dev/null) || return 1
+            printf '%s\n' "$rules6" | grep -Eq "^21819:[[:space:]]+from all uidrange ${uid}-${uid}[[:space:]]+blackhole[[:space:]]*$" || return 1
+        fi
     fi
     return 0
 }
@@ -2118,7 +2155,7 @@ ts_failclosed_rules_verified() {
 # Only rules that were absent before and added by TunnelSats are recorded in ts_failclosed_state_file,
 # so a pre-existing blackhole rule owned by another service is never claimed or deleted on release.
 ts_arm_failclosed_rules() {
-    local subnet="$1" host_uid="$2" uid="" rules subnet_re
+    local subnet="$1" host_uid="$2" uid="" rules rules6 subnet_re ip_cmd="${IP_BIN:-ip}"
     case "$host_uid" in
         "") ;;
         0|*[!0-9]*)
@@ -2127,21 +2164,32 @@ ts_arm_failclosed_rules() {
         *) uid="$host_uid" ;;
     esac
     subnet_re=$(printf '%s' "$subnet" | sed 's/[.]/\\./g')
-    rules=$(ip -4 rule show 2>/dev/null) || return 1
+    rules=$("$ip_cmd" -4 rule show 2>/dev/null) || return 1
     if ! printf '%s\n' "$rules" | grep -Eq "^21818:[[:space:]]+from ${subnet_re}[[:space:]]+blackhole[[:space:]]*$"; then
-        if ip -4 rule add from "$subnet" blackhole priority 21818; then
+        if "$ip_cmd" -4 rule add from "$subnet" blackhole priority 21818; then
             if ! ts_record_failclosed_rule "from ${subnet}"; then
-                ip -4 rule del priority 21818 from "$subnet" blackhole 2>/dev/null || true
+                "$ip_cmd" -4 rule del priority 21818 from "$subnet" blackhole 2>/dev/null || true
                 return 1
             fi
         fi
     fi
     if [ -n "$uid" ] && [ "$uid" != "unusable" ] && \
         ! printf '%s\n' "$rules" | grep -Eq "^21819:[[:space:]]+from all uidrange ${uid}-${uid}[[:space:]]+blackhole[[:space:]]*$"; then
-        if ip -4 rule add uidrange "${uid}-${uid}" blackhole priority 21819; then
+        if "$ip_cmd" -4 rule add uidrange "${uid}-${uid}" blackhole priority 21819; then
             if ! ts_record_failclosed_rule "uidrange ${uid}-${uid}"; then
-                ip -4 rule del priority 21819 uidrange "${uid}-${uid}" blackhole 2>/dev/null || true
+                "$ip_cmd" -4 rule del priority 21819 uidrange "${uid}-${uid}" blackhole 2>/dev/null || true
                 return 1
+            fi
+        fi
+    fi
+    if [ -n "$uid" ] && [ "$uid" != "unusable" ] && [ -e "${TS_FS_ROOT:-}/proc/net/if_inet6" ]; then
+        rules6=$("$ip_cmd" -6 rule show 2>/dev/null) || return 1
+        if ! printf '%s\n' "$rules6" | grep -Eq "^21819:[[:space:]]+from all uidrange ${uid}-${uid}[[:space:]]+blackhole[[:space:]]*$"; then
+            if "$ip_cmd" -6 rule add uidrange "${uid}-${uid}" blackhole priority 21819; then
+                if ! ts_record_failclosed_rule "uidrange6 ${uid}-${uid}"; then
+                    "$ip_cmd" -6 rule del priority 21819 uidrange "${uid}-${uid}" blackhole 2>/dev/null || true
+                    return 1
+                fi
             fi
         fi
     fi
@@ -2153,7 +2201,7 @@ ts_arm_failclosed_rules() {
 # Returns 1 unless nft or the routing-policy fallback is verified in place (callers must report that).
 ts_arm_failclosed() {
     local subnet="${1:-10.9.9.0/25}" host_uid="${2:-}"
-    if ts_arm_failclosed_nft "$subnet"; then
+    if ts_arm_failclosed_nft "$subnet" "$host_uid"; then
         return 0
     fi
     if ts_arm_failclosed_rules "$subnet" "$host_uid"; then
@@ -2169,9 +2217,8 @@ ts_arm_failclosed() {
 # touched, while rules TunnelSats armed are removed even if the tunnel subnet or node UID later
 # changed or was removed. Returns 1 if policy rules cannot be read or an owned rule remains.
 ts_release_failclosed_rules() {
-
-    local state_file entry entry_re clauses="" pattern n rules line prio sel
-    if ! rules=$(ip -4 rule show 2>/dev/null); then
+    local state_file entry entry_re clauses="" clauses6="" pattern pattern6 n rules rules6 line prio sel ip_cmd="${IP_BIN:-ip}"
+    if ! rules=$("$ip_cmd" -4 rule show 2>/dev/null); then
         echo "TunnelSats: ERROR: unable to read IPv4 policy rules while releasing emergency blackhole rules" >&2
         return 1
     fi
@@ -2186,33 +2233,61 @@ ts_release_failclosed_rules() {
             "uidrange "[1-9][0-9]*-[1-9][0-9]*)
                 clauses="${clauses:+${clauses}|}21819:[[:space:]]+from all ${entry}"
                 ;;
+            "uidrange6 "[1-9][0-9]*-[1-9][0-9]*)
+                clauses6="${clauses6:+${clauses6}|}21819:[[:space:]]+from all uidrange ${entry#uidrange6 }"
+                ;;
         esac
     done < "$state_file"
-    if [ -z "$clauses" ]; then
+    if [ -z "$clauses" ] && [ -z "$clauses6" ]; then
         rm -f "$state_file" 2>/dev/null || return 1
         return 0
     fi
-    pattern="^(${clauses})[[:space:]]+blackhole[[:space:]]*$"
-    for n in 1 2 3 4 5 6 7 8 9 10; do
-        if ! rules=$(ip -4 rule show 2>/dev/null); then
-            echo "TunnelSats: ERROR: unable to read IPv4 policy rules while releasing emergency blackhole rules" >&2
+    if [ -n "$clauses" ]; then
+        pattern="^(${clauses})[[:space:]]+blackhole[[:space:]]*$"
+        for n in 1 2 3 4 5 6 7 8 9 10; do
+            if ! rules=$("$ip_cmd" -4 rule show 2>/dev/null); then
+                echo "TunnelSats: ERROR: unable to read IPv4 policy rules while releasing emergency blackhole rules" >&2
+                return 1
+            fi
+            line=$(printf '%s\n' "$rules" | grep -E "$pattern" | head -n 1 || true)
+            [ -n "$line" ] || break
+            prio=${line%%:*}
+            sel=$(printf '%s\n' "$line" | sed -E 's/^[0-9]+:[[:space:]]+//; s/[[:space:]]+blackhole[[:space:]]*$//; s/^from all uidrange /uidrange /')
+            # $sel is two words on purpose ("from <subnet>" / "uidrange <a>-<b>").
+            # shellcheck disable=SC2086
+            "$ip_cmd" -4 rule del priority "$prio" $sel blackhole 2>/dev/null || break
+        done
+        if ! rules=$("$ip_cmd" -4 rule show 2>/dev/null); then
+            echo "TunnelSats: ERROR: unable to verify removal of emergency blackhole rules" >&2
             return 1
         fi
-        line=$(printf '%s\n' "$rules" | grep -E "$pattern" | head -n 1 || true)
-        [ -n "$line" ] || break
-        prio=${line%%:*}
-        sel=$(printf '%s\n' "$line" | sed -E 's/^[0-9]+:[[:space:]]+//; s/[[:space:]]+blackhole[[:space:]]*$//; s/^from all uidrange /uidrange /')
-        # $sel is two words on purpose ("from <subnet>" / "uidrange <a>-<b>").
-        # shellcheck disable=SC2086
-        ip -4 rule del priority "$prio" $sel blackhole 2>/dev/null || break
-    done
-    if ! rules=$(ip -4 rule show 2>/dev/null); then
-        echo "TunnelSats: ERROR: unable to verify removal of emergency blackhole rules" >&2
-        return 1
+        if printf '%s\n' "$rules" | grep -Eq "$pattern"; then
+            echo "TunnelSats: ERROR: could not remove the emergency blackhole rule(s) at priority 21818/21819; Lightning traffic stays blocked until they are removed" >&2
+            return 1
+        fi
     fi
-    if printf '%s\n' "$rules" | grep -Eq "$pattern"; then
-        echo "TunnelSats: ERROR: could not remove the emergency blackhole rule(s) at priority 21818/21819; Lightning traffic stays blocked until they are removed" >&2
-        return 1
+    if [ -n "$clauses6" ] && [ -e "${TS_FS_ROOT:-}/proc/net/if_inet6" ]; then
+        pattern6="^(${clauses6})[[:space:]]+blackhole[[:space:]]*$"
+        for n in 1 2 3 4 5 6 7 8 9 10; do
+            if ! rules6=$("$ip_cmd" -6 rule show 2>/dev/null); then
+                echo "TunnelSats: ERROR: unable to read IPv6 policy rules while releasing emergency blackhole rules" >&2
+                return 1
+            fi
+            line=$(printf '%s\n' "$rules6" | grep -E "$pattern6" | head -n 1 || true)
+            [ -n "$line" ] || break
+            prio=${line%%:*}
+            sel=$(printf '%s\n' "$line" | sed -E 's/^[0-9]+:[[:space:]]+//; s/[[:space:]]+blackhole[[:space:]]*$//; s/^from all uidrange /uidrange /')
+            # shellcheck disable=SC2086
+            "$ip_cmd" -6 rule del priority "$prio" $sel blackhole 2>/dev/null || break
+        done
+        if ! rules6=$("$ip_cmd" -6 rule show 2>/dev/null); then
+            echo "TunnelSats: ERROR: unable to verify removal of IPv6 emergency blackhole rules" >&2
+            return 1
+        fi
+        if printf '%s\n' "$rules6" | grep -Eq "$pattern6"; then
+            echo "TunnelSats: ERROR: could not remove the IPv6 emergency blackhole rule(s) at priority 21819; Lightning traffic stays blocked until they are removed" >&2
+            return 1
+        fi
     fi
     if ! rm -f "$state_file" 2>/dev/null; then
         echo "TunnelSats: ERROR: unable to remove emergency blackhole state file ${state_file}" >&2
@@ -2225,11 +2300,12 @@ ts_release_failclosed_rules() {
 # $1 = Docker tunnel subnet (default 10.9.9.0/25), $2 = optional host uid (retained for CLI compatibility).
 # Returns 1 if the emergency block could not be verified as removed.
 ts_release_failclosed() {
-    local subnet="${1:-10.9.9.0/25}"
+    local subnet="${1:-10.9.9.0/25}" host_uid="${2:-}"
     if command -v nft >/dev/null 2>&1; then
+        nft delete table inet tunnelsats_failclosed 2>/dev/null || true
         nft delete table ip tunnelsats_failclosed 2>/dev/null || true
-        if ts_failclosed_nft_verified "$subnet"; then
-            echo "TunnelSats: ERROR: could not remove emergency nft table ip tunnelsats_failclosed" >&2
+        if ts_failclosed_nft_verified "$subnet" "$host_uid" || nft list table ip tunnelsats_failclosed >/dev/null 2>&1; then
+            echo "TunnelSats: ERROR: could not remove emergency nft table tunnelsats_failclosed" >&2
             return 1
         fi
     fi
@@ -2321,11 +2397,14 @@ case "$action" in
     clean)
         ts_table51820_remove_owned "${2:?interface required}"
         ;;
+    arm)
+        ts_arm_failclosed "${2:-10.9.9.0/25}" "${3:-}" || exit 1
+        ;;
     release)
         ts_release_failclosed "${2:-}" "${3:-}" || exit 1
         ;;
     *)
-        echo "usage: $0 check IFACE [SUBNET] [HOST_UID] | clean IFACE | release [SUBNET] [HOST_UID]" >&2
+        echo "usage: $0 check IFACE [SUBNET] [HOST_UID] | clean IFACE | arm [SUBNET] [HOST_UID] | release [SUBNET] [HOST_UID]" >&2
         exit 2
         ;;
 esac
@@ -2446,6 +2525,8 @@ setup_docker_network() {
     IFS= read -r -d '' monitor_script <<'EOF' || true
 #!/bin/sh
 # Generated by tunnelsats.sh - keeps exactly one Lightning daemon attached to docker-tunnelsats at __TUNNEL_IP__
+sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
+sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
 NET="docker-tunnelsats"
 TUNNEL_IP="__TUNNEL_IP__"
 if [ "$(docker network ls 2> /dev/null | grep -c "$NET")" -eq 0 ]; then
@@ -3456,12 +3537,10 @@ cmd_uninstall() {
         fi
     done
 
-    if [[ $is_docker -eq 0 ]]; then
-        if [[ -f "$wg_dir/.tunnelsats-ipv6-disabled" ]]; then
-            sysctl -w net.ipv6.conf.all.disable_ipv6=0 &>/dev/null || true
-            sysctl -w net.ipv6.conf.default.disable_ipv6=0 &>/dev/null || true
-            rm -f "$wg_dir/.tunnelsats-ipv6-disabled" &>/dev/null || true
-        fi
+    if [[ -f "$wg_dir/.tunnelsats-ipv6-disabled" ]]; then
+        sysctl -w net.ipv6.conf.all.disable_ipv6=0 &>/dev/null || true
+        sysctl -w net.ipv6.conf.default.disable_ipv6=0 &>/dev/null || true
+        rm -f "$wg_dir/.tunnelsats-ipv6-disabled" &>/dev/null || true
     fi
 
     if [[ $is_docker -eq 1 ]]; then
@@ -7906,6 +7985,9 @@ ts_m_probe_classify() {
 #                            the socket bound to IFACE unless "-"
 ts_m_cmd_probe() {
     local mode="${1:-}" url cg="" fam iface ip
+    if [[ -w "${TS_FS_ROOT:-}/sys/fs/cgroup/net_cls/splitted_processes/tasks" ]]; then
+        echo "$$" > "${TS_FS_ROOT:-}/sys/fs/cgroup/net_cls/splitted_processes/tasks" 2>/dev/null || true
+    fi
     cg=$(sed -n 's/^0:://p' /proc/self/cgroup 2>/dev/null | head -n 1) || cg=""
     echo "cgroup ${cg:-unknown}"
     case "$mode" in
@@ -9515,7 +9597,22 @@ ts_m_adopt_preflight() {
             case "$line" in
                 21818:*|21819:*|21820:*|21821:*|21822:*)
                     if [[ "$fam" == "6" ]]; then
-                        ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv6 policy rule priority ${line%%:*} is in use: ${line}"
+                        case "$line" in
+                            21819:*blackhole*|21819:*unreachable*)
+                                local fc6_sel=""
+                                if [[ "$line" =~ ^21819:[[:space:]]+from[[:space:]]+all[[:space:]]+uidrange[[:space:]]+([0-9]+-[0-9]+)[[:space:]]+(blackhole|unreachable)([[:space:]]|$) ]]; then
+                                    fc6_sel="${BASH_REMATCH[1]}"
+                                fi
+                                if [[ -z "$fc6_sel" ]] || [[ ! -f "${TS_FS_ROOT}${wg_rel}/.tunnelsats-failclosed-rules" ]] || \
+                                    ! grep -qxF "uidrange6 ${fc6_sel}" "${TS_FS_ROOT}${wg_rel}/.tunnelsats-failclosed-rules" 2>/dev/null; then
+                                    ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv6 policy rule priority ${line%%:*} is in use: ${line}"
+                                fi
+                                ;;
+                            *)
+                                ts_fail 7 E_RULE_PRIORITY_IN_USE refused "IPv6 policy rule priority ${line%%:*} is in use: ${line}"
+                                ;;
+                        esac
+                        continue
                     fi
                     case "$line" in
                         21820:*lookup[[:space:]]main[[:space:]]suppress_prefixlength[[:space:]]0*) ;;
@@ -10134,9 +10231,15 @@ ts_m_clean_legacy_artifacts() {
     fi
 
     if [[ -f "${wg_full}/.tunnelsats-failclosed-rules" ]]; then
-        local fc_failed=0
+        local fc_failed=0 fc_has_v4=0 fc_has_v6=0
+        if grep -qE '^(from |uidrange )' "${wg_full}/.tunnelsats-failclosed-rules" 2>/dev/null; then
+            fc_has_v4=1
+        fi
+        if grep -qE '^uidrange6 ' "${wg_full}/.tunnelsats-failclosed-rules" 2>/dev/null; then
+            fc_has_v6=1
+        fi
         if command -v "$IP_BIN" >/dev/null 2>&1; then
-            local fc_entry fc_after
+            local fc_entry fc_after="" fc6_after=""
             while IFS= read -r fc_entry || [[ -n "$fc_entry" ]]; do
                 case "$fc_entry" in
                     "from "[0-9]*.[0-9]*.[0-9]*.[0-9]*/*)
@@ -10147,9 +10250,22 @@ ts_m_clean_legacy_artifacts() {
                         "$IP_BIN" -4 rule del priority 21819 uidrange "${fc_entry#uidrange }" blackhole 2>/dev/null \
                             || "$IP_BIN" -4 rule del priority 21819 uidrange "${fc_entry#uidrange }" unreachable 2>/dev/null || true
                         ;;
+                    "uidrange6 "[1-9][0-9]*-[1-9][0-9]*)
+                        "$IP_BIN" -6 rule del priority 21819 uidrange "${fc_entry#uidrange6 }" blackhole 2>/dev/null \
+                            || "$IP_BIN" -6 rule del priority 21819 uidrange "${fc_entry#uidrange6 }" unreachable 2>/dev/null || true
+                        ;;
                 esac
             done < "${wg_full}/.tunnelsats-failclosed-rules"
-            fc_after=$("$IP_BIN" -4 rule show 2>/dev/null) || fc_after=""
+            if [[ "$fc_has_v4" -eq 1 ]]; then
+                if ! fc_after=$("$IP_BIN" -4 rule show 2>/dev/null); then
+                    fc_failed=1
+                fi
+            fi
+            if [[ "$fc_has_v6" -eq 1 ]] && ts_m_ipv6_available; then
+                if ! fc6_after=$("$IP_BIN" -6 rule show 2>/dev/null); then
+                    fc_failed=1
+                fi
+            fi
             while IFS= read -r fc_entry || [[ -n "$fc_entry" ]]; do
                 case "$fc_entry" in
                     "from "[0-9]*.[0-9]*.[0-9]*.[0-9]*/*)
@@ -10162,8 +10278,15 @@ ts_m_clean_legacy_artifacts() {
                             fc_failed=1
                         fi
                         ;;
+                    "uidrange6 "[1-9][0-9]*-[1-9][0-9]*)
+                        if printf '%s\n' "$fc6_after" | grep -qE "^21819:[[:space:]]+from[[:space:]]+all[[:space:]]+uidrange[[:space:]]+${fc_entry#uidrange6 }[[:space:]]+(blackhole|unreachable)([[:space:]]|$)"; then
+                            fc_failed=1
+                        fi
+                        ;;
                 esac
             done < "${wg_full}/.tunnelsats-failclosed-rules"
+        elif [[ "$fc_has_v4" -eq 1 ]] || [[ "$fc_has_v6" -eq 1 ]]; then
+            fc_failed=1
         fi
         if [[ "$fc_failed" -eq 0 ]]; then
             rm -f "${wg_full}/.tunnelsats-failclosed-rules"
@@ -11553,12 +11676,52 @@ ts_v_report() {
     exit "$TS_V_EXIT"
 }
 
-# verify on a standard (not managed) install, $1 = its kind: runs the checks that apply (handshake
-# of the installed tunnel, its kill switch table) and reports the verdict "unmanaged" (exit 9).
-# A standard install keeps its kill switch in the tunnel's own hooks, active while the tunnel is
-# up; verify does not rate it protected or unsafe.
+# Prints the numeric host UID (>0) of the Lightning daemon for an unmanaged install, or nothing if
+# none can be determined (for example on a Docker install or when no Lightning account exists).
+ts_v_unmanaged_uid() {
+    local conf="${1:-}" uid="" user="" unit=""
+    if [[ -n "$conf" ]] && [[ -f "$conf" ]]; then
+        uid=$(sed -nE 's/.*tunnelsats-route-guard\.sh[[:space:]]+(arm|check|release)[[:space:]]+[^[:space:]]+[[:space:]]+([1-9][0-9]{0,9})([[:space:]"#]|$).*/\2/p' "$conf" 2>/dev/null | head -n 1) || uid=""
+        if [[ "$uid" =~ ^[1-9][0-9]{0,9}$ ]]; then
+            echo "$uid"
+            return 0
+        fi
+        user=$(sed -nE 's/.*[[:space:]]skuid[[:space:]]+([a-z_][a-z0-9_.-]{0,31})[[:space:]].*/\1/p' "$conf" 2>/dev/null | head -n 1) || user=""
+        if [[ -n "$user" ]] && [[ "$user" != "root" ]]; then
+            uid=$(id -u "$user" 2>/dev/null) || uid=$("$GETENT_BIN" passwd "$user" 2>/dev/null | awk -F: 'NR == 1 { print $3 }') || uid=""
+            if [[ "$uid" =~ ^[1-9][0-9]{0,9}$ ]]; then
+                echo "$uid"
+                return 0
+            fi
+        fi
+    fi
+    for unit in lnd.service tlnd.service slnd.service lightningd.service tlightningd.service slightningd.service litd.service lit.service; do
+        if [[ -f "${TS_FS_ROOT}/etc/systemd/system/${unit}.d/tunnelsats-cgroup.conf" ]] || \
+            grep -qE '^[[:space:]]*ExecStart[[:space:]]*=.*cgexec' "${TS_FS_ROOT}/etc/systemd/system/${unit}" 2>/dev/null; then
+            user=$(ts_m_unit_prop "$unit" User)
+            if [[ -z "$user" ]] && [[ -f "${TS_FS_ROOT}/etc/systemd/system/${unit}" ]]; then
+                user=$(sed -nE 's/^[[:space:]]*User[[:space:]]*=[[:space:]]*([^[:space:]#]+).*/\1/p' "${TS_FS_ROOT}/etc/systemd/system/${unit}" 2>/dev/null | head -n 1) || user=""
+            fi
+            if [[ "$user" =~ ^[1-9][0-9]{0,9}$ ]]; then
+                echo "$user"
+                return 0
+            elif [[ -n "$user" ]] && [[ "$user" != "root" ]]; then
+                uid=$(id -u "$user" 2>/dev/null) || uid=$("$GETENT_BIN" passwd "$user" 2>/dev/null | awk -F: 'NR == 1 { print $3 }') || uid=""
+                if [[ "$uid" =~ ^[1-9][0-9]{0,9}$ ]]; then
+                    echo "$uid"
+                    return 0
+                fi
+            fi
+        fi
+    done
+    return 0
+}
+
+# verify on a standard (not managed) install, $1 = its kind, $2 = probes (run|skipped): runs the
+# checks that apply (handshake of the installed tunnel, its kill switch table, and ipv6_probe when
+# probes run) and reports "unmanaged" (exit 9), or "unsafe" (exit 4) if an IPv6 datagram leaves the host.
 ts_v_unmanaged() {
-    local kind="$1" iface="" age="" up=0 ks=0 n checks_j ep_j text
+    local kind="$1" probes="${2:-skipped}" iface="" age="" up=0 ks=0 n checks_j ep_j text probe_state="skipped" ipv6_leak_detail=""
     ts_detect_config
     iface="$TSD_CFG_IFACE"
     if [[ -z "$iface" ]]; then
@@ -11577,25 +11740,86 @@ ts_v_unmanaged() {
         else
             ts_v_add legacy_killswitch degraded fail "nft table ${iface} not present (it exists only while the tunnel is up)"
         fi
+        if [[ "$probes" == "run" ]]; then
+            probe_state="run"
+            local probe_bin="$TS_M_BIN" probe_tmp="" probe_uid="" probe_out="" probe_w="" probe_line
+            if ! ts_m_ipv6_available; then
+                ts_v_add ipv6_probe unsafe skip "not run: this host has no IPv6"
+            elif ! ts_v_target "$TS_V_V6_URL" 6; then
+                ts_v_add ipv6_probe unsafe skip "not run: ${TS_V_V6_URL} has no IPv6 address"
+            else
+                if [[ ! -x "${TS_FS_ROOT}${probe_bin}" ]] && [[ -n "${TS_SCRIPT_PATH:-}" ]]; then
+                    probe_bin="$TS_SCRIPT_PATH"
+                    if [[ -z "${TS_FS_ROOT:-}" ]] && [[ -d /usr/local/sbin ]] && [[ -w /usr/local/sbin ]]; then
+                        probe_tmp=$(mktemp /usr/local/sbin/.tunnelsats-probe.XXXXXX 2>/dev/null) || probe_tmp=""
+                        if [[ -n "$probe_tmp" ]] && install -m 0755 "$TS_SCRIPT_PATH" "$probe_tmp" 2>/dev/null; then
+                            probe_bin="$probe_tmp"
+                        else
+                            rm -f "$probe_tmp" 2>/dev/null || true
+                            probe_tmp=""
+                        fi
+                    fi
+                fi
+                probe_uid=$(ts_v_unmanaged_uid "$TSD_CFG_PATH")
+                local -a probe_args=(--quiet --wait --pipe --collect -p RuntimeMaxSec=60)
+                if [[ "$probe_uid" =~ ^[1-9][0-9]{0,9}$ ]]; then
+                    probe_args+=("--uid=${probe_uid}")
+                fi
+                probe_out=$("$SYSTEMD_RUN_BIN" "${probe_args[@]}" "$probe_bin" managed-probe send 6 - "$TS_V_T_IP" </dev/null 2>/dev/null) || probe_out=""
+                if [[ -n "$probe_tmp" ]]; then
+                    rm -f "$probe_tmp" 2>/dev/null || true
+                fi
+                while IFS= read -r probe_line; do
+                    if [[ "$probe_line" == "send ${TS_V_T_IP} "* ]]; then
+                        probe_w="${probe_line##* }"
+                        break
+                    fi
+                done < <(printf '%s\n' "$probe_out")
+                case "$(ts_m_probe_classify "$probe_w")" in
+                    blocked)
+                        ts_v_add ipv6_probe unsafe pass "an IPv6 datagram to ${TS_V_T_IP} was stopped on this host (${probe_w})"
+                        ;;
+                    left)
+                        TS_V_GOT_THROUGH=1
+                        ipv6_leak_detail="an IPv6 datagram to ${TS_V_T_IP} left this host; nothing stopped it"
+                        ts_v_add ipv6_probe unsafe fail "$ipv6_leak_detail"
+                        ;;
+                    *)
+                        ipv6_leak_detail="could not run (${probe_w:-no-answer})"
+                        ts_v_add ipv6_probe unsafe fail "$ipv6_leak_detail"
+                        ;;
+                esac
+            fi
+        fi
     fi
-    TS_V_VERDICT="unmanaged"
-    TS_V_EXIT=9
-    if [[ "$up" -eq 1 ]] && [[ "$ks" -eq 1 ]]; then
-        text="Standard install: the tunnel is up (handshake ${age}) and its kill switch is active while the tunnel stays up. Managed mode keeps it armed across restarts: see https://github.com/Tunnelsats/tunnelsats/blob/main/docs/managed-mode.md."
-    elif [[ "$up" -eq 1 ]]; then
-        text="Standard install: the tunnel is up (handshake ${age}), but its kill switch table is not loaded. Managed mode keeps a kill switch armed across restarts: see https://github.com/Tunnelsats/tunnelsats/blob/main/docs/managed-mode.md."
+    if [[ -n "$ipv6_leak_detail" ]]; then
+        TS_V_VERDICT="unsafe"
+        TS_V_EXIT=4
+        text="Standard install: ${ipv6_leak_detail}."
     else
-        text="Standard install: the tunnel is not up right now; its kill switch is active while the tunnel is up. Managed mode keeps it armed across restarts: see https://github.com/Tunnelsats/tunnelsats/blob/main/docs/managed-mode.md."
+        TS_V_VERDICT="unmanaged"
+        TS_V_EXIT=9
+        if [[ "$up" -eq 1 ]] && [[ "$ks" -eq 1 ]]; then
+            text="Standard install: the tunnel is up (handshake ${age}) and its kill switch is active while the tunnel stays up. Managed mode keeps it armed across restarts: see https://github.com/Tunnelsats/tunnelsats/blob/main/docs/managed-mode.md."
+        elif [[ "$up" -eq 1 ]]; then
+            text="Standard install: the tunnel is up (handshake ${age}), but its kill switch table is not loaded. Managed mode keeps a kill switch armed across restarts: see https://github.com/Tunnelsats/tunnelsats/blob/main/docs/managed-mode.md."
+        else
+            text="Standard install: the tunnel is not up right now; its kill switch is active while the tunnel is up. Managed mode keeps it armed across restarts: see https://github.com/Tunnelsats/tunnelsats/blob/main/docs/managed-mode.md."
+        fi
     fi
     if [[ "$TS_JSON" -eq 1 ]]; then
         ts_v_checks_json
         checks_j="$TS_R"
         ts_j_obj sn:host "$TSD_CFG_EP_HOST" sn:ipv4 "" i:port "$TSD_CFG_EP_PORT" i:vpn_port "$TSD_CFG_VPN_PORT"
         ep_j="$TS_R"
-        ts_j_error E_UNMANAGED unmanaged "$text"
+        if [[ "$TS_V_VERDICT" == "unsafe" ]]; then
+            ts_j_error E_IPV6_PROBE unsafe "$ipv6_leak_detail"
+        else
+            ts_j_error E_UNMANAGED unmanaged "$text"
+        fi
         local errors_j="[${TS_R}]"
-        ts_j_obj s:verdict unmanaged b:clearnet_blocked 0 b:emergency_block 0 s:emergency_state none b:managed 0 s:install_kind "$kind" \
-            sn:profile "" sn:impl "" sn:unit "" sn:iface "$iface" s:probes skipped r:endpoint "$ep_j" r:checks "$checks_j"
+        ts_j_obj s:verdict "$TS_V_VERDICT" b:clearnet_blocked 0 b:emergency_block 0 s:emergency_state none b:managed 0 s:install_kind "$kind" \
+            sn:profile "" sn:impl "" sn:unit "" sn:iface "$iface" s:probes "$probe_state" r:endpoint "$ep_j" r:checks "$checks_j"
         ts_json_document "$TS_V_EXIT" "$errors_j" "${TS_R:1:${#TS_R}-2}"
         exit "$TS_V_EXIT"
     fi
@@ -11605,6 +11829,10 @@ ts_v_unmanaged() {
         printf '  %-17s %-5s %s\n' "${TS_V_ID[$n]}" "${TS_V_RESULT[$n]}" "${TS_V_DETAIL[$n]}"
     done
     print_line
+    if [[ "$TS_V_VERDICT" == "unsafe" ]]; then
+        echo -e "${RED}Not protected${NC}"
+        ts_v_print_failed
+    fi
     echo "$text"
     exit "$TS_V_EXIT"
 }
@@ -11687,7 +11915,7 @@ cmd_verify() {
         if [[ "$kind" == "none" ]]; then
             ts_fail 3 E_NOT_INSTALLED not_installed "No TunnelSats install found"
         fi
-        ts_v_unmanaged "$kind"
+        ts_v_unmanaged "$kind" "$probes"
     fi
     if ! ts_m_inventory_read; then
         ts_v_damaged "$TS_M_ERROR" "$probes"
