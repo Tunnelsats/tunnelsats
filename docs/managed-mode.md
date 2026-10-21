@@ -1,6 +1,6 @@
-# Managed mode for bare-metal nodes and RaspiBlitz (preview)
+# Managed mode for bare-metal nodes and RaspiBlitz
 
-Managed mode is an opt-in alternative for bare-metal systemd nodes (LND, CLN or LIT on Debian or Ubuntu) and for RaspiBlitz (see [RaspiBlitz](#raspiblitz)). Its kill switch stays armed across tunnel restarts, reboots and package upgrades, and `verify` checks the protection at any time. When the subscription ends or the VPN server is unreachable, Lightning keeps running over Tor and the local network; only clearnet pauses until the tunnel is back.
+Managed mode is the systemd slice and persistent kill switch mode for bare-metal systemd nodes (LND, CLN or LIT on Debian or Ubuntu) and for RaspiBlitz (see [RaspiBlitz](#raspiblitz)). Its kill switch stays armed across tunnel restarts, reboots and package upgrades, and `verify` checks the protection at any time. When the subscription ends or the VPN server is unreachable, Lightning keeps running over Tor and the local network; only clearnet pauses until the tunnel is back.
 
 ```bash
 sudo bash tunnelsats.sh install --managed baremetal --config tunnelsats_<server>.conf
@@ -142,7 +142,7 @@ Until managed mode is restored, Lightning is Tor-only. Provisioning starts it be
 
 ### The start guard contract
 
-Managed mode never edits the Lightning unit or its clearnet settings. A start guard in the unit, such as the one of the RaspiBlitz integration in review, decides at every start whether Lightning gets clearnet flags for that start. The guard runs as root before Lightning starts (`ExecStartPre=+`) and calls
+Managed mode never edits the Lightning unit or its clearnet settings. A start guard in the unit, such as the one in the RaspiBlitz SSH menu integration (`MAIN MENU > SUBSCRIBE > TunnelSats`), decides at every start whether Lightning gets clearnet flags for that start. The guard runs as root before Lightning starts (`ExecStartPre=+`) and calls
 
 ```bash
 /usr/local/sbin/tunnelsats verify --json --no-probe

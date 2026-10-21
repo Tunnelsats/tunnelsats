@@ -5,7 +5,7 @@
 [![Syntax & Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/syntax.yml/badge.svg)](https://github.com/Tunnelsats/tunnelsats/actions/workflows/syntax.yml)
 [![Script Integrity](https://github.com/Tunnelsats/tunnelsats/actions/workflows/integrity.yml/badge.svg)](https://github.com/Tunnelsats/tunnelsats/actions/workflows/integrity.yml)
 
-> **Privacy-focused VPN tunnels for Lightning nodes.** Run your node hybrid (clearnet + Tor) without exposing your home IP.
+> **Privacy-focused VPN tunnels for Lightning nodes.** Run your node hybrid (clearnet + Tor) while keeping your home IP private.
 
 ---
 
@@ -13,17 +13,26 @@
 
 **New to TunnelSats?** Get up and running in 3 steps:
 
-1. **Subscribe** at [tunnelsats.com](https://tunnelsats.com) and download your WireGuard config
-2. **Run the installer** on your node:
+1. **Subscribe** at [tunnelsats.com](https://tunnelsats.com) and download your WireGuard config (or on RaspiBlitz v1.12+, open **SSH menu > SUBSCRIBE > TunnelSats > BUY** directly on the node)
+2. **Download and verify the installer** on your node:
    ```bash
-   wget -O tunnelsats.sh https://github.com/tunnelsats/tunnelsats/raw/main/scripts/tunnelsats.sh
+   wget -O tunnelsats.sh https://github.com/Tunnelsats/tunnelsats/raw/main/scripts/tunnelsats.sh
+   wget -O tunnelsats.sh.sha256 https://github.com/Tunnelsats/tunnelsats/raw/main/scripts/tunnelsats.sh.sha256
+   sha256sum -c <(sed 's|scripts/tunnelsats.sh|tunnelsats.sh|' tunnelsats.sh.sha256)
+   ```
+3. **Run the installer** (managed mode is recommended for bare-metal Debian/Ubuntu systemd nodes and RaspiBlitz):
+   ```bash
+   # Bare-metal systemd node (managed mode, persistent kill switch + slice):
+   sudo bash tunnelsats.sh install --managed baremetal --config tunnelsats_<server>.conf
+
+   # Or interactive wizard:
    sudo bash tunnelsats.sh install
    ```
-3. **Configure your node** with the VPN settings from the installer output
+4. **Configure your node** with the VPN settings from the installer output (on RaspiBlitz with the SSH Subscriptions menu, the start guard manages the runtime flags automatically while keeping your node configuration Tor-only at rest)
 
 👉 **[See full installation guide and compatibility matrix →](./scripts/)**
 
-Scripts and node platforms can run the installer without prompts (`--non-interactive`, `--platform`, `--impl`, `--yes`) and inspect a node read-only with `detect --json`; see [scripts/README.md](./scripts/README.md#non-interactive-use-scripts-and-node-platforms).
+Scripts and node platforms can run the installer without prompts (`--non-interactive`, `--platform`, `--impl`, `--yes`), convert legacy installs with `adopt --managed`, and inspect a node read-only with `detect --json`; see [scripts/README.md](./scripts/README.md#non-interactive-use-scripts-and-node-platforms) and [docs/managed-mode.md](docs/managed-mode.md).
 
 ---
 
@@ -31,10 +40,10 @@ Scripts and node platforms can run the installer without prompts (`--non-interac
 
 The Lightning Network needs **fast, reliable, discoverable** nodes for efficient routing. While Tor provides privacy, it can be slow and unreliable. TunnelSats solves this by:
 
-- ⚡ **Clearnet Speed** – Direct connections for faster routing
-- 🔒 **VPN Privacy** – Your home IP stays hidden
-- 🧅 **Tor Fallback** – Maintains .onion connectivity
-- 🛡️ **Split Tunneling** – Only Lightning traffic goes through VPN
+- ⚡ **Clearnet Speed** - Direct connections for faster routing
+- 🔒 **VPN Privacy** - Your home IP stays hidden
+- 🧅 **Tor Fallback** - Maintains .onion connectivity
+- 🛡️ **Split Tunneling** - Only Lightning traffic goes through VPN
 
 ---
 
@@ -44,13 +53,13 @@ The Lightning Network needs **fast, reliable, discoverable** nodes for efficient
 | :----------------------------- | :-------------- | :-: | :-: | :--------------------------------------------------------------------------------------------------------------------------------- |
 | **Umbrel** (umbrelOS 1.0+)     | Docker App      | ✅  | ✅  | **Native Umbrel App** ([Community App Store](https://github.com/Tunnelsats/ts-umbrel-app) / Official Review Pending)               |
 | **StartOS** (StartOS 0.4.0+)   | Service Package | ✅  | ✅  | **Native StartOS Package** ([Start9 Community Registry](https://marketplace.start9.com/?registry=https%3A%2F%2Fcommunity-registry.start9.com%2F) / [package source](https://github.com/Start9-Community/tunnelsats-startos); also supports Eclair) |
-| **RaspiBlitz** (v1.11+)        | Systemd         | ✅  | ✅  | Host Script (`tunnelsats.sh`)                                                                                                      |
-| **Bare Metal** (Debian/Ubuntu) | Systemd         | ✅  | ✅  | Host Script (`tunnelsats.sh`)                                                                                                      |
+| **RaspiBlitz** (v1.11+)        | Systemd         | ✅  | ✅  | **SSH Menu** (`SUBSCRIBE > TunnelSats` on v1.12+) / Host Script (`tunnelsats.sh --managed raspiblitz`)                             |
+| **Bare Metal** (Debian/Ubuntu) | Systemd         | ✅  | ✅  | Host Script (`tunnelsats.sh --managed baremetal`)                                                                                  |
 | **myNode** (v0.3+)             | Systemd         | ⚠️  | ⚠️  | Host Script (`tunnelsats.sh` - Experimental)                                                                                       |
 
 > ℹ️ **Security Architecture Note**:
 > The `tunnelsats.sh` bash installer is designed for bare-metal / systemd nodes (RaspiBlitz, RaspiBolt, MiniBolt, myNode).
-> Due to the strict container sandboxing and security infrastructure of **Umbrel** and **StartOS**, manual host script execution is unsupported on those platforms — please use their respective native App / Service installations.
+> Due to the strict container sandboxing and security infrastructure of **Umbrel** and **StartOS**, manual host script execution is unsupported on those platforms - please use their respective native App / Service installations.
 > On StartOS, install the native TunnelSats package from the [Start9 Community Registry](https://marketplace.start9.com/?registry=https%3A%2F%2Fcommunity-registry.start9.com%2F) ([package source](https://github.com/Start9-Community/tunnelsats-startos)). The earlier gateway-based StartOS setup (**System > Gateways**) is end-of-life; see the [migration steps](https://tunnelsats.com/faq#how-do-i-move-from-the-system-gateways-setup-to-the-startos-package).
 
 See [scripts/README.md](./scripts/) for detailed compatibility info.
@@ -73,7 +82,7 @@ See [scripts/README.md](./scripts/) for detailed compatibility info.
 - **Dashboard**: Log in → My Dashboard → Renew
 - **API**: [api.tunnelsats.com](https://api.tunnelsats.com)
 
-Your existing configuration remains valid after renewal – no changes needed!
+Your existing configuration remains valid after renewal - no changes needed!
 
 ---
 
@@ -89,17 +98,23 @@ LND 0.20 and later keeps announcing the addresses it saved, the former VPN addre
 
 ---
 
-## Managed mode for bare-metal nodes (preview)
+## Managed mode for bare-metal nodes and RaspiBlitz
 
-Managed mode is an opt-in alternative for bare-metal systemd nodes. Its kill switch stays armed across tunnel restarts, reboots and package upgrades. When the subscription ends or the VPN server is unreachable, Lightning keeps running over Tor and the local network; only clearnet pauses until the tunnel is back.
+Managed mode runs the Lightning service in a dedicated cgroup v2 slice (`tunnelsats.slice`) behind a persistent `inet` nftables kill switch and policy routing table 51820. Its kill switch stays armed across tunnel restarts, reboots and package upgrades. When the subscription ends or the VPN server is unreachable, Lightning keeps running over Tor and the local network; only clearnet pauses until the tunnel is back.
 
 ```bash
+# Install managed mode on a bare-metal systemd node:
 sudo bash tunnelsats.sh install --managed baremetal --config tunnelsats_<server>.conf
+
+# Or convert an existing v2/v3 standard install to managed mode in one step:
+sudo bash tunnelsats.sh adopt --managed baremetal
+
+# Verify protection (kernel state + in-slice probes) or remove:
 sudo tunnelsats verify
 sudo tunnelsats uninstall --managed
 ```
 
-On RaspiBlitz, install with `--managed raspiblitz --impl lnd` (or `--impl cln`; testnet and signet instances add `--network testnet|signet`).
+On RaspiBlitz, use the built-in SSH Subscriptions menu (**MAIN MENU > SUBSCRIBE > TunnelSats**) or run `--managed raspiblitz --impl lnd` (or `--impl cln`; testnet and signet instances add `--network testnet|signet`).
 Requirements, how it works and what `verify` reports: [docs/managed-mode.md](docs/managed-mode.md).
 
 ---
