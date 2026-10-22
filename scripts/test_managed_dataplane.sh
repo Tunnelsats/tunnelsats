@@ -217,12 +217,12 @@ case "$*" in
             fi
         done
         ;;
-    "list table ip tunnelsats_failclosed")
-        if [[ -f "$s/legacy_table_ip_tunnelsats_failclosed" ]]; then echo "table ip tunnelsats_failclosed {"; echo "}"; exit 0; fi
+    "list table ip tunnelsats_failclosed"|"list table inet tunnelsats_failclosed")
+        if [[ -f "$s/legacy_table_${3}_tunnelsats_failclosed" ]]; then echo "table ${3} tunnelsats_failclosed {"; echo "}"; exit 0; fi
         exit 1
         ;;
-    "delete table ip tunnelsats_failclosed")
-        rm -f "$s/legacy_table_ip_tunnelsats_failclosed"
+    "delete table ip tunnelsats_failclosed"|"delete table inet tunnelsats_failclosed")
+        rm -f "$s/legacy_table_${3}_tunnelsats_failclosed"
         exit 0
         ;;
     "list table ip "*|"list table inet "*)
@@ -310,6 +310,28 @@ cat > "$STUB_BIN/systemd-run" <<'EOF'
 # probe_send6 for the datagram probes)
 s="${STUB_STATE:?}"
 printf 'systemd-run %s\n' "$*" >> "$s/calls"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --*) shift ;;
+        -p) shift 2 ;;
+        *) break ;;
+    esac
+done
+if [[ "${1:-}" == "/bin/bash" ]] || [[ "${1:-}" == "bash" ]]; then
+    shift
+    script="${1:-}"
+    if [[ -z "$script" ]] || [[ ! -f "$script" ]]; then exit 1; fi
+    perms=$(stat -c '%a' "$script" 2>/dev/null || echo "000")
+    case "${perms: -1}" in
+        4|5|6|7) ;;
+        *) exit 1 ;;
+    esac
+    shift
+else
+    bin="${1:-}"
+    if [[ -f "$bin" ]] && [[ ! -x "$bin" ]]; then exit 1; fi
+    shift
+fi
 while [[ $# -gt 0 ]] && [[ "$1" != "managed-probe" ]]; do shift; done
 mode="${2:-}"
 if [[ "$mode" == "send" ]]; then mode="send${3:-}"; fi
@@ -1978,23 +2000,54 @@ run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=verify; TS_OUT_FD=1; cmd_verify'
 assert_equals "3" "$SN_RC" "verify: no install exits 3"
 assert_contains "$SN_OUT" '"code":"E_NOT_INSTALLED"' "verify: no install reports E_NOT_INSTALLED"
 
-# A standard (legacy) install: verdict unmanaged (exit 9), never protected or unsafe
+# A standard (legacy) install: verdict unmanaged (exit 9) when IPv6 is blocked, or unsafe (exit 4) when IPv6 leaks
 fx=$(new_fixture unmanaged)
 cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
-printf '#Tunnelsats-Setupv2-Non-Docker\nPostUp = nft add table ip %%i\n' >> "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+printf '#Tunnelsats-Setupv2-Non-Docker\nPreUp = /etc/wireguard/tunnelsats-route-guard.sh arm 10.9.9.0/25 1001\nPostUp = nft add table ip %%i\n' >> "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
 printf '#!/bin/bash\n' > "$fx/fs/etc/wireguard/tunnelsats-route-guard.sh"
 touch "$fx/state/legacy_table_ip_tunnelsatsv2" "$fx/state/link_tunnelsatsv2"
+printf 'cgroup /system.slice/run-u1.service\nsend 2001:db8:113::40 EPERM\n' > "$fx/state/probe_send6"
 wg_up
 run_snippet "$fx" "$verify_env cmd_verify"
 doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
-assert_equals "9" "$SN_RC" "verify: a standard install exits 9"
+assert_equals "9" "$SN_RC" "verify: a standard install exits 9 when IPv6 is blocked"
 assert_json "$doc" '[d["verdict"], d["managed"], d["install_kind"], d["clearnet_blocked"], d["emergency_state"], [c["id"] + ":" + c["result"] for c in d["checks"]]]' \
-    '["unmanaged", false, "legacy_v3_post_204", false, "none", ["wg_handshake:pass", "legacy_killswitch:pass"]]' "verify: unmanaged document with the checks that apply"
+    '["unmanaged", false, "legacy_v3_post_204", false, "none", ["wg_handshake:pass", "legacy_killswitch:pass", "ipv6_probe:pass"]]' "verify: unmanaged document with the checks that apply (including ipv6_probe)"
 assert_json "$doc" '[e["code"] + ":" + e["class"] for e in d["errors"]]' '["E_UNMANAGED:unmanaged"]' "verify: unmanaged is reported as such, not as unsafe"
 run_snippet "$fx" "$human_env cmd_verify"
 assert_contains "$SN_OUT" "Standard install: the tunnel is up (handshake 20 s ago) and its kill switch is active while the tunnel stays up. Managed mode keeps it armed across restarts: see https://github.com/Tunnelsats/tunnelsats/blob/main/docs/managed-mode.md." \
     "verify (human): standard install text"
-assert_not_contains "$SN_OUT" "Not protected" "verify (human): a standard install is never called not protected"
+assert_not_contains "$SN_OUT" "Not protected" "verify (human): a standard install with blocked IPv6 is not called not protected"
+
+# Standard install where an IPv6 datagram leaves the host: reported as unsafe (exit 4, E_IPV6_PROBE)
+printf 'cgroup /system.slice/run-u1.service\nsend 2001:db8:113::40 sent\n' > "$fx/state/probe_send6"
+run_snippet "$fx" "$verify_env cmd_verify"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "4" "$SN_RC" "verify: a standard install whose IPv6 datagram leaves the host exits 4"
+assert_json "$doc" '[d["verdict"], [e["code"] for e in d["errors"]], [c["id"] + ":" + c["result"] for c in d["checks"] if c["id"] == "ipv6_probe"]]' \
+    '["unsafe", ["E_IPV6_PROBE"], ["ipv6_probe:fail"]]' "verify: standard install with open IPv6 path is reported as unsafe"
+run_snippet "$fx" "$human_env cmd_verify"
+assert_contains "$SN_OUT" "Not protected" "verify (human): standard install with open IPv6 path says Not protected"
+printf 'cgroup /system.slice/run-u1.service\nsend 2001:db8:113::40 EPERM\n' > "$fx/state/probe_send6"
+
+# Fresh standard install where TS_M_BIN is absent and TS_SCRIPT_PATH is non-executable (0600):
+# ts_v_unmanaged stages a world-readable copy, runs it through /bin/bash as the node user, and cleans up
+mkdir -p -m 0700 "$fx/private"
+cp "$SCRIPT_UNDER_TEST" "$fx/private/tunnelsats-nonexec.sh"
+chmod 0600 "$fx/private/tunnelsats-nonexec.sh"
+rm -f "$fx/fs/usr/local/sbin/tunnelsats" "$fx/state/calls"
+run_snippet "$fx" "TS_SCRIPT_PATH='$fx/private/tunnelsats-nonexec.sh'; $verify_env cmd_verify"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "9" "$SN_RC" "verify: fresh standard install with 0600 non-executable script exits 9 when IPv6 is blocked"
+assert_json "$doc" '[d["verdict"], [c["id"] + ":" + c["result"] for c in d["checks"] if c["id"] == "ipv6_probe"]]' \
+    '["unmanaged", ["ipv6_probe:pass"]]' "verify: fresh standard install runs ipv6_probe via /bin/bash on a readable staged copy"
+if grep -qE '^systemd-run .* --uid=1001 /bin/bash .*/usr/local/sbin/\.tunnelsats-probe\.[^ ]+ managed-probe send 6 - 2001:db8:113::40$' "$fx/state/calls" && \
+    [[ -z "$(find "$fx/fs/usr/local/sbin" -name '.tunnelsats-probe.*' 2>/dev/null)" ]]; then
+    pass "verify: fresh standard install invokes /bin/bash on staged readable script and removes temporary file"
+else
+    fail "verify: fresh standard install invokes /bin/bash on staged readable script and removes temporary file"
+fi
+
 printf '#!/bin/bash\nexit 1\n' > "$STUB_BIN/wg"
 rm -f "$fx/state/legacy_table_ip_tunnelsatsv2"
 run_snippet "$fx" "$human_env cmd_verify"

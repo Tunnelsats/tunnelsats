@@ -1283,6 +1283,93 @@ echo "INFO: gossip loop during S7 with the backstop: $gossip"
 uninstall_managed
 assert_equals "0" "$U_RC" "S7: uninstall after the backstop cycle exits 0"
 
+# ---------------------------------------------------------------------------
+# Cycle 4: Standard (unmanaged) install IPv6 & boot failure scenarios (#236)
+# ---------------------------------------------------------------------------
+step "S14 standard (unmanaged) install: scoped IPv6 drop, verify probe, and fail-closed boot/refusal (#236)"
+if ! systemctl is-active --quiet lnd.service; then
+    systemctl start lnd.service
+fi
+wait_stub || true
+stub_egress6() {
+    json_get "$(stub_get "/egress?url=http://%5B2001:db8:113::10%5D/")" 'd.get("body", "")'
+}
+root_egress6() {
+    curl -g -s -6 --connect-timeout 4 --max-time 6 "http://[2001:db8:113::10]/" 2>/dev/null | tr -d '[:space:]' || true
+}
+assert_equals "2001:db8:1::1" "$(stub_egress6)" "S14: before standard install the stub reaches IPv6 peers with the home IPv6 address"
+reset_outside_counter
+grep -v '^DNS' "$WORK/tunnelsats_ci-test.conf" > "$WORK/tunnelsats_std.conf"
+bash -c '
+    source "$1"
+    PLATFORM="baremetal"
+    LN_IMPL="lnd"
+    WG_INTERFACE="tunnelsatsv2"
+    CONFIG_FILE="$2"
+    node_user="$3"
+    write_route_guard_script
+    configure_wireguard
+    setup_cgroups
+' _ "$TS" "$WORK/tunnelsats_std.conf" "$NODE_USER" >/dev/null
+systemctl daemon-reload
+systemctl start wg-quick@tunnelsatsv2.service
+wait_handshake || fail "S14: no handshake on standard install"
+# Simulate a NetworkManager reconnect re-enabling IPv6 on the home interface while the tunnel is up
+sysctl -q -w net.ipv6.conf.all.disable_ipv6=0 net.ipv6.conf.default.disable_ipv6=0 net.ipv6.conf.ts-home.disable_ipv6=0
+assert_equals "2001:db8:1::1" "$(root_egress6)" "S14: root outside the node user keeps native IPv6"
+assert_equals "" "$(stub_egress6)" "S14: the Lightning stub cannot reach IPv6 peers even with host IPv6 enabled"
+assert_equals "0" "$(outside_count)" "S14: zero packets from the Lightning user left through ts-home"
+# Simulate the documented fresh download-and-run flow (non-executable script inside a 0700 directory, no /usr/local/sbin/tunnelsats)
+mkdir -p -m 0700 "$WORK/fresh-dl"
+cp "$TS" "$WORK/fresh-dl/tunnelsats.sh"
+chmod 0600 "$WORK/fresh-dl/tunnelsats.sh"
+set +e
+V_DOC=$(bash "$WORK/fresh-dl/tunnelsats.sh" verify --json 2>"$WORK/verify.err")
+V_RC=$?
+set -e
+assert_equals "9" "$V_RC" "S14: verify on a protected standard install (run from 0600 script in 0700 dir) exits 9 (unmanaged)"
+assert_equals '["unmanaged", ["wg_handshake:pass", "legacy_killswitch:pass", "ipv6_probe:pass"]]' \
+    "$(json_get "$V_DOC" '[d["verdict"], [c["id"] + ":" + c["result"] for c in d["checks"]]]')" \
+    "S14: verify reports unmanaged with ipv6_probe:pass"
+# Remove the standard install's inet IPv6 table and verify that verify detects the open IPv6 path
+nft delete table inet tunnelsatsv2
+run_verify
+assert_equals "4" "$V_RC" "S14: verify exits 4 (unsafe) when standard install IPv6 drop is missing"
+assert_equals '["unsafe", ["E_IPV6_PROBE"], ["ipv6_probe:fail"]]' \
+    "$(json_get "$V_DOC" '[d["verdict"], [e["code"] for e in d["errors"]], [c["id"] + ":" + c["result"] for c in d["checks"] if c["id"] == "ipv6_probe"]]')" \
+    "S14: verify reports unsafe and E_IPV6_PROBE when IPv6 datagram leaves the host"
+assert_contains "$(json_get "$V_DOC" '[c["detail"] for c in d["checks"] if c["id"] == "ipv6_probe"][0]')" \
+    "left this host; nothing stopped it" \
+    "S14: verify ipv6_probe detail confirms the datagram left the host"
+reset_outside_counter
+# Refused tunnel start at boot (foreign route in table 51820): emergency block covers both IPv4 and IPv6
+systemctl stop wg-quick@tunnelsatsv2.service
+ip route add 10.20.0.0/16 dev ts-lan table 51820
+set +e
+systemctl start wg-quick@tunnelsatsv2.service >/dev/null 2>&1
+set -e
+assert_contains "$(nft list table inet tunnelsats_failclosed 2>/dev/null)" "meta skuid ${NODE_UID}" \
+    "S14: refused start arms table inet tunnelsats_failclosed for the node uid"
+assert_equals "" "$(stub_egress)" "S14: IPv4 egress from the stub is blocked after refused tunnel start"
+assert_equals "" "$(stub_egress6)" "S14: IPv6 egress from the stub is blocked after refused tunnel start"
+assert_equals "0" "$(outside_count)" "S14: zero IPv4 or IPv6 packets left through ts-home after refused start"
+ip route del 10.20.0.0/16 dev ts-lan table 51820
+# Pre-hook boot failure (e.g. endpoint DNS failure before PreUp): tunnelsats-create-cgroup.sh arms the block
+nft delete table inet tunnelsats_failclosed >/dev/null 2>&1 || true
+/etc/wireguard/tunnelsats-create-cgroup.sh >/dev/null 2>&1
+assert_contains "$(nft list table inet tunnelsats_failclosed 2>/dev/null)" "meta skuid ${NODE_UID}" \
+    "S14: tunnelsats-create-cgroup.sh arms table inet tunnelsats_failclosed when tunnel is down at boot"
+assert_equals "" "$(stub_egress6)" "S14: IPv6 egress from the stub is blocked when tunnel fails before PreUp"
+# Routing-policy blackhole fallback covers both IPv4 and IPv6 when nft is unavailable
+nft delete table inet tunnelsats_failclosed >/dev/null 2>&1 || true
+bash -c 'source "$1"; ts_arm_failclosed_rules 10.9.9.0/25 "$2"' _ "$TS" "$NODE_UID"
+assert_contains "$(ip -6 rule show)" "21819:	from all uidrange ${NODE_UID}-${NODE_UID} blackhole" \
+    "S14: routing-policy fallback adds IPv6 uidrange blackhole at priority 21819"
+assert_equals "" "$(stub_egress)" "S14: IPv4 egress blocked by routing-policy fallback"
+assert_equals "" "$(stub_egress6)" "S14: IPv6 egress blocked by routing-policy fallback"
+assert_equals "0" "$(outside_count)" "S14: zero packets left through ts-home under routing-policy fallback"
+TS_M_ANNOUNCE_WAIT=0 bash "$TS" uninstall --managed --legacy-artifacts --yes --non-interactive >/dev/null 2>&1 || true
+
 echo ""
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"
