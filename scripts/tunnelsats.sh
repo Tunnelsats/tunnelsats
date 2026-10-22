@@ -11680,6 +11680,9 @@ ts_v_report() {
 # none can be determined (for example on a Docker install or when no Lightning account exists).
 ts_v_unmanaged_uid() {
     local conf="${1:-}" uid="" user="" unit=""
+    if [[ -n "$conf" ]] && [[ ! -f "$conf" ]] && [[ -f "${TS_FS_ROOT}${conf}" ]]; then
+        conf="${TS_FS_ROOT}${conf}"
+    fi
     if [[ -n "$conf" ]] && [[ -f "$conf" ]]; then
         uid=$(sed -nE 's/.*tunnelsats-route-guard\.sh[[:space:]]+(arm|check|release)[[:space:]]+[^[:space:]]+[[:space:]]+([1-9][0-9]{0,9})([[:space:]"#]|$).*/\2/p' "$conf" 2>/dev/null | head -n 1) || uid=""
         if [[ "$uid" =~ ^[1-9][0-9]{0,9}$ ]]; then
@@ -11743,29 +11746,34 @@ ts_v_unmanaged() {
         if [[ "$probes" == "run" ]]; then
             probe_state="run"
             local probe_bin="$TS_M_BIN" probe_tmp="" probe_uid="" probe_out="" probe_w="" probe_line
+            local -a probe_cmd=()
             if ! ts_m_ipv6_available; then
                 ts_v_add ipv6_probe unsafe skip "not run: this host has no IPv6"
             elif ! ts_v_target "$TS_V_V6_URL" 6; then
                 ts_v_add ipv6_probe unsafe skip "not run: ${TS_V_V6_URL} has no IPv6 address"
             else
-                if [[ ! -x "${TS_FS_ROOT}${probe_bin}" ]] && [[ -n "${TS_SCRIPT_PATH:-}" ]]; then
-                    probe_bin="$TS_SCRIPT_PATH"
-                    if [[ -z "${TS_FS_ROOT:-}" ]] && [[ -d /usr/local/sbin ]] && [[ -w /usr/local/sbin ]]; then
-                        probe_tmp=$(mktemp /usr/local/sbin/.tunnelsats-probe.XXXXXX 2>/dev/null) || probe_tmp=""
-                        if [[ -n "$probe_tmp" ]] && install -m 0755 "$TS_SCRIPT_PATH" "$probe_tmp" 2>/dev/null; then
-                            probe_bin="$probe_tmp"
-                        else
-                            rm -f "$probe_tmp" 2>/dev/null || true
-                            probe_tmp=""
-                        fi
+                if [[ -x "${TS_FS_ROOT}${probe_bin}" ]]; then
+                    probe_cmd=("$probe_bin")
+                elif [[ -n "${TS_SCRIPT_PATH:-}" ]] && [[ -r "$TS_SCRIPT_PATH" ]]; then
+                    local stage_dir="${TS_FS_ROOT}/usr/local/sbin"
+                    mkdir -p "$stage_dir" 2>/dev/null || stage_dir="${TMPDIR:-/tmp}"
+                    probe_tmp=$(mktemp "${stage_dir}/.tunnelsats-probe.XXXXXX" 2>/dev/null) || probe_tmp=""
+                    if [[ -n "$probe_tmp" ]] && install -m 0644 "$TS_SCRIPT_PATH" "$probe_tmp" 2>/dev/null; then
+                        probe_cmd=(/bin/bash "$probe_tmp")
+                    else
+                        rm -f "$probe_tmp" 2>/dev/null || true
+                        probe_tmp=""
+                        probe_cmd=(/bin/bash "$TS_SCRIPT_PATH")
                     fi
+                else
+                    probe_cmd=(/bin/bash "${TS_SCRIPT_PATH:-$probe_bin}")
                 fi
                 probe_uid=$(ts_v_unmanaged_uid "$TSD_CFG_PATH")
                 local -a probe_args=(--quiet --wait --pipe --collect -p RuntimeMaxSec=60)
                 if [[ "$probe_uid" =~ ^[1-9][0-9]{0,9}$ ]]; then
                     probe_args+=("--uid=${probe_uid}")
                 fi
-                probe_out=$("$SYSTEMD_RUN_BIN" "${probe_args[@]}" "$probe_bin" managed-probe send 6 - "$TS_V_T_IP" </dev/null 2>/dev/null) || probe_out=""
+                probe_out=$("$SYSTEMD_RUN_BIN" "${probe_args[@]}" "${probe_cmd[@]}" managed-probe send 6 - "$TS_V_T_IP" </dev/null 2>/dev/null) || probe_out=""
                 if [[ -n "$probe_tmp" ]]; then
                     rm -f "$probe_tmp" 2>/dev/null || true
                 fi

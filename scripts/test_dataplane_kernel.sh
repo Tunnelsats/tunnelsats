@@ -1289,13 +1289,13 @@ assert_equals "0" "$U_RC" "S7: uninstall after the backstop cycle exits 0"
 step "S14 standard (unmanaged) install: scoped IPv6 drop, verify probe, and fail-closed boot/refusal (#236)"
 if ! systemctl is-active --quiet lnd.service; then
     systemctl start lnd.service
-    wait_stub || true
 fi
+wait_stub || true
 stub_egress6() {
-    json_get "$(stub_get "/egress?url=http://[2001:db8:113::10]/")" 'd.get("body", "")'
+    json_get "$(stub_get "/egress?url=http://%5B2001:db8:113::10%5D/")" 'd.get("body", "")'
 }
 root_egress6() {
-    curl -s -6 --connect-timeout 4 --max-time 6 "http://[2001:db8:113::10]/" 2>/dev/null | tr -d '[:space:]' || true
+    curl -g -s -6 --connect-timeout 4 --max-time 6 "http://[2001:db8:113::10]/" 2>/dev/null | tr -d '[:space:]' || true
 }
 assert_equals "2001:db8:1::1" "$(stub_egress6)" "S14: before standard install the stub reaches IPv6 peers with the home IPv6 address"
 reset_outside_counter
@@ -1319,8 +1319,15 @@ sysctl -q -w net.ipv6.conf.all.disable_ipv6=0 net.ipv6.conf.default.disable_ipv6
 assert_equals "2001:db8:1::1" "$(root_egress6)" "S14: root outside the node user keeps native IPv6"
 assert_equals "" "$(stub_egress6)" "S14: the Lightning stub cannot reach IPv6 peers even with host IPv6 enabled"
 assert_equals "0" "$(outside_count)" "S14: zero packets from the Lightning user left through ts-home"
-run_verify
-assert_equals "9" "$V_RC" "S14: verify on a protected standard install exits 9 (unmanaged)"
+# Simulate the documented fresh download-and-run flow (non-executable script inside a 0700 directory, no /usr/local/sbin/tunnelsats)
+mkdir -p -m 0700 "$WORK/fresh-dl"
+cp "$TS" "$WORK/fresh-dl/tunnelsats.sh"
+chmod 0600 "$WORK/fresh-dl/tunnelsats.sh"
+set +e
+V_DOC=$(bash "$WORK/fresh-dl/tunnelsats.sh" verify --json 2>"$WORK/verify.err")
+V_RC=$?
+set -e
+assert_equals "9" "$V_RC" "S14: verify on a protected standard install (run from 0600 script in 0700 dir) exits 9 (unmanaged)"
 assert_equals '["unmanaged", ["wg_handshake:pass", "legacy_killswitch:pass", "ipv6_probe:pass"]]' \
     "$(json_get "$V_DOC" '[d["verdict"], [c["id"] + ":" + c["result"] for c in d["checks"]]]')" \
     "S14: verify reports unmanaged with ipv6_probe:pass"
