@@ -15,7 +15,7 @@ sudo bash tunnelsats.sh [install|adopt|uninstall|status|restart|verify|pre-check
 | Command         | Description                                                                                                                        |
 | :-------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
 | **`install`**   | Interactive wizard to install WireGuard, configure your node (LND/CLN/LIT), and set up networking (`--managed` installs managed mode). |
-| **`adopt`**     | Converts an existing standard (v2 or v3) install into managed mode (`--managed baremetal` or `--managed raspiblitz`) in one transition. |
+| **`adopt`**     | Converts an existing standard (v2 or v3) install into managed mode (`--managed baremetal`, `--managed raspiblitz` or `--managed mynode`) in one transition. |
 | **`uninstall`** | Removes TunnelSats configurations, units, and routing rules (never edits node configuration files; prints clearnet lines to remove). |
 | **`status`**    | Detailed diagnostics. Checks subscription validity, interface status, Docker health, and connectivity (Ping/RTT).                  |
 | **`restart`**   | Smart restart helper. Re-initializes the WireGuard interface and DNS watchdog if you lose connection.                              |
@@ -24,7 +24,7 @@ sudo bash tunnelsats.sh [install|adopt|uninstall|status|restart|verify|pre-check
 | **`detect`**    | Read-only report: platform, Lightning units, an existing TunnelSats install (v2, v3 before or after the route guard, managed) with its artifacts, config facts, capabilities and conflicts. Needs no root; anything it cannot read is reported as such. |
 | **`version`**   | Prints the tool version, the CLI contract number and the sha256 of the running script.                                             |
 
-`install --managed <baremetal|raspiblitz>`, `adopt --managed <baremetal|raspiblitz>` and `uninstall --managed` set up, convert and remove managed mode on bare-metal systemd nodes and RaspiBlitz; see [docs/managed-mode.md](../docs/managed-mode.md).
+`install --managed <baremetal|raspiblitz|mynode>`, `adopt --managed <baremetal|raspiblitz|mynode>` and `uninstall --managed` set up, convert and remove managed mode on bare-metal systemd nodes, RaspiBlitz and myNode; see [docs/managed-mode.md](../docs/managed-mode.md).
 
 ### Non-interactive use (scripts and node platforms)
 
@@ -41,7 +41,7 @@ Options are accepted before or after the command:
 | `--remove-packages`, `--keep-packages` | Answer the uninstall package question; non-interactive mode keeps the packages |
 | `--keep-config` | `uninstall` and `uninstall --managed`: keep the WireGuard configuration in `/etc/wireguard` on disk |
 | `--legacy-artifacts` | `uninstall --managed`: also remove leftover artifacts from earlier v2/v3 standard installs (or clean a legacy install when no managed record exists) |
-| `--managed [profile]` | Managed mode for `install` and `adopt` (profile `baremetal` or `raspiblitz`) and `uninstall` |
+| `--managed [profile]` | Managed mode for `install` and `adopt` (profile `baremetal`, `raspiblitz` or `mynode`) and `uninstall` |
 | `--uid-backstop` | `install --managed` and `adopt --managed`: also routes the Lightning user's traffic into the tunnel by uid (side effects in [docs/managed-mode.md](../docs/managed-mode.md)) |
 | `--no-probe` | `verify`: kernel checks only, no network probes |
 | `--json` | Exactly one JSON document on stdout, logs on stderr (`version`, `detect`, `verify`, `install --managed`, `adopt --managed`, `uninstall --managed`, and usage errors of every command); implies `--non-interactive`. Other commands refuse it with `E_JSON_UNSUPPORTED`. |
@@ -62,7 +62,7 @@ We are iteratively validating `tunnelsats.sh` across various Node OS platforms. 
 | Any Hardware      | **StartOS (Start9)** | 0.4.0+             |   N/A (Use Native Package)    |   ✅ Native StartOS Package (Start9 Community Registry)   |
 | Raspberry Pi      | **RaspiBlitz**       | v1.11.x+           |         ✅ Supported          |    ✅ Built-in SSH Menu (`SUBSCRIBE > TunnelSats` on v1.12+)     |
 | PC / VPS          | **Bare Metal**       | Debian 12 / Ubuntu |         ✅ Supported          |                               N/A                                |
-| Pi / PC (x86)     | **myNode**           | v0.3.x             |        ⚠️ Experimental        |                               N/A                                |
+| Pi / PC (x86)     | **myNode**           | v0.3.x             |         ✅ Supported          |                               N/A                                |
 
 **Legend:**
 

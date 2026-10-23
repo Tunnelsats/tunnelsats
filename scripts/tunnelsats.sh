@@ -480,10 +480,16 @@ print_node_config_instructions() {
              [[ ! -f "$lnd_path" ]] && [[ -f "/home/lnd/.lnd/lnd.conf" ]] && lnd_path="/home/lnd/.lnd/lnd.conf"
              [[ ! -f "$lnd_path" ]] && [[ -f "/data/lnd/lnd.conf" ]] && lnd_path="/data/lnd/lnd.conf"
              [[ ! -f "$lnd_path" ]] && [[ -f "/mnt/hdd/lnd/lnd.conf" ]] && lnd_path="/mnt/hdd/lnd/lnd.conf"
+             [[ "$PLATFORM" == "mynode" ]] && lnd_path="/mnt/hdd/mynode/settings/lnd_extra_config.conf"
              # The managed raspiblitz install knows the file the unit reads (TS_NODE_CONF_FILE)
              [[ -n "${TS_NODE_CONF_FILE:-}" ]] && lnd_path="$TS_NODE_CONF_FILE"
              
              echo -e "Edit: ${BOLD}${BLUE}sudo nano $lnd_path${NC}"
+             if [[ "$PLATFORM" == "mynode" ]]; then
+                 echo -e "${YELLOW}Note: MyNode regenerates /mnt/hdd/mynode/lnd/lnd.conf on restart from${NC}"
+                 echo -e "${YELLOW}      /mnt/hdd/mynode/settings/lnd_extra_config.conf (also editable in the${NC}"
+                 echo -e "${YELLOW}      MyNode Web GUI under LND -> Config -> Additional LND Config).${NC}"
+             fi
              if [[ "$context" == "install" ]]; then
                  echo -e "${YELLOW}Note: Place settings in their respective sections. Do NOT duplicate categories.${NC}"
              fi
@@ -943,7 +949,10 @@ Commands:
   install --managed raspiblitz --impl lnd|cln [--network mainnet|testnet|signet]
                             The same on RaspiBlitz, for the Lightning instance that
                             --impl and --network name (lnd.service, tlnd.service, ...)
-  adopt --managed baremetal|raspiblitz
+  install --managed mynode [--impl lnd|lit]
+                            The same on myNode, with a pre-start LND config guard
+                            that keeps hybrid settings across myNode restarts
+  adopt --managed baremetal|raspiblitz|mynode
                             Replace an existing standard (legacy) install with the
                             managed dataplane in one step
   pre-check                 Check system compatibility
@@ -971,7 +980,7 @@ Options (accepted before or after the command):
   --keep-config             uninstall: keep /etc/wireguard/tunnelsats*.conf on disk
   --legacy-artifacts        uninstall --managed: also clean legacy v2/v3 artifacts
                             (or clean a legacy install when no managed record exists)
-  --managed [profile]       install, adopt (profile baremetal or raspiblitz),
+  --managed [profile]       install, adopt (profile baremetal, raspiblitz or mynode),
                             uninstall: managed mode
   --network <chain>         install/adopt --managed raspiblitz: mainnet (default),
                             testnet or signet
@@ -5712,7 +5721,7 @@ cmd_detect() {
 # ---------------------------------------------------------------------------
 
 # Prints the canonical name of command word $1 (aliases included), nothing if it is unknown.
-# managed-arm, managed-disarm and managed-verify are internal verbs of the managed units.
+# managed-arm, managed-disarm, managed-verify and managed-mynode-lnd-pre are internal verbs of the managed units.
 ts_canonical_command() {
     case "$1" in
         install) echo "install" ;;
@@ -5725,7 +5734,7 @@ ts_canonical_command() {
         detect) echo "detect" ;;
         version) echo "version" ;;
         help) echo "help" ;;
-        managed-arm|managed-disarm|managed-verify) echo "$1" ;;
+        managed-arm|managed-disarm|managed-verify|managed-mynode-lnd-pre) echo "$1" ;;
     esac
     return 0
 }
@@ -5929,7 +5938,7 @@ ts_validate_cli() {
         ts_usage_error "--uid-backstop requires --managed"
     fi
     if [[ "$TS_COMMAND" == "adopt" ]] && [[ "$TS_OPT_MANAGED" -ne 1 ]]; then
-        ts_usage_error "adopt requires --managed <baremetal|raspiblitz>"
+        ts_usage_error "adopt requires --managed <baremetal|raspiblitz|mynode>"
     fi
     # RaspiBlitz runs one Lightning unit per implementation and chain, so the raspiblitz profile
     # names it (--impl, --network) instead of picking one
@@ -5942,6 +5951,11 @@ ts_validate_cli() {
         fi
     elif [[ -n "$TS_OPT_NETWORK" ]]; then
         ts_usage_error "--network is used by '${TS_COMMAND} --managed raspiblitz' only"
+    fi
+    if [[ "$TS_COMMAND" == "install" || "$TS_COMMAND" == "adopt" ]] && [[ "$TS_OPT_MANAGED" -eq 1 ]] && [[ "$TS_OPT_PROFILE" == "mynode" ]]; then
+        if [[ "$TS_OPT_IMPL" == "cln" ]]; then
+            ts_usage_error "${TS_COMMAND} --managed mynode supports --impl lnd or --impl lit, not cln (myNode does not ship Core Lightning)"
+        fi
     fi
     if [[ "$TS_JSON" -eq 1 ]]; then
         case "$TS_COMMAND" in
@@ -5990,7 +6004,7 @@ parse_args() {
 
     # Internal verbs of the managed units (they log to the journal through stderr)
     case "$TS_COMMAND" in
-        managed-arm|managed-disarm|managed-verify)
+        managed-arm|managed-disarm|managed-verify|managed-mynode-lnd-pre)
             if [[ "$EUID" -ne 0 ]]; then
                 echo "TunnelSats: ${TS_COMMAND} must run as root" >&2
                 exit 1
@@ -5999,6 +6013,7 @@ parse_args() {
                 managed-arm) ts_m_cmd_arm ;;
                 managed-disarm) ts_m_cmd_disarm ;;
                 managed-verify) ts_m_cmd_verifier ;;
+                managed-mynode-lnd-pre) ts_m_cmd_mynode_lnd_pre ;;
             esac
             ;;
     esac
@@ -6147,7 +6162,7 @@ TS_M_LAN6="::1/128, fc00::/7, fe80::/10"
 # traffic from it, the uid rule is what covers the Lightning daemon
 TS_M_EMERGENCY_SUBNET="10.9.9.0/25"
 # Profiles install --managed accepts, and the words --managed recognises as a profile value
-TS_M_PROFILES="baremetal raspiblitz"
+TS_M_PROFILES="baremetal raspiblitz mynode"
 TS_M_PROFILE_WORDS="baremetal raspiblitz umbrel mynode"
 TS_M_BIN="/usr/local/sbin/tunnelsats"
 TS_M_UNIT_DIR="/etc/systemd/system"
@@ -6190,9 +6205,11 @@ TS_M_CGROUP_ROOT="/sys/fs/cgroup"
 TS_M_HANDSHAKE_MAX_AGE=180
 # Lightning units managed mode can tunnel: "<impl>:<unit>". The baremetal profile picks one of
 # TS_M_LN_UNITS; the raspiblitz profile names one of TS_M_RASPIBLITZ_LN_UNITS with --impl and
-# --network (ts_m_raspiblitz_unit). TS_M_ALL_LN_UNITS lists each unit of both profiles once: any of
-# them can carry the managed drop-in (path checks, removal, the damaged-record path, detect).
+# --network (ts_m_raspiblitz_unit); the mynode profile picks one of TS_M_MYNODE_LN_UNITS.
+# TS_M_ALL_LN_UNITS lists each unit of all profiles once: any of them can carry the managed
+# drop-in (path checks, removal, the damaged-record path, detect).
 TS_M_LN_UNITS="lnd:lnd.service cln:lightningd.service lit:litd.service lit:lit.service"
+TS_M_MYNODE_LN_UNITS="lnd:lnd.service lit:litd.service lit:lit.service"
 TS_M_RASPIBLITZ_LN_UNITS="lnd:lnd.service lnd:tlnd.service lnd:slnd.service cln:lightningd.service cln:tlightningd.service cln:slightningd.service"
 TS_M_ALL_LN_UNITS="${TS_M_LN_UNITS} lnd:tlnd.service lnd:slnd.service cln:tlightningd.service cln:slightningd.service"
 
@@ -6553,6 +6570,7 @@ EOF
 # tunnel, so a boot never waits for the VPN server or DNS; the kill switch blocks clearnet traffic
 # of the slice while the tunnel is down.
 ts_m_render_ln_dropin() {
+    local profile="${1:-${TS_M_INV_PROFILE:-${TS_OPT_PROFILE:-}}}"
     ts_m_render_unit_header
     cat <<EOF
 [Unit]
@@ -6562,6 +6580,9 @@ After=${TS_M_KILLSWITCH_UNIT}
 [Service]
 Slice=${TS_M_SLICE}
 EOF
+    if [[ "$profile" == "mynode" ]]; then
+        printf 'ExecStartPre=+%s managed-mynode-lnd-pre\n' "$TS_M_BIN"
+    fi
 }
 
 ts_m_render_wg_dropin() {
@@ -6703,6 +6724,7 @@ ts_m_profile_unit_ok() {
     case "$1" in
         baremetal) ts_in_list "$2" "$TS_M_LN_UNITS" ;;
         raspiblitz) ts_in_list "$2" "$TS_M_RASPIBLITZ_LN_UNITS" ;;
+        mynode) ts_in_list "$2" "$TS_M_MYNODE_LN_UNITS" ;;
         *) return 1 ;;
     esac
 }
@@ -7911,6 +7933,224 @@ ts_m_cmd_verifier() {
     exit 1
 }
 
+# managed-mynode-lnd-pre: ExecStartPre=+ of the Lightning unit on the mynode profile.
+# MyNode regenerates /mnt/hdd/mynode/lnd/lnd.conf from /mnt/hdd/mynode/settings/lnd_custom.conf
+# and /mnt/hdd/mynode/settings/lnd_extra_config.conf when starting LND. Verifies the managed
+# inventory and tunnel config, checks the MyNode custom/extra LND configs, and reconciles
+# /mnt/hdd/mynode/lnd/lnd.conf before LND starts if any configured TunnelSats hybrid settings
+# are missing. Fails closed (exits 1) if the inventory, tunnel config or lnd.conf cannot be
+# read or updated when expected.
+ts_m_cmd_mynode_lnd_pre() {
+    local wg_conf="${TS_FS_ROOT}${TS_M_WG_CONF}"
+    local custom_conf="${TS_FS_ROOT}/mnt/hdd/mynode/settings/lnd_custom.conf"
+    local extra_conf="${TS_FS_ROOT}/mnt/hdd/mynode/settings/lnd_extra_config.conf"
+    local lnd_conf="${TS_FS_ROOT}/mnt/hdd/mynode/lnd/lnd.conf"
+    local src entry key val vpn_dns="" vpn_port=""
+    local want_listen="" want_exthosts="" want_streamiso="" want_skipproxy="" has_hybrid=0
+    local cur_listen="" cur_exthosts="" cur_streamiso="" cur_skipproxy=""
+    local add_listen="" add_exthosts="" add_streamiso="" add_skipproxy=""
+    local tmp mode="" owner=""
+
+    if ! ts_m_inventory_read; then
+        ts_m_log "managed-mynode-lnd-pre: install record unreadable (${TS_M_ERROR})"
+        exit 1
+    fi
+    if [[ "$TS_M_INV_PROFILE" != "mynode" ]]; then
+        ts_m_log "managed-mynode-lnd-pre: profile is ${TS_M_INV_PROFILE:-unknown} (expected mynode)"
+        exit 1
+    fi
+    if [[ -L "$wg_conf" ]] || [[ ! -f "$wg_conf" ]] || [[ ! -r "$wg_conf" ]]; then
+        ts_m_log "managed-mynode-lnd-pre: ${TS_M_WG_CONF} cannot be read"
+        exit 1
+    fi
+    vpn_dns=$(sed -nE 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*([^:[:space:]]+):.*/\1/Ip' "$wg_conf" | head -n 1)
+    vpn_port=$(ts_config_vpn_port "$wg_conf")
+
+    for src in "$custom_conf" "$extra_conf"; do
+        if [[ -L "$src" ]]; then
+            ts_m_log "managed-mynode-lnd-pre: ${src#"$TS_FS_ROOT"} is a symlink"
+            exit 1
+        fi
+        if [[ -e "$src" ]] && { [[ ! -f "$src" ]] || [[ ! -r "$src" ]]; }; then
+            ts_m_log "managed-mynode-lnd-pre: ${src#"$TS_FS_ROOT"} cannot be read"
+            exit 1
+        fi
+        if [[ -f "$src" ]]; then
+            while IFS= read -r entry; do
+                entry="${entry#*|}"
+                key="${entry%%|*}"
+                val="${entry#*|}"
+                case "$key" in
+                    listen)
+                        if [[ "$val" =~ :9735$ ]]; then
+                            want_listen="$val"
+                        fi
+                        ;;
+                    externalhosts)
+                        if [[ -n "$val" ]]; then
+                            want_exthosts="$val"
+                            has_hybrid=1
+                        fi
+                        ;;
+                    tor.streamisolation)
+                        case "${val,,}" in
+                            false|0) want_streamiso="$val" ;;
+                        esac
+                        ;;
+                    tor.skip-proxy-for-clearnet-targets)
+                        case "${val,,}" in
+                            ""|true|1)
+                                want_skipproxy="${val:-true}"
+                                has_hybrid=1
+                                ;;
+                        esac
+                        ;;
+                esac
+            done < <(ts_m_config_settings "$src")
+        fi
+    done
+
+    if [[ "$TS_M_INV_IMPL" == "lnd" ]] || [[ "$has_hybrid" -eq 1 ]] || [[ -e "$lnd_conf" ]] || [[ -L "$lnd_conf" ]]; then
+        if [[ -L "$lnd_conf" ]] || [[ ! -f "$lnd_conf" ]] || [[ ! -r "$lnd_conf" ]]; then
+            ts_m_log "managed-mynode-lnd-pre: /mnt/hdd/mynode/lnd/lnd.conf cannot be read"
+            exit 1
+        fi
+    fi
+
+    if [[ "$has_hybrid" -ne 1 ]]; then
+        exit 0
+    fi
+
+    [[ -z "$want_listen" ]] && want_listen="0.0.0.0:9735"
+    if [[ -z "$want_exthosts" ]] && [[ -n "$vpn_dns" ]] && [[ -n "$vpn_port" ]]; then
+        want_exthosts="${vpn_dns}:${vpn_port}"
+    fi
+    [[ -z "$want_streamiso" ]] && want_streamiso="false"
+    [[ -z "$want_skipproxy" ]] && want_skipproxy="true"
+
+    while IFS= read -r entry; do
+        entry="${entry#*|}"
+        key="${entry%%|*}"
+        val="${entry#*|}"
+        case "$key" in
+            listen)
+                if [[ "$val" == "$want_listen" ]] || [[ "$val" =~ ^(0\.0\.0\.0||\[::\]):9735$ ]]; then
+                    cur_listen="$val"
+                fi
+                ;;
+            externalhosts)
+                if [[ "$val" == "$want_exthosts" ]]; then
+                    cur_exthosts="$val"
+                fi
+                ;;
+            tor.streamisolation)
+                case "${val,,}" in
+                    false|0) cur_streamiso="$val" ;;
+                    *) cur_streamiso="" ;;
+                esac
+                ;;
+            tor.skip-proxy-for-clearnet-targets)
+                case "${val,,}" in
+                    ""|true|1) cur_skipproxy="${val:-true}" ;;
+                    *) cur_skipproxy="" ;;
+                esac
+                ;;
+        esac
+    done < <(ts_m_config_settings "$lnd_conf")
+
+    [[ -z "$cur_listen" ]] && add_listen="$want_listen"
+    [[ -n "$want_exthosts" && -z "$cur_exthosts" ]] && add_exthosts="$want_exthosts"
+    [[ -z "$cur_streamiso" ]] && add_streamiso="$want_streamiso"
+    [[ -z "$cur_skipproxy" ]] && add_skipproxy="$want_skipproxy"
+
+    if [[ -z "$add_listen" && -z "$add_exthosts" && -z "$add_streamiso" && -z "$add_skipproxy" ]]; then
+        exit 0
+    fi
+
+    mode=$(stat -c '%a' "$lnd_conf" 2>/dev/null || echo "640")
+    owner=$(stat -c '%u:%g' "$lnd_conf" 2>/dev/null || echo "")
+    tmp="${lnd_conf}.tunnelsats.tmp.$$"
+    if ! awk -v add_listen="$add_listen" -v add_exthosts="$add_exthosts" \
+        -v add_streamiso="$add_streamiso" -v add_skipproxy="$add_skipproxy" '
+        BEGIN { app_done = 0; tor_done = 0 }
+        {
+            trimmed = $0
+            sub(/\r$/, "", trimmed)
+            sub(/^[[:space:]]+/, "", trimmed)
+            sub(/[[:space:]]+$/, "", trimmed)
+            low = tolower(trimmed)
+            if (low == "[application options]" && !app_done) {
+                print $0
+                if (add_listen != "") print "listen=" add_listen
+                if (add_exthosts != "") print "externalhosts=" add_exthosts
+                app_done = 1
+                next
+            }
+            if (low == "[tor]" && !tor_done) {
+                print $0
+                if (add_streamiso != "") print "tor.streamisolation=" add_streamiso
+                if (add_skipproxy != "") print "tor.skip-proxy-for-clearnet-targets=" add_skipproxy
+                tor_done = 1
+                next
+            }
+            if (add_exthosts != "" && low ~ /^externalhosts[[:space:]]*=/) next
+            if (add_streamiso != "" && low ~ /^tor\.streamisolation[[:space:]]*=/) next
+            if (add_skipproxy != "" && low ~ /^tor\.skip-proxy-for-clearnet-targets([[:space:]]*=|$)/) next
+            print $0
+        }
+        END {
+            if (!app_done && (add_listen != "" || add_exthosts != "")) {
+                print ""
+                print "[Application Options]"
+                if (add_listen != "") print "listen=" add_listen
+                if (add_exthosts != "") print "externalhosts=" add_exthosts
+            }
+            if (!tor_done && (add_streamiso != "" || add_skipproxy != "")) {
+                print ""
+                print "[Tor]"
+                if (add_streamiso != "") print "tor.streamisolation=" add_streamiso
+                if (add_skipproxy != "") print "tor.skip-proxy-for-clearnet-targets=" add_skipproxy
+            }
+        }' "$lnd_conf" > "$tmp" 2>/dev/null; then
+        rm -f "$tmp" 2>/dev/null || true
+        ts_m_log "managed-mynode-lnd-pre: failed to stage reconciled /mnt/hdd/mynode/lnd/lnd.conf"
+        exit 1
+    fi
+    chmod "$mode" "$tmp" 2>/dev/null || chmod 0640 "$tmp" 2>/dev/null || true
+    if [[ -n "$owner" ]] && [[ "$EUID" -eq 0 ]]; then
+        chown "$owner" "$tmp" 2>/dev/null || chown "${TS_M_INV_USER}:bitcoin" "$tmp" 2>/dev/null || true
+    fi
+    if ! mv -f "$tmp" "$lnd_conf" 2>/dev/null; then
+        rm -f "$tmp" 2>/dev/null || true
+        ts_m_log "managed-mynode-lnd-pre: failed to update /mnt/hdd/mynode/lnd/lnd.conf"
+        exit 1
+    fi
+
+    cur_exthosts=""
+    cur_skipproxy=""
+    while IFS= read -r entry; do
+        entry="${entry#*|}"
+        key="${entry%%|*}"
+        val="${entry#*|}"
+        case "$key" in
+            externalhosts)
+                [[ "$val" == "$want_exthosts" ]] && cur_exthosts="$val"
+                ;;
+            tor.skip-proxy-for-clearnet-targets)
+                case "${val,,}" in
+                    ""|true|1) cur_skipproxy="${val:-true}" ;;
+                esac
+                ;;
+        esac
+    done < <(ts_m_config_settings "$lnd_conf")
+    if { [[ -n "$want_exthosts" ]] && [[ -z "$cur_exthosts" ]]; } || [[ -z "$cur_skipproxy" ]]; then
+        ts_m_log "managed-mynode-lnd-pre: read-back verification of /mnt/hdd/mynode/lnd/lnd.conf failed"
+        exit 1
+    fi
+    ts_m_log "reconciled /mnt/hdd/mynode/lnd/lnd.conf with TunnelSats hybrid settings before ${TS_M_INV_UNIT} start"
+    exit 0
+}
+
 # Prints the address an echo service returns for curl arguments "$@" (the URL last); nothing if
 # there is no answer or the answer is not an IP address.
 ts_m_probe_fetch() {
@@ -8435,13 +8675,32 @@ ts_m_node_config_files() {
             lit) candidates=("${dir}/lit.conf") ;;
         esac
     fi
+    if [[ "$impl" == "lnd" ]] && { [[ -d "${TS_FS_ROOT}/usr/share/mynode" ]] || [[ -d "${TS_FS_ROOT}/mnt/hdd/mynode" ]]; } && \
+        { [[ -z "$conf" ]] || [[ "$conf" == /mnt/hdd/mynode/* ]]; }; then
+        local -a mn_cands=(/mnt/hdd/mynode/settings/lnd_custom.conf /mnt/hdd/mynode/settings/lnd_extra_config.conf /mnt/hdd/mynode/lnd/lnd.conf)
+        for f in "${candidates[@]}"; do
+            if ! ts_in_list "$f" "${mn_cands[*]}"; then
+                mn_cands+=("$f")
+            fi
+        done
+        candidates=("${mn_cands[@]}")
+    fi
     for f in "${candidates[@]}"; do
         if [[ "$f" != /* ]] || [[ "$f" == *'$'* ]]; then
             TS_M_NC_REASON="the config path ${f} cannot be resolved"
             continue
         fi
         if [[ -f "${TS_FS_ROOT}${f}" ]] && [[ -r "${TS_FS_ROOT}${f}" ]]; then
-            TS_M_NC_FILES+=("$f")
+            local dup=0 existing_f
+            for existing_f in "${TS_M_NC_FILES[@]}"; do
+                if [[ "${TS_FS_ROOT}${f}" -ef "${TS_FS_ROOT}${existing_f}" ]]; then
+                    dup=1
+                    break
+                fi
+            done
+            if [[ "$dup" -eq 0 ]]; then
+                TS_M_NC_FILES+=("$f")
+            fi
         elif [[ -e "${TS_FS_ROOT}${f}" ]]; then
             TS_M_NC_REASON="${f} cannot be read"
         fi
@@ -8723,13 +8982,19 @@ ts_m_existing_install() {
 # in TS_M_OTHER_UNITS. Sets TS_M_IMPL and TS_M_UNIT. The raspiblitz profile names its unit instead
 # (ts_m_select_raspiblitz_unit).
 ts_m_select_ln_unit() {
-    local entry impl unit state loaded=() impls=() picked=() picked_impl=""
+    local entry impl unit state loaded=() impls=() picked=() picked_impl="" unit_list="$TS_M_LN_UNITS"
     if [[ "$TS_OPT_PROFILE" == "raspiblitz" ]]; then
         ts_m_select_raspiblitz_unit
         return 0
     fi
+    if [[ "$TS_OPT_PROFILE" == "mynode" ]]; then
+        if [[ "$TS_OPT_IMPL" == "cln" ]]; then
+            ts_usage_error "${TS_COMMAND:-install} --managed mynode supports --impl lnd or --impl lit, not cln (myNode does not ship Core Lightning)"
+        fi
+        unit_list="$TS_M_MYNODE_LN_UNITS"
+    fi
     TS_M_OTHER_UNITS=()
-    for entry in $TS_M_LN_UNITS; do
+    for entry in $unit_list; do
         impl="${entry%%:*}"
         unit="${entry#*:}"
         state=$(ts_m_unit_prop "$unit" LoadState)
@@ -8758,6 +9023,9 @@ ts_m_select_ln_unit() {
         return 0
     fi
     if [[ ${#loaded[@]} -eq 0 ]]; then
+        if [[ "$TS_OPT_PROFILE" == "mynode" ]]; then
+            ts_fail 7 E_LN_UNIT refused "No Lightning unit found (lnd.service, litd.service or lit.service)"
+        fi
         ts_fail 7 E_LN_UNIT refused "No Lightning unit found (lnd.service, lightningd.service, litd.service or lit.service)"
     fi
     if [[ ${#loaded[@]} -gt 1 ]]; then
@@ -8842,15 +9110,21 @@ ts_m_install_preflight() {
         ts_fail 7 E_PLATFORM_UNSUPPORTED refused "--platform ${TS_OPT_PLATFORM} does not match the managed profile ${profile}"
     fi
     case "$profile:$guess" in
-        baremetal:|raspiblitz:raspiblitz) ;;
+        baremetal:|raspiblitz:raspiblitz|mynode:mynode) ;;
         baremetal:raspiblitz)
             ts_fail 7 E_PLATFORM_UNSUPPORTED refused "This node is a RaspiBlitz: use 'install --managed raspiblitz --impl lnd|cln'"
+            ;;
+        baremetal:mynode)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "This node is a myNode: use 'install --managed mynode'"
             ;;
         raspiblitz:*)
             ts_fail 7 E_PLATFORM_UNSUPPORTED refused "The raspiblitz profile needs a RaspiBlitz (detected: ${guess:-no RaspiBlitz})"
             ;;
+        mynode:*)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "The mynode profile needs a myNode (detected: ${guess:-no myNode})"
+            ;;
         *)
-            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Managed mode supports bare-metal systemd nodes and RaspiBlitz only for now (detected: ${guess})"
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Managed mode supports bare-metal systemd nodes, RaspiBlitz and myNode only for now (detected: ${guess})"
             ;;
     esac
     if [[ ! -d "${TS_FS_ROOT}/run/systemd/system" ]]; then
@@ -9345,11 +9619,11 @@ cmd_install_managed() {
     local answer="" ln_was_active=0 ln_restarted=0 tunnel_started=0 rc=0 out
     ts_m_require_root
     case "$TS_OPT_PROFILE" in
-        baremetal|raspiblitz) ;;
-        umbrel|mynode)
-            ts_fail 7 E_PROFILE_UNSUPPORTED refused "Managed mode supports the baremetal and raspiblitz profiles only for now (requested: ${TS_OPT_PROFILE})"
+        baremetal|raspiblitz|mynode) ;;
+        umbrel)
+            ts_fail 7 E_PROFILE_UNSUPPORTED refused "Managed mode supports the baremetal, raspiblitz and mynode profiles only for now (requested: ${TS_OPT_PROFILE})"
             ;;
-        *) ts_usage_error "--managed requires a profile for install (baremetal or raspiblitz)" ;;
+        *) ts_usage_error "--managed requires a profile for install (baremetal, raspiblitz or mynode)" ;;
     esac
     ts_m_lifecycle_lock
     if [[ "$TS_JSON" -ne 1 ]]; then
@@ -9518,15 +9792,21 @@ ts_m_adopt_preflight() {
         ts_fail 7 E_PLATFORM_UNSUPPORTED refused "--platform ${TS_OPT_PLATFORM} does not match the managed profile ${profile}"
     fi
     case "$profile:$guess" in
-        baremetal:|raspiblitz:raspiblitz) ;;
+        baremetal:|raspiblitz:raspiblitz|mynode:mynode) ;;
         baremetal:raspiblitz)
             ts_fail 7 E_PLATFORM_UNSUPPORTED refused "This node is a RaspiBlitz: use 'adopt --managed raspiblitz --impl lnd|cln'"
+            ;;
+        baremetal:mynode)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "This node is a myNode: use 'adopt --managed mynode'"
             ;;
         raspiblitz:*)
             ts_fail 7 E_PLATFORM_UNSUPPORTED refused "The raspiblitz profile needs a RaspiBlitz (detected: ${guess:-no RaspiBlitz})"
             ;;
+        mynode:*)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "The mynode profile needs a myNode (detected: ${guess:-no myNode})"
+            ;;
         *)
-            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Managed mode supports bare-metal systemd nodes and RaspiBlitz only for now (detected: ${guess})"
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Managed mode supports bare-metal systemd nodes, RaspiBlitz and myNode only for now (detected: ${guess})"
             ;;
     esac
     if [[ ! -d "${TS_FS_ROOT}/run/systemd/system" ]]; then
@@ -9672,11 +9952,11 @@ cmd_adopt_managed() {
     local wg_full="${TS_FS_ROOT}${wg_rel}"
     ts_m_require_root
     case "$TS_OPT_PROFILE" in
-        baremetal|raspiblitz) ;;
-        umbrel|mynode)
-            ts_fail 7 E_PROFILE_UNSUPPORTED refused "Managed mode supports the baremetal and raspiblitz profiles only for now (requested: ${TS_OPT_PROFILE})"
+        baremetal|raspiblitz|mynode) ;;
+        umbrel)
+            ts_fail 7 E_PROFILE_UNSUPPORTED refused "Managed mode supports the baremetal, raspiblitz and mynode profiles only for now (requested: ${TS_OPT_PROFILE})"
             ;;
-        *) ts_usage_error "--managed requires a profile for adopt (baremetal or raspiblitz)" ;;
+        *) ts_usage_error "--managed requires a profile for adopt (baremetal, raspiblitz or mynode)" ;;
     esac
     ts_m_lifecycle_lock
     if [[ "$TS_JSON" -ne 1 ]]; then
@@ -10385,7 +10665,7 @@ cmd_uninstall_managed() {
                 local -a leg_units=() leg_active_units=() leg_disabled_units=() leg_nc_lines=()
                 local leg_u leg_state leg_impl leg_prof leg_nc_reason=""
                 leg_prof=$(ts_guess_platform "$TS_FS_ROOT")
-                [[ "$leg_prof" != "raspiblitz" ]] && leg_prof="baremetal"
+                [[ "$leg_prof" != "raspiblitz" && "$leg_prof" != "mynode" ]] && leg_prof="baremetal"
                 for leg_u in lnd.service tlnd.service slnd.service lightningd.service tlightningd.service slightningd.service litd.service lit.service; do
                     if [[ -f "${TS_FS_ROOT}/etc/systemd/system/${leg_u}" ]] || [[ "$(ts_m_unit_prop "$leg_u" LoadState)" == "loaded" ]]; then
                         leg_units+=("$leg_u")
