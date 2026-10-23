@@ -3934,6 +3934,11 @@ assert_equals "clearnet files=/mnt/hdd/mynode/settings/lnd_extra_config.conf /mn
     "17c: hybrid settings in lnd_extra_config.conf are detected even before lnd.conf is regenerated"
 assert_contains "$SN_OUT" "/mnt/hdd/mynode/settings/lnd_extra_config.conf:3:externalhosts=vpn.example.com:24556" \
     "17c: reports externalhosts in lnd_extra_config.conf"
+printf '{ path=/usr/local/bin/lnd ; argv[]=/usr/local/bin/lnd --configfile=/home/bitcoin/.lnd/lnd.conf ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n' \
+    > "$fx/state/unit_lnd.service_ExecStart"
+run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service mynode; echo "$TS_M_NC_STATUS files=${TS_M_NC_FILES[*]}"; printf "%s\n" "${TS_M_NC_LINES[@]}"'
+assert_equals "clearnet files=/mnt/hdd/mynode/settings/lnd_extra_config.conf /mnt/hdd/mynode/lnd/lnd.conf" "${SN_OUT%%$'\n'*}" \
+    "17c: --configfile=/home/bitcoin/.lnd/lnd.conf still inspects lnd_extra_config.conf and deduplicates symlinked lnd.conf"
 
 # 17d: Full install --managed mynode, managed-mynode-lnd-pre reconciliation & fail-closed behavior, verify, and uninstall
 fx=$(mn_fixture full-install)
@@ -4005,6 +4010,23 @@ assert_not_contains "$multi_conf" "listen=127.0.0.1:9735" "17d: multi-entry lnd.
 assert_contains "$multi_conf" "externalhosts=vpn.example.com:24556" "17d: multi-entry lnd.conf preserves first externalhosts"
 assert_contains "$multi_conf" "externalhosts=backup.example.com:24556" "17d: multi-entry lnd.conf preserves second externalhosts"
 printf '%s\n' "$mn_extra_hybrid" > "$fx/fs/mnt/hdd/mynode/settings/lnd_extra_config.conf"
+
+# Existing listen=:9735 alongside another port (listen=0.0.0.0:9736) is replaced by listen=0.0.0.0:9735 without losing port 9735
+cat > "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf" <<'EOF'
+[Application Options]
+listen=:9735
+listen=0.0.0.0:9736
+
+[Tor]
+tor.active=true
+tor.streamisolation=true
+EOF
+run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
+assert_equals "0" "$SN_RC" "17d: managed-mynode-lnd-pre reconciles listen=:9735 + listen=0.0.0.0:9736 and exits 0"
+colon_conf=$(cat "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf")
+assert_contains "$colon_conf" "listen=0.0.0.0:9735" "17d: reconciled lnd.conf replaces listen=:9735 with listen=0.0.0.0:9735"
+assert_contains "$colon_conf" "listen=0.0.0.0:9736" "17d: reconciled lnd.conf preserves non-conflicting listen=0.0.0.0:9736"
+assert_not_contains "$colon_conf" "listen=:9735" "17d: reconciled lnd.conf removes conflicting listen=:9735"
 
 # Fail-closed when lnd.conf is missing or a symlink
 mv "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf" "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf.saved"

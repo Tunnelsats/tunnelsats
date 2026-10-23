@@ -8120,17 +8120,6 @@ ts_m_cmd_mynode_lnd_pre() {
         for c in "${cur_listens[@]}"; do
             [[ "${c,,}" == "${w,,}" ]] && { found=1; break; }
         done
-        if [[ "$found" -eq 0 ]]; then
-            # Accept an existing IPv4/IPv6 wildcard on listen_port when want_listens used the default
-            if [[ "${#want_listens[@]}" -eq 1 && "${w,,}" == "0.0.0.0:${listen_port}" ]]; then
-                for c in "${cur_listens[@]}"; do
-                    if [[ "${c,,}" == ":${listen_port}" || "${c,,}" == "[::]:${listen_port}" ]]; then
-                        found=1
-                        break
-                    fi
-                done
-            fi
-        fi
         [[ "$found" -eq 0 ]] && add_listens+=("$w")
     done
     if [[ ${#add_listens[@]} -gt 0 || "$conflict_listen" -eq 1 || "$dup_listen" -eq 1 ]]; then
@@ -8287,6 +8276,7 @@ ts_m_cmd_mynode_lnd_pre() {
         exit 1
     fi
 
+    cur_listens=()
     cur_exthosts=()
     cur_skipproxy=""
     while IFS= read -r entry; do
@@ -8294,6 +8284,9 @@ ts_m_cmd_mynode_lnd_pre() {
         key="${entry%%|*}"
         val="${entry#*|}"
         case "$key" in
+            listen)
+                cur_listens+=("$val")
+                ;;
             externalhosts)
                 cur_exthosts+=("$val")
                 ;;
@@ -8304,6 +8297,16 @@ ts_m_cmd_mynode_lnd_pre() {
                 ;;
         esac
     done < <(ts_m_config_settings "$lnd_conf")
+    for w in "${want_listens[@]}"; do
+        found=0
+        for c in "${cur_listens[@]}"; do
+            [[ "${c,,}" == "${w,,}" ]] && { found=1; break; }
+        done
+        if [[ "$found" -eq 0 ]]; then
+            ts_m_log "managed-mynode-lnd-pre: read-back verification of /mnt/hdd/mynode/lnd/lnd.conf failed"
+            exit 1
+        fi
+    done
     for w in "${want_exthosts[@]}"; do
         found=0
         for c in "${cur_exthosts[@]}"; do
@@ -8847,7 +8850,8 @@ ts_m_node_config_files() {
         esac
     fi
     if [[ "$impl" == "lnd" ]] && { [[ -d "${TS_FS_ROOT}/usr/share/mynode" ]] || [[ -d "${TS_FS_ROOT}/mnt/hdd/mynode" ]]; } && \
-        { [[ -z "$conf" ]] || [[ "$conf" == /mnt/hdd/mynode/* ]]; }; then
+        { [[ -z "$conf" ]] || [[ "$conf" == /mnt/hdd/mynode/* ]] || [[ "$conf" == */.lnd/lnd.conf ]] || \
+          [[ "${TS_FS_ROOT}${conf}" -ef "${TS_FS_ROOT}/mnt/hdd/mynode/lnd/lnd.conf" ]]; }; then
         local -a mn_cands=(/mnt/hdd/mynode/settings/lnd_custom.conf /mnt/hdd/mynode/settings/lnd_extra_config.conf /mnt/hdd/mynode/lnd/lnd.conf)
         for f in "${candidates[@]}"; do
             if ! ts_in_list "$f" "${mn_cands[*]}"; then
