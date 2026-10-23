@@ -51,7 +51,7 @@ The Lightning Network needs **fast, reliable, discoverable** nodes for efficient
 
 | Platform                       | Type            | LND | CLN | Installation Method                                                                                                                |
 | :----------------------------- | :-------------- | :-: | :-: | :--------------------------------------------------------------------------------------------------------------------------------- |
-| **Umbrel** (umbrelOS 1.0+)     | Docker App      | ✅  | ✅  | **Native Umbrel App** ([Community App Store](https://github.com/Tunnelsats/umbrel-community-app-store) / Official Review Pending) |
+| **Umbrel** (umbrelOS 1.0+)     | Docker App      | ✅  | ✅  | **Native Umbrel App** ([Community App Store](https://github.com/Tunnelsats/ts-umbrel-app) / Official Review Pending)               |
 | **StartOS** (StartOS 0.4.0+)   | Service Package | ✅  | ✅  | **Native StartOS Package** ([Start9 Community Registry](https://marketplace.start9.com/?registry=https%3A%2F%2Fcommunity-registry.start9.com%2F) / [package source](https://github.com/Start9-Community/tunnelsats-startos); also supports Eclair) |
 | **RaspiBlitz** (v1.11+)        | Systemd         | ✅  | ✅  | **SSH Menu** (`SUBSCRIBE > TunnelSats` on v1.12+) / Host Script (`tunnelsats.sh --managed raspiblitz`)                             |
 | **Bare Metal** (Debian/Ubuntu) | Systemd         | ✅  | ✅  | Host Script (`tunnelsats.sh --managed baremetal`)                                                                                  |

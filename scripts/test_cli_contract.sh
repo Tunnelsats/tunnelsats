@@ -350,7 +350,7 @@ for umbrel_cmd in install uninstall status restart; do
     assert_equals 1 "$CLI_RC" "$umbrel_cmd --platform umbrel fails closed (exit 1)"
     assert_contains "$CLI_ERR" "Umbrel is not supported by tunnelsats.sh" "$umbrel_cmd --platform umbrel explains Umbrel is unsupported"
     assert_contains "$CLI_ERR" "Community App Store" "$umbrel_cmd --platform umbrel points to Community App Store"
-    assert_contains "$CLI_ERR" "https://github.com/Tunnelsats/umbrel-community-app-store" "$umbrel_cmd --platform umbrel includes Community App Store URL"
+    assert_contains "$CLI_ERR" "https://github.com/Tunnelsats/ts-umbrel-app" "$umbrel_cmd --platform umbrel includes Community App Store URL"
     assert_contains "$CLI_ERR" "https://tunnelsats.com/guide" "$umbrel_cmd --platform umbrel points to the guide"
 done
 

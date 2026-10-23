@@ -1091,8 +1091,8 @@ reject_umbrel_platform() {
        [[ -f "${fs_root}/usr/bin/umbrel" ]]; then
         echo "" >&2
         print_error "Umbrel is not supported by tunnelsats.sh. Please install the native TunnelSats app:"
-        echo -e "  - Community App Store (umbrelOS 1.0+): ${BLUE}https://github.com/Tunnelsats/umbrel-community-app-store${NC}" >&2
-        echo -e "  - Official Umbrel App Store: review pending" >&2
+        echo -e "  - Community App Store (umbrelOS 1.0+): ${BLUE}https://github.com/Tunnelsats/ts-umbrel-app${NC}" >&2
+        echo -e "  - Official Umbrel App Store: review pending (PR #4919)" >&2
         echo -e "  - Setup Guide: ${BLUE}https://tunnelsats.com/guide${NC}" >&2
         echo "" >&2
         exit 1
