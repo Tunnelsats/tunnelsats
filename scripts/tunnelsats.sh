@@ -7948,6 +7948,7 @@ ts_m_cmd_mynode_lnd_pre() {
     local src entry key val vpn_dns="" vpn_port=""
     local want_listen="" want_exthosts="" want_streamiso="" want_skipproxy="" has_hybrid=0
     local cur_listen="" cur_exthosts="" cur_streamiso="" cur_skipproxy=""
+    local listen_port="9735" conflict_listen=0 listen_count=0
     local add_listen="" add_exthosts="" add_streamiso="" add_skipproxy=""
     local tmp mode="" owner=""
 
@@ -8022,6 +8023,8 @@ ts_m_cmd_mynode_lnd_pre() {
     fi
 
     [[ -z "$want_listen" ]] && want_listen="0.0.0.0:9735"
+    listen_port="${want_listen##*:}"
+    [[ "$listen_port" =~ ^[0-9]+$ ]] || listen_port="9735"
     if [[ -z "$want_exthosts" ]] && [[ -n "$vpn_dns" ]] && [[ -n "$vpn_port" ]]; then
         want_exthosts="${vpn_dns}:${vpn_port}"
     fi
@@ -8034,8 +8037,11 @@ ts_m_cmd_mynode_lnd_pre() {
         val="${entry#*|}"
         case "$key" in
             listen)
-                if [[ "$val" == "$want_listen" ]] || [[ "$val" =~ ^(0\.0\.0\.0||\[::\]):9735$ ]]; then
+                if [[ "$val" == "$want_listen" ]] || [[ "$val" =~ ^(0\.0\.0\.0||\[::\]):${listen_port}$ ]]; then
                     cur_listen="$val"
+                    listen_count=$((listen_count + 1))
+                elif [[ "$val" == *":${listen_port}" || "$val" == "${listen_port}" ]]; then
+                    conflict_listen=1
                 fi
                 ;;
             externalhosts)
@@ -8058,7 +8064,9 @@ ts_m_cmd_mynode_lnd_pre() {
         esac
     done < <(ts_m_config_settings "$lnd_conf")
 
-    [[ -z "$cur_listen" ]] && add_listen="$want_listen"
+    if [[ -z "$cur_listen" || "$conflict_listen" -eq 1 || "$listen_count" -gt 1 ]]; then
+        add_listen="$want_listen"
+    fi
     [[ -n "$want_exthosts" && -z "$cur_exthosts" ]] && add_exthosts="$want_exthosts"
     [[ -z "$cur_streamiso" ]] && add_streamiso="$want_streamiso"
     [[ -z "$cur_skipproxy" ]] && add_skipproxy="$want_skipproxy"
@@ -8070,7 +8078,7 @@ ts_m_cmd_mynode_lnd_pre() {
     mode=$(stat -c '%a' "$lnd_conf" 2>/dev/null || echo "640")
     owner=$(stat -c '%u:%g' "$lnd_conf" 2>/dev/null || echo "")
     tmp="${lnd_conf}.tunnelsats.tmp.$$"
-    if ! awk -v add_listen="$add_listen" -v add_exthosts="$add_exthosts" \
+    if ! awk -v add_listen="$add_listen" -v listen_port="$listen_port" -v add_exthosts="$add_exthosts" \
         -v add_streamiso="$add_streamiso" -v add_skipproxy="$add_skipproxy" '
         BEGIN { app_done = 0; tor_done = 0 }
         {
@@ -8093,6 +8101,7 @@ ts_m_cmd_mynode_lnd_pre() {
                 tor_done = 1
                 next
             }
+            if (add_listen != "" && low ~ ("^listen[[:space:]]*=([[:space:]]*.*:" listen_port "|[[:space:]]*" listen_port ")[[:space:]]*$")) next
             if (add_exthosts != "" && low ~ /^externalhosts[[:space:]]*=/) next
             if (add_streamiso != "" && low ~ /^tor\.streamisolation[[:space:]]*=/) next
             if (add_skipproxy != "" && low ~ /^tor\.skip-proxy-for-clearnet-targets([[:space:]]*=|$)/) next

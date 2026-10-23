@@ -3965,6 +3965,8 @@ assert_equals "0" "$SN_RC" "17d: managed-mynode-lnd-pre reconciles regenerated l
 assert_contains "$SN_OUT" "reconciled /mnt/hdd/mynode/lnd/lnd.conf with TunnelSats hybrid settings" \
     "17d: managed-mynode-lnd-pre logs reconciliation"
 reconciled_conf=$(cat "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf")
+assert_contains "$reconciled_conf" "listen=0.0.0.0:9735" "17d: reconciled lnd.conf sets listen=0.0.0.0:9735"
+assert_not_contains "$reconciled_conf" "listen=127.0.0.1:9735" "17d: reconciled lnd.conf removed conflicting listen=127.0.0.1:9735"
 assert_contains "$reconciled_conf" "externalhosts=vpn.example.com:24556" "17d: reconciled lnd.conf has externalhosts"
 assert_contains "$reconciled_conf" "tor.streamisolation=false" "17d: reconciled lnd.conf sets tor.streamisolation=false"
 assert_contains "$reconciled_conf" "tor.skip-proxy-for-clearnet-targets=true" "17d: reconciled lnd.conf sets tor.skip-proxy-for-clearnet-targets=true"
