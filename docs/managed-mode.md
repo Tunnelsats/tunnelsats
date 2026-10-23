@@ -19,7 +19,7 @@ sudo tunnelsats uninstall --managed
 
 ## Requirements
 
-- A bare-metal systemd node or a RaspiBlitz (Umbrel and myNode come later) with a unified cgroup v2 hierarchy and Linux 5.13 or newer.
+- A bare-metal systemd node or a RaspiBlitz (myNode comes later) with a unified cgroup v2 hierarchy and Linux 5.13 or newer.
 - One Lightning unit (`lnd.service`, `lightningd.service`, `litd.service` or `lit.service`) that runs as a dedicated, non-root `User=`. If several are installed, choose one with `--impl`; the others are not tunneled. On RaspiBlitz, `--impl` and `--network` name the unit.
 - perl, which `verify` uses for its datagram probes. Debian and Ubuntu always ship it (`perl-base`); without it install refuses with `E_DEPENDENCY_MISSING`.
 - No other TunnelSats install for `install --managed`: run `tunnelsats.sh adopt --managed <baremetal|raspiblitz>` to convert an existing standard install in one step, or `tunnelsats.sh uninstall` first.

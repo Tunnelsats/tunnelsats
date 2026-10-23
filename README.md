@@ -51,7 +51,7 @@ The Lightning Network needs **fast, reliable, discoverable** nodes for efficient
 
 | Platform                       | Type            | LND | CLN | Installation Method                                                                                                                |
 | :----------------------------- | :-------------- | :-: | :-: | :--------------------------------------------------------------------------------------------------------------------------------- |
-| **Umbrel** (umbrelOS 1.0+)     | Docker App      | ✅  | ✅  | **Native Umbrel App** ([Community App Store](https://github.com/Tunnelsats/ts-umbrel-app) / Official Review Pending)               |
+| **Umbrel** (umbrelOS 1.0+)     | Docker App      | ✅  | ✅  | **Native Umbrel App** (Official Umbrel App Store on 1.6+ / [Community App Store](https://github.com/Tunnelsats/umbrel-community-app-store) on 1.0 - 1.5) |
 | **StartOS** (StartOS 0.4.0+)   | Service Package | ✅  | ✅  | **Native StartOS Package** ([Start9 Community Registry](https://marketplace.start9.com/?registry=https%3A%2F%2Fcommunity-registry.start9.com%2F) / [package source](https://github.com/Start9-Community/tunnelsats-startos); also supports Eclair) |
 | **RaspiBlitz** (v1.11+)        | Systemd         | ✅  | ✅  | **SSH Menu** (`SUBSCRIBE > TunnelSats` on v1.12+) / Host Script (`tunnelsats.sh --managed raspiblitz`)                             |
 | **Bare Metal** (Debian/Ubuntu) | Systemd         | ✅  | ✅  | Host Script (`tunnelsats.sh --managed baremetal`)                                                                                  |
@@ -130,7 +130,6 @@ All test suites can be executed locally in non-root environments:
 find . -name "*.sh" -print0 | xargs -0 -I {} bash -n "{}"
 
 # Run automated test suites
-bash scripts/test_check_umbrel_version.sh
 bash scripts/test_ufw_check.sh
 bash scripts/test_ipv6_patch.sh
 bash scripts/test_sanitize_config.sh
@@ -147,7 +146,7 @@ sha256sum -c scripts/tunnelsats.sh.sha256
 ### Remote CI/CD
 
 Automated CI status checks run on every push and pull request via [GitHub Actions](https://github.com/Tunnelsats/tunnelsats/actions):
-- **[Syntax & Automated Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/syntax.yml)**: Validates script syntax (`bash -n`) and executes all 7 automated test suites covering Umbrel version compatibility, UFW firewall handling, IPv6 route stripping, WireGuard configuration sanitization, lifecycle/routing idempotency, the non-interactive/JSON CLI contract (including `detect` on fixture trees), and managed mode.
+- **[Syntax & Automated Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/syntax.yml)**: Validates script syntax (`bash -n`) and executes all 6 automated test suites covering UFW firewall handling, IPv6 route stripping, WireGuard configuration sanitization, lifecycle/routing idempotency, the non-interactive/JSON CLI contract (including `detect` on fixture trees), and managed mode.
 - **[Kernel Dataplane Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/kernel.yml)**: Runs managed mode on Ubuntu 22.04 and 24.04 runners against the real kernel: install, verify, tunnel loss, boot order, package upgrades, child processes, a removed kill switch table, failed arming behind the emergency block (with the local network kept, and a routing rule that bypasses it), a damaged install record, ruleset flushes, strict reverse-path filtering and uninstall.
 - **[Script Integrity Verification](https://github.com/Tunnelsats/tunnelsats/actions/workflows/integrity.yml)**: Asserts that `scripts/tunnelsats.sh.sha256` strictly matches the contents of `scripts/tunnelsats.sh`.
 

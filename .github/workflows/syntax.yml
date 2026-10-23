@@ -10,8 +10,6 @@ jobs:
       - name: Check Syntax of Shell Scripts
         run: |
           find . -name "*.sh" -print0 | xargs -0 -I {} bash -n "{}"
-      - name: Test Umbrel Version Guardrail
-        run: bash scripts/test_check_umbrel_version.sh
       - name: Test UFW Firewall Checks
         run: bash scripts/test_ufw_check.sh
       - name: Test IPv6 Patch Logic

@@ -58,13 +58,6 @@ EOF
             fi
             return 0
         }
-        docker() {
-            if [[ "$1 $2" == "network inspect" ]]; then
-                echo "10.9.9.0/25 6c3d330ad9f50000"
-                return 0
-            fi
-            return 1
-        }
         sysctl() {
             if [[ "$*" == "-n net.ipv6.conf.all.disable_ipv6" ]]; then
                 echo "$IPV6_SYSCTL"
@@ -103,7 +96,7 @@ test_strip "10.0.0.0/8, ::/0, 192.168.1.0/24" "^AllowedIPs = 10.0.0.0/8, 192.168
 test_strip "0.0.0.0/0" "^AllowedIPs = 0.0.0.0/0$" "IPv4 only (no change)"
 
 echo "Testing scoped IPv6 blocking when host IPv6 is enabled..."
-for platform in baremetal umbrel; do
+for platform in baremetal raspiblitz; do
     tmp_dir=$(mktemp -d)
     run_configure_wireguard "0.0.0.0/0, ::/0" "0" "$platform" "$tmp_dir"
     conf="$tmp_dir/tunnelsatsv2.conf"
@@ -114,48 +107,25 @@ for platform in baremetal umbrel; do
         fail "[$platform] configure_wireguard is missing PreUp fail-closed arm hook"
     fi
 
-    if [[ "$platform" == "baremetal" ]]; then
-        if grep -q "disable_ipv6=1" "$conf"; then
-            fail "[$platform] configure_wireguard must not disable IPv6 host-wide via sysctl"
-        else
-            pass "[$platform] configure_wireguard does not emit host-wide disable_ipv6=1 sysctl"
-        fi
-        if [[ -e "$tmp_dir/.tunnelsats-ipv6-disabled" ]] || [[ -e "$tmp_dir/etc/wireguard/.tunnelsats-ipv6-disabled" ]]; then
-            fail "[$platform] configure_wireguard must not create .tunnelsats-ipv6-disabled"
-        else
-            pass "[$platform] configure_wireguard does not create .tunnelsats-ipv6-disabled"
-        fi
-        if grep -q "nft add table inet %i" "$conf" && grep -q "meta cgroup 1118498 ip6 daddr !=" "$conf" && grep -q "meta skuid 1001 ip6 daddr !=" "$conf"; then
-            pass "[$platform] configure_wireguard emits scoped inet IPv6 output drop rules (cgroup and skuid)"
-        else
-            fail "[$platform] configure_wireguard is missing scoped inet IPv6 output drop rules"
-        fi
-        if grep -q "PostDown = nft delete table inet %i" "$conf"; then
-            pass "[$platform] configure_wireguard cleans up inet table in PostDown"
-        else
-            fail "[$platform] configure_wireguard is missing inet table cleanup in PostDown"
-        fi
+    if grep -q "disable_ipv6=1" "$conf"; then
+        fail "[$platform] configure_wireguard must not disable IPv6 host-wide via sysctl"
     else
-        if grep -qE "^PreUp = sysctl -w net\.ipv6\.conf\.all\.disable_ipv6=1" "$conf"; then
-            pass "[$platform] configure_wireguard disables IPv6 in PreUp for Docker container networks"
-        else
-            fail "[$platform] configure_wireguard is missing PreUp disable_ipv6=1 for Docker"
-        fi
-        if [[ -e "$tmp_dir/.tunnelsats-ipv6-disabled" ]]; then
-            pass "[$platform] configure_wireguard records .tunnelsats-ipv6-disabled when IPv6 was enabled"
-        else
-            fail "[$platform] configure_wireguard did not record .tunnelsats-ipv6-disabled on Docker"
-        fi
-        if grep -q "ip6tables -I FORWARD -i br-" "$conf" && grep -q " -j DROP" "$conf"; then
-            pass "[$platform] configure_wireguard blocks forwarded IPv6 on Docker bridge"
-        else
-            fail "[$platform] configure_wireguard is missing Docker bridge ip6tables FORWARD DROP"
-        fi
-        if grep -q "ip6tables -D FORWARD -i br-" "$conf"; then
-            pass "[$platform] configure_wireguard cleans up Docker bridge ip6tables rule in PostDown"
-        else
-            fail "[$platform] configure_wireguard is missing Docker bridge ip6tables cleanup in PostDown"
-        fi
+        pass "[$platform] configure_wireguard does not emit host-wide disable_ipv6=1 sysctl"
+    fi
+    if [[ -e "$tmp_dir/.tunnelsats-ipv6-disabled" ]] || [[ -e "$tmp_dir/etc/wireguard/.tunnelsats-ipv6-disabled" ]]; then
+        fail "[$platform] configure_wireguard must not create .tunnelsats-ipv6-disabled"
+    else
+        pass "[$platform] configure_wireguard does not create .tunnelsats-ipv6-disabled"
+    fi
+    if grep -q "nft add table inet %i" "$conf" && grep -q "meta cgroup 1118498 ip6 daddr !=" "$conf" && grep -q "meta skuid 1001 ip6 daddr !=" "$conf"; then
+        pass "[$platform] configure_wireguard emits scoped inet IPv6 output drop rules (cgroup and skuid)"
+    else
+        fail "[$platform] configure_wireguard is missing scoped inet IPv6 output drop rules"
+    fi
+    if grep -q "PostDown = nft delete table inet %i" "$conf"; then
+        pass "[$platform] configure_wireguard cleans up inet table in PostDown"
+    else
+        fail "[$platform] configure_wireguard is missing inet table cleanup in PostDown"
     fi
     rm -rf "$tmp_dir"
 done
