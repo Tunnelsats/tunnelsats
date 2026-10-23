@@ -3856,7 +3856,7 @@ fi
 # ---------------------------------------------------------------------------
 echo "=== Group 17: myNode profile (--managed mynode) ==="
 
-mn_lnd_conf=$'# myNode LND configuration\n\n[Application Options]\nlisten=0.0.0.0:9735\nrpclisten=0.0.0.0:10009\nrestlisten=0.0.0.0:8080\n\n[Bitcoin]\nbitcoin.active=1\nbitcoin.mainnet=1\nbitcoin.node=bitcoind\n\n[Tor]\ntor.active=true\ntor.streamisolation=true'
+mn_lnd_conf=$'# myNode LND configuration\n\n[Application Options]\nlisten=localhost\nlisten=127.0.0.1:9735\nrpclisten=0.0.0.0:10009\nrestlisten=0.0.0.0:8080\n\n[Bitcoin]\nbitcoin.active=1\nbitcoin.mainnet=1\nbitcoin.node=bitcoind\n\n[Tor]\ntor.active=true\ntor.streamisolation=true'
 mn_extra_hybrid=$'[Application Options]\nlisten=0.0.0.0:9735\nexternalhosts=vpn.example.com:24556\n\n[Tor]\ntor.streamisolation=false\ntor.skip-proxy-for-clearnet-targets=true'
 
 mn_fixture() {
@@ -3966,7 +3966,9 @@ assert_contains "$SN_OUT" "reconciled /mnt/hdd/mynode/lnd/lnd.conf with TunnelSa
     "17d: managed-mynode-lnd-pre logs reconciliation"
 reconciled_conf=$(cat "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf")
 assert_contains "$reconciled_conf" "listen=0.0.0.0:9735" "17d: reconciled lnd.conf sets listen=0.0.0.0:9735"
+assert_not_contains "$reconciled_conf" "listen=localhost" "17d: reconciled lnd.conf removed conflicting listen=localhost"
 assert_not_contains "$reconciled_conf" "listen=127.0.0.1:9735" "17d: reconciled lnd.conf removed conflicting listen=127.0.0.1:9735"
+assert_equals "1" "$(grep -c '^listen=' "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf")" "17d: reconciled lnd.conf leaves exactly one usable listener"
 assert_contains "$reconciled_conf" "externalhosts=vpn.example.com:24556" "17d: reconciled lnd.conf has externalhosts"
 assert_contains "$reconciled_conf" "tor.streamisolation=false" "17d: reconciled lnd.conf sets tor.streamisolation=false"
 assert_contains "$reconciled_conf" "tor.skip-proxy-for-clearnet-targets=true" "17d: reconciled lnd.conf sets tor.skip-proxy-for-clearnet-targets=true"
@@ -3980,6 +3982,30 @@ assert_equals "0" "$SN_RC" "17d: managed-mynode-lnd-pre is idempotent on already
 assert_equals "$reconciled_sha" "$(sha256sum "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf" | awk '{print $1}')" \
     "17d: idempotent run leaves lnd.conf byte-for-byte unchanged"
 
+# Multi-entry preservation: multiple externalhosts= and IPv4+IPv6 listen= pair
+cat > "$fx/fs/mnt/hdd/mynode/settings/lnd_extra_config.conf" <<'EOF'
+[Application Options]
+listen=0.0.0.0:9735
+listen=[::]:9735
+externalhosts=vpn.example.com:24556
+externalhosts=backup.example.com:24556
+
+[Tor]
+tor.streamisolation=false
+tor.skip-proxy-for-clearnet-targets=true
+EOF
+printf '%s\n' "$mn_lnd_conf" > "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf"
+run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
+assert_equals "0" "$SN_RC" "17d: managed-mynode-lnd-pre reconciles multi-entry listen/externalhosts and exits 0"
+multi_conf=$(cat "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf")
+assert_contains "$multi_conf" "listen=0.0.0.0:9735" "17d: multi-entry lnd.conf preserves listen=0.0.0.0:9735"
+assert_contains "$multi_conf" "listen=[::]:9735" "17d: multi-entry lnd.conf preserves listen=[::]:9735"
+assert_not_contains "$multi_conf" "listen=localhost" "17d: multi-entry lnd.conf strips listen=localhost"
+assert_not_contains "$multi_conf" "listen=127.0.0.1:9735" "17d: multi-entry lnd.conf strips listen=127.0.0.1:9735"
+assert_contains "$multi_conf" "externalhosts=vpn.example.com:24556" "17d: multi-entry lnd.conf preserves first externalhosts"
+assert_contains "$multi_conf" "externalhosts=backup.example.com:24556" "17d: multi-entry lnd.conf preserves second externalhosts"
+printf '%s\n' "$mn_extra_hybrid" > "$fx/fs/mnt/hdd/mynode/settings/lnd_extra_config.conf"
+
 # Fail-closed when lnd.conf is missing or a symlink
 mv "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf" "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf.saved"
 run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
@@ -3990,10 +4016,14 @@ assert_equals "1" "$SN_RC" "17d: managed-mynode-lnd-pre fails closed (exits 1) w
 rm -f "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf"
 mv "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf.saved" "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf"
 
-# Fail-closed when managed.json is missing
+# Fail-closed when managed.json is missing or a symlink
 mv "$fx/fs/etc/tunnelsats/managed.json" "$fx/fs/etc/tunnelsats/managed.json.saved"
 run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
 assert_equals "1" "$SN_RC" "17d: managed-mynode-lnd-pre fails closed (exits 1) when managed.json is missing"
+ln -s managed.json.saved "$fx/fs/etc/tunnelsats/managed.json"
+run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
+assert_equals "1" "$SN_RC" "17d: managed-mynode-lnd-pre fails closed (exits 1) when managed.json is a symlink"
+rm -f "$fx/fs/etc/tunnelsats/managed.json"
 mv "$fx/fs/etc/tunnelsats/managed.json.saved" "$fx/fs/etc/tunnelsats/managed.json"
 
 # Verify and uninstall on mynode
