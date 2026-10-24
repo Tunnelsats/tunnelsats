@@ -143,6 +143,12 @@ assert_contains "$(parse_state --json detect)" "json=1 ni=1 " "--json implies --
 assert_contains "$(parse_state install --help)" "cmd=help " "--help after a command selects help"
 assert_contains "$(parse_state -h)" "cmd=help " "-h selects help"
 assert_contains "$(parse_state version)" "ni=0 " "Non-interactive mode is never implied without the flag"
+assert_equals "install 1 mynode lnd " "$(bash -c 'source "$1"; shift; ts_parse_cli "$@"; echo "${TS_COMMAND} ${TS_OPT_MANAGED} ${TS_OPT_PROFILE} ${TS_OPT_IMPL} ${TS_USAGE_ERROR}"' _ "$SCRIPT_UNDER_TEST" install --managed mynode --impl lnd)" \
+    "install --managed mynode --impl lnd is parsed"
+assert_equals "adopt 1 mynode  " "$(bash -c 'source "$1"; shift; ts_parse_cli "$@"; echo "${TS_COMMAND} ${TS_OPT_MANAGED} ${TS_OPT_PROFILE} ${TS_OPT_IMPL} ${TS_USAGE_ERROR}"' _ "$SCRIPT_UNDER_TEST" adopt --managed mynode)" \
+    "adopt --managed mynode is parsed"
+assert_equals "managed-mynode-lnd-pre" "$(bash -c 'source "$1"; shift; ts_parse_cli "$@"; echo "${TS_COMMAND}"' _ "$SCRIPT_UNDER_TEST" managed-mynode-lnd-pre)" \
+    "Internal verb managed-mynode-lnd-pre is recognized"
 
 run_cli bash "$SCRIPT_UNDER_TEST" version --bogus
 assert_equals 2 "$CLI_RC" "Unknown option exits 2"
@@ -172,9 +178,13 @@ usage_cases=(
     "detect --config x.conf|--config is not supported by 'detect'"
     "status --remove-packages|--remove-packages is not supported by 'status'"
     "pre-check --impl lnd|--impl is not supported by 'pre-check'"
-    "adopt|adopt requires --managed <baremetal|raspiblitz>"
+    "adopt|adopt requires --managed <baremetal|raspiblitz|mynode>"
     "adopt --managed raspiblitz|adopt --managed raspiblitz requires --impl lnd or --impl cln"
     "adopt --managed raspiblitz --impl lit|adopt --managed raspiblitz supports --impl lnd or --impl cln, not lit"
+    "install --managed mynode --impl cln|install --managed mynode supports --impl lnd or --impl lit, not cln"
+    "adopt --managed mynode --impl cln|adopt --managed mynode supports --impl lnd or --impl lit, not cln"
+    "install --managed mynode --network testnet|--network is used by 'install --managed raspiblitz' only"
+    "adopt --managed mynode --network testnet|--network is used by 'adopt --managed raspiblitz' only"
     "adopt --managed baremetal --network testnet|--network is used by 'adopt --managed raspiblitz' only"
     "adopt --remove-packages|--remove-packages is not supported by 'adopt'"
     "frobnicate|Unknown command: frobnicate"
