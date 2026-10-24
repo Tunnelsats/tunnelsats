@@ -55,7 +55,7 @@ The Lightning Network needs **fast, reliable, discoverable** nodes for efficient
 | **StartOS** (StartOS 0.4.0+)   | Service Package | ✅  | ✅  | **Native StartOS Package** ([Start9 Community Registry](https://marketplace.start9.com/?registry=https%3A%2F%2Fcommunity-registry.start9.com%2F) / [package source](https://github.com/Start9-Community/tunnelsats-startos); also supports Eclair) |
 | **RaspiBlitz** (v1.11+)        | Systemd         | ✅  | ✅  | **SSH Menu** (`SUBSCRIBE > TunnelSats` on v1.12+) / Host Script (`tunnelsats.sh --managed raspiblitz`)                             |
 | **Bare Metal** (Debian/Ubuntu) | Systemd         | ✅  | ✅  | Host Script (`tunnelsats.sh --managed baremetal`)                                                                                  |
-| **myNode** (v0.3+)             | Systemd         | ⚠️  | ⚠️  | Host Script (`tunnelsats.sh` - Experimental)                                                                                       |
+| **myNode** (v0.3+)             | Systemd         | ✅  | ➖  | Host Script (`tunnelsats.sh --managed mynode`)                                                                                     |
 
 > ℹ️ **Security Architecture Note**:
 > The `tunnelsats.sh` bash installer is designed for bare-metal / systemd nodes (RaspiBlitz, RaspiBolt, MiniBolt, myNode).
@@ -98,12 +98,12 @@ LND 0.20 and later keeps announcing the addresses it saved, the former VPN addre
 
 ---
 
-## Managed mode for bare-metal nodes and RaspiBlitz
+## Managed mode for bare-metal nodes, RaspiBlitz, and myNode
 
 Managed mode runs the Lightning service in a dedicated cgroup v2 slice (`tunnelsats.slice`) behind a persistent `inet` nftables kill switch and policy routing table 51820. Its kill switch stays armed across tunnel restarts, reboots and package upgrades. When the subscription ends or the VPN server is unreachable, Lightning keeps running over Tor and the local network; only clearnet pauses until the tunnel is back.
 
 ```bash
-# Install managed mode on a bare-metal systemd node:
+# Install managed mode on a bare-metal systemd node (or use --managed mynode on myNode):
 sudo bash tunnelsats.sh install --managed baremetal --config tunnelsats_<server>.conf
 
 # Or convert an existing v2/v3 standard install to managed mode in one step:
@@ -114,7 +114,7 @@ sudo tunnelsats verify
 sudo tunnelsats uninstall --managed
 ```
 
-On RaspiBlitz, use the built-in SSH Subscriptions menu (**MAIN MENU > SUBSCRIBE > TunnelSats**) or run `--managed raspiblitz --impl lnd` (or `--impl cln`; testnet and signet instances add `--network testnet|signet`).
+On RaspiBlitz, use the built-in SSH Subscriptions menu (**MAIN MENU > SUBSCRIBE > TunnelSats**) or run `--managed raspiblitz --impl lnd` (or `--impl cln`; testnet and signet instances add `--network testnet|signet`). On myNode, run `--managed mynode` and store your hybrid settings in `/mnt/hdd/mynode/settings/lnd_extra_config.conf` so they persist across `mynode-regenerate-files` runs.
 Requirements, how it works and what `verify` reports: [docs/managed-mode.md](docs/managed-mode.md).
 
 ---

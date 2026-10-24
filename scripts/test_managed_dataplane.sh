@@ -3851,6 +3851,247 @@ else
     fail "16f: narrower UDP or source-limited TCP UFW rules do not prevent adding unrestricted TCP 9735 allow on tunnelsatsv2"
 fi
 
+# ---------------------------------------------------------------------------
+# Group 17: myNode profile (install/adopt --managed mynode & managed-mynode-lnd-pre)
+# ---------------------------------------------------------------------------
+echo "=== Group 17: myNode profile (--managed mynode) ==="
+
+mn_lnd_conf=$'# myNode LND configuration\n\n[Application Options]\nlisten=localhost\nlisten=127.0.0.1:9735\nrpclisten=0.0.0.0:10009\nrestlisten=0.0.0.0:8080\n\n[Bitcoin]\nbitcoin.active=1\nbitcoin.mainnet=1\nbitcoin.node=bitcoind\n\n[Tor]\ntor.active=true\ntor.streamisolation=true'
+mn_extra_hybrid=$'[Application Options]\nlisten=0.0.0.0:9735\nexternalhosts=vpn.example.com:24556\n\n[Tor]\ntor.streamisolation=false\ntor.skip-proxy-for-clearnet-targets=true'
+
+mn_fixture() {
+    local f
+    f=$(new_fixture "mn-$1")
+    mkdir -p "$f/fs/usr/share/mynode" "$f/fs/mnt/hdd/mynode/lnd" "$f/fs/mnt/hdd/mynode/settings" "$f/fs/home/bitcoin"
+    ln -s ../../mnt/hdd/mynode/lnd "$f/fs/home/bitcoin/.lnd"
+    echo "loaded" > "$f/state/unit_lnd.service_LoadState"
+    echo "bitcoin" > "$f/state/unit_lnd.service_User"
+    printf '{ path=/usr/local/bin/lnd ; argv[]=/usr/local/bin/lnd --configfile=/mnt/hdd/mynode/lnd/lnd.conf ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n' \
+        > "$f/state/unit_lnd.service_ExecStart"
+    printf '%s\n' "$mn_lnd_conf" > "$f/fs/mnt/hdd/mynode/lnd/lnd.conf"
+    chmod 0640 "$f/fs/mnt/hdd/mynode/lnd/lnd.conf"
+    echo "$f"
+}
+
+# 17a: Allowed units, drop-in rendering, and node config instructions for mynode
+fx=$(mn_fixture units)
+run_snippet "$fx" 'for e in lnd:lnd.service lit:litd.service lit:lit.service cln:lightningd.service lnd:tlnd.service; do
+if ts_m_profile_unit_ok mynode "$e"; then printf "%s=ok " "$e"; else printf "%s=no " "$e"; fi
+done'
+assert_equals "lnd:lnd.service=ok lit:litd.service=ok lit:lit.service=ok cln:lightningd.service=no lnd:tlnd.service=no " "$SN_OUT" \
+    "17a: mynode profile allows lnd.service, litd.service and lit.service, and rejects CLN and RaspiBlitz prefixed units"
+
+run_snippet "$fx" 'ts_m_render_ln_dropin mynode'
+assert_contains "$SN_OUT" "Slice=tunnelsats.slice" "17a: mynode drop-in sets Slice=tunnelsats.slice"
+assert_contains "$SN_OUT" "ExecStartPre=+/usr/local/sbin/tunnelsats managed-mynode-lnd-pre" \
+    "17a: mynode drop-in includes ExecStartPre=+/usr/local/sbin/tunnelsats managed-mynode-lnd-pre"
+run_snippet "$fx" 'ts_m_render_ln_dropin baremetal; ts_m_render_ln_dropin raspiblitz'
+assert_not_contains "$SN_OUT" "managed-mynode-lnd-pre" "17a: baremetal and raspiblitz drop-ins do not include managed-mynode-lnd-pre"
+
+run_snippet "$fx" 'LN_IMPL=lnd PLATFORM=mynode node_user=bitcoin print_node_config_instructions vpn.example.com 24556 install | sed "s/\x1b\[[0-9;]*m//g"'
+assert_contains "$SN_OUT" "Edit: sudo nano /mnt/hdd/mynode/settings/lnd_extra_config.conf" \
+    "17a: myNode config instructions point to /mnt/hdd/mynode/settings/lnd_extra_config.conf"
+assert_contains "$SN_OUT" "MyNode regenerates /mnt/hdd/mynode/lnd/lnd.conf on restart" \
+    "17a: myNode config instructions explain lnd.conf regeneration and GUI Additional LND Config"
+
+# 17b: Preflight cross-checks between mynode, baremetal, and raspiblitz
+fx=$(mn_fixture pf-ok)
+preflight "$fx" "TS_OPT_PROFILE=mynode;"
+assert_contains "$SN_OUT" "PREFLIGHT_OK" "17b: mynode preflight passes on a myNode fixture"
+preflight "$fx" "TS_OPT_PROFILE=mynode TS_OPT_PLATFORM=mynode;"
+assert_contains "$SN_OUT" "PREFLIGHT_OK" "17b: mynode preflight passes with --platform mynode"
+preflight "$fx" "TS_OPT_PROFILE=mynode TS_OPT_PLATFORM=baremetal;"
+assert_json "$doc" 'd["errors"][0]["code"]' "E_PLATFORM_UNSUPPORTED" "17b: mynode preflight rejects --platform baremetal"
+preflight "$fx" "TS_OPT_PROFILE=baremetal;"
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"], d["errors"][0]["message"]]' \
+    "[7, \"E_PLATFORM_UNSUPPORTED\", \"This node is a myNode: use 'install --managed mynode'\"]" \
+    "17b: baremetal preflight on a myNode points to install --managed mynode"
+run_snippet "$fx" 'TS_JSON=1; TS_COMMAND=adopt; TS_OUT_FD=1; TS_OPT_PROFILE=baremetal; ts_m_adopt_preflight'
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"], d["errors"][0]["message"]]' \
+    "[7, \"E_PLATFORM_UNSUPPORTED\", \"This node is a myNode: use 'adopt --managed mynode'\"]" \
+    "17b: baremetal adopt preflight on a myNode points to adopt --managed mynode"
+
+fx=$(preflight_fixture mn-on-bm)
+preflight "$fx" "TS_OPT_PROFILE=mynode;"
+assert_json "$doc" '[d["errors"][0]["code"], d["errors"][0]["message"]]' \
+    '["E_PLATFORM_UNSUPPORTED", "The mynode profile needs a myNode (detected: no myNode)"]' \
+    "17b: mynode preflight refuses on bare metal"
+fx=$(rb_preflight_fixture mn-on-rb)
+preflight "$fx" "TS_OPT_PROFILE=mynode;"
+assert_json "$doc" '[d["errors"][0]["code"], d["errors"][0]["message"]]' \
+    '["E_PLATFORM_UNSUPPORTED", "The mynode profile needs a myNode (detected: raspiblitz)"]' \
+    "17b: mynode preflight refuses on RaspiBlitz"
+
+# 17c: Node config discovery across lnd_custom.conf, lnd_extra_config.conf, and lnd.conf
+fx=$(mn_fixture nc-discovery)
+run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service mynode; echo "$TS_M_NC_STATUS files=${TS_M_NC_FILES[*]}"'
+assert_equals "clean files=/mnt/hdd/mynode/lnd/lnd.conf" "$SN_OUT" \
+    "17c: Tor-only lnd.conf on myNode is clean and not duplicated via /home/bitcoin/.lnd symlink"
+printf '%s\n' "$mn_extra_hybrid" > "$fx/fs/mnt/hdd/mynode/settings/lnd_extra_config.conf"
+run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service mynode; echo "$TS_M_NC_STATUS files=${TS_M_NC_FILES[*]}"; printf "%s\n" "${TS_M_NC_LINES[@]}"'
+assert_equals "clearnet files=/mnt/hdd/mynode/settings/lnd_extra_config.conf /mnt/hdd/mynode/lnd/lnd.conf" "${SN_OUT%%$'\n'*}" \
+    "17c: hybrid settings in lnd_extra_config.conf are detected even before lnd.conf is regenerated"
+assert_contains "$SN_OUT" "/mnt/hdd/mynode/settings/lnd_extra_config.conf:3:externalhosts=vpn.example.com:24556" \
+    "17c: reports externalhosts in lnd_extra_config.conf"
+printf '{ path=/usr/local/bin/lnd ; argv[]=/usr/local/bin/lnd --configfile=/home/bitcoin/.lnd/lnd.conf ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n' \
+    > "$fx/state/unit_lnd.service_ExecStart"
+run_snippet "$fx" 'ts_m_node_config_clearnet lnd lnd.service mynode; echo "$TS_M_NC_STATUS files=${TS_M_NC_FILES[*]}"; printf "%s\n" "${TS_M_NC_LINES[@]}"'
+assert_equals "clearnet files=/mnt/hdd/mynode/settings/lnd_extra_config.conf /mnt/hdd/mynode/lnd/lnd.conf" "${SN_OUT%%$'\n'*}" \
+    "17c: --configfile=/home/bitcoin/.lnd/lnd.conf still inspects lnd_extra_config.conf and deduplicates symlinked lnd.conf"
+
+# 17d: Full install --managed mynode, managed-mynode-lnd-pre reconciliation & fail-closed behavior, verify, and uninstall
+fx=$(mn_fixture full-install)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json install --managed mynode --impl lnd --non-interactive --yes --config '$TMP_ROOT/fx/render/sub.conf'"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "17d: install --managed mynode --impl lnd exits 0"
+assert_json "$doc" '[d["ok"], d["managed"], d["profile"], d["impl"], d["unit"], d["node_user"], d["node_config"]]' \
+    '[true, true, "mynode", "lnd", "lnd.service", "bitcoin", "clean"]' \
+    "17d: install JSON reports profile=mynode, impl=lnd, unit=lnd.service, node_config=clean"
+assert_contains "$(cat "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-managed.conf")" \
+    "ExecStartPre=+/usr/local/sbin/tunnelsats managed-mynode-lnd-pre" \
+    "17d: installed drop-in contains ExecStartPre=+/usr/local/sbin/tunnelsats managed-mynode-lnd-pre"
+
+# Test managed-mynode-lnd-pre before operator adds hybrid settings (Tor-only): exits 0 without touching lnd.conf
+before_sha=$(sha256sum "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf" | awk '{print $1}')
+run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
+assert_equals "0" "$SN_RC" "17d: managed-mynode-lnd-pre exits 0 when no hybrid settings are configured yet"
+assert_equals "$before_sha" "$(sha256sum "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf" | awk '{print $1}')" \
+    "17d: managed-mynode-lnd-pre leaves Tor-only lnd.conf untouched when extra/custom config has no hybrid settings"
+
+# Operator adds hybrid settings to lnd_extra_config.conf, and MyNode regenerates lnd.conf without them
+printf '%s\n' "$mn_extra_hybrid" > "$fx/fs/mnt/hdd/mynode/settings/lnd_extra_config.conf"
+printf '%s\n' "$mn_lnd_conf" > "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf"
+chmod 0640 "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf"
+run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
+assert_equals "0" "$SN_RC" "17d: managed-mynode-lnd-pre reconciles regenerated lnd.conf and exits 0"
+assert_contains "$SN_OUT" "reconciled /mnt/hdd/mynode/lnd/lnd.conf with TunnelSats hybrid settings" \
+    "17d: managed-mynode-lnd-pre logs reconciliation"
+reconciled_conf=$(cat "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf")
+assert_contains "$reconciled_conf" "listen=0.0.0.0:9735" "17d: reconciled lnd.conf sets listen=0.0.0.0:9735"
+assert_not_contains "$reconciled_conf" "listen=localhost" "17d: reconciled lnd.conf removed conflicting listen=localhost"
+assert_not_contains "$reconciled_conf" "listen=127.0.0.1:9735" "17d: reconciled lnd.conf removed conflicting listen=127.0.0.1:9735"
+assert_equals "1" "$(grep -c '^listen=' "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf")" "17d: reconciled lnd.conf leaves exactly one usable listener"
+assert_contains "$reconciled_conf" "externalhosts=vpn.example.com:24556" "17d: reconciled lnd.conf has externalhosts"
+assert_contains "$reconciled_conf" "tor.streamisolation=false" "17d: reconciled lnd.conf sets tor.streamisolation=false"
+assert_contains "$reconciled_conf" "tor.skip-proxy-for-clearnet-targets=true" "17d: reconciled lnd.conf sets tor.skip-proxy-for-clearnet-targets=true"
+assert_not_contains "$reconciled_conf" "tor.streamisolation=true" "17d: reconciled lnd.conf removed conflicting tor.streamisolation=true"
+assert_equals "640" "$(stat -c '%a' "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf")" "17d: reconciled lnd.conf preserves 0640 permissions"
+
+# Idempotency: running managed-mynode-lnd-pre again when lnd.conf already matches makes no further writes
+reconciled_sha=$(sha256sum "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf" | awk '{print $1}')
+run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
+assert_equals "0" "$SN_RC" "17d: managed-mynode-lnd-pre is idempotent on already-reconciled lnd.conf"
+assert_equals "$reconciled_sha" "$(sha256sum "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf" | awk '{print $1}')" \
+    "17d: idempotent run leaves lnd.conf byte-for-byte unchanged"
+
+# Multi-entry preservation: multiple externalhosts= and IPv4+IPv6 listen= pair
+cat > "$fx/fs/mnt/hdd/mynode/settings/lnd_extra_config.conf" <<'EOF'
+[Application Options]
+listen=0.0.0.0:9735
+listen=[::]:9735
+externalhosts=vpn.example.com:24556
+externalhosts=backup.example.com:24556
+
+[Tor]
+tor.streamisolation=false
+tor.skip-proxy-for-clearnet-targets=true
+EOF
+printf '%s\n' "$mn_lnd_conf" > "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf"
+run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
+assert_equals "0" "$SN_RC" "17d: managed-mynode-lnd-pre reconciles multi-entry listen/externalhosts and exits 0"
+multi_conf=$(cat "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf")
+assert_contains "$multi_conf" "listen=0.0.0.0:9735" "17d: multi-entry lnd.conf preserves listen=0.0.0.0:9735"
+assert_contains "$multi_conf" "listen=[::]:9735" "17d: multi-entry lnd.conf preserves listen=[::]:9735"
+assert_not_contains "$multi_conf" "listen=localhost" "17d: multi-entry lnd.conf strips listen=localhost"
+assert_not_contains "$multi_conf" "listen=127.0.0.1:9735" "17d: multi-entry lnd.conf strips listen=127.0.0.1:9735"
+assert_contains "$multi_conf" "externalhosts=vpn.example.com:24556" "17d: multi-entry lnd.conf preserves first externalhosts"
+assert_contains "$multi_conf" "externalhosts=backup.example.com:24556" "17d: multi-entry lnd.conf preserves second externalhosts"
+printf '%s\n' "$mn_extra_hybrid" > "$fx/fs/mnt/hdd/mynode/settings/lnd_extra_config.conf"
+
+# Existing listen=:9735 alongside another port (listen=0.0.0.0:9736) is replaced by listen=0.0.0.0:9735 without losing port 9735
+cat > "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf" <<'EOF'
+[Application Options]
+listen=:9735
+listen=0.0.0.0:9736
+
+[Tor]
+tor.active=true
+tor.streamisolation=true
+EOF
+run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
+assert_equals "0" "$SN_RC" "17d: managed-mynode-lnd-pre reconciles listen=:9735 + listen=0.0.0.0:9736 and exits 0"
+colon_conf=$(cat "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf")
+assert_contains "$colon_conf" "listen=0.0.0.0:9735" "17d: reconciled lnd.conf replaces listen=:9735 with listen=0.0.0.0:9735"
+assert_contains "$colon_conf" "listen=0.0.0.0:9736" "17d: reconciled lnd.conf preserves non-conflicting listen=0.0.0.0:9736"
+assert_not_contains "$colon_conf" "listen=:9735" "17d: reconciled lnd.conf removes conflicting listen=:9735"
+
+# Fail-closed when lnd.conf is missing or a symlink
+mv "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf" "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf.saved"
+run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
+assert_equals "1" "$SN_RC" "17d: managed-mynode-lnd-pre fails closed (exits 1) when lnd.conf is missing"
+ln -s /dev/null "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf"
+run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
+assert_equals "1" "$SN_RC" "17d: managed-mynode-lnd-pre fails closed (exits 1) when lnd.conf is a symlink"
+rm -f "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf"
+mv "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf.saved" "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf"
+
+# Fail-closed when managed.json is missing or a symlink
+mv "$fx/fs/etc/tunnelsats/managed.json" "$fx/fs/etc/tunnelsats/managed.json.saved"
+run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
+assert_equals "1" "$SN_RC" "17d: managed-mynode-lnd-pre fails closed (exits 1) when managed.json is missing"
+ln -s managed.json.saved "$fx/fs/etc/tunnelsats/managed.json"
+run_snippet "$fx" 'ts_m_cmd_mynode_lnd_pre'
+assert_equals "1" "$SN_RC" "17d: managed-mynode-lnd-pre fails closed (exits 1) when managed.json is a symlink"
+rm -f "$fx/fs/etc/tunnelsats/managed.json"
+mv "$fx/fs/etc/tunnelsats/managed.json.saved" "$fx/fs/etc/tunnelsats/managed.json"
+
+# Verify and uninstall on mynode
+echo "/etc/systemd/system/lnd.service.d/tunnelsats-managed.conf" > "$fx/state/unit_lnd.service_DropInPaths"
+echo "tunnelsats.slice" > "$fx/state/unit_lnd.service_Slice"
+run_snippet "$fx" "$rb_env TS_JSON=1; TS_COMMAND=verify; TS_OUT_FD=1; TS_OPT_NO_PROBE=1; cmd_verify"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "5" "$SN_RC" "17d: verify --no-probe on mynode (tunnel down, kill switch armed) exits 5"
+assert_json "$doc" '[d["profile"], d["unit"], [c["result"] for c in d["checks"] if c["id"] == "ln_dropin"][0]]' \
+    '["mynode", "lnd.service", "pass"]' "17d: verify reports profile=mynode and ln_dropin=pass"
+
+rm -f "$fx/fs/mnt/hdd/mynode/settings/lnd_extra_config.conf"
+printf '%s\n' "$mn_lnd_conf" > "$fx/fs/mnt/hdd/mynode/lnd/lnd.conf"
+rm -f "$fx/state/unit_lnd.service_DropInPaths" "$fx/state/unit_lnd.service_Slice"
+run_snippet "$fx" "$rb_env parse_args --json uninstall --managed --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "17d: uninstall --managed on mynode exits 0"
+assert_json "$doc" '[d["ok"], d["remaining"], d["node_config"]]' '[true, [], "clean"]' \
+    "17d: uninstall --managed on mynode removes all managed artifacts cleanly"
+
+# 17e: adopt --managed mynode on legacy_v3_post_204
+fx=$(mn_fixture adopt-mn)
+mkdir -p "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard" "$fx/fs/etc/systemd/system/lnd.service.d"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/fs/etc/wireguard/tunnelsats-route-guard.sh"
+: > "$fx/fs/etc/wireguard/tunnelsats-create-cgroup.sh"
+printf '[Unit]\nWants=tunnelsats-create-cgroup.service\n' > "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-cgroup.conf"
+cat > "$fx/fs/etc/systemd/system/lnd.service" <<'EOF'
+[Unit]
+Description=LND on myNode
+[Service]
+User=bitcoin
+ExecStart=/usr/bin/cgexec -g net_cls:splitted_processes /usr/local/bin/lnd --configfile=/mnt/hdd/mynode/lnd/lnd.conf
+EOF
+printf '%s\n' "$mn_extra_hybrid" > "$fx/fs/mnt/hdd/mynode/settings/lnd_extra_config.conf"
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed mynode --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "0" "$SN_RC" "17e: adopt --managed mynode exits 0"
+assert_json "$doc" '[d["ok"], d["adopted"], d["profile"], d["impl"], d["unit"], d["legacy_kind"], d["unit_edits"], d["unit_reverted"], d["node_config"]]' \
+    '[true, true, "mynode", "lnd", "lnd.service", "legacy_v3_post_204", ["ln_unit_cgexec"], true, "clearnet"]' \
+    "17e: adopt --managed mynode reports adopted=true, profile=mynode, unit_reverted=true, node_config=clearnet"
+assert_contains "$(cat "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-managed.conf")" \
+    "ExecStartPre=+/usr/local/sbin/tunnelsats managed-mynode-lnd-pre" \
+    "17e: adopt --managed mynode writes drop-in with ExecStartPre=+/usr/local/sbin/tunnelsats managed-mynode-lnd-pre"
+
 echo ""
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"

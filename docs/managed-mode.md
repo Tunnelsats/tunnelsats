@@ -1,6 +1,6 @@
-# Managed mode for bare-metal nodes and RaspiBlitz
+# Managed mode for bare-metal nodes, RaspiBlitz, and myNode
 
-Managed mode is the systemd slice and persistent kill switch mode for bare-metal systemd nodes (LND, CLN or LIT on Debian or Ubuntu) and for RaspiBlitz (see [RaspiBlitz](#raspiblitz)). Its kill switch stays armed across tunnel restarts, reboots and package upgrades, and `verify` checks the protection at any time. When the subscription ends or the VPN server is unreachable, Lightning keeps running over Tor and the local network; only clearnet pauses until the tunnel is back.
+Managed mode is the systemd slice and persistent kill switch mode for bare-metal systemd nodes (LND, CLN or LIT on Debian or Ubuntu), RaspiBlitz (see [RaspiBlitz](#raspiblitz)), and myNode (see [myNode](#mynode)). Its kill switch stays armed across tunnel restarts, reboots and package upgrades, and `verify` checks the protection at any time. When the subscription ends or the VPN server is unreachable, Lightning keeps running over Tor and the local network; only clearnet pauses until the tunnel is back.
 
 ```bash
 sudo bash tunnelsats.sh install --managed baremetal --config tunnelsats_<server>.conf
@@ -19,10 +19,10 @@ sudo tunnelsats uninstall --managed
 
 ## Requirements
 
-- A bare-metal systemd node or a RaspiBlitz (myNode comes later) with a unified cgroup v2 hierarchy and Linux 5.13 or newer.
-- One Lightning unit (`lnd.service`, `lightningd.service`, `litd.service` or `lit.service`) that runs as a dedicated, non-root `User=`. If several are installed, choose one with `--impl`; the others are not tunneled. On RaspiBlitz, `--impl` and `--network` name the unit.
+- A bare-metal systemd node, a RaspiBlitz, or a myNode (v0.3+) with a unified cgroup v2 hierarchy and Linux 5.13 or newer.
+- One Lightning unit (`lnd.service`, `lightningd.service`, `litd.service` or `lit.service`) that runs as a dedicated, non-root `User=`. If several are installed, choose one with `--impl`; the others are not tunneled. On RaspiBlitz, `--impl` and `--network` name the unit. On myNode, `lnd.service` (`--impl lnd`) and `litd.service`/`lit.service` (`--impl lit`) are supported (`--impl cln` is rejected because myNode does not ship Core Lightning).
 - perl, which `verify` uses for its datagram probes. Debian and Ubuntu always ship it (`perl-base`); without it install refuses with `E_DEPENDENCY_MISSING`.
-- No other TunnelSats install for `install --managed`: run `tunnelsats.sh adopt --managed <baremetal|raspiblitz>` to convert an existing standard install in one step, or `tunnelsats.sh uninstall` first.
+- No other TunnelSats install for `install --managed`: run `tunnelsats.sh adopt --managed <baremetal|raspiblitz|mynode>` to convert an existing standard install in one step, or `tunnelsats.sh uninstall` first.
 - No Tailscale exit node: its routing rules come before the TunnelSats rules.
 
 ## Adopting an existing standard install: `adopt --managed`
@@ -30,6 +30,7 @@ sudo tunnelsats uninstall --managed
 ```bash
 sudo bash tunnelsats.sh adopt --managed baremetal
 sudo bash tunnelsats.sh adopt --managed raspiblitz --impl lnd [--network mainnet|testnet|signet]
+sudo bash tunnelsats.sh adopt --managed mynode
 ```
 
 `adopt --managed` converts an existing standard (legacy v2 or v3) TunnelSats install into managed mode in one transition:
@@ -169,3 +170,18 @@ ExecStart=/usr/local/bin/lnd --configfile=/mnt/hdd/app-data/lnd/lnd.conf $TUNNEL
 **When the guard script is missing.** The guard line runs the guard script only if it is there. Otherwise it writes the empty value itself and logs that Lightning starts Tor-only, for example after an update that brings back RaspiBlitz code without the integration.
 
 **Uninstall.** `uninstall --managed` reads the variable through only when the unit carries the guard exactly in this form: no `daemon-reload` pending, no drop-in except the managed one, and the `[Service]` section of the unit file holds `Environment=<variable>=`, `EnvironmentFile=-/run/tunnelsats/hybrid-<name>.env` as its last `EnvironmentFile=`, the guard line as its last `ExecStartPre=` and the `ExecStart=` systemd runs, each once, with the variable on no other line and no empty assignment that clears one of them. The env file then decides, as it was before the removal cleared `/run/tunnelsats`. Absent or empty, no clearnet flags are in use and the command line counts as clean. With flags, TunnelSats is still on in RaspiBlitz: Lightning stays stopped and disabled, and `action_required` says to remove TunnelSats in the RaspiBlitz menu (SUBSCRIBE > TunnelSats > REMOVE), then to run `sudo systemctl enable --now <unit>`. Any other variable still makes the command line one that cannot be checked.
+
+## myNode
+
+```bash
+sudo bash tunnelsats.sh install --managed mynode --config tunnelsats_<server>.conf
+sudo bash tunnelsats.sh adopt --managed mynode
+```
+
+The dataplane is the same as on bare metal. What differs on myNode (v0.3+ on Debian 12 Bookworm):
+
+- Install refuses on a host that is not a myNode, and `--managed baremetal` or `--managed raspiblitz` refuses on a myNode (`E_PLATFORM_UNSUPPORTED`).
+- Only `lnd` (`lnd.service`) and `lit` (`litd.service` or `lit.service`) are supported; when only one is installed it is selected automatically, otherwise pass `--impl <lnd|lit>`. `--impl cln` and non-mainnet `--network` values are refused (`E_USAGE`).
+- **Config regeneration and `lnd_extra_config.conf`:** On myNode, `/usr/bin/mynode-regenerate-files` rewrites `/mnt/hdd/mynode/lnd/lnd.conf` from `/usr/share/mynode/lnd/lnd.conf` and appends `/mnt/hdd/mynode/settings/lnd_custom.conf` and `/mnt/hdd/mynode/settings/lnd_extra_config.conf`. Add the TunnelSats hybrid settings to `/mnt/hdd/mynode/settings/lnd_extra_config.conf` (via the myNode web UI **LND > Edit LND Config** or directly on disk) so they survive reboots and upgrades.
+- **Pre-start reconciliation (`managed-mynode-lnd-pre`):** The managed drop-in in `/etc/systemd/system/lnd.service.d/tunnelsats-managed.conf` runs `ExecStartPre=+/usr/local/sbin/tunnelsats managed-mynode-lnd-pre` before LND starts. It verifies the managed inventory and WireGuard configuration (failing closed if `/etc/tunnelsats/managed.json`, `/etc/wireguard/tunnelsatsv2.conf`, or `/mnt/hdd/mynode/lnd/lnd.conf` is missing, unreadable, or a symlink) and appends the TunnelSats hybrid stanza (`listen=0.0.0.0:9735`, `externalhosts=<endpoint>:<port>`, `tor.streamisolation=false`, `tor.skip-proxy-for-clearnet-targets=true`) to `/mnt/hdd/mynode/lnd/lnd.conf` whenever `mynode-regenerate-files` overwrote it without those lines.
+- **Uninstall inspection:** `uninstall --managed` inspects `/mnt/hdd/mynode/settings/lnd_custom.conf`, `/mnt/hdd/mynode/settings/lnd_extra_config.conf`, and `/mnt/hdd/mynode/lnd/lnd.conf` so LND stays stopped and disabled until clearnet lines are removed from both the persistent settings files and the runtime `lnd.conf`.
