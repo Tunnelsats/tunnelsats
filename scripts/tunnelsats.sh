@@ -1091,13 +1091,8 @@ cmd_pre_check() {
 # Helper functions for install command
 
 reject_umbrel_platform() {
-    local fs_root="${TS_FS_ROOT:-}"
-    local version_file="${UMBREL_VERSION_FILE:-${fs_root}/opt/umbreld/package.json}"
     if [[ "${PLATFORM:-}" == "umbrel" ]] || [[ "${TS_OPT_PLATFORM:-}" == "umbrel" ]] || \
-       [[ -f "$version_file" ]] || \
-       [[ -d "${fs_root}/home/umbrel/umbrel" ]] || \
-       [[ -d "${fs_root}/umbrel" ]] || \
-       [[ -f "${fs_root}/usr/bin/umbrel" ]]; then
+       [[ "$(ts_guess_platform "${TS_FS_ROOT:-}")" == "umbrel" ]]; then
         echo "" >&2
         print_error "Umbrel is not supported by tunnelsats.sh. Please install the native TunnelSats app:"
         echo -e "  - Community App Store (umbrelOS 1.0+): ${BLUE}https://github.com/Tunnelsats/ts-umbrel-app${NC}" >&2
@@ -1111,6 +1106,7 @@ reject_umbrel_platform() {
 # Platform markers in detection order: "<platform> <d|f> <path>" (directory or file).
 TS_PLATFORM_MARKERS=(
     "raspiblitz d /home/admin/config.scripts"
+    "umbrel f /opt/umbreld/package.json"
     "umbrel d /home/umbrel/umbrel"
     "umbrel d /umbrel"
     "umbrel f /usr/bin/umbrel"
@@ -1120,13 +1116,17 @@ TS_PLATFORM_MARKERS=(
 # Prints the platform suggested by the first matching marker (nothing if none matches).
 # $1 = optional filesystem root prefix (detect passes TS_FS_ROOT).
 ts_guess_platform() {
-    local root="${1:-}" marker platform rest kind path
+    local root="${1:-}" marker platform rest kind path check_path
     for marker in "${TS_PLATFORM_MARKERS[@]}"; do
         platform="${marker%% *}"
         rest="${marker#* }"
         kind="${rest%% *}"
         path="${rest#* }"
-        if { [[ "$kind" == "d" ]] && [[ -d "${root}${path}" ]]; } || { [[ "$kind" == "f" ]] && [[ -f "${root}${path}" ]]; }; then
+        check_path="${root}${path}"
+        if [[ "$path" == "/opt/umbreld/package.json" ]] && [[ -z "$root" ]] && [[ -n "${UMBREL_VERSION_FILE:-}" ]]; then
+            check_path="$UMBREL_VERSION_FILE"
+        fi
+        if { [[ "$kind" == "d" ]] && [[ -d "$check_path" ]]; } || { [[ "$kind" == "f" ]] && [[ -f "$check_path" ]]; }; then
             echo "$platform"
             return 0
         fi
@@ -1137,7 +1137,7 @@ ts_guess_platform() {
 detect_platform() {
     reject_umbrel_platform
     local guess=""
-    guess=$(ts_guess_platform)
+    guess=$(ts_guess_platform "${TS_FS_ROOT:-}")
 
     # --platform answers both questions below without interaction
     if [[ -n "$TS_OPT_PLATFORM" ]]; then
@@ -1202,7 +1202,7 @@ ts_guess_ln_impl_systemd() {
 
 detect_ln_implementation() {
     local guess=""
-    guess=$(ts_guess_ln_impl_systemd)
+    guess=$(ts_guess_ln_impl_systemd "${TS_FS_ROOT:-}")
 
     if [[ -n "$guess" ]]; then
         if [[ -n "$TS_OPT_IMPL" ]]; then
@@ -1219,11 +1219,11 @@ detect_ln_implementation() {
             LN_IMPL="$guess"
             # Detect node user for systemd service
             local s_file=""
-            [[ "$LN_IMPL" == "lnd" ]] && s_file="/etc/systemd/system/lnd.service"
-            [[ "$LN_IMPL" == "cln" ]] && s_file="/etc/systemd/system/lightningd.service"
+            [[ "$LN_IMPL" == "lnd" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lnd.service"
+            [[ "$LN_IMPL" == "cln" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lightningd.service"
             if [[ "$LN_IMPL" == "lit" ]]; then
-                s_file="/etc/systemd/system/litd.service"
-                [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+                s_file="${TS_FS_ROOT:-}/etc/systemd/system/litd.service"
+                [[ ! -f "$s_file" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lit.service"
             fi
             if [[ -f "$s_file" ]]; then
                 node_user=$(grep "^User=" "$s_file" | cut -d'=' -f2 | xargs)
@@ -1279,7 +1279,7 @@ detect_ln_implementation() {
                 LN_IMPL="lit"
                 
                 # Verify Integrated Mode or warn
-                if ! ts_lit_integrated_mode; then
+                if ! ts_lit_integrated_mode "${TS_FS_ROOT:-}"; then
                     print_warning "LIT Integrated mode not detected in config."
                     ts_confirm lit_confirm "Are you sure LIT is managing its own LND? [y/N]: "
                     if [[ ! "$lit_confirm" =~ ^[Yy]$ ]]; then
@@ -1287,8 +1287,8 @@ detect_ln_implementation() {
                         exit 0
                     fi
                 fi
-                local s_file="/etc/systemd/system/litd.service"
-                [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+                local s_file="${TS_FS_ROOT:-}/etc/systemd/system/litd.service"
+                [[ ! -f "$s_file" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lit.service"
                 node_user=$(grep "^User=" "$s_file" 2>/dev/null | cut -d'=' -f2 | xargs)
                 [[ -z "$node_user" ]] && node_user="bitcoin"
             else
@@ -3236,9 +3236,9 @@ auto_detect_environment() {
     reject_umbrel_platform
     # Auto-detect platform
     if [[ -z "$PLATFORM" ]]; then
-        if [[ -d /home/admin/config.scripts ]]; then
+        if [[ -d "${TS_FS_ROOT:-}/home/admin/config.scripts" ]]; then
             PLATFORM="raspiblitz"
-        elif [[ -d /usr/share/mynode ]]; then
+        elif [[ -d "${TS_FS_ROOT:-}/usr/share/mynode" ]]; then
             PLATFORM="mynode"
         else
             PLATFORM="baremetal"
@@ -3253,9 +3253,7 @@ auto_detect_environment() {
             LN_IMPL="cln"
         elif systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
             # Only auto-detect if Integrated Mode
-            local s_file="/etc/systemd/system/litd.service"
-            [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
-            if grep -qi "lnd-mode=integrated" "$s_file" 2>/dev/null || grep -qi "lnd-mode.*integrated" /etc/lit/lit.conf 2>/dev/null || grep -qi "lnd-mode.*integrated" "$HOME/.lit/lit.conf" 2>/dev/null; then
+            if ts_lit_integrated_mode "${TS_FS_ROOT:-}"; then
                 LN_IMPL="lit"
             fi
         fi
@@ -3264,11 +3262,11 @@ auto_detect_environment() {
     # Detect node user for systemd service
     if [[ -n "$LN_IMPL" ]] && [[ -z "$node_user" ]]; then
         local s_file=""
-        [[ "$LN_IMPL" == "lnd" ]] && s_file="/etc/systemd/system/lnd.service"
-        [[ "$LN_IMPL" == "cln" ]] && s_file="/etc/systemd/system/lightningd.service"
+        [[ "$LN_IMPL" == "lnd" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lnd.service"
+        [[ "$LN_IMPL" == "cln" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lightningd.service"
         if [[ "$LN_IMPL" == "lit" ]]; then
-            s_file="/etc/systemd/system/litd.service"
-            [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+            s_file="${TS_FS_ROOT:-}/etc/systemd/system/litd.service"
+            [[ ! -f "$s_file" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lit.service"
         fi
         if [[ -f "$s_file" ]]; then
             node_user=$(grep -Ei "^User[[:space:]]*=" "$s_file" | cut -d'=' -f2 | xargs)
@@ -8544,6 +8542,9 @@ ts_m_install_preflight() {
         ts_fail 7 E_PLATFORM_UNSUPPORTED refused "--platform ${TS_OPT_PLATFORM} does not match the managed profile ${profile}"
     fi
     case "$profile:$guess" in
+        *:umbrel)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Umbrel is not supported by tunnelsats.sh (detected: umbrel); install the native TunnelSats Umbrel app (https://github.com/Tunnelsats/ts-umbrel-app, https://tunnelsats.com/guide)"
+            ;;
         baremetal:|raspiblitz:raspiblitz|mynode:mynode) ;;
         baremetal:raspiblitz)
             ts_fail 7 E_PLATFORM_UNSUPPORTED refused "This node is a RaspiBlitz: use 'install --managed raspiblitz --impl lnd|cln'"
@@ -9059,6 +9060,9 @@ cmd_install_managed() {
             ;;
         *) ts_usage_error "--managed requires a profile for install (baremetal, raspiblitz or mynode)" ;;
     esac
+    if [[ "$(ts_guess_platform "$TS_FS_ROOT")" == "umbrel" ]]; then
+        ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Umbrel is not supported by tunnelsats.sh (detected: umbrel); install the native TunnelSats Umbrel app (https://github.com/Tunnelsats/ts-umbrel-app, https://tunnelsats.com/guide)"
+    fi
     ts_m_lifecycle_lock
     if [[ "$TS_JSON" -ne 1 ]]; then
         print_header "Managed Install (preview)"
@@ -9226,6 +9230,9 @@ ts_m_adopt_preflight() {
         ts_fail 7 E_PLATFORM_UNSUPPORTED refused "--platform ${TS_OPT_PLATFORM} does not match the managed profile ${profile}"
     fi
     case "$profile:$guess" in
+        *:umbrel)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Umbrel is not supported by tunnelsats.sh (detected: umbrel); install the native TunnelSats Umbrel app (https://github.com/Tunnelsats/ts-umbrel-app, https://tunnelsats.com/guide)"
+            ;;
         baremetal:|raspiblitz:raspiblitz|mynode:mynode) ;;
         baremetal:raspiblitz)
             ts_fail 7 E_PLATFORM_UNSUPPORTED refused "This node is a RaspiBlitz: use 'adopt --managed raspiblitz --impl lnd|cln'"
@@ -9392,6 +9399,9 @@ cmd_adopt_managed() {
             ;;
         *) ts_usage_error "--managed requires a profile for adopt (baremetal, raspiblitz or mynode)" ;;
     esac
+    if [[ "$(ts_guess_platform "$TS_FS_ROOT")" == "umbrel" ]]; then
+        ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Umbrel is not supported by tunnelsats.sh (detected: umbrel); install the native TunnelSats Umbrel app (https://github.com/Tunnelsats/ts-umbrel-app, https://tunnelsats.com/guide)"
+    fi
     ts_m_lifecycle_lock
     if [[ "$TS_JSON" -ne 1 ]]; then
         print_header "Managed Adopt"

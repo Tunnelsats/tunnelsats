@@ -4092,6 +4092,47 @@ assert_contains "$(cat "$fx/fs/etc/systemd/system/lnd.service.d/tunnelsats-manag
     "ExecStartPre=+/usr/local/sbin/tunnelsats managed-mynode-lnd-pre" \
     "17e: adopt --managed mynode writes drop-in with ExecStartPre=+/usr/local/sbin/tunnelsats managed-mynode-lnd-pre"
 
+# 17f: Fail-closed Umbrel rejection on install --managed and adopt --managed (including /opt/umbreld/package.json alone)
+fx=$(preflight_fixture umbreld-only)
+mkdir -p "$fx/fs/opt/umbreld" "$fx/tmp" "$fx/fs/lib/systemd/system" "$fx/fs/etc/wireguard"
+printf '{"version":"1.5.0"}\n' > "$fx/fs/opt/umbreld/package.json"
+: > "$fx/fs/lib/systemd/system/wg-quick@.service"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+
+for um_profile in baremetal raspiblitz mynode; do
+    preflight "$fx" "TS_OPT_PROFILE=${um_profile};"
+    assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[7, "E_PLATFORM_UNSUPPORTED"]' \
+        "17f: ts_m_install_preflight (${um_profile}) refuses /opt/umbreld/package.json with E_PLATFORM_UNSUPPORTED (exit 7)"
+    assert_contains "$doc" "https://github.com/Tunnelsats/ts-umbrel-app" \
+        "17f: ts_m_install_preflight (${um_profile}) points to native TunnelSats Umbrel app"
+done
+
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json install --managed baremetal --non-interactive --yes --config '$TMP_ROOT/fx/render/sub.conf'"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "7" "$SN_RC" "17f: install --managed baremetal on /opt/umbreld/package.json exits 7"
+assert_json "$doc" '[d["ok"], d["exit_code"], d["errors"][0]["code"]]' '[false, 7, "E_PLATFORM_UNSUPPORTED"]' \
+    "17f: install --managed baremetal on /opt/umbreld/package.json returns E_PLATFORM_UNSUPPORTED"
+assert_contains "$doc" "https://github.com/Tunnelsats/ts-umbrel-app" \
+    "17f: install --managed baremetal on /opt/umbreld/package.json mentions https://github.com/Tunnelsats/ts-umbrel-app"
+if [[ ! -e "$fx/fs/etc/tunnelsats/managed.json" ]]; then
+    pass "17f: install --managed baremetal on /opt/umbreld/package.json writes no managed inventory"
+else
+    fail "17f: install --managed baremetal on /opt/umbreld/package.json wrote managed.json"
+fi
+
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json adopt --managed baremetal --non-interactive --yes"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "7" "$SN_RC" "17f: adopt --managed baremetal on /opt/umbreld/package.json exits 7"
+assert_json "$doc" '[d["ok"], d["exit_code"], d["errors"][0]["code"]]' '[false, 7, "E_PLATFORM_UNSUPPORTED"]' \
+    "17f: adopt --managed baremetal on /opt/umbreld/package.json returns E_PLATFORM_UNSUPPORTED"
+assert_contains "$doc" "https://github.com/Tunnelsats/ts-umbrel-app" \
+    "17f: adopt --managed baremetal on /opt/umbreld/package.json mentions https://github.com/Tunnelsats/ts-umbrel-app"
+if [[ ! -e "$fx/fs/etc/tunnelsats/managed.json" ]]; then
+    pass "17f: adopt --managed baremetal on /opt/umbreld/package.json writes no managed inventory"
+else
+    fail "17f: adopt --managed baremetal on /opt/umbreld/package.json wrote managed.json"
+fi
+
 echo ""
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"

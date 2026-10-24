@@ -6,6 +6,7 @@
 # a stub, and detect reads fixture trees through TS_FS_ROOT and stub binaries.
 
 set -euo pipefail
+unset NO_COLOR
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_UNDER_TEST="${SCRIPT_DIR}/tunnelsats.sh"
@@ -20,6 +21,7 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 TMP_ROOT="$(mktemp -d)"
+mkdir -p "$TMP_ROOT/empty_fs"
 cleanup() {
     chmod -R u+rwX "$TMP_ROOT" 2>/dev/null || true
     rm -rf "$TMP_ROOT"
@@ -216,7 +218,7 @@ assert_contains "$CLI_OUT" "Exit codes: 0 success, 1 failure, 2 usage error or i
 assert_not_contains "$CLI_OUT$CLI_ERR" $'\033[' "No ANSI colours when the output is not a terminal"
 
 if command -v script >/dev/null 2>&1 && script -qec true /dev/null >/dev/null 2>&1; then
-    tty_out=$(script -qec "bash '$SCRIPT_UNDER_TEST' help" /dev/null 2>/dev/null || true)
+    tty_out=$(env -u NO_COLOR script -qec "bash '$SCRIPT_UNDER_TEST' help" /dev/null 2>/dev/null || true)
     assert_contains "$tty_out" $'\033[' "Colours are kept on a terminal (unchanged interactive output)"
     tty_out=$(NO_COLOR=1 script -qec "bash '$SCRIPT_UNDER_TEST' help" /dev/null 2>/dev/null || true)
     assert_not_contains "$tty_out" $'\033[' "NO_COLOR disables colours on a terminal"
@@ -265,6 +267,7 @@ run_snippet() {
     printf '%s' "$input" > "$TMP_ROOT/stdin"
     set +e
     SN_OUT=$(SCRIPT_UNDER_TEST="$SCRIPT_UNDER_TEST" LOG="$TMP_ROOT/stub.log" PROMPTS="$TMP_ROOT/prompts.log" \
+        TS_FS_ROOT="${TS_FS_ROOT:-$TMP_ROOT/empty_fs}" \
         UMBREL_VERSION_FILE="$TMP_ROOT/no-umbrel-package.json" \
         bash -c "${STUB_PRELUDE}"$'\n'"${snippet}" <"$TMP_ROOT/stdin" 2>&1)
     SN_RC=$?
@@ -365,13 +368,13 @@ for umbrel_cmd in install uninstall status restart; do
 done
 
 umbrel_marker_root="$TMP_ROOT/umbrel_marker_root"
-mkdir -p "$umbrel_marker_root/opt/umbreld" "$umbrel_marker_root/home/umbrel/umbrel"
+mkdir -p "$umbrel_marker_root/opt/umbreld"
 printf '{"version":"1.5.0"}\n' > "$umbrel_marker_root/opt/umbreld/package.json"
 for umbrel_cmd in install uninstall status restart pre-check; do
     run_cli env TS_FS_ROOT="$umbrel_marker_root" bash "$SCRIPT_UNDER_TEST" "$umbrel_cmd"
-    assert_equals 1 "$CLI_RC" "$umbrel_cmd on Umbrel filesystem markers fails closed (exit 1)"
-    assert_contains "$CLI_ERR" "Umbrel is not supported by tunnelsats.sh" "$umbrel_cmd on Umbrel filesystem markers explains Umbrel is unsupported"
-    assert_contains "$CLI_ERR" "https://tunnelsats.com/guide" "$umbrel_cmd on Umbrel filesystem markers points to the guide"
+    assert_equals 1 "$CLI_RC" "$umbrel_cmd on /opt/umbreld/package.json marker alone fails closed (exit 1)"
+    assert_contains "$CLI_ERR" "Umbrel is not supported by tunnelsats.sh" "$umbrel_cmd on /opt/umbreld/package.json marker explains Umbrel is unsupported"
+    assert_contains "$CLI_ERR" "https://tunnelsats.com/guide" "$umbrel_cmd on /opt/umbreld/package.json marker points to the guide"
 done
 
 run_snippet "ts_guess_platform() { echo raspiblitz; }; detect_platform; echo \"PLATFORM=\$PLATFORM\"" $'Y\n'
@@ -977,6 +980,17 @@ assert_json "$CLI_OUT" '[d["privileged"], d["unreadable_items"]]' "[$([[ $EUID -
     "[none] privileged flag and no unreadable item"
 assert_readonly_calls "[none]"
 assert_equals "$snapshot_before" "$(tree_snapshot "$fx_none")" "[none] detect changed nothing in the fixture tree"
+
+# Fixture: Umbrel 1.0+ (/opt/umbreld/package.json only, without /home/umbrel/umbrel)
+fx_umbreld=$(new_fixture umbreld_only)
+put "$fx_umbreld/fs/opt/umbreld/package.json" '{"version":"1.5.0"}'
+run_detect "$fx_umbreld" --json
+assert_equals 0 "$CLI_RC" "[umbreld_only] detect --json exits 0"
+assert_json "$CLI_OUT" 'd["platform"]["guess"]' umbrel "[umbreld_only] detect guesses umbrel from /opt/umbreld/package.json alone"
+assert_json "$CLI_OUT" 'next(e for e in d["platform"]["evidence"] if e["path"] == "/opt/umbreld/package.json")' \
+    '{"platform": "umbrel", "path": "/opt/umbreld/package.json", "status": "present"}' \
+    "[umbreld_only] /opt/umbreld/package.json is reported as present in platform.evidence"
+assert_readonly_calls "[umbreld_only]"
 
 # Fixture: legacy v2 (setupv2.sh on RaspiBlitz)
 fx_v2=$(new_fixture legacy_v2)
