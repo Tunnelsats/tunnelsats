@@ -10,7 +10,7 @@ set -e  # Exit on error
 # GLOBAL VARIABLES
 # ---------------------------------------------------------------------------
 
-VERSION="3.2"
+VERSION="3.5.0"
 # Version of the machine-readable CLI contract (--json documents, exit codes, error codes).
 # Bumped only for incompatible changes; platforms such as RaspiBlitz pin it.
 TS_CONTRACT=1
@@ -94,15 +94,53 @@ print_line() {
     echo ""
 }
 
+# Prints the sha256 of the running script file; fails if it cannot be computed.
+ts_script_sha256() {
+    local file="$TS_SCRIPT_PATH" out=""
+    if [[ ! -f "$file" ]] || [[ ! -r "$file" ]]; then
+        return 1
+    fi
+    if command -v sha256sum >/dev/null 2>&1; then
+        out=$(sha256sum -b "$file" 2>/dev/null) || return 1
+    elif command -v shasum >/dev/null 2>&1; then
+        out=$(shasum -a 256 "$file" 2>/dev/null) || return 1
+    else
+        return 1
+    fi
+    out="${out%% *}"
+    if [[ ! "$out" =~ ^[0-9a-f]{64}$ ]]; then
+        return 1
+    fi
+    echo "$out"
+}
+
+# Prints the 8-character short sha256 prefix of the running script file, or nothing if unavailable.
+ts_script_short_sha() {
+    local sha=""
+    if sha=$(ts_script_sha256); then
+        echo "${sha:0:8}"
+        return 0
+    fi
+    return 1
+}
+
 print_header() {
     local subtitle="$1"
-    local title="Tunnel⚡Sats Setup Tool v${VERSION}"
-    local width=42
+    local short_sha=""
+    short_sha=$(ts_script_short_sha) || short_sha=""
+    local title="Tunnel⚡Sats Setup Tool v${VERSION}${short_sha:+ (${short_sha})}"
+    local width=46
     
     # Calculate visible length (⚡ counts as 2 columns but 1 character)
     local title_len=${#title}
     if [[ "$title" == *"⚡"* ]]; then
         title_len=$((title_len + 1))
+    fi
+    if (( title_len + 4 > width )); then
+        width=$((title_len + 4))
+    fi
+    if (( ${#subtitle} + 4 > width )); then
+        width=$((${#subtitle} + 4))
     fi
     
     local title_padding=$(( (width - title_len) / 2 ))
@@ -3752,26 +3790,6 @@ cmd_restart() {
 # ---------------------------------------------------------------------------
 # VERSION COMMAND
 # ---------------------------------------------------------------------------
-
-# Prints the sha256 of the running script file; fails if it cannot be computed.
-ts_script_sha256() {
-    local file="$TS_SCRIPT_PATH" out=""
-    if [[ ! -f "$file" ]] || [[ ! -r "$file" ]]; then
-        return 1
-    fi
-    if command -v sha256sum >/dev/null 2>&1; then
-        out=$(sha256sum -b "$file" 2>/dev/null) || return 1
-    elif command -v shasum >/dev/null 2>&1; then
-        out=$(shasum -a 256 "$file" 2>/dev/null) || return 1
-    else
-        return 1
-    fi
-    out="${out%% *}"
-    if [[ ! "$out" =~ ^[0-9a-f]{64}$ ]]; then
-        return 1
-    fi
-    echo "$out"
-}
 
 cmd_version() {
     local sha="" rc=0 errors="[]"
@@ -11388,11 +11406,14 @@ ts_v_report() {
         ts_json_document "$TS_V_EXIT" "$errors_j" "${TS_R:1:${#TS_R}-2}"
         exit "$TS_V_EXIT"
     fi
+    local short_sha=""
+    short_sha=$(ts_script_short_sha) || short_sha=""
     if [[ "$TS_M_INV_STATE" == "damaged" ]]; then
         echo -e "${BOLD}TunnelSats verify${NC}: managed, install record damaged, interface ${TS_M_IFACE}"
     else
         echo -e "${BOLD}TunnelSats verify${NC}: managed (${TS_M_INV_PROFILE}), ${TS_M_INV_UNIT}, interface ${TS_M_IFACE}"
     fi
+    echo "Tool: tunnelsats.sh v${VERSION}${short_sha:+ (${short_sha})}"
     print_line
     for i in "${!TS_V_ID[@]}"; do
         printf '  %-17s %-5s %s\n' "${TS_V_ID[$i]}" "${TS_V_RESULT[$i]}" "${TS_V_DETAIL[$i]}"
@@ -11582,7 +11603,10 @@ ts_v_unmanaged() {
         ts_json_document "$TS_V_EXIT" "$errors_j" "${TS_R:1:${#TS_R}-2}"
         exit "$TS_V_EXIT"
     fi
+    local short_sha=""
+    short_sha=$(ts_script_short_sha) || short_sha=""
     echo -e "${BOLD}TunnelSats verify${NC}: standard install (${kind})${iface:+, interface ${iface}}"
+    echo "Tool: tunnelsats.sh v${VERSION}${short_sha:+ (${short_sha})}"
     print_line
     for n in "${!TS_V_ID[@]}"; do
         printf '  %-17s %-5s %s\n' "${TS_V_ID[$n]}" "${TS_V_RESULT[$n]}" "${TS_V_DETAIL[$n]}"

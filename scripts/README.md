@@ -97,7 +97,7 @@ If you run into issues or have questions:
 
 ## Legacy Version / Troubleshooting
 
-If you encounter blocking issues with `tunnelsats.sh` (v3.2), you can fall back to the v2 scripts located in the `archive/` folder.
+If you encounter blocking issues with `tunnelsats.sh` (v3.5.0), you can fall back to the v2 scripts located in the `archive/` folder.
 
 **To use the legacy version:**
 

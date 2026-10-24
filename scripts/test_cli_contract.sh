@@ -162,7 +162,7 @@ assert_equals 2 "$CLI_RC" "Unknown option with --json exits 2"
 assert_json_valid "$CLI_OUT" "Usage error envelope is valid JSON"
 assert_json "$CLI_OUT" 'd["contract"]' 1 "Error envelope has contract 1"
 assert_json "$CLI_OUT" 'd["command"]' version "Error envelope names the command even if the bad option comes first"
-assert_json "$CLI_OUT" 'd["tool_version"]' 3.2 "Error envelope has tool_version"
+assert_json "$CLI_OUT" 'd["tool_version"]' 3.5.0 "Error envelope has tool_version"
 assert_json "$CLI_OUT" 'd["ok"]' false "Error envelope has ok false"
 assert_json "$CLI_OUT" 'd["exit_code"]' 2 "Error envelope exit_code matches the exit code"
 assert_json "$CLI_OUT" '[d["errors"][0][k] for k in ("code", "class", "message")]' \
@@ -679,20 +679,29 @@ echo ""
 echo "--- Group 3: version ---"
 
 script_sha=$(sha256sum "$SCRIPT_UNDER_TEST" | cut -d' ' -f1)
+script_short_sha="${script_sha:0:8}"
 run_cli bash "$SCRIPT_UNDER_TEST" version --json
 assert_equals 0 "$CLI_RC" "version --json exits 0"
 assert_json_valid "$CLI_OUT" "version --json prints valid JSON"
 assert_json "$CLI_OUT" '[d["contract"], d["command"], d["tool_version"], d["ok"], d["exit_code"], d["errors"]]' \
-    '[1, "version", "3.2", true, 0, []]' "version envelope fields"
+    '[1, "version", "3.5.0", true, 0, []]' "version envelope fields"
 assert_json "$CLI_OUT" 'd["tool_sha256"]' "$script_sha" "version reports the sha256 of the running script"
 assert_equals "" "$CLI_ERR" "version --json logs nothing"
+if [[ "$(json_eval "$CLI_OUT" 'd["tool_version"]')" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    pass "tool_version follows strict X.Y.Z SemVer"
+else
+    fail "tool_version does not follow strict X.Y.Z SemVer"
+fi
 
 run_cli bash "$SCRIPT_UNDER_TEST" --json version
 assert_json "$CLI_OUT" 'd["command"]' version "--json before the command works"
 
 run_cli bash "$SCRIPT_UNDER_TEST" version
 assert_equals 0 "$CLI_RC" "version exits 0"
-assert_equals "tunnelsats.sh 3.2 (CLI contract 1)"$'\n'"sha256: ${script_sha}" "$CLI_OUT" "Human version output"
+assert_equals "tunnelsats.sh 3.5.0 (CLI contract 1)"$'\n'"sha256: ${script_sha}" "$CLI_OUT" "Human version output"
+
+run_cli bash "$SCRIPT_UNDER_TEST" help
+assert_contains "$CLI_OUT" "Tunnel⚡Sats Setup Tool v3.5.0 (${script_short_sha})" "print_header includes SemVer version and 8-char sha256 prefix"
 
 # ---------------------------------------------------------------------------
 # GROUP 4: detect on fixture trees
@@ -969,7 +978,7 @@ run_detect "$fx_none" --json
 assert_equals 0 "$CLI_RC" "[none] detect --json exits 0"
 assert_json_valid "$CLI_OUT" "[none] detect --json prints valid JSON"
 assert_json "$CLI_OUT" '[d["contract"], d["command"], d["tool_version"], d["ok"], d["exit_code"], d["errors"]]' \
-    '[1, "detect", "3.2", true, 0, []]' "[none] envelope fields"
+    '[1, "detect", "3.5.0", true, 0, []]' "[none] envelope fields"
 assert_json "$CLI_OUT" '[d["install"]["kind"], d["install"]["candidates"], d["install"]["evidence"]]' \
     '["none", ["none"], []]' "[none] install kind is none"
 assert_json "$CLI_OUT" '[d["platform"]["guess"], d["lightning"]["guess"], d["config"]["status"], d["config"]["selection"], d["config"]["candidates"]]' \

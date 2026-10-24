@@ -149,6 +149,7 @@ Automated CI status checks run on every push and pull request via [GitHub Action
 - **[Syntax & Automated Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/syntax.yml)**: Validates script syntax (`bash -n`) and executes all 6 automated test suites covering UFW firewall handling, IPv6 route stripping, WireGuard configuration sanitization, lifecycle/routing idempotency, the non-interactive/JSON CLI contract (including `detect` on fixture trees), and managed mode.
 - **[Kernel Dataplane Tests](https://github.com/Tunnelsats/tunnelsats/actions/workflows/kernel.yml)**: Runs managed mode on Ubuntu 22.04 and 24.04 runners against the real kernel: install, verify, tunnel loss, boot order, package upgrades, child processes, a removed kill switch table, failed arming behind the emergency block (with the local network kept, and a routing rule that bypasses it), a damaged install record, ruleset flushes, strict reverse-path filtering and uninstall.
 - **[Script Integrity Verification](https://github.com/Tunnelsats/tunnelsats/actions/workflows/integrity.yml)**: Asserts that `scripts/tunnelsats.sh.sha256` strictly matches the contents of `scripts/tunnelsats.sh`.
+- **[Release Tagging](https://github.com/Tunnelsats/tunnelsats/actions/workflows/release.yml)**: Automatically tags `v<VERSION>` and publishes a GitHub Release with `scripts/tunnelsats.sh` and `scripts/tunnelsats.sh.sha256` attached whenever `VERSION` in `scripts/tunnelsats.sh` is bumped on `main`.
 
 ### Local Setup & Git Hooks
 

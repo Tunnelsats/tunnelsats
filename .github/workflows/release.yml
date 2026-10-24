@@ -1,0 +1,77 @@
+name: Release Tagging
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'scripts/tunnelsats.sh'
+      - 'scripts/tunnelsats.sh.sha256'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-tagging
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Tag and Publish Release on VERSION Bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ver=$(sed -nE 's/^VERSION="([^"]+)"$/\1/p' scripts/tunnelsats.sh | head -n 1)
+          if [[ ! "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: Invalid SemVer VERSION in scripts/tunnelsats.sh: '$ver' (expected X.Y.Z)" >&2
+            exit 1
+          fi
+          sha256sum -c scripts/tunnelsats.sh.sha256
+
+          tag="v${ver}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "GitHub Release ${tag} is already published; skipping."
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists on origin without a published release; checking out tagged commit to resume release publication..."
+            git fetch origin "refs/tags/${tag}:refs/tags/${tag}" --force
+            git checkout --detach "refs/tags/${tag}"
+            tagged_ver=$(sed -nE 's/^VERSION="([^"]+)"$/\1/p' scripts/tunnelsats.sh | head -n 1)
+            if [[ "$tagged_ver" != "$ver" ]]; then
+              echo "ERROR: Tagged commit VERSION (${tagged_ver}) does not match ${ver}" >&2
+              exit 1
+            fi
+            sha256sum -c scripts/tunnelsats.sh.sha256
+          fi
+
+          find . -name "*.sh" -print0 | xargs -0 -I {} bash -n "{}"
+          bash scripts/test_ufw_check.sh
+          bash scripts/test_ipv6_patch.sh
+          bash scripts/test_sanitize_config.sh
+          bash scripts/test_lifecycle_idempotency.sh
+          bash scripts/test_cli_contract.sh
+          bash scripts/test_managed_dataplane.sh
+
+          if ! git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" -m "TunnelSats Setup Tool ${tag}"
+            git push origin "refs/tags/${tag}"
+          fi
+
+          gh release create "$tag" \
+            scripts/tunnelsats.sh \
+            scripts/tunnelsats.sh.sha256 \
+            --verify-tag \
+            --title "TunnelSats Setup Tool ${tag}" \
+            --generate-notes
