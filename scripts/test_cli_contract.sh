@@ -377,6 +377,14 @@ for umbrel_cmd in install uninstall status restart pre-check; do
     assert_contains "$CLI_ERR" "https://tunnelsats.com/guide" "$umbrel_cmd on /opt/umbreld/package.json marker points to the guide"
 done
 
+# Mixed markers (/home/admin/config.scripts + /opt/umbreld/package.json): must still fail closed on Umbrel
+mkdir -p "$umbrel_marker_root/home/admin/config.scripts"
+for umbrel_cmd in install uninstall status restart pre-check; do
+    run_cli env TS_FS_ROOT="$umbrel_marker_root" bash "$SCRIPT_UNDER_TEST" "$umbrel_cmd"
+    assert_equals 1 "$CLI_RC" "$umbrel_cmd with mixed RaspiBlitz + Umbrel markers fails closed (exit 1)"
+    assert_contains "$CLI_ERR" "Umbrel is not supported by tunnelsats.sh" "$umbrel_cmd with mixed markers explains Umbrel is unsupported"
+done
+
 run_snippet "ts_guess_platform() { echo raspiblitz; }; detect_platform; echo \"PLATFORM=\$PLATFORM\"" $'Y\n'
 assert_contains "$SN_OUT" "PLATFORM=raspiblitz" "Interactive platform confirmation still works"
 assert_equals "Detected Platform: raspiblitz. Correct? [Y/n]: " "$SN_PROMPTS" "Platform confirmation prompt is unchanged"

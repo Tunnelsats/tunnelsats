@@ -4133,6 +4133,19 @@ else
     fail "17f: adopt --managed baremetal on /opt/umbreld/package.json wrote managed.json"
 fi
 
+# Mixed markers (/home/admin/config.scripts + /opt/umbreld/package.json) must also fail closed across all profiles
+mkdir -p "$fx/fs/home/admin/config.scripts"
+for um_profile in baremetal raspiblitz mynode; do
+    preflight "$fx" "TS_OPT_PROFILE=${um_profile};"
+    assert_json "$doc" '[d["exit_code"], d["errors"][0]["code"]]' '[7, "E_PLATFORM_UNSUPPORTED"]' \
+        "17f: ts_m_install_preflight (${um_profile}) refuses mixed RaspiBlitz + Umbrel markers with E_PLATFORM_UNSUPPORTED (exit 7)"
+done
+run_snippet "$fx" "$rb_env export TMPDIR='$fx/tmp'; parse_args --json install --managed raspiblitz --impl lnd --non-interactive --yes --config '$TMP_ROOT/fx/render/sub.conf'"
+doc=$(printf '%s\n' "$SN_OUT" | grep '^{"contract"' || true)
+assert_equals "7" "$SN_RC" "17f: install --managed raspiblitz on mixed RaspiBlitz + Umbrel markers exits 7"
+assert_json "$doc" '[d["ok"], d["exit_code"], d["errors"][0]["code"]]' '[false, 7, "E_PLATFORM_UNSUPPORTED"]' \
+    "17f: install --managed raspiblitz on mixed RaspiBlitz + Umbrel markers returns E_PLATFORM_UNSUPPORTED"
+
 echo ""
 echo "Passed: $pass_count"
 echo "Failed: $fail_count"

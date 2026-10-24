@@ -1090,19 +1090,6 @@ cmd_pre_check() {
 
 # Helper functions for install command
 
-reject_umbrel_platform() {
-    if [[ "${PLATFORM:-}" == "umbrel" ]] || [[ "${TS_OPT_PLATFORM:-}" == "umbrel" ]] || \
-       [[ "$(ts_guess_platform "${TS_FS_ROOT:-}")" == "umbrel" ]]; then
-        echo "" >&2
-        print_error "Umbrel is not supported by tunnelsats.sh. Please install the native TunnelSats app:"
-        echo -e "  - Community App Store (umbrelOS 1.0+): ${BLUE}https://github.com/Tunnelsats/ts-umbrel-app${NC}" >&2
-        echo -e "  - Official Umbrel App Store: review pending (PR #4919)" >&2
-        echo -e "  - Setup Guide: ${BLUE}https://tunnelsats.com/guide${NC}" >&2
-        echo "" >&2
-        exit 1
-    fi
-}
-
 # Platform markers in detection order: "<platform> <d|f> <path>" (directory or file).
 TS_PLATFORM_MARKERS=(
     "raspiblitz d /home/admin/config.scripts"
@@ -1112,6 +1099,40 @@ TS_PLATFORM_MARKERS=(
     "umbrel f /usr/bin/umbrel"
     "mynode d /usr/share/mynode"
 )
+
+# Succeeds if any Umbrel marker in TS_PLATFORM_MARKERS exists under optional root $1,
+# independent of ts_guess_platform ordering (so mixed markers still fail closed).
+ts_has_umbrel_marker() {
+    local root="${1:-}" marker platform rest kind path check_path
+    for marker in "${TS_PLATFORM_MARKERS[@]}"; do
+        platform="${marker%% *}"
+        [[ "$platform" != "umbrel" ]] && continue
+        rest="${marker#* }"
+        kind="${rest%% *}"
+        path="${rest#* }"
+        check_path="${root}${path}"
+        if [[ "$path" == "/opt/umbreld/package.json" ]] && [[ -z "$root" ]] && [[ -n "${UMBREL_VERSION_FILE:-}" ]]; then
+            check_path="$UMBREL_VERSION_FILE"
+        fi
+        if { [[ "$kind" == "d" ]] && [[ -d "$check_path" ]]; } || { [[ "$kind" == "f" ]] && [[ -f "$check_path" ]]; }; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+reject_umbrel_platform() {
+    if [[ "${PLATFORM:-}" == "umbrel" ]] || [[ "${TS_OPT_PLATFORM:-}" == "umbrel" ]] || \
+       ts_has_umbrel_marker "${TS_FS_ROOT:-}"; then
+        echo "" >&2
+        print_error "Umbrel is not supported by tunnelsats.sh. Please install the native TunnelSats app:"
+        echo -e "  - Community App Store (umbrelOS 1.0+): ${BLUE}https://github.com/Tunnelsats/ts-umbrel-app${NC}" >&2
+        echo -e "  - Official Umbrel App Store: review pending (PR #4919)" >&2
+        echo -e "  - Setup Guide: ${BLUE}https://tunnelsats.com/guide${NC}" >&2
+        echo "" >&2
+        exit 1
+    fi
+}
 
 # Prints the platform suggested by the first matching marker (nothing if none matches).
 # $1 = optional filesystem root prefix (detect passes TS_FS_ROOT).
@@ -8538,6 +8559,9 @@ ts_m_select_ln_user() {
 ts_m_install_preflight() {
     local guess existing kind evidence found listing line ports p port_ok=0 fam profile="${TS_OPT_PROFILE:-baremetal}"
     guess=$(ts_guess_platform "$TS_FS_ROOT")
+    if ts_has_umbrel_marker "$TS_FS_ROOT"; then
+        guess="umbrel"
+    fi
     if [[ -n "$TS_OPT_PLATFORM" ]] && [[ "$TS_OPT_PLATFORM" != "$profile" ]]; then
         ts_fail 7 E_PLATFORM_UNSUPPORTED refused "--platform ${TS_OPT_PLATFORM} does not match the managed profile ${profile}"
     fi
@@ -9060,7 +9084,7 @@ cmd_install_managed() {
             ;;
         *) ts_usage_error "--managed requires a profile for install (baremetal, raspiblitz or mynode)" ;;
     esac
-    if [[ "$(ts_guess_platform "$TS_FS_ROOT")" == "umbrel" ]]; then
+    if ts_has_umbrel_marker "$TS_FS_ROOT"; then
         ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Umbrel is not supported by tunnelsats.sh (detected: umbrel); install the native TunnelSats Umbrel app (https://github.com/Tunnelsats/ts-umbrel-app, https://tunnelsats.com/guide)"
     fi
     ts_m_lifecycle_lock
@@ -9226,6 +9250,9 @@ ts_m_adopt_preflight() {
     wg_rel="${wg_rel#"$TS_FS_ROOT"}"
     [[ -z "$wg_rel" ]] && wg_rel="/etc/wireguard"
     guess=$(ts_guess_platform "$TS_FS_ROOT")
+    if ts_has_umbrel_marker "$TS_FS_ROOT"; then
+        guess="umbrel"
+    fi
     if [[ -n "$TS_OPT_PLATFORM" ]] && [[ "$TS_OPT_PLATFORM" != "$profile" ]]; then
         ts_fail 7 E_PLATFORM_UNSUPPORTED refused "--platform ${TS_OPT_PLATFORM} does not match the managed profile ${profile}"
     fi
@@ -9399,7 +9426,7 @@ cmd_adopt_managed() {
             ;;
         *) ts_usage_error "--managed requires a profile for adopt (baremetal, raspiblitz or mynode)" ;;
     esac
-    if [[ "$(ts_guess_platform "$TS_FS_ROOT")" == "umbrel" ]]; then
+    if ts_has_umbrel_marker "$TS_FS_ROOT"; then
         ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Umbrel is not supported by tunnelsats.sh (detected: umbrel); install the native TunnelSats Umbrel app (https://github.com/Tunnelsats/ts-umbrel-app, https://tunnelsats.com/guide)"
     fi
     ts_m_lifecycle_lock
