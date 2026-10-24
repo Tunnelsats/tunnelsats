@@ -21,10 +21,7 @@ PLATFORM=""
 LN_IMPL=""
 node_user=""
 restarted_systemd_service=""
-stopped_docker_containers=""
 stopped_wireguard_interface=""
-# Lightning daemon container selected by setup_docker_network to own the tunnel IP (may be stopped)
-tunnel_target_container=""
 WG_CONFIG_BACKUP=""
 
 # Command line state (set by ts_parse_cli)
@@ -51,7 +48,7 @@ TS_USAGE_ERROR=""
 TS_OPTS_GIVEN=()
 TS_ARGV=()
 # Identifiers accepted by --platform and --impl (the values used internally for PLATFORM and LN_IMPL)
-TS_PLATFORMS="raspiblitz umbrel mynode baremetal"
+TS_PLATFORMS="raspiblitz mynode baremetal"
 TS_IMPLS="lnd cln lit"
 # Values accepted by --network
 TS_NETWORKS="mainnet testnet signet"
@@ -76,15 +73,6 @@ PERL_BIN="${PERL_BIN:-perl}"
 LNCLI_BIN="${LNCLI_BIN:-}"
 RUNUSER_BIN="${RUNUSER_BIN:-runuser}"
 TS_FS_ROOT="${TS_FS_ROOT:-}"
-
-# Shared Lightning daemon container resolvers (used by the installer and the generated network monitor)
-LND_CONTAINER_REGEX='(^|[[:space:]]|[-_])(lightning[-_])?lnd([-._]lnd)?([-._][0-9]+)?$'
-CLN_CONTAINER_REGEX='(core-lightning.*lightningd|lightning.*cln|lightningd|(^|[[:space:]])(core-lightning|clightning)([-._][0-9]+)?$)'
-LN_CONTAINER_EXCLUDE_REGEX='[-_](app|web|ui)([-_]|$)'
-TUNNEL_CONTAINER_IP="10.9.9.9"
-# Prints "attached <static-ip> <live-ip>" when attached to docker-tunnelsats, empty otherwise.
-# Static IPAM config is included because stopped containers report an empty live IPAddress.
-TUNNEL_NET_INSPECT_FMT='{{with index .NetworkSettings.Networks "docker-tunnelsats"}}attached {{if .IPAMConfig}}{{.IPAMConfig.IPv4Address}}{{end}} {{.IPAddress}}{{end}}'
 
 # ---------------------------------------------------------------------------
 # COLOR & FORMATTING FUNCTIONS
@@ -456,80 +444,46 @@ print_node_config_instructions() {
     local context="${3:-install}"  # 'install' or 'status'
     
     if [[ "$LN_IMPL" == "lnd" ]]; then
-        if [[ "$PLATFORM" == "umbrel" ]]; then
-             echo -e "Edit: ${BOLD}${BLUE}~/umbrel/app-data/lightning/data/lnd/lnd.conf${NC}"
-             if [[ "$context" == "install" ]]; then
-                 echo -e "${YELLOW}Note: If 'tor.streamisolation' or 'tor.skip-proxy...' are already enabled in UI,${NC}"
-                 echo -e "${YELLOW}      do NOT duplicate them.${NC}"
-             fi
-             echo ""
-             echo "#########################################"
-             echo -e "${BOLD}${BLUE}[Application Options]${NC}"
-             echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
-             echo ""
-             echo -e "${BOLD}${BLUE}[Tor]${NC}"
-             echo -e "${YELLOW}tor.streamisolation=false${NC}"
-             echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
-             echo "#########################################"
-        else
-             local lnd_user="${node_user:-bitcoin}"
-             local lnd_path="/home/$lnd_user/.lnd/lnd.conf"
-             
-             # Forensic path guessing for Bare Metal
-             [[ ! -f "$lnd_path" ]] && [[ -f "/home/bitcoin/.lnd/lnd.conf" ]] && lnd_path="/home/bitcoin/.lnd/lnd.conf"
-             [[ ! -f "$lnd_path" ]] && [[ -f "/home/lnd/.lnd/lnd.conf" ]] && lnd_path="/home/lnd/.lnd/lnd.conf"
-             [[ ! -f "$lnd_path" ]] && [[ -f "/data/lnd/lnd.conf" ]] && lnd_path="/data/lnd/lnd.conf"
-             [[ ! -f "$lnd_path" ]] && [[ -f "/mnt/hdd/lnd/lnd.conf" ]] && lnd_path="/mnt/hdd/lnd/lnd.conf"
-             [[ "$PLATFORM" == "mynode" ]] && lnd_path="/mnt/hdd/mynode/settings/lnd_extra_config.conf"
-             # The managed raspiblitz install knows the file the unit reads (TS_NODE_CONF_FILE)
-             [[ -n "${TS_NODE_CONF_FILE:-}" ]] && lnd_path="$TS_NODE_CONF_FILE"
-             
-             echo -e "Edit: ${BOLD}${BLUE}sudo nano $lnd_path${NC}"
-             if [[ "$PLATFORM" == "mynode" ]]; then
-                 echo -e "${YELLOW}Note: MyNode regenerates /mnt/hdd/mynode/lnd/lnd.conf on restart from${NC}"
-                 echo -e "${YELLOW}      /mnt/hdd/mynode/settings/lnd_extra_config.conf (also editable in the${NC}"
-                 echo -e "${YELLOW}      MyNode Web GUI under LND -> Config -> Additional LND Config).${NC}"
-             fi
-             if [[ "$context" == "install" ]]; then
-                 echo -e "${YELLOW}Note: Place settings in their respective sections. Do NOT duplicate categories.${NC}"
-             fi
-             echo ""
-             echo "#########################################"
-             echo -e "${BOLD}${BLUE}[Application Options]${NC}"
-             echo -e "${YELLOW}listen=0.0.0.0:9735${NC}"
-             echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
-             echo ""
-             echo -e "${BOLD}${BLUE}[Tor]${NC}"
-             echo -e "${YELLOW}tor.streamisolation=false${NC}"
-             echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
-             echo "#########################################"
-        fi
+         local lnd_user="${node_user:-bitcoin}"
+         local lnd_path="/home/$lnd_user/.lnd/lnd.conf"
+         
+         # Forensic path guessing for Bare Metal
+         [[ ! -f "$lnd_path" ]] && [[ -f "/home/bitcoin/.lnd/lnd.conf" ]] && lnd_path="/home/bitcoin/.lnd/lnd.conf"
+         [[ ! -f "$lnd_path" ]] && [[ -f "/home/lnd/.lnd/lnd.conf" ]] && lnd_path="/home/lnd/.lnd/lnd.conf"
+         [[ ! -f "$lnd_path" ]] && [[ -f "/data/lnd/lnd.conf" ]] && lnd_path="/data/lnd/lnd.conf"
+         [[ ! -f "$lnd_path" ]] && [[ -f "/mnt/hdd/lnd/lnd.conf" ]] && lnd_path="/mnt/hdd/lnd/lnd.conf"
+         [[ "$PLATFORM" == "mynode" ]] && lnd_path="/mnt/hdd/mynode/settings/lnd_extra_config.conf"
+         # The managed raspiblitz install knows the file the unit reads (TS_NODE_CONF_FILE)
+         [[ -n "${TS_NODE_CONF_FILE:-}" ]] && lnd_path="$TS_NODE_CONF_FILE"
+         
+         echo -e "Edit: ${BOLD}${BLUE}sudo nano $lnd_path${NC}"
+         if [[ "$PLATFORM" == "mynode" ]]; then
+             echo -e "${YELLOW}Note: MyNode regenerates /mnt/hdd/mynode/lnd/lnd.conf on restart from${NC}"
+             echo -e "${YELLOW}      /mnt/hdd/mynode/settings/lnd_extra_config.conf (also editable in the${NC}"
+             echo -e "${YELLOW}      MyNode Web GUI under LND -> Config -> Additional LND Config).${NC}"
+         fi
+         if [[ "$context" == "install" ]]; then
+             echo -e "${YELLOW}Note: Place settings in their respective sections. Do NOT duplicate categories.${NC}"
+         fi
+         echo ""
+         echo "#########################################"
+         echo -e "${BOLD}${BLUE}[Application Options]${NC}"
+         echo -e "${YELLOW}listen=0.0.0.0:9735${NC}"
+         echo -e "${YELLOW}externalhosts=${vpn_dns}:${vpn_port}${NC}"
+         echo ""
+         echo -e "${BOLD}${BLUE}[Tor]${NC}"
+         echo -e "${YELLOW}tor.streamisolation=false${NC}"
+         echo -e "${YELLOW}tor.skip-proxy-for-clearnet-targets=true${NC}"
+         echo "#########################################"
         
     elif [[ "$LN_IMPL" == "cln" ]]; then
-        if [[ "$PLATFORM" == "umbrel" ]]; then
-             echo -e "1. Edit: ${BOLD}${BLUE}sudo nano ~/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config${NC}"
-             echo "#########################################"
-             echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
-             echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
-             echo -e "${YELLOW}always-use-proxy=false${NC}"
-             echo "#########################################"
-             echo ""
-             echo "2. Edit: nano ~/umbrel/app-data/core-lightning/exports.sh"
-             echo "#########################################"
-             echo -e "${BOLD}export APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"${NC}"
-             echo "#########################################"
-             echo ""
-             echo "3. Edit: ~/umbrel/app-data/core-lightning/docker-compose.yml"
-             echo "   Comment out '--bind-addr' if present."
-        else
-             echo -e "Edit: ${BOLD}${BLUE}${TS_NODE_CONF_FILE:-config}${NC}"
-             echo ""
-             echo "#########################################"
-             echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
-             echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
-             echo -e "${YELLOW}always-use-proxy=false${NC}"
-             echo "#########################################"
-        fi
+         echo -e "Edit: ${BOLD}${BLUE}${TS_NODE_CONF_FILE:-config}${NC}"
+         echo ""
+         echo "#########################################"
+         echo -e "${YELLOW}bind-addr=0.0.0.0:9735${NC}"
+         echo -e "${YELLOW}announce-addr=${vpn_dns}:${vpn_port}${NC}"
+         echo -e "${YELLOW}always-use-proxy=false${NC}"
+         echo "#########################################"
         
     elif [[ "$LN_IMPL" == "lit" ]]; then
          local lit_path="$HOME/.lit/lit.conf"
@@ -970,8 +924,9 @@ Commands:
 
 Options (accepted before or after the command):
   --config <file>           WireGuard config to use (install, adopt, status, restart)
-  --platform <id>           raspiblitz, umbrel, mynode or baremetal
-                            (install, adopt, uninstall, status, restart)
+  --platform <id>           raspiblitz, mynode or baremetal
+                            (install, adopt, uninstall, status, restart;
+                            Umbrel uses the native TunnelSats Umbrel App)
   --impl <id>               lnd, cln or lit (install, adopt, uninstall, status, restart)
   --yes                     Answer yes to confirmation prompts
   --remove-packages         uninstall: also remove nftables and wireguard-tools
@@ -1040,6 +995,7 @@ EOF
 }
 
 cmd_pre_check() {
+    reject_umbrel_platform
     print_header "Compatibility Check"
     
     echo "Checking system requirements..."
@@ -1098,7 +1054,7 @@ cmd_pre_check() {
     fi
     echo ""
     
-    # Check for systemd services or docker
+    # Check for systemd services
     print_step 3 3 "Looking for Lightning implementation..."
     if [[ -f /etc/systemd/system/lnd.service ]]; then
         print_success "Found lnd.service"
@@ -1107,17 +1063,7 @@ cmd_pre_check() {
         print_success "Found lightningd.service"
         ((rating+=1))
     else
-        print_info "Checking for Docker containers..."
-        local dockerProcess=$(docker ps --format 'table {{.Image}} {{.Names}} {{.Ports}}' 2>/dev/null | grep -E "0.0.0.0:9735|0.0.0.0:9736" | awk '{print $2}' || echo "")
-        if [[ ${dockerProcess} == *lnd* ]]; then
-            print_success "Found LND container"
-            ((rating+=1))
-        elif [[ ${dockerProcess} == *clightning* ]] || [[ ${dockerProcess} == *core-lightning* ]]; then
-            print_success "Found CLN container"
-            ((rating+=1))
-        else
-            print_error "No suitable Lightning implementation found"
-        fi
+        print_error "No suitable Lightning implementation found"
     fi
     echo ""
     
@@ -1144,61 +1090,64 @@ cmd_pre_check() {
 
 # Helper functions for install command
 
-check_umbrel_version() {
-    local version_file="${UMBREL_VERSION_FILE:-/opt/umbreld/package.json}"
-    if [[ -f "$version_file" ]]; then
-        local version
-        if command -v jq &>/dev/null; then
-            version=$(jq -r '.version // empty' "$version_file" 2>/dev/null || true)
-        else
-            version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$version_file" 2>/dev/null | head -n 1 || true)
-        fi
-        if [[ -z "$version" ]]; then
-            echo "Warning: could not determine Umbrel OS version from $version_file" >&2
-            return 0
-        fi
-        if [[ -n "$version" ]]; then
-            local major
-            local minor
-            major=$(echo "$version" | cut -d. -f1 | sed 's/^[^0-9]*//; s/[^0-9].*$//')
-            minor=$(echo "$version" | cut -d. -f2 | sed 's/^[^0-9]*//; s/[^0-9].*$//')
-            
-            major=${major:-0}
-            minor=${minor:-0}
-            
-            if (( 10#$major > 1 || (10#$major == 1 && 10#$minor >= 6) )); then
-                echo "" >&2
-                print_error "TunnelSats CLI setup is discontinued for Umbrel OS versions 1.6 and above."
-                echo -e "Please install TunnelSats natively through the Umbrel Community App Store:" >&2
-                echo -e "  ${BLUE}URL: https://github.com/Tunnelsats/ts-umbrel-app${NC}" >&2
-                echo -e "  ${YELLOW}(Umbrel > App Store > Settings > Add App Store)${NC}" >&2
-                echo -e "More details: https://github.com/Tunnelsats/tunnelsats/discussions/193" >&2
-                echo "" >&2
-                exit 1
-            fi
-        fi
-    fi
-}
-
 # Platform markers in detection order: "<platform> <d|f> <path>" (directory or file).
 TS_PLATFORM_MARKERS=(
     "raspiblitz d /home/admin/config.scripts"
+    "umbrel f /opt/umbreld/package.json"
     "umbrel d /home/umbrel/umbrel"
     "umbrel d /umbrel"
     "umbrel f /usr/bin/umbrel"
     "mynode d /usr/share/mynode"
 )
 
+# Succeeds if any Umbrel marker in TS_PLATFORM_MARKERS exists under optional root $1,
+# independent of ts_guess_platform ordering (so mixed markers still fail closed).
+ts_has_umbrel_marker() {
+    local root="${1:-}" marker platform rest kind path check_path
+    for marker in "${TS_PLATFORM_MARKERS[@]}"; do
+        platform="${marker%% *}"
+        [[ "$platform" != "umbrel" ]] && continue
+        rest="${marker#* }"
+        kind="${rest%% *}"
+        path="${rest#* }"
+        check_path="${root}${path}"
+        if [[ "$path" == "/opt/umbreld/package.json" ]] && [[ -z "$root" ]] && [[ -n "${UMBREL_VERSION_FILE:-}" ]]; then
+            check_path="$UMBREL_VERSION_FILE"
+        fi
+        if { [[ "$kind" == "d" ]] && [[ -d "$check_path" ]]; } || { [[ "$kind" == "f" ]] && [[ -f "$check_path" ]]; }; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+reject_umbrel_platform() {
+    if [[ "${PLATFORM:-}" == "umbrel" ]] || [[ "${TS_OPT_PLATFORM:-}" == "umbrel" ]] || \
+       ts_has_umbrel_marker "${TS_FS_ROOT:-}"; then
+        echo "" >&2
+        print_error "Umbrel is not supported by tunnelsats.sh. Please install the native TunnelSats app:"
+        echo -e "  - Community App Store (umbrelOS 1.0+): ${BLUE}https://github.com/Tunnelsats/ts-umbrel-app${NC}" >&2
+        echo -e "  - Official Umbrel App Store: review pending (PR #4919)" >&2
+        echo -e "  - Setup Guide: ${BLUE}https://tunnelsats.com/guide${NC}" >&2
+        echo "" >&2
+        exit 1
+    fi
+}
+
 # Prints the platform suggested by the first matching marker (nothing if none matches).
 # $1 = optional filesystem root prefix (detect passes TS_FS_ROOT).
 ts_guess_platform() {
-    local root="${1:-}" marker platform rest kind path
+    local root="${1:-}" marker platform rest kind path check_path
     for marker in "${TS_PLATFORM_MARKERS[@]}"; do
         platform="${marker%% *}"
         rest="${marker#* }"
         kind="${rest%% *}"
         path="${rest#* }"
-        if { [[ "$kind" == "d" ]] && [[ -d "${root}${path}" ]]; } || { [[ "$kind" == "f" ]] && [[ -f "${root}${path}" ]]; }; then
+        check_path="${root}${path}"
+        if [[ "$path" == "/opt/umbreld/package.json" ]] && [[ -z "$root" ]] && [[ -n "${UMBREL_VERSION_FILE:-}" ]]; then
+            check_path="$UMBREL_VERSION_FILE"
+        fi
+        if { [[ "$kind" == "d" ]] && [[ -d "$check_path" ]]; } || { [[ "$kind" == "f" ]] && [[ -f "$check_path" ]]; }; then
             echo "$platform"
             return 0
         fi
@@ -1207,8 +1156,9 @@ ts_guess_platform() {
 }
 
 detect_platform() {
+    reject_umbrel_platform
     local guess=""
-    guess=$(ts_guess_platform)
+    guess=$(ts_guess_platform "${TS_FS_ROOT:-}")
 
     # --platform answers both questions below without interaction
     if [[ -n "$TS_OPT_PLATFORM" ]]; then
@@ -1227,122 +1177,22 @@ detect_platform() {
         fi
     fi
 
-    ts_require_interaction "--platform <id>" "Select [1-4]: "
+    ts_require_interaction "--platform <id>" "Select [1-3]: "
     echo "What Lightning node package are you running?" >&2
     echo "  1) RaspiBlitz" >&2
-    echo "  2) Umbrel" >&2
-    echo "  3) myNode" >&2
-    echo "  4) RaspiBolt / Bare Metal" >&2
+    echo "  2) myNode" >&2
+    echo "  3) RaspiBolt / Bare Metal" >&2
     echo "" >&2
-    ts_ask answer "--platform <id>" "Select [1-4]: "
+    ts_ask answer "--platform <id>" "Select [1-3]: "
     
     case $answer in
         1) PLATFORM="raspiblitz" ;;
-        2) 
-            PLATFORM="umbrel"
-            ;;
-        3) PLATFORM="mynode" ;;
-        4) PLATFORM="baremetal" ;;
+        2) PLATFORM="mynode" ;;
+        3) PLATFORM="baremetal" ;;
         *) print_error "Invalid selection"; exit 1 ;;
     esac
     return 0
 }
-
-get_lightning_docker_containers() {
-    # Returns container IDs matching the lightning daemon for $LN_IMPL
-    # $1 (optional): extra flags for docker ps (e.g. "-a" to list stopped containers as well)
-    local extra_flags="${1:-}"
-    if ! command -v docker >/dev/null 2>&1; then
-        return 0
-    fi
-    local regex
-    if [[ "$LN_IMPL" == "cln" ]]; then
-        regex="$CLN_CONTAINER_REGEX"
-    elif [[ "$LN_IMPL" == "lnd" ]]; then
-        regex="$LND_CONTAINER_REGEX"
-    else
-        # If LN_IMPL is not set, match either implementation
-        regex="${LND_CONTAINER_REGEX}|${CLN_CONTAINER_REGEX}"
-    fi
-    docker ps $extra_flags --format "{{.ID}} {{.Names}}" 2>/dev/null | \
-        grep -Ei "$regex" | \
-        grep -Eiv "$LN_CONTAINER_EXCLUDE_REGEX" | \
-        awk '{print $1}'
-}
-
-# Selects exactly one Lightning daemon container to own the static tunnel IP (10.9.9.9).
-# Preference: the daemon stopped for this restart > running daemons > newest stopped daemon.
-# Fails (return 1) if multiple candidates would compete for the same static IP.
-select_tunnel_target_container() {
-    local candidates=""
-    if [[ -n "$stopped_docker_containers" ]]; then
-        candidates="$stopped_docker_containers"
-    else
-        candidates=$(get_lightning_docker_containers)
-    fi
-    if [[ -z "$candidates" ]]; then
-        # No daemon running: keep the stopped container that already owns the tunnel IP (sticky owner),
-        # otherwise fall back to the newest one (docker ps -a lists newest first).
-        local c
-        for c in $(get_lightning_docker_containers "-a"); do
-            if [[ " $(docker inspect -f "$TUNNEL_NET_INSPECT_FMT" "$c" 2>/dev/null || true) " == *" ${TUNNEL_CONTAINER_IP} "* ]]; then
-                candidates="$c"
-                break
-            fi
-        done
-        [[ -z "$candidates" ]] && candidates=$(get_lightning_docker_containers "-a" | head -n 1)
-    fi
-    local count
-    count=$(printf '%s\n' $candidates | grep -c . || true)
-    if [[ "$count" -gt 1 ]]; then
-        print_error "Multiple running ${LN_IMPL} daemon containers found ($(echo $candidates)). Only one can own the tunnel IP ${TUNNEL_CONTAINER_IP}."
-        return 1
-    fi
-    echo "$candidates"
-}
-
-# Ensures exactly the given container holds 10.9.9.9 on docker-tunnelsats.
-# Reattaches it if attached with another address and releases the static IP from stale (stopped) containers.
-attach_container_to_tunnel_network() {
-    local cid="$1"
-    local state
-    state=$(docker inspect -f "$TUNNEL_NET_INSPECT_FMT" "$cid" 2>/dev/null || true)
-    if [[ " $state " == *" ${TUNNEL_CONTAINER_IP} "* ]]; then
-        return 0
-    fi
-
-    if [[ -n "$state" ]]; then
-        print_info "Container ($cid) is attached to docker-tunnelsats with a different address; reattaching with ${TUNNEL_CONTAINER_IP}..."
-        if ! docker network disconnect -f docker-tunnelsats "$cid" >/dev/null 2>&1; then
-            print_error "Failed to detach container ($cid) from docker-tunnelsats"
-            return 1
-        fi
-    fi
-
-    local other other_state
-    for other in $(get_lightning_docker_containers "-a"); do
-        [[ "$other" == "$cid" ]] && continue
-        other_state=$(docker inspect -f "$TUNNEL_NET_INSPECT_FMT" "$other" 2>/dev/null || true)
-        [[ " $other_state " == *" ${TUNNEL_CONTAINER_IP} "* ]] || continue
-        if [[ "$(docker inspect -f '{{.State.Running}}' "$other" 2>/dev/null)" == "true" ]]; then
-            print_error "Running container ($other) already holds ${TUNNEL_CONTAINER_IP} on docker-tunnelsats. Refusing to evict it."
-            return 1
-        fi
-        print_info "Releasing ${TUNNEL_CONTAINER_IP} from stale stopped container ($other)..."
-        if ! docker network disconnect -f docker-tunnelsats "$other" >/dev/null 2>&1; then
-            print_error "Failed to detach stale container ($other) from docker-tunnelsats"
-            return 1
-        fi
-    done
-
-    print_info "Connecting container ($cid) to docker-tunnelsats network (${TUNNEL_CONTAINER_IP})..."
-    if ! docker network connect --ip "$TUNNEL_CONTAINER_IP" docker-tunnelsats "$cid" >/dev/null 2>&1; then
-        print_error "Failed to connect container ($cid) to docker-tunnelsats network"
-        return 1
-    fi
-    return 0
-}
-
 
 # Succeeds if LIT runs in integrated mode (it manages its own LND).
 # $1 = optional filesystem root prefix (detect passes TS_FS_ROOT).
@@ -1373,19 +1223,7 @@ ts_guess_ln_impl_systemd() {
 
 detect_ln_implementation() {
     local guess=""
-    if [[ "$PLATFORM" == "umbrel" ]]; then
-        local lnd_containers
-        lnd_containers=$(LN_IMPL=lnd get_lightning_docker_containers)
-        local cln_containers
-        cln_containers=$(LN_IMPL=cln get_lightning_docker_containers)
-        if [[ -n "$lnd_containers" ]]; then
-            guess="lnd"
-        elif [[ -n "$cln_containers" ]]; then
-            guess="cln"
-        fi
-    else
-        guess=$(ts_guess_ln_impl_systemd)
-    fi
+    guess=$(ts_guess_ln_impl_systemd "${TS_FS_ROOT:-}")
 
     if [[ -n "$guess" ]]; then
         if [[ -n "$TS_OPT_IMPL" ]]; then
@@ -1400,21 +1238,19 @@ detect_ln_implementation() {
         fi
         if [[ "$use_guess" =~ ^[Yy]$ ]] || [[ -z "$use_guess" ]]; then
             LN_IMPL="$guess"
-            # Detect node user for non-Docker
-            if [[ "$PLATFORM" != "umbrel" ]]; then
-                local s_file=""
-                [[ "$LN_IMPL" == "lnd" ]] && s_file="/etc/systemd/system/lnd.service"
-                [[ "$LN_IMPL" == "cln" ]] && s_file="/etc/systemd/system/lightningd.service"
-                if [[ "$LN_IMPL" == "lit" ]]; then
-                    s_file="/etc/systemd/system/litd.service"
-                    [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
-                fi
-                if [[ -f "$s_file" ]]; then
-                    node_user=$(grep "^User=" "$s_file" | cut -d'=' -f2 | xargs)
-                fi
-                [[ -z "$node_user" ]] && [[ "$PLATFORM" == "raspiblitz" ]] && node_user="bitcoin"
-                [[ -z "$node_user" ]] && node_user=$(whoami)
+            # Detect node user for systemd service
+            local s_file=""
+            [[ "$LN_IMPL" == "lnd" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lnd.service"
+            [[ "$LN_IMPL" == "cln" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lightningd.service"
+            if [[ "$LN_IMPL" == "lit" ]]; then
+                s_file="${TS_FS_ROOT:-}/etc/systemd/system/litd.service"
+                [[ ! -f "$s_file" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lit.service"
             fi
+            if [[ -f "$s_file" ]]; then
+                node_user=$(grep "^User=" "$s_file" | cut -d'=' -f2 | xargs)
+            fi
+            [[ -z "$node_user" ]] && [[ "$PLATFORM" == "raspiblitz" ]] && node_user="bitcoin"
+            [[ -z "$node_user" ]] && node_user=$(whoami)
             return 0
         fi
     fi
@@ -1464,7 +1300,7 @@ detect_ln_implementation() {
                 LN_IMPL="lit"
                 
                 # Verify Integrated Mode or warn
-                if ! ts_lit_integrated_mode; then
+                if ! ts_lit_integrated_mode "${TS_FS_ROOT:-}"; then
                     print_warning "LIT Integrated mode not detected in config."
                     ts_confirm lit_confirm "Are you sure LIT is managing its own LND? [y/N]: "
                     if [[ ! "$lit_confirm" =~ ^[Yy]$ ]]; then
@@ -1472,8 +1308,8 @@ detect_ln_implementation() {
                         exit 0
                     fi
                 fi
-                local s_file="/etc/systemd/system/litd.service"
-                [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+                local s_file="${TS_FS_ROOT:-}/etc/systemd/system/litd.service"
+                [[ ! -f "$s_file" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lit.service"
                 node_user=$(grep "^User=" "$s_file" 2>/dev/null | cut -d'=' -f2 | xargs)
                 [[ -z "$node_user" ]] && node_user="bitcoin"
             else
@@ -1510,16 +1346,14 @@ install_dependencies() {
         print_success "nftables already installed"
     fi
     
-    # Install cgroup-tools (non-Docker only)
-    if [[ "$PLATFORM" != "umbrel" ]]; then
-        if ! command -v cgcreate &>/dev/null; then
-            print_info "Installing cgroup-tools..."
-            apt-get install -y cgroup-tools > /dev/null 2>&1 && \
-                print_success "cgroup-tools installed" || \
-                { print_error "Failed to install cgroup-tools"; exit 1; }
-        else
-            print_success "cgroup-tools already installed"
-        fi
+    # Install cgroup-tools
+    if ! command -v cgcreate &>/dev/null; then
+        print_info "Installing cgroup-tools..."
+        apt-get install -y cgroup-tools > /dev/null 2>&1 && \
+            print_success "cgroup-tools installed" || \
+            { print_error "Failed to install cgroup-tools"; exit 1; }
+    else
+        print_success "cgroup-tools already installed"
     fi
     
     # Install resolvconf
@@ -1704,98 +1538,25 @@ configure_wireguard() {
         exit 1
     fi
 
-    # Apply network rules based on platform
-    if [[ "$PLATFORM" == "umbrel" ]]; then
-        print_info "Applying Docker network rules..."
-        if [ "$ipv6_disabled" -eq 0 ]; then
-            touch "${WG_DIR:-/etc/wireguard}/.tunnelsats-ipv6-disabled" 2>/dev/null || true
-        fi
-        
-        # Pre-resolve subnet to avoid command failure in PostUp
-        # Pre-resolve subnet and bridge_id to avoid command failure in PostUp
-        local dockersubnet=""
-        local bridge_id=""
-        local inspect_output
-
-        if inspect_output=$(docker network inspect "docker-tunnelsats" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}} {{.Id}}' 2>/dev/null); then
-            local bridge_id_full
-            read -r dockersubnet bridge_id_full <<< "$inspect_output"
-            bridge_id=${bridge_id_full:0:12}
-        fi
-
-        [[ -z "$dockersubnet" ]] && dockersubnet="10.9.9.0/25" # Fallback to standard
-
-        # Dynamically determine the bridge interface for the tunnelsats network
-        local bridge_name
-        [[ -z "$bridge_id" ]] && bridge_name="br-6c3d330ad9f5" || bridge_name="br-$bridge_id"
-        
-        local vpn_port=$(ts_config_vpn_port "$target_path")
-        [[ -z "$vpn_port" ]] && vpn_port=9735 # fallback (no valid port comment)
-
-        local inputDocker="
-
-#Tunnelsats-Setupv2-Docker
-
-[Interface]
-DNS = 8.8.8.8
-Table = off
-
-PreUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1; sysctl -w net.ipv6.conf.default.disable_ipv6=1
-PreUp = $route_guard arm $dockersubnet
-PostUp = $route_guard check %i $dockersubnet
-PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || break; done
-PostUp = for n in 1 2 3 4 5 6 7 8 9 10; do ip rule del priority 21821 from $dockersubnet table 51820 2>/dev/null || break; done
-PostUp = $route_guard clean %i
-
-PostUp = ip route add blackhole default metric 3 table 51820
-PostUp = ip route add default dev %i metric 2 table 51820
-PostUp = ip rule add from all table main suppress_prefixlength 0 priority 21820
-PostUp = ip rule add from $dockersubnet table 51820 priority 21821
-PostUp = ip route add 10.9.0.0/24 dev %i proto kernel scope link; ping -c1 10.9.0.1
-
-PostUp = iptables -t nat -I PREROUTING -i %i -p tcp --dport $vpn_port -j DNAT --to-destination 10.9.9.9:9735
-PostUp = iptables -I FORWARD -i %i -o $bridge_name -j ACCEPT
-PostUp = iptables -I FORWARD -i $bridge_name -o %i -j ACCEPT
-PostUp = ip6tables -I FORWARD -i $bridge_name -j DROP 2>/dev/null || true
-PostUp = ip6tables -I FORWARD -o $bridge_name -j DROP 2>/dev/null || true
-
-PostUp = sysctl -w net.ipv4.conf.all.rp_filter=0
-PostUp = sysctl -w net.ipv6.conf.all.disable_ipv6=1
-PostUp = sysctl -w net.ipv6.conf.default.disable_ipv6=1
-PostUp = $route_guard release $dockersubnet
-
-PostDown = iptables -t nat -D PREROUTING -i %i -p tcp --dport $vpn_port -j DNAT --to-destination 10.9.9.9:9735
-PostDown = iptables -D FORWARD -i %i -o $bridge_name -j ACCEPT
-PostDown = iptables -D FORWARD -i $bridge_name -o %i -j ACCEPT
-PostDown = ip6tables -D FORWARD -i $bridge_name -j DROP 2>/dev/null || true
-PostDown = ip6tables -D FORWARD -o $bridge_name -j DROP 2>/dev/null || true
-
-PostDown = ip rule del priority 21820 from all table main suppress_prefixlength 0 2>/dev/null || true
-PostDown = ip rule del priority 21821 from $dockersubnet table 51820 2>/dev/null || true
-PostDown = $route_guard clean %i || true
-PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
-"
-        echo -e "$inputDocker" >> "$target_path"
-        
-    else
-        print_info "Applying non-Docker network rules..."
-        
-        local killswitchNonDocker=""
-        local killswitchNonDocker6=""
-        # Node uid for the guard's blackhole ip rule fallback (emergency block without nft)
-        local failclosed_host_uid
-        failclosed_host_uid=$(resolve_failclosed_host_uid)
-        if [[ "$failclosed_host_uid" =~ ^[1-9][0-9]{0,9}$ ]]; then
-            killswitchNonDocker6=" ; add rule inet %i out6 meta skuid ${failclosed_host_uid} ip6 daddr != { ::1/128, fc00::/7, fe80::/10 } counter drop"
-        fi
-        # Enable cgroup-aware killswitch for all non-Docker systemd platforms
-        if [[ "$PLATFORM" == "raspiblitz" || "$PLATFORM" == "baremetal" || "$PLATFORM" == "mynode" ]]; then
-            # Cgroup-aware killswitch: Only drop if user is node_user AND packet is in the tunnelsats cgroup (1118498)
-            # This allows other services (like bitcoind) sharing the same user to reach clearnet/tor normally
-            killswitchNonDocker="PostUp = nft \"insert rule ip %i nat skuid ${node_user} meta cgroup 1118498 fib daddr type != local ip daddr != { $localNetworks } meta oifname != %i counter drop\"\n"
-        fi
-        
-        local inputNonDocker="
+    # Apply network rules for non-Docker systemd platforms
+    print_info "Applying non-Docker network rules..."
+    
+    local killswitchNonDocker=""
+    local killswitchNonDocker6=""
+    # Node uid for the guard's blackhole ip rule fallback (emergency block without nft)
+    local failclosed_host_uid
+    failclosed_host_uid=$(resolve_failclosed_host_uid)
+    if [[ "$failclosed_host_uid" =~ ^[1-9][0-9]{0,9}$ ]]; then
+        killswitchNonDocker6=" ; add rule inet %i out6 meta skuid ${failclosed_host_uid} ip6 daddr != { ::1/128, fc00::/7, fe80::/10 } counter drop"
+    fi
+    # Enable cgroup-aware killswitch for all non-Docker systemd platforms
+    if [[ "$PLATFORM" == "raspiblitz" || "$PLATFORM" == "baremetal" || "$PLATFORM" == "mynode" ]]; then
+        # Cgroup-aware killswitch: Only drop if user is node_user AND packet is in the tunnelsats cgroup (1118498)
+        # This allows other services (like bitcoind) sharing the same user to reach clearnet/tor normally
+        killswitchNonDocker="PostUp = nft \"insert rule ip %i nat skuid ${node_user} meta cgroup 1118498 fib daddr type != local ip daddr != { $localNetworks } meta oifname != %i counter drop\"\n"
+    fi
+    
+    local inputNonDocker="
 
 #Tunnelsats-Setupv2-Non-Docker
 
@@ -1834,8 +1595,7 @@ PostDown = ip rule del priority 21821 from all fwmark 0x1000000/0xff000000 table
 PostDown = $route_guard clean %i || true
 PostDown = sysctl -w net.ipv4.conf.all.rp_filter=1
 "
-        echo -e "$inputNonDocker" >> "$target_path"
-    fi
+    echo -e "$inputNonDocker" >> "$target_path"
     
     # Verify rules were applied
     if grep -q "Tunnelsats-Setupv2" "$target_path"; then
@@ -2321,24 +2081,15 @@ ts_release_failclosed() {
     ts_release_failclosed_rules
 }
 
-# Docker tunnel subnet for ts_arm_failclosed / ts_release_failclosed: inspects docker-tunnelsats
-# on Docker platforms and falls back to 10.9.9.0/25.
+# Default tunnel subnet for ts_arm_failclosed / ts_release_failclosed.
 resolve_failclosed_subnet() {
-    local subnet=""
-    if [[ "$PLATFORM" == "umbrel" ]] && command -v docker >/dev/null 2>&1; then
-        subnet=$(docker network inspect "docker-tunnelsats" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null | awk '{print $1}')
-    fi
-    echo "${subnet:-10.9.9.0/25}"
+    echo "10.9.9.0/25"
 }
 
-# Host uid argument for ts_arm_failclosed: "" on Docker platforms (no host daemon to cover),
-# the node user's uid on systemd platforms, or "unresolved" if it is unknown or root (the
-# fallback then reports that it cannot cover the host daemon instead of blocking root).
+# Host uid argument for ts_arm_failclosed: the node user's uid on systemd platforms, or
+# "unresolved" if it is unknown or root (the fallback then reports that it cannot cover the
+# host daemon instead of blocking root).
 resolve_failclosed_host_uid() {
-    if [[ "$PLATFORM" == "umbrel" ]]; then
-        echo ""
-        return 0
-    fi
     local uid=""
     [[ -n "$node_user" ]] && uid=$(id -u "$node_user" 2>/dev/null || true)
     if [[ "$uid" =~ ^[0-9]+$ ]] && [[ "$uid" != "0" ]]; then
@@ -2429,48 +2180,30 @@ GUARD
 stop_lightning_daemon_for_safe_restart() {
     # Identify and stop running Lightning daemon BEFORE any route/network mutation,
     # independently of WireGuard unit state (fail-closed leak prevention).
-    if [[ "$PLATFORM" == "umbrel" ]]; then
-        local running_cids
-        running_cids=$(get_lightning_docker_containers)
-        if [[ "$(printf '%s\n' $running_cids | grep -c . || true)" -gt 1 ]]; then
-            print_error "Multiple running ${LN_IMPL} daemon containers found ($(echo $running_cids)). Only one can own the tunnel IP ${TUNNEL_CONTAINER_IP}. Aborting before any changes."
+    local service_name="${LN_IMPL}"
+    [[ "$LN_IMPL" == "cln" ]] && service_name="lightningd"
+    if [[ "$LN_IMPL" == "lit" ]]; then
+        service_name="litd"
+        systemctl list-units --type=service 2>/dev/null | grep -q "lit.service" && service_name="lit"
+    fi
+
+    local target_service=""
+    if [[ -n "$service_name" ]] && systemctl is-active --quiet "${service_name}.service" 2>/dev/null; then
+        target_service="${service_name}.service"
+    elif systemctl is-active --quiet lnd.service 2>/dev/null; then
+        target_service="lnd.service"
+    elif systemctl is-active --quiet lightningd.service 2>/dev/null; then
+        target_service="lightningd.service"
+    fi
+
+    if [[ -n "$target_service" ]]; then
+        print_info "Stopping ${target_service} for leak-proof tunnel restart..."
+        if systemctl stop "${target_service}"; then
+            restarted_systemd_service="${target_service}"
+            print_success "${target_service} stopped (Leak-proof mode)"
+        else
+            print_error "Failed to stop ${target_service} safely. Aborting before network/route changes to prevent traffic leaks."
             exit 1
-        fi
-        if [[ -n "$running_cids" ]]; then
-            print_info "Stopping ${LN_IMPL} daemon container for leak-proof tunnel restart..."
-            if ! docker stop $running_cids >/dev/null 2>&1; then
-                print_error "Failed to safely stop ${LN_IMPL} container. Aborting before network/route changes to prevent traffic leaks."
-                exit 1
-            fi
-            stopped_docker_containers="$running_cids"
-            print_success "${LN_IMPL} daemon container stopped (Leak-proof mode)"
-        fi
-    else
-        local service_name="${LN_IMPL}"
-        [[ "$LN_IMPL" == "cln" ]] && service_name="lightningd"
-        if [[ "$LN_IMPL" == "lit" ]]; then
-            service_name="litd"
-            systemctl list-units --type=service 2>/dev/null | grep -q "lit.service" && service_name="lit"
-        fi
-
-        local target_service=""
-        if [[ -n "$service_name" ]] && systemctl is-active --quiet "${service_name}.service" 2>/dev/null; then
-            target_service="${service_name}.service"
-        elif systemctl is-active --quiet lnd.service 2>/dev/null; then
-            target_service="lnd.service"
-        elif systemctl is-active --quiet lightningd.service 2>/dev/null; then
-            target_service="lightningd.service"
-        fi
-
-        if [[ -n "$target_service" ]]; then
-            print_info "Stopping ${target_service} for leak-proof tunnel restart..."
-            if systemctl stop "${target_service}"; then
-                restarted_systemd_service="${target_service}"
-                print_success "${target_service} stopped (Leak-proof mode)"
-            else
-                print_error "Failed to stop ${target_service} safely. Aborting before network/route changes to prevent traffic leaks."
-                exit 1
-            fi
         fi
     fi
 
@@ -2484,147 +2217,6 @@ stop_lightning_daemon_for_safe_restart() {
         stopped_wireguard_interface="$WG_INTERFACE"
         print_success "WireGuard service stopped"
     fi
-}
-
-setup_docker_network() {
-    print_info "Setting up Docker tunnelsats network..."
-    
-    # Create Docker network
-    local dockersubnet="10.9.9.0/25"
-    if ! docker network ls 2>/dev/null | grep -q "docker-tunnelsats"; then
-        docker network create "docker-tunnelsats" --subnet $dockersubnet \
-            -o "com.docker.network.driver.mtu"="1420" &>/dev/null && \
-            print_success "Docker network created" || \
-            { print_error "Failed to create Docker network"; exit 1; }
-    else
-        print_info "Docker network already exists"
-    fi
-    
-    # Clean routing tables from prior failed starts, strictly scoped to TunnelSats ownership
-    check_and_cleanup_routing_table "$WG_INTERFACE"
-    
-    # Attach exactly one resolved lightning daemon to docker-tunnelsats with the static tunnel IP.
-    # Only one container can own 10.9.9.9; stale stopped leftovers must not compete for it.
-    local target_cid
-    if ! target_cid=$(select_tunnel_target_container); then
-        exit 1
-    fi
-    if [[ -z "$target_cid" ]]; then
-        print_error "No ${LN_IMPL} daemon container found to attach to docker-tunnelsats"
-        exit 1
-    fi
-    if ! attach_container_to_tunnel_network "$target_cid"; then
-        exit 1
-    fi
-    tunnel_target_container="$target_cid"
-
-    # Create Docker network monitor script with shared container resolver regex
-    local container_regex
-    if [[ "$LN_IMPL" == "cln" ]]; then
-        container_regex="$CLN_CONTAINER_REGEX"
-    else
-        container_regex="$LND_CONTAINER_REGEX"
-    fi
-
-    local wg_dir="${WG_DIR:-/etc/wireguard}"
-    local systemd_dir="${SYSTEMD_DIR:-/etc/systemd/system}"
-    mkdir -p "$wg_dir" "$systemd_dir" 2>/dev/null || true
-
-    local monitor_script=""
-    IFS= read -r -d '' monitor_script <<'EOF' || true
-#!/bin/sh
-# Generated by tunnelsats.sh - keeps exactly one Lightning daemon attached to docker-tunnelsats at __TUNNEL_IP__
-sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
-sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
-NET="docker-tunnelsats"
-TUNNEL_IP="__TUNNEL_IP__"
-if [ "$(docker network ls 2> /dev/null | grep -c "$NET")" -eq 0 ]; then
-  if ! docker network create "$NET" --subnet "10.9.9.0/25" -o "com.docker.network.driver.mtu"="1420" > /dev/null; then
-    exit 1
-  fi
-fi
-
-list_ln() {
-  docker ps $1 --format "{{.ID}} {{.Names}}" 2>/dev/null | grep -Ei '__CONTAINER_REGEX__' | grep -Eiv '__EXCLUDE_REGEX__' | awk '{print $1}'
-}
-tunnel_state() {
-  docker inspect -f '__INSPECT_FMT__' "$1" 2>/dev/null
-}
-
-running=$(list_ln "")
-if [ "$(printf '%s\n' $running | grep -c .)" -gt 1 ]; then
-  echo "Multiple running Lightning daemon containers; refusing to share $TUNNEL_IP" >&2
-  exit 1
-fi
-target="$running"
-if [ -z "$target" ]; then
-  # No daemon running (e.g. installer restart window): never move the tunnel IP away from its current owner
-  for c in $(list_ln "-a"); do
-    case " $(tunnel_state "$c") " in *" $TUNNEL_IP "*) exit 0 ;; esac
-  done
-  target=$(list_ln "-a" | head -n 1)
-fi
-[ -z "$target" ] && exit 0
-
-state=$(tunnel_state "$target")
-case " $state " in *" $TUNNEL_IP "*) exit 0 ;; esac
-if [ -n "$state" ]; then
-  docker network disconnect -f "$NET" "$target" > /dev/null 2>&1 || exit 1
-fi
-
-for other in $(list_ln "-a"); do
-  [ "$other" = "$target" ] && continue
-  case " $(tunnel_state "$other") " in
-    *" $TUNNEL_IP "*)
-      [ "$(docker inspect -f '{{.State.Running}}' "$other" 2>/dev/null)" = "true" ] && exit 1
-      docker network disconnect -f "$NET" "$other" > /dev/null 2>&1 || exit 1
-      ;;
-  esac
-done
-
-docker network connect --ip "$TUNNEL_IP" "$NET" "$target" > /dev/null 2>&1 || exit 1
-exit 0
-EOF
-    monitor_script="${monitor_script//__CONTAINER_REGEX__/"$container_regex"}"
-    monitor_script="${monitor_script//__EXCLUDE_REGEX__/"$LN_CONTAINER_EXCLUDE_REGEX"}"
-    monitor_script="${monitor_script//__INSPECT_FMT__/"$TUNNEL_NET_INSPECT_FMT"}"
-    monitor_script="${monitor_script//__TUNNEL_IP__/"$TUNNEL_CONTAINER_IP"}"
-    printf '%s' "$monitor_script" > "$wg_dir/tunnelsats-docker-network.sh"
-    
-    chmod +x "$wg_dir/tunnelsats-docker-network.sh"
-    bash "$wg_dir/tunnelsats-docker-network.sh" &>/dev/null
-    
-    # Create systemd service and timer
-    cat > "$systemd_dir/tunnelsats-docker-network.service" <<'EOF'
-[Unit]
-Description=Adding Lightning Container to the tunnel
-StartLimitInterval=200
-StartLimitBurst=5
-[Service]
-Type=oneshot
-ExecStart=/bin/bash /etc/wireguard/tunnelsats-docker-network.sh
-[Install]
-WantedBy=multi-user.target
-EOF
-    
-    cat > "$systemd_dir/tunnelsats-docker-network.timer" <<'EOF'
-[Unit]
-Description=5min timer for tunnelsats-docker-network.service
-[Timer]
-OnBootSec=60
-OnUnitActiveSec=60
-Persistent=true
-[Install]
-WantedBy=timers.target
-EOF
-    
-    systemctl daemon-reload
-    systemctl enable tunnelsats-docker-network.service &>/dev/null
-    systemctl start tunnelsats-docker-network.service &>/dev/null
-    systemctl enable tunnelsats-docker-network.timer &>/dev/null
-    systemctl start tunnelsats-docker-network.timer &>/dev/null
-    
-    print_success "Docker network configured"
 }
 
 setup_dns_resolver() {
@@ -2754,15 +2346,14 @@ configure_lightning() {
         fi
     fi
     
-    # For non-Docker setups, modify systemd service to use cgexec
-    if [[ "$PLATFORM" != "umbrel" ]]; then
-        setup_cgroups
+    # Modify systemd service to use cgexec
+    setup_cgroups
 
-        # 1. Create Drop-in Dependency
-        if [[ -n "$service_dir" ]]; then
-            if [[ ! -d "$service_dir" ]]; then mkdir -p "$service_dir"; fi
-            
-            cat > "${service_dir}/tunnelsats-cgroup.conf" << EOF
+    # 1. Create Drop-in Dependency
+    if [[ -n "$service_dir" ]]; then
+        if [[ ! -d "$service_dir" ]]; then mkdir -p "$service_dir"; fi
+        
+        cat > "${service_dir}/tunnelsats-cgroup.conf" << EOF
 #Don't edit this file its generated by tunnelsats scripts
 [Unit]
 Description=${LN_IMPL} service - powered by tunnelsats
@@ -2771,39 +2362,37 @@ After=tunnelsats-create-cgroup.service
 Wants=wg-quick@${WG_INTERFACE}.service
 After=wg-quick@${WG_INTERFACE}.service
 EOF
+    fi
+    
+    # 2. Modify ExecStart to use cgexec
+    if [[ -f "$service_file" ]]; then
+        if ! grep -q "cgexec" "$service_file"; then
+            sed -i 's|ExecStart=|ExecStart=/usr/bin/cgexec -g net_cls:splitted_processes |g' "$service_file"
+            print_success "${LN_IMPL} service updated to use cgroup"
+        else
+            print_info "${LN_IMPL} service already uses cgroup"
         fi
-        
-        # 2. Modify ExecStart to use cgexec
-        if [[ -f "$service_file" ]]; then
-            if ! grep -q "cgexec" "$service_file"; then
-                sed -i 's|ExecStart=|ExecStart=/usr/bin/cgexec -g net_cls:splitted_processes |g' "$service_file"
-                print_success "${LN_IMPL} service updated to use cgroup"
-            else
-                print_info "${LN_IMPL} service already uses cgroup"
-            fi
+    fi
+    
+    # 3. Handle RaspiBlitz API (blitzapi) dependency if present
+    if [[ -f /etc/systemd/system/blitzapi.service ]]; then
+        if [[ ! -d /etc/systemd/system/blitzapi.service.d ]]; then
+            mkdir -p /etc/systemd/system/blitzapi.service.d
         fi
-        
-        # 3. Handle RaspiBlitz API (blitzapi) dependency if present
-        if [[ -f /etc/systemd/system/blitzapi.service ]]; then
-            if [[ ! -d /etc/systemd/system/blitzapi.service.d ]]; then
-                mkdir -p /etc/systemd/system/blitzapi.service.d
-            fi
-            cat > /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf << EOF
+        cat > /etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf << EOF
 #Don't edit this file its generated by tunnelsats scripts
 [Unit]
 Description=blitzapi needs the wg service before it can start successfully
 Requires=wg-quick@${WG_INTERFACE}.service
 After=wg-quick@${WG_INTERFACE}.service
 EOF
-             print_success "Added blitzapi dependency"
-        fi
-
-        systemctl daemon-reload
+         print_success "Added blitzapi dependency"
     fi
+
+    systemctl daemon-reload
     
-    # Create splitting processes script (non-Docker)
-    if [[ "$PLATFORM" != "umbrel" ]]; then
-        cat > /etc/wireguard/tunnelsats-splitting-processes.sh << 'EOF'
+    # Create splitting processes script
+    cat > /etc/wireguard/tunnelsats-splitting-processes.sh << 'EOF'
 #!/bin/sh
 # add Lightning pid(s) to cgroup
 pgrep -x lnd | xargs -I % sh -c 'echo % >> /sys/fs/cgroup/net_cls/splitted_processes/tasks' &> /dev/null
@@ -2816,10 +2405,10 @@ else
   echo "> ${count} Process(es) successfully excluded"
 fi
 EOF
-        chmod +x /etc/wireguard/tunnelsats-splitting-processes.sh
-        
-        # Create systemd service for splitting processes
-        cat > /etc/systemd/system/tunnelsats-splitting-processes.service << EOF
+    chmod +x /etc/wireguard/tunnelsats-splitting-processes.sh
+    
+    # Create systemd service for splitting processes
+    cat > /etc/systemd/system/tunnelsats-splitting-processes.service << EOF
 [Unit]
 Description=Adding Lightning Process to the tunnel
 [Service]
@@ -2828,9 +2417,9 @@ ExecStart=/bin/bash /etc/wireguard/tunnelsats-splitting-processes.sh
 [Install]
 WantedBy=multi-user.target
 EOF
-        
-        # Create timer
-        cat > /etc/systemd/system/tunnelsats-splitting-processes.timer << EOF
+    
+    # Create timer
+    cat > /etc/systemd/system/tunnelsats-splitting-processes.timer << EOF
 [Unit]
 Description=1min timer for tunnelsats-splitting-processes.service
 [Timer]
@@ -2840,16 +2429,14 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 EOF
-        
-        systemctl daemon-reload
-        systemctl enable tunnelsats-splitting-processes.service &>/dev/null
-        systemctl start tunnelsats-splitting-processes.service &>/dev/null
-        systemctl enable tunnelsats-splitting-processes.timer &>/dev/null
-        systemctl start tunnelsats-splitting-processes.timer &>/dev/null
-        
-        print_success "Splitting processes service configured"
-    fi
     
+    systemctl daemon-reload
+    systemctl enable tunnelsats-splitting-processes.service &>/dev/null
+    systemctl start tunnelsats-splitting-processes.service &>/dev/null
+    systemctl enable tunnelsats-splitting-processes.timer &>/dev/null
+    systemctl start tunnelsats-splitting-processes.timer &>/dev/null
+    
+    print_success "Splitting processes service configured"
     print_success "${LN_IMPL} configured for tunneling"
 }
 
@@ -2893,7 +2480,7 @@ enable_services() {
         echo "$out"
         
         # Arm the emergency fail-closed block (nft, or the blackhole ip rule fallback) so no
-        # clearnet leak is possible. Covers local host traffic and forwarded Docker traffic.
+        # clearnet leak is possible.
         if ! ts_arm_failclosed "$failclosed_subnet" "$failclosed_uid"; then
             print_error "Emergency fail-closed block could NOT be armed (nft and the blackhole ip rule fallback both failed): Lightning traffic is NOT blocked. Keep the Lightning daemon stopped until the tunnel is up."
         fi
@@ -2902,7 +2489,7 @@ enable_services() {
         echo ""
         print_info "Checking status..."
         systemctl status wg-quick@${WG_INTERFACE} --no-pager -l || true
-        if [[ -n "$restarted_systemd_service" ]] || [[ -n "$stopped_docker_containers" ]]; then
+        if [[ -n "$restarted_systemd_service" ]]; then
             echo ""
             print_warning "Lightning service was kept stopped to prevent clearnet IP leakage."
         fi
@@ -2918,15 +2505,7 @@ enable_services() {
 # Restarts the Lightning daemon that stop_lightning_daemon_for_safe_restart stopped.
 # Returns 1 on failure. Callers must only invoke this once a tunnel is verified active.
 restart_stopped_lightning_daemon() {
-    if [[ -n "$stopped_docker_containers" ]]; then
-        print_info "Restarting ${LN_IMPL} daemon container under tunnel..."
-        if docker start ${stopped_docker_containers} >/dev/null 2>&1; then
-            print_success "${LN_IMPL} daemon container restarted"
-        else
-            print_error "Failed to restart ${LN_IMPL} daemon container"
-            return 1
-        fi
-    elif [[ -n "$restarted_systemd_service" ]]; then
+    if [[ -n "$restarted_systemd_service" ]]; then
         print_info "Restarting ${restarted_systemd_service} under tunnel..."
         if systemctl start "${restarted_systemd_service}"; then
             print_success "${restarted_systemd_service} restarted"
@@ -2947,7 +2526,7 @@ rollback_failed_install() {
     trap - EXIT
     [[ "$rc" -eq 0 ]] && return 0
 
-    if [[ -z "$stopped_docker_containers" ]] && [[ -z "$restarted_systemd_service" ]]; then
+    if [[ -z "$restarted_systemd_service" ]]; then
         exit "$rc"
     fi
 
@@ -2989,10 +2568,6 @@ rollback_failed_install() {
         print_error "TunnelSats policy routing (table 51820) is not active. Lightning daemon kept stopped to prevent clearnet IP leakage."
         exit "$rc"
     fi
-    if [[ -n "$stopped_docker_containers" ]] && ! attach_container_to_tunnel_network "$stopped_docker_containers"; then
-        print_error "Lightning container could not be attached to docker-tunnelsats. Lightning daemon kept stopped to prevent clearnet IP leakage."
-        exit "$rc"
-    fi
     print_success "Previous tunnel (${restore_iface}) restored"
 
     if restart_stopped_lightning_daemon; then
@@ -3009,52 +2584,7 @@ verify_installation() {
         exit 1
     fi
 
-    # Verify the Lightning daemon container(s) on docker-tunnelsats:
-    # - containers the installer stopped and restarted must be running with live IP 10.9.9.9
-    # - the selected target that was already stopped before installation stays stopped and
-    #   only needs its static 10.9.9.9 attachment (it gets the tunnel IP when the user starts it)
-    if [[ "$PLATFORM" == "umbrel" ]]; then
-        if command -v docker >/dev/null 2>&1; then
-            local target="$tunnel_target_container"
-            if [[ -z "$target" ]]; then
-                if ! target=$(select_tunnel_target_container); then
-                    exit 1
-                fi
-            fi
-            local verify_cids
-            verify_cids=$(printf '%s\n' $stopped_docker_containers $target | awk 'NF && !seen[$0]++')
-            if [[ -z "$verify_cids" ]]; then
-                print_error "No Lightning daemon container found during verification"
-                exit 1
-            fi
-            local cid
-            for cid in $verify_cids; do
-                local restarted_by_installer=0
-                [[ " $(echo $stopped_docker_containers) " == *" ${cid} "* ]] && restarted_by_installer=1
-
-                if docker ps -q --no-trunc | grep -q "^${cid}"; then
-                    local container_ip
-                    container_ip=$(docker inspect -f '{{with index .NetworkSettings.Networks "docker-tunnelsats"}}{{.IPAddress}}{{end}}' "$cid" 2>/dev/null)
-                    if [[ "$container_ip" != "$TUNNEL_CONTAINER_IP" ]]; then
-                        print_error "Container (${cid}) is not attached to docker-tunnelsats with expected IP ${TUNNEL_CONTAINER_IP} (found: ${container_ip:-none})"
-                        exit 1
-                    fi
-                    print_success "Container (${cid}) verified running on docker-tunnelsats (${TUNNEL_CONTAINER_IP})"
-                elif [[ "$restarted_by_installer" -eq 1 ]]; then
-                    print_error "Restarted container (${cid}) is not running"
-                    exit 1
-                else
-                    local tunnel_state
-                    tunnel_state=$(docker inspect -f "$TUNNEL_NET_INSPECT_FMT" "$cid" 2>/dev/null || true)
-                    if [[ " $tunnel_state " != *" ${TUNNEL_CONTAINER_IP} "* ]]; then
-                        print_error "Stopped container (${cid}) is not attached to docker-tunnelsats with static IP ${TUNNEL_CONTAINER_IP}"
-                        exit 1
-                    fi
-                    print_success "Container (${cid}) attached to docker-tunnelsats (${TUNNEL_CONTAINER_IP}); it was stopped before installation and was left stopped"
-                fi
-            done
-        fi
-    elif [[ -n "$restarted_systemd_service" ]]; then
+    if [[ -n "$restarted_systemd_service" ]]; then
         if ! systemctl is-active --quiet "${restarted_systemd_service}"; then
             print_error "${restarted_systemd_service} is not running after restart"
             exit 1
@@ -3067,8 +2597,8 @@ verify_installation() {
         print_warning "WireGuard tunnel not detected (may be starting)"
     fi
 
-    # Pre-flight Listening Check (Non-Docker)
-    if [[ "$PLATFORM" != "umbrel" ]] && [[ -n "$LN_IMPL" ]]; then
+    # Pre-flight Listening Check
+    if [[ -n "$LN_IMPL" ]]; then
         local port=9735
         if ss -tulpn | grep -q "127.0.0.1:${port}"; then
             echo ""
@@ -3081,13 +2611,11 @@ verify_installation() {
 
 # Prints, after the standard uninstall, the command that takes the former VPN address out of LND's
 # node announcement: LND 0.20 and later announces the addresses it saved again at every start when its
-# config sets no externalip, and this uninstall does not start LND again. $1 = 1 on Docker (Umbrel),
-# $2 = the LND container (may be empty), then the TunnelSats configs; the address is the endpoint's
+# config sets no externalip, and this uninstall does not start LND again. The address is the endpoint's
 # IPv4 (looked up for at most TS_V_RESOLVE_TIMEOUT seconds, as in verify) with the forwarded port.
 ts_print_announce_command() {
-    local docker="$1" container="${2:-<lnd container>}" conf addr prefix="lncli"
+    local conf addr
     local -a addrs=()
-    shift 2
     for conf in "$@"; do
         ts_v_read_endpoint "$conf"
         if [[ -n "$TS_V_ENDPOINT_IP" ]] && valid_ipv4 "$TS_V_ENDPOINT_IP" && [[ -n "$TS_V_VPN_PORT" ]]; then
@@ -3097,21 +2625,19 @@ ts_print_announce_command() {
             fi
         fi
     done
-    if [[ "$docker" -eq 1 ]]; then
-        prefix="docker exec ${container} lncli"
-    fi
     echo "LND 0.20 and later keeps announcing the addresses it saved, the former VPN address too."
     echo "Once LND runs again, remove that address from its node announcement:"
     if [[ ${#addrs[@]} -eq 0 ]]; then
-        echo -e "  ${BOLD}${prefix} peers updatenodeannouncement --address_remove <ip>:<port>${NC}"
+        echo -e "  ${BOLD}lncli peers updatenodeannouncement --address_remove <ip>:<port>${NC}"
         echo "  (the address that lncli getinfo lists under uris)"
     fi
     for addr in "${addrs[@]}"; do
-        echo -e "  ${BOLD}${prefix} peers updatenodeannouncement --address_remove ${addr}${NC}"
+        echo -e "  ${BOLD}lncli peers updatenodeannouncement --address_remove ${addr}${NC}"
     done
 }
 
 cmd_uninstall() {
+    reject_umbrel_platform
     print_header "Uninstall Wizard"
     
     echo ""
@@ -3136,42 +2662,16 @@ cmd_uninstall() {
     done
     
     # 1. Detect Platform & Implementation for Cleanup
-    local umbrel_user=${SUDO_USER:-${USER}}
     detect_platform
     detect_ln_implementation
     local ln_impl="${LN_IMPL}"
-    local is_docker=0
     local home_dir=""
-    local lnd_container=""
-
-    if [[ "$PLATFORM" == "umbrel" ]]; then
-        is_docker=1
-        home_dir="/home/$umbrel_user"
-    fi
 
     # 2. Stop Services & Clean Dependencies
     print_step 1 6 "Stopping Lightning services..."
     
     if [[ "$ln_impl" == "lnd" ]]; then
-        if [[ $is_docker -eq 1 ]]; then
-             local filter_name="_lnd"
-             print_info "Stopping ${ln_impl} containers..."
-             local container_ids=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
-             if [[ -n "$container_ids" ]]; then
-                 for id in ${container_ids}; do
-                     local c_name=$(docker inspect --format '{{.Name}}' "$id" | sed 's/^\///')
-                     lnd_container="${lnd_container:-$c_name}"
-                     print_info "Stopping $c_name ... (this may take a few seconds)"
-                     echo -n "" >&2
-                     docker stop "$id" &>/dev/null
-                     docker network disconnect docker-tunnelsats "$id" &>/dev/null || true
-                     print_success "Stopped $c_name"
-                     echo "" >&2
-                 done
-             else
-                 print_info "No lightning containers found"
-             fi
-        elif [[ -f "${TS_FS_ROOT}/etc/systemd/system/lnd.service" ]]; then
+        if [[ -f "${TS_FS_ROOT}/etc/systemd/system/lnd.service" ]]; then
              if systemctl is-active lnd.service &>/dev/null; then
                  systemctl stop lnd.service &>/dev/null && print_success "Stopped lnd.service"
              fi
@@ -3196,24 +2696,7 @@ cmd_uninstall() {
         systemctl start lnd-health.service &>/dev/null || true
 
     elif [[ "$ln_impl" == "cln" ]]; then
-        if [[ $is_docker -eq 1 ]]; then
-             local filter_name="core-lightning"
-             print_info "Stopping ${ln_impl} containers..."
-             local container_ids=$(docker ps --filter "name=${filter_name}" --format "{{.ID}}")
-             if [[ -n "$container_ids" ]]; then
-                 for id in ${container_ids}; do
-                     local c_name=$(docker inspect --format '{{.Name}}' "$id" | sed 's/^\///')
-                     print_info "Stopping $c_name ... (this may take a few seconds)"
-                     echo -n "" >&2
-                     docker stop "$id" &>/dev/null
-                     docker network disconnect docker-tunnelsats "$id" &>/dev/null || true
-                     print_success "Stopped $c_name"
-                     echo "" >&2
-                 done
-             else
-                 print_info "No lightning containers found"
-             fi
-        elif [[ -f "${TS_FS_ROOT}/etc/systemd/system/lightningd.service" ]]; then
+        if [[ -f "${TS_FS_ROOT}/etc/systemd/system/lightningd.service" ]]; then
              if systemctl is-active lightningd.service &>/dev/null; then
                  systemctl stop lightningd.service &>/dev/null && print_success "Stopped lightningd.service"
              fi
@@ -3268,8 +2751,6 @@ cmd_uninstall() {
             "${TS_FS_ROOT}/mnt/hdd/lnd/lnd.conf"
             "$home_dir/.lnd/lnd.conf"
             "${TS_FS_ROOT}/home/bitcoin/.lnd/lnd.conf"
-            "$home_dir/umbrel/lnd/lnd.conf"
-            "$home_dir/umbrel/app-data/lightning/data/lnd/lnd.conf"
             "${TS_FS_ROOT}/data/lnd/lnd.conf"
             "${TS_FS_ROOT}/mnt/hdd/mynode/lnd/lnd.conf"
         )
@@ -3290,7 +2771,6 @@ cmd_uninstall() {
         local paths=(
             "${TS_FS_ROOT}/mnt/hdd/app-data/.lightning/config"
             "${TS_FS_ROOT}/home/bitcoin/.lightning/config"
-            "$home_dir/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config"
             "${TS_FS_ROOT}/data/lightningd/config"
         )
         for path in "${paths[@]}"; do
@@ -3329,14 +2809,6 @@ cmd_uninstall() {
                 done < <(ts_m_cln_config_includes "$path")
             fi
         done
-        if [[ -f "$home_dir/umbrel/app-data/core-lightning/exports.sh" ]] && \
-            grep -q 'APP_CORE_LIGHTNING_DAEMON_PORT="9735"' "$home_dir/umbrel/app-data/core-lightning/exports.sh" 2>/dev/null; then
-            detected_nc_lines+=("$home_dir/umbrel/app-data/core-lightning/exports.sh:APP_CORE_LIGHTNING_DAEMON_PORT=\"9735\"")
-        fi
-        if [[ -f "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" ]] && \
-            grep -qE "^[[:space:]]*#[[:space:]]*-[[:space:]]*['\"]*--bind-addr" "$home_dir/umbrel/app-data/core-lightning/docker-compose.yml" 2>/dev/null; then
-            detected_nc_lines+=("$home_dir/umbrel/app-data/core-lightning/docker-compose.yml:commented --bind-addr")
-        fi
     elif [[ "$ln_impl" == "lit" ]]; then
         local paths=(
             "$home_dir/.lit/lit.conf"
@@ -3370,7 +2842,7 @@ cmd_uninstall() {
             cln) nc_unit="lightningd.service" ;;
             lit) nc_unit="litd.service"; [[ -f "${TS_FS_ROOT}/etc/systemd/system/${nc_unit}" ]] || nc_unit="lit.service" ;;
         esac
-        if [[ $is_docker -eq 0 ]] && [[ -n "$nc_unit" ]]; then
+        if [[ -n "$nc_unit" ]]; then
             if systemctl disable "$nc_unit" &>/dev/null; then
                 print_warning "${nc_unit} stays stopped and is disabled. Remove these settings, then run: sudo systemctl enable --now ${nc_unit}"
             else
@@ -3384,62 +2856,40 @@ cmd_uninstall() {
 
     # 4. Remove Splitting Services
     print_step 3 6 "Removing helper services..."
-    if [[ $is_docker -eq 0 ]]; then
-        # Check timers/services
-        for svc in tunnelsats-splitting-processes.timer tunnelsats-splitting-processes.service tunnelsats-create-cgroup.service; do
-             if [[ -f "${TS_FS_ROOT}/etc/systemd/system/$svc" ]]; then
-                 systemctl stop "$svc" &>/dev/null || true
-                 systemctl disable "$svc" &>/dev/null || true
-                 rm -f "${TS_FS_ROOT}/etc/systemd/system/$svc" &>/dev/null
-                 rm -f "${TS_FS_ROOT}/etc/systemd/system/multi-user.target.wants/$svc" &>/dev/null || true
-                 rm -f "${TS_FS_ROOT}/etc/systemd/system/timers.target.wants/$svc" &>/dev/null || true
-                 print_success "Removed $svc"
-             fi
-        done
+    # Check timers/services
+    for svc in tunnelsats-splitting-processes.timer tunnelsats-splitting-processes.service tunnelsats-create-cgroup.service; do
+         if [[ -f "${TS_FS_ROOT}/etc/systemd/system/$svc" ]]; then
+             systemctl stop "$svc" &>/dev/null || true
+             systemctl disable "$svc" &>/dev/null || true
+             rm -f "${TS_FS_ROOT}/etc/systemd/system/$svc" &>/dev/null
+             rm -f "${TS_FS_ROOT}/etc/systemd/system/multi-user.target.wants/$svc" &>/dev/null || true
+             rm -f "${TS_FS_ROOT}/etc/systemd/system/timers.target.wants/$svc" &>/dev/null || true
+             print_success "Removed $svc"
+         fi
+    done
 
-        if [[ -f "${TS_FS_ROOT}/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf" ]]; then
-            rm -f "${TS_FS_ROOT}/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf" &>/dev/null || true
-            rmdir "${TS_FS_ROOT}/etc/systemd/system/blitzapi.service.d" &>/dev/null || true
-            systemctl daemon-reload &>/dev/null || true
-            print_success "Removed blitzapi.service dependency"
-        fi
-
-        local check_base
-        for check_base in lnd.check cl.check; do
-            if [[ -f "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.bak" ]]; then
-                if [[ ! -f "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.sh" ]]; then
-                    mv "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.bak" "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.sh" &>/dev/null || true
-                    print_success "Restored ${check_base}.sh"
-                else
-                    rm -f "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.bak" &>/dev/null || true
-                fi
-            fi
-        done
-        
-        # Remove cgroups
-        if [[ -d /sys/fs/cgroup/net_cls/tor_splitting ]]; then cgdelete net_cls:/tor_splitting 2>/dev/null; fi
-        if [[ -d /sys/fs/cgroup/net_cls/splitted_processes ]]; then cgdelete net_cls:/splitted_processes 2>/dev/null; fi
-        
-    else
-        # Docker cleanup
-         for svc in tunnelsats-docker-network.timer tunnelsats-docker-network.service; do
-             if [[ -f "${TS_FS_ROOT}/etc/systemd/system/$svc" ]]; then
-                 systemctl stop "$svc" &>/dev/null || true
-                 systemctl disable "$svc" &>/dev/null || true
-                 rm -f "${TS_FS_ROOT}/etc/systemd/system/$svc" &>/dev/null
-                 rm -f "${TS_FS_ROOT}/etc/systemd/system/multi-user.target.wants/$svc" &>/dev/null || true
-                 rm -f "${TS_FS_ROOT}/etc/systemd/system/timers.target.wants/$svc" &>/dev/null || true
-                 print_success "Removed $svc"
-             fi
-        done
-        
-        # Umbrel Killswitch
-        rm -f "${TS_FS_ROOT}/etc/systemd/system/umbrel.service.d/tunnelsats_killswitch.conf" &>/dev/null
-        rm -f "${TS_FS_ROOT}/etc/systemd/system/umbrel-startup.service.d/tunnelsats_killswitch.conf" &>/dev/null
-        rmdir "${TS_FS_ROOT}/etc/systemd/system/umbrel.service.d" &>/dev/null || true
-        rmdir "${TS_FS_ROOT}/etc/systemd/system/umbrel-startup.service.d" &>/dev/null || true
-        print_success "Removed Umbrel killswitch"
+    if [[ -f "${TS_FS_ROOT}/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf" ]]; then
+        rm -f "${TS_FS_ROOT}/etc/systemd/system/blitzapi.service.d/tunnelsats-wg.conf" &>/dev/null || true
+        rmdir "${TS_FS_ROOT}/etc/systemd/system/blitzapi.service.d" &>/dev/null || true
+        systemctl daemon-reload &>/dev/null || true
+        print_success "Removed blitzapi.service dependency"
     fi
+
+    local check_base
+    for check_base in lnd.check cl.check; do
+        if [[ -f "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.bak" ]]; then
+            if [[ ! -f "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.sh" ]]; then
+                mv "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.bak" "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.sh" &>/dev/null || true
+                print_success "Restored ${check_base}.sh"
+            else
+                rm -f "${TS_FS_ROOT}/home/admin/config.scripts/${check_base}.bak" &>/dev/null || true
+            fi
+        fi
+    done
+    
+    # Remove cgroups
+    if [[ -d /sys/fs/cgroup/net_cls/tor_splitting ]]; then cgdelete net_cls:/tor_splitting 2>/dev/null; fi
+    if [[ -d /sys/fs/cgroup/net_cls/splitted_processes ]]; then cgdelete net_cls:/splitted_processes 2>/dev/null; fi
     echo ""
 
     # 5. Remove WireGuard Services
@@ -3457,7 +2907,7 @@ cmd_uninstall() {
     if [[ ${#target_interfaces[@]} -eq 0 ]]; then target_interfaces=("tunnelsatsv2"); fi
 
     if [[ "$ln_impl" == "lnd" ]] || [[ "$ln_impl" == "lit" ]]; then
-        announce_out=$(ts_print_announce_command "$is_docker" "$lnd_container" "${TS_WG_CANDIDATES[@]}")
+        announce_out=$(ts_print_announce_command "${TS_WG_CANDIDATES[@]}")
     fi
 
     for target_interface in "${target_interfaces[@]}"; do
@@ -3494,8 +2944,7 @@ cmd_uninstall() {
 
     local helper_file
     for helper_file in "$wg_dir/tunnelsats-route-guard.sh" "$wg_dir/tunnelsats-create-cgroup.sh" \
-        "$wg_dir/tunnelsats-splitting-processes.sh" "$wg_dir/tunnelsats-resolve-dns-wg.sh" \
-        "$wg_dir/tunnelsats-docker-network.sh"; do
+        "$wg_dir/tunnelsats-splitting-processes.sh" "$wg_dir/tunnelsats-resolve-dns-wg.sh"; do
         if [[ -f "$helper_file" ]]; then
             rm -f "$helper_file" &>/dev/null || true
         fi
@@ -3551,21 +3000,6 @@ cmd_uninstall() {
         sysctl -w net.ipv6.conf.default.disable_ipv6=0 &>/dev/null || true
         rm -f "$wg_dir/.tunnelsats-ipv6-disabled" &>/dev/null || true
     fi
-
-    if [[ $is_docker -eq 1 ]]; then
-        print_info "Cleaning Docker network..."
-        
-        # Disconnect containers from network
-        docker inspect docker-tunnelsats 2>/dev/null | jq '.[].Containers' | grep Name | sed 's/[",]//g' | awk '{print $2}' | xargs -I % sh -c 'docker network disconnect docker-tunnelsats % 2>/dev/null'
-        
-        if docker network rm docker-tunnelsats &>/dev/null; then
-            print_success "Removed docker-tunnelsats network"
-        fi
-        
-        systemctl daemon-reload || true
-        systemctl restart docker &>/dev/null || true
-        print_success "Docker restarted"
-    fi
     echo ""
 
     # UFW Rules Cleanup
@@ -3588,27 +3022,25 @@ cmd_uninstall() {
     done
     
     # 7. Restore Original Service Files
-    if [[ $is_docker -eq 0 ]]; then
-        print_step 6 6 "Restoring systemd service files..."
-        if [[ "$ln_impl" == "lnd" && -f "${TS_FS_ROOT}/etc/systemd/system/lnd.service.bak" ]]; then
-             mv "${TS_FS_ROOT}/etc/systemd/system/lnd.service.bak" "${TS_FS_ROOT}/etc/systemd/system/lnd.service"
-             print_success "Restored lnd.service backup"
-        fi
-        if [[ "$ln_impl" == "cln" && -f "${TS_FS_ROOT}/etc/systemd/system/lightningd.service.bak" ]]; then
-             mv "${TS_FS_ROOT}/etc/systemd/system/lightningd.service.bak" "${TS_FS_ROOT}/etc/systemd/system/lightningd.service"
-             print_success "Restored lightningd.service backup"
-        fi
-        if [[ "$ln_impl" == "lit" ]]; then
-            local s_file="${TS_FS_ROOT}/etc/systemd/system/litd.service"
-            [[ ! -f "$s_file" ]] && s_file="${TS_FS_ROOT}/etc/systemd/system/lit.service"
-            if [[ -f "${s_file}.bak" ]]; then
-                mv "${s_file}.bak" "$s_file"
-                print_success "Restored ${s_file} backup"
-            fi
-        fi
-        systemctl daemon-reload
-        echo ""
+    print_step 6 6 "Restoring systemd service files..."
+    if [[ "$ln_impl" == "lnd" && -f "${TS_FS_ROOT}/etc/systemd/system/lnd.service.bak" ]]; then
+         mv "${TS_FS_ROOT}/etc/systemd/system/lnd.service.bak" "${TS_FS_ROOT}/etc/systemd/system/lnd.service"
+         print_success "Restored lnd.service backup"
     fi
+    if [[ "$ln_impl" == "cln" && -f "${TS_FS_ROOT}/etc/systemd/system/lightningd.service.bak" ]]; then
+         mv "${TS_FS_ROOT}/etc/systemd/system/lightningd.service.bak" "${TS_FS_ROOT}/etc/systemd/system/lightningd.service"
+         print_success "Restored lightningd.service backup"
+    fi
+    if [[ "$ln_impl" == "lit" ]]; then
+        local s_file="${TS_FS_ROOT}/etc/systemd/system/litd.service"
+        [[ ! -f "$s_file" ]] && s_file="${TS_FS_ROOT}/etc/systemd/system/lit.service"
+        if [[ -f "${s_file}.bak" ]]; then
+            mv "${s_file}.bak" "$s_file"
+            print_success "Restored ${s_file} backup"
+        fi
+    fi
+    systemctl daemon-reload
+    echo ""
     
     # Optional Package Removal. This question comes after the removal steps above, so it never
     # fails: --remove-packages or --keep-packages answer it, while non-interactive mode and end
@@ -3626,36 +3058,20 @@ cmd_uninstall() {
                 print_info "Non-interactive mode: keeping system packages (pass --remove-packages to remove them)"
             else
                 echo "Do you want to uninstall system packages?"
-                if [[ $is_docker -eq 1 ]]; then
-                    if [[ "$has_resolvconf_marker" -eq 1 ]]; then
-                        ts_ask answer "--remove-packages" "Remove nftables, resolvconf and wireguard-tools? (Y/N) " "N"
-                    else
-                        ts_ask answer "--remove-packages" "Remove nftables and wireguard-tools? (Y/N) " "N"
-                    fi
+                if [[ "$has_resolvconf_marker" -eq 1 ]]; then
+                    ts_ask answer "--remove-packages" "Remove cgroup-tools, nftables, resolvconf and wireguard-tools? (Y/N) " "N"
                 else
-                    if [[ "$has_resolvconf_marker" -eq 1 ]]; then
-                        ts_ask answer "--remove-packages" "Remove cgroup-tools, nftables, resolvconf and wireguard-tools? (Y/N) " "N"
-                    else
-                        ts_ask answer "--remove-packages" "Remove cgroup-tools, nftables and wireguard-tools? (Y/N) " "N"
-                    fi
+                    ts_ask answer "--remove-packages" "Remove cgroup-tools, nftables and wireguard-tools? (Y/N) " "N"
                 fi
             fi
             ;;
     esac
     
     if [[ "$answer" =~ ^[Yy] ]]; then
-         if [[ $is_docker -eq 1 ]]; then
-             if [[ "$has_resolvconf_marker" -eq 1 ]]; then
-                 apt-get remove -yqq nftables resolvconf wireguard-tools &>/dev/null
-             else
-                 apt-get remove -yqq nftables wireguard-tools &>/dev/null
-             fi
+         if [[ "$has_resolvconf_marker" -eq 1 ]]; then
+             apt-get remove -yqq cgroup-tools nftables resolvconf wireguard-tools &>/dev/null
          else
-             if [[ "$has_resolvconf_marker" -eq 1 ]]; then
-                 apt-get remove -yqq cgroup-tools nftables resolvconf wireguard-tools &>/dev/null
-             else
-                 apt-get remove -yqq cgroup-tools nftables wireguard-tools &>/dev/null
-             fi
+             apt-get remove -yqq cgroup-tools nftables wireguard-tools &>/dev/null
          fi
          if [[ "$has_resolvconf_marker" -eq 1 ]]; then
              rm -f "$wg_dir/.tunnelsats-resolvconf.installed" &>/dev/null || true
@@ -3680,15 +3096,9 @@ cmd_uninstall() {
         done
     fi
     if [[ "$ln_impl" == "lnd" ]]; then
-        if [[ "$PLATFORM" == "umbrel" ]]; then
-            echo -e "  Command: ${BOLD}nano $home_dir/umbrel/app-data/lightning/data/lnd/lnd.conf${NC}"
-        fi
         echo "  - externalhosts (should be removed)"
         echo "  - tor.skip-proxy-for-clearnet-targets (should be false or removed)"
     elif [[ "$ln_impl" == "cln" ]]; then
-        if [[ "$PLATFORM" == "umbrel" ]]; then
-            echo -e "  Command: ${BOLD}nano $home_dir/umbrel/app-data/core-lightning/data/lightningd/bitcoin/config${NC}"
-        fi
         echo "  - announce-addr (should be removed)"
         echo "  - bind-addr=0.0.0.0:9735 (should be removed)"
     elif [[ "$ln_impl" == "lit" ]]; then
@@ -3710,7 +3120,7 @@ cmd_uninstall() {
 
 cmd_install() {
     check_root
-    check_umbrel_version
+    reject_umbrel_platform
     print_header "TunnelSats Installation"
 
     # Step 1: Configuration is already detected in parse_args
@@ -3721,10 +3131,6 @@ cmd_install() {
     print_step 2 6 "Analyzing environment..."
     detect_platform
     detect_ln_implementation
-    
-    local is_docker=0
-    [[ "$PLATFORM" == "umbrel" ]] && is_docker=1
-    [[ "$PLATFORM" == "mynode" ]] && is_docker=0 # myNode nodal part is bare metal
     
     print_info "Platform: ${PLATFORM}, Lightning: ${LN_IMPL}"
     echo ""
@@ -3740,7 +3146,7 @@ cmd_install() {
         if ! apt-get update -qq &>/dev/null || ! apt-get install -yqq wireguard-tools &>/dev/null; then
             # try Debian 10 Buster workaround / myNode
             local codename=$(lsb_release -c 2>/dev/null | awk '{print $2}')
-            if [[ "$codename" == "buster" && "$PLATFORM" != "umbrel" ]]; then
+            if [[ "$codename" == "buster" ]]; then
                 print_info "Attempting Debian 10 Buster workaround..."
                 apt-get install -yqq -t buster-backports wireguard-tools &>/dev/null
             fi
@@ -3761,13 +3167,9 @@ cmd_install() {
             : > "${WG_DIR:-${TS_FS_ROOT}/etc/wireguard}/.tunnelsats-resolvconf.installed"
         fi
     fi
-    
-    # Only install cgroup-tools for non-Docker platforms (Umbrel uses Docker networking)
-    if [[ "$PLATFORM" != "umbrel" ]]; then
-         if ! command -v cgexec &>/dev/null; then
-            print_info "Installing cgroup-tools..."
-            apt-get install -yqq cgroup-tools &>/dev/null
-        fi
+    if ! command -v cgexec &>/dev/null; then
+        print_info "Installing cgroup-tools..."
+        apt-get install -yqq cgroup-tools &>/dev/null
     fi
     echo ""
 
@@ -3792,11 +3194,6 @@ cmd_install() {
     
     # Configure DNS Resolver Watchdog
     setup_dns_resolver "$WG_INTERFACE"
-    
-    # Configure Docker Network (Umbrel/Docker only)
-    if [[ $is_docker -eq 1 ]]; then
-        setup_docker_network
-    fi
     echo ""
 
     # enable_services has its own fail-closed handling once the new tunnel start is attempted
@@ -3850,25 +3247,19 @@ cmd_install() {
 
     echo ""
     echo "Then, restart your node:"
-    if [[ "$PLATFORM" == "umbrel" ]]; then
-        echo "   sudo reboot"
-        echo "   (Or restart the Lightning app via Umbrel Dashboard: Right-click -> Restart)"
-    else
-        local svc="${LN_IMPL}"
-        [[ "$LN_IMPL" == "cln" ]] && svc="lightningd"
-        echo "   sudo systemctl restart ${svc}.service"
-    fi
+    local svc="${LN_IMPL}"
+    [[ "$LN_IMPL" == "cln" ]] && svc="lightningd"
+    echo "   sudo systemctl restart ${svc}.service"
     echo ""
 }
 
 auto_detect_environment() {
+    reject_umbrel_platform
     # Auto-detect platform
     if [[ -z "$PLATFORM" ]]; then
-        if [[ -d /home/admin/config.scripts ]]; then
+        if [[ -d "${TS_FS_ROOT:-}/home/admin/config.scripts" ]]; then
             PLATFORM="raspiblitz"
-        elif [[ -d /home/umbrel/umbrel ]] || [[ -d /umbrel ]] || [[ -f /usr/bin/umbrel ]]; then
-            PLATFORM="umbrel"
-        elif [[ -d /usr/share/mynode ]]; then
+        elif [[ -d "${TS_FS_ROOT:-}/usr/share/mynode" ]]; then
             PLATFORM="mynode"
         else
             PLATFORM="baremetal"
@@ -3877,36 +3268,26 @@ auto_detect_environment() {
     
     # Auto-detect implementation
     if [[ -z "$LN_IMPL" ]]; then
-        if [[ "$PLATFORM" == "umbrel" ]]; then
-            if docker ps --filter name=core-lightning -q | grep -q .; then
-                LN_IMPL="cln"
-            elif docker ps --filter name=lnd -q | grep -q .; then
-                LN_IMPL="lnd"
-            fi
-        else
-            if systemctl is-active --quiet lnd; then
-                LN_IMPL="lnd"
-            elif systemctl is-active --quiet lightningd; then
-                LN_IMPL="cln"
-            elif systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
-                # Only auto-detect if Integrated Mode
-                local s_file="/etc/systemd/system/litd.service"
-                [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
-                if grep -qi "lnd-mode=integrated" "$s_file" 2>/dev/null || grep -qi "lnd-mode.*integrated" /etc/lit/lit.conf 2>/dev/null || grep -qi "lnd-mode.*integrated" "$HOME/.lit/lit.conf" 2>/dev/null; then
-                    LN_IMPL="lit"
-                fi
+        if systemctl is-active --quiet lnd; then
+            LN_IMPL="lnd"
+        elif systemctl is-active --quiet lightningd; then
+            LN_IMPL="cln"
+        elif systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
+            # Only auto-detect if Integrated Mode
+            if ts_lit_integrated_mode "${TS_FS_ROOT:-}"; then
+                LN_IMPL="lit"
             fi
         fi
     fi
 
-    # Detect node user for non-Docker
-    if [[ -n "$LN_IMPL" ]] && [[ "$PLATFORM" != "umbrel" ]] && [[ -z "$node_user" ]]; then
+    # Detect node user for systemd service
+    if [[ -n "$LN_IMPL" ]] && [[ -z "$node_user" ]]; then
         local s_file=""
-        [[ "$LN_IMPL" == "lnd" ]] && s_file="/etc/systemd/system/lnd.service"
-        [[ "$LN_IMPL" == "cln" ]] && s_file="/etc/systemd/system/lightningd.service"
+        [[ "$LN_IMPL" == "lnd" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lnd.service"
+        [[ "$LN_IMPL" == "cln" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lightningd.service"
         if [[ "$LN_IMPL" == "lit" ]]; then
-            s_file="/etc/systemd/system/litd.service"
-            [[ ! -f "$s_file" ]] && s_file="/etc/systemd/system/lit.service"
+            s_file="${TS_FS_ROOT:-}/etc/systemd/system/litd.service"
+            [[ ! -f "$s_file" ]] && s_file="${TS_FS_ROOT:-}/etc/systemd/system/lit.service"
         fi
         if [[ -f "$s_file" ]]; then
             node_user=$(grep -Ei "^User[[:space:]]*=" "$s_file" | cut -d'=' -f2 | xargs)
@@ -3918,6 +3299,7 @@ auto_detect_environment() {
 }
 
 cmd_status() {
+    reject_umbrel_platform
     print_header "Subscription Status"
     
     echo ""
@@ -3996,55 +3378,21 @@ cmd_status() {
     echo ""
 
     # ---------------------------------------------------------
-    # Node & Connectivity Checks (Ported from tunnelsats-sub-details.sh)
+    # Node & Connectivity Checks
     # ---------------------------------------------------------
 
-    # 1. Docker Setup Check
-    check_docker_setup_status() {
-       if systemctl is-active --quiet docker; then
-         if docker ps --filter name=core-lightning -q | grep -q . || docker ps --filter name=lnd -q | grep -q .; then
-          if docker ps --filter name=core-lightning -q | grep -q .; then
-            echo "docker-core-lightning"
-            return 0
-          elif docker ps --filter name=lnd -q | grep -q .; then
-            echo "docker-lnd"
-            return 0
-          fi
-         fi
-       fi
-       echo "manual"
-       return 1
-    }
-
-    # 2. Outbound Check
+    # 1. Outbound Check
     perform_outbound_check_status() {
-      local setup_type=$1
       local ip_address=""
-      local cmd_exit_code=0
-    
-      if [[ "$setup_type" == "docker-lnd" || "$setup_type" == "docker-core-lightning" ]]; then
-        if ! docker network inspect docker-tunnelsats > /dev/null 2>&1; then
-            ip_address="Error: Docker network missing"
-        else
-            ip_address=$(timeout 20s docker run --rm --net=docker-tunnelsats curlimages/curl -s https://api.ipify.org)
-            cmd_exit_code=$?
-            if [ $cmd_exit_code -ne 0 ] || [[ -z "$ip_address" ]]; then
-                 ip_address="Error: Check failed or timed out"
-            fi
-        fi
+      if command -v cgexec &> /dev/null; then
+        ip_address=$(timeout 20s cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
       else
-        # Manual
-        if command -v cgexec &> /dev/null; then
-          ip_address=$(timeout 20s cgexec -g net_cls:splitted_processes curl --silent https://api.ipify.org)
-        else
-          # Fallback
-          ip_address=$(timeout 20s curl --silent https://api.ipify.org)
-        fi
+        ip_address=$(timeout 20s curl --silent https://api.ipify.org)
       fi
       echo "$ip_address"
     }
     
-    # 3. Inbound Check
+    # 2. Inbound Check
     perform_inbound_check_status() {
       local target_endpoint=$1
       local target_port=$2
@@ -4070,136 +3418,82 @@ cmd_status() {
       echo "$status $result_url"
     }
 
-    # 4. Get Node Address
+    # 3. Get Node Address
     get_node_ext_addr_status() {
-        local setup_type=$1
         local ext_addr="N/A"
-        local docker_name=""
         local node_type=""
         local target_impl="${LN_IMPL:-unknown}"
-
-        case "$setup_type" in
-            "docker-lnd")
-                docker_name=$(docker ps --filter name=_lnd --format "{{.Names}}" | head -n 1) # Safer fetch
-                if [[ -z "$docker_name" ]]; then docker_name="lightning_lnd_1"; fi # Fallback
-                node_type="LND (Docker)"
-                if command -v jq &> /dev/null; then
-                    # Try direct exec
-                    local info=$(docker exec "$docker_name" lncli getinfo 2>/dev/null)
-                    if [[ -n "$info" ]]; then
-                        ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
-                        [[ -z "$ext_addr" ]] && ext_addr="NONE_DETECTED"
-                    else
-                        ext_addr="NODE_UNREACHABLE"
-                    fi
-                else
-                    ext_addr="DEPENDENCY_MISSING"
-                fi
-                ;;
-            "docker-core-lightning")
-                # Filter specifically for the main lightningd container, avoiding proxies/apps
-                docker_name=$(docker ps --filter name=core-lightning --format "{{.Names}}" | grep "lightningd" | head -n 1)
-                
-                # Fallback if grep failed but generic name exists
-                if [[ -z "$docker_name" ]]; then 
-                     docker_name=$(docker ps --filter name=lightningd --format "{{.Names}}" | head -n 1)
-                fi
-                if [[ -z "$docker_name" ]]; then docker_name="core-lightning_lightningd_1"; fi
-                
-                node_type="CLN (Docker)"
-                if command -v jq &> /dev/null; then
-                     local info=$(docker exec "$docker_name" lightning-cli getinfo 2>/dev/null)
-                     if [[ -n "$info" ]]; then
-                         local pk=$(echo "$info" | jq -r '.id')
-                         local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
-                         local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
-                         if [[ -n "$pk" && -n "$ip" ]]; then 
-                             ext_addr="${pk}@${ip}:${port}"
-                         else
-                             ext_addr="NONE_DETECTED"
-                         fi
+        local original_user="${SUDO_USER:-$(whoami)}"
+        
+        if [[ "$target_impl" == "lnd" ]]; then
+            node_type="LND (Systemd)"
+            if command -v lncli &> /dev/null; then
+                 local info
+                 # Try as sudo user first (RaspiBlitz standard)
+                 info=$(sudo -u "$original_user" lncli getinfo 2>/dev/null)
+                 
+                 # Fallback to common node users with explicit data directory check
+                 if [[ -z "$info" ]]; then
+                    local users=("$node_user" "lnd" "bitcoin" "admin")
+                    for u in "${users[@]}"; do
+                        [[ -z "$u" ]] && continue
+                        # Try with default paths for that user
+                        info=$(sudo -u "$u" lncli getinfo 2>/dev/null)
+                        [[ -n "$info" ]] && break
+                    done
+                 fi
+                 
+                 if [[ -n "$info" ]]; then
+                     ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
+                     [[ -z "$ext_addr" ]] && ext_addr="NONE_DETECTED"
+                 else
+                     ext_addr="NODE_UNREACHABLE"
+                 fi
+            else
+                 ext_addr="CLI_MISSING"
+            fi
+        elif [[ "$target_impl" == "cln" ]]; then
+            node_type="CLN (Systemd)"
+            if command -v lightning-cli &> /dev/null; then
+                 local info
+                 info=$(sudo -u "$original_user" lightning-cli getinfo 2>/dev/null)
+                 [[ -z "$info" ]] && [[ "$node_user" != "$original_user" ]] && info=$(sudo -u "$node_user" lightning-cli getinfo 2>/dev/null)
+                 [[ -z "$info" ]] && info=$(sudo -u bitcoin lightning-cli getinfo 2>/dev/null)
+                 [[ -z "$info" ]] && info=$(lightning-cli getinfo 2>/dev/null)
+                 
+                 if [[ -n "$info" ]]; then
+                     local pk=$(echo "$info" | jq -r '.id')
+                     local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
+                     local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
+                     if [[ -n "$pk" && -n "$ip" ]]; then 
+                         ext_addr="${pk}@${ip}:${port}"
                      else
-                         ext_addr="NODE_UNREACHABLE"
+                         ext_addr="NONE_DETECTED"
                      fi
-                else
-                    ext_addr="DEPENDENCY_MISSING"
-                fi
-                ;;
-            "manual")
-                # Attempt to guess
-                local original_user="${SUDO_USER:-$(whoami)}"
-                
-                 if [[ "$target_impl" == "lnd" ]]; then
-                    node_type="LND (Systemd)"
-                    if command -v lncli &> /dev/null; then
-                         local info
-                         # Try as sudo user first (RaspiBlitz standard)
-                         info=$(sudo -u "$original_user" lncli getinfo 2>/dev/null)
-                         
-                         # Fallback to common node users with explicit data directory check
-                         if [[ -z "$info" ]]; then
-                            local users=("$node_user" "lnd" "bitcoin" "admin")
-                            for u in "${users[@]}"; do
-                                [[ -z "$u" ]] && continue
-                                # Try with default paths for that user
-                                info=$(sudo -u "$u" lncli getinfo 2>/dev/null)
-                                [[ -n "$info" ]] && break
-                            done
-                         fi
-                         
-                         if [[ -n "$info" ]]; then
-                             ext_addr=$(echo "$info" | jq -r '.uris[]' | grep -v "\.onion" | head -n 1)
-                             [[ -z "$ext_addr" ]] && ext_addr="NONE_DETECTED"
-                         else
-                             ext_addr="NODE_UNREACHABLE"
-                         fi
-                    else
-                         ext_addr="CLI_MISSING"
-                    fi
-                 elif [[ "$target_impl" == "cln" ]]; then
-                    node_type="CLN (Systemd)"
-                     if command -v lightning-cli &> /dev/null; then
-                         local info
-                         info=$(sudo -u "$original_user" lightning-cli getinfo 2>/dev/null)
-                         [[ -z "$info" ]] && [[ "$node_user" != "$original_user" ]] && info=$(sudo -u "$node_user" lightning-cli getinfo 2>/dev/null)
-                         [[ -z "$info" ]] && info=$(sudo -u bitcoin lightning-cli getinfo 2>/dev/null)
-                         [[ -z "$info" ]] && info=$(lightning-cli getinfo 2>/dev/null)
-                         
-                         if [[ -n "$info" ]]; then
-                             local pk=$(echo "$info" | jq -r '.id')
-                             local ip=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .address' | head -n 1)
-                             local port=$(echo "$info" | jq -r '.address[] | select(.type == "ipv4") | .port' | head -n 1)
-                             if [[ -n "$pk" && -n "$ip" ]]; then 
-                                 ext_addr="${pk}@${ip}:${port}"
-                             else
-                                 ext_addr="NONE_DETECTED"
-                             fi
-                         else
-                             ext_addr="NODE_UNREACHABLE"
-                         fi
-                     else
-                         ext_addr="CLI_MISSING"
-                     fi
-                  elif systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
-                    node_type="LIT (Systemd)"
-                    if command -v litcli &> /dev/null; then
-                         local info
-                         info=$(sudo -u "$original_user" litcli getinfo 2>/dev/null)
-                         [[ -z "$info" ]] && info=$(litcli getinfo 2>/dev/null)
-                         if [[ -n "$info" ]]; then
-                             ext_addr=$(echo "$info" | jq -r '.lnd_uris[]' | grep -v "\.onion" | head -n 1)
-                             [[ -z "$ext_addr" ]] && ext_addr="NONE_DETECTED"
-                         else
-                             ext_addr="NODE_UNREACHABLE"
-                         fi
-                    else
-                         ext_addr="CLI_MISSING"
-                    fi
-                  else
-                    node_type="Unknown/Manual"
-                  fi
-                ;;
-        esac
+                 else
+                     ext_addr="NODE_UNREACHABLE"
+                 fi
+            else
+                 ext_addr="CLI_MISSING"
+            fi
+        elif systemctl is-active --quiet litd || systemctl is-active --quiet lit; then
+            node_type="LIT (Systemd)"
+            if command -v litcli &> /dev/null; then
+                 local info
+                 info=$(sudo -u "$original_user" litcli getinfo 2>/dev/null)
+                 [[ -z "$info" ]] && info=$(litcli getinfo 2>/dev/null)
+                 if [[ -n "$info" ]]; then
+                     ext_addr=$(echo "$info" | jq -r '.lnd_uris[]' | grep -v "\.onion" | head -n 1)
+                     [[ -z "$ext_addr" ]] && ext_addr="NONE_DETECTED"
+                 else
+                     ext_addr="NODE_UNREACHABLE"
+                 fi
+            else
+                 ext_addr="CLI_MISSING"
+            fi
+        else
+            node_type="Unknown/Manual"
+        fi
         
         # Check if we actually have jq
         if ! command -v jq &> /dev/null; then
@@ -4211,13 +3505,12 @@ cmd_status() {
     }
 
     # Execute Checks
-    local setup_method=$(check_docker_setup_status)
     local outbound_ip="N/A"
     local inbound_status="N/A" 
     local inbound_ip="N/A"
     
-    # 1. Listening Check (Manual/Bare Metal)
-    if [[ "$setup_method" == "manual" ]] && [[ -n "$LN_IMPL" ]]; then
+    # 1. Listening Check
+    if [[ -n "$LN_IMPL" ]]; then
         if ss -tulpn | grep -q "127.0.0.1:9735"; then
             print_warning "Node only listening on Localhost (127.0.0.1)!"
         fi
@@ -4225,11 +3518,11 @@ cmd_status() {
 
     # Only run if config is valid
     if [[ -n "$endpoint" && -n "$vpn_port" ]]; then
-         outbound_ip=$(perform_outbound_check_status "$setup_method")
+         outbound_ip=$(perform_outbound_check_status)
          read -r inbound_status inbound_ip <<< "$(perform_inbound_check_status "$endpoint" "$vpn_port")"
     fi
 
-    local node_data=$(get_node_ext_addr_status "$setup_method")
+    local node_data=$(get_node_ext_addr_status)
     local node_type=$(echo "$node_data" | cut -d '|' -f 1)
     local node_addr=$(echo "$node_data" | cut -d '|' -f 2)
 
@@ -4329,24 +3622,19 @@ cmd_status() {
             
             echo ""
             echo -e "${BOLD}Then restart your node:${NC}"
-            if [[ "$PLATFORM" == "umbrel" ]]; then
-                echo "   sudo reboot"
-                echo "   (Or restart the Lightning app via Umbrel Dashboard: Right-click -> Restart)"
-            else
-                local svc="${LN_IMPL}"
-                [[ "$LN_IMPL" == "cln" ]] && svc="lightningd"
-                if [[ "$LN_IMPL" == "lit" ]]; then
-                    # Use systemctl is-active for consistent service detection
-                    if systemctl is-active --quiet litd 2>/dev/null; then
-                        svc="litd"
-                    elif systemctl is-active --quiet lit 2>/dev/null; then
-                        svc="lit"
-                    else
-                        svc="litd"  # Default fallback
-                    fi
+            local svc="${LN_IMPL}"
+            [[ "$LN_IMPL" == "cln" ]] && svc="lightningd"
+            if [[ "$LN_IMPL" == "lit" ]]; then
+                # Use systemctl is-active for consistent service detection
+                if systemctl is-active --quiet litd 2>/dev/null; then
+                    svc="litd"
+                elif systemctl is-active --quiet lit 2>/dev/null; then
+                    svc="lit"
+                else
+                    svc="litd"  # Default fallback
                 fi
-                echo "   sudo systemctl restart ${svc}.service"
             fi
+            echo "   sudo systemctl restart ${svc}.service"
             echo ""
             echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
             echo ""
@@ -4370,6 +3658,7 @@ cmd_status() {
 # RESTART COMMAND
 # ---------------------------------------------------------------------------
 cmd_restart() {
+    reject_umbrel_platform
     print_header "Restarting TunnelSats"
     
     # 0. Auto-detect environment
@@ -4386,7 +3675,6 @@ cmd_restart() {
     config_file="$TS_WG_RESOLVED"
     
     local interface_name=$(basename "$config_file" .conf)
-    local stopped_containers=""
     local node_stopped_systemd=0
     local service_name="${LN_IMPL}"
     [[ "$LN_IMPL" == "cln" ]] && service_name="lightningd"
@@ -4401,27 +3689,7 @@ cmd_restart() {
     echo ""
 
     # 2. Deactivate Lightning node for safety (Privacy first / Leak-proof)
-    if [[ "$PLATFORM" == "umbrel" ]] && [[ -n "$LN_IMPL" ]]; then
-        local filter_name="lnd"
-        [[ "$LN_IMPL" == "cln" ]] && filter_name="core-lightning"
-        
-        echo -e "${YELLOW}Umbrel detected. To ensure a leak-proof restart, we need to temporarily${NC}"
-        echo -e "${YELLOW}stop your ${LN_IMPL} app containers.${NC}"
-        ts_confirm restart_confirm "Do you want to proceed? [y/N]: "
-        if [[ ! "$restart_confirm" =~ ^[Yy]$ ]]; then
-            print_info "Restart aborted by user."
-            exit 0
-        fi
-        echo ""
-
-        print_info "Stopping ${LN_IMPL} app for safe restart..."
-        stopped_containers=$(get_lightning_docker_containers)
-        
-        if [[ -n "$stopped_containers" ]]; then
-            docker stop ${stopped_containers} &>/dev/null
-            print_success "${LN_IMPL} app stopped (Leak-proof mode)"
-        fi
-    elif [[ "$PLATFORM" != "umbrel" ]] && [[ -n "$LN_IMPL" ]]; then
+    if [[ -n "$LN_IMPL" ]]; then
         echo -e "${YELLOW}Non-Docker setup detected. To ensure a leak-proof restart, it is${NC}"
         echo -e "${YELLOW}highly recommended to stop your node service temporarily.${NC}"
         # --yes stops the daemon, which keeps clearnet traffic blocked during the restart.
@@ -4456,12 +3724,8 @@ cmd_restart() {
         exit 1
     fi
     
-    # 4. App Restart
-    if [[ "$PLATFORM" == "umbrel" ]] && [[ -n "$stopped_containers" ]]; then
-        print_info "Restarting ${LN_IMPL} app containers..."
-        docker start ${stopped_containers} &>/dev/null
-        print_success "${LN_IMPL} app restarted"
-    elif [[ "$node_stopped_systemd" -eq 1 ]]; then
+    # 4. Service Restart
+    if [[ "$node_stopped_systemd" -eq 1 ]]; then
         print_info "Starting ${service_name}.service..."
         systemctl start "${service_name}.service"
         print_success "${LN_IMPL} service restarted"
@@ -5863,7 +5127,7 @@ ts_parse_cli() {
                 case "$opt" in
                     --config) CONFIG_FILE="$value" ;;
                     --platform)
-                        if ! ts_in_list "$value" "$TS_PLATFORMS"; then
+                        if [[ "$value" != "umbrel" ]] && ! ts_in_list "$value" "$TS_PLATFORMS"; then
                             ts_usage_note "Invalid --platform '${value}' (expected: ${TS_PLATFORMS// /, })"
                         fi
                         TS_OPT_PLATFORM="$value"
@@ -6001,6 +5265,20 @@ parse_args() {
         ts_usage_error "Missing command"
     fi
     ts_validate_cli
+
+    # Reject Umbrel early for --platform umbrel or Umbrel host markers on legacy commands
+    if [[ "$TS_OPT_MANAGED" -ne 1 ]]; then
+        if [[ "$TS_OPT_PLATFORM" == "umbrel" ]]; then
+            reject_umbrel_platform
+        fi
+        if ! ts_m_inventory_present; then
+            case "$TS_COMMAND" in
+                install|uninstall|status|restart|pre-check)
+                    reject_umbrel_platform
+                    ;;
+            esac
+        fi
+    fi
 
     # Internal verbs of the managed units (they log to the journal through stderr)
     case "$TS_COMMAND" in
@@ -9281,10 +8559,16 @@ ts_m_select_ln_user() {
 ts_m_install_preflight() {
     local guess existing kind evidence found listing line ports p port_ok=0 fam profile="${TS_OPT_PROFILE:-baremetal}"
     guess=$(ts_guess_platform "$TS_FS_ROOT")
+    if ts_has_umbrel_marker "$TS_FS_ROOT"; then
+        guess="umbrel"
+    fi
     if [[ -n "$TS_OPT_PLATFORM" ]] && [[ "$TS_OPT_PLATFORM" != "$profile" ]]; then
         ts_fail 7 E_PLATFORM_UNSUPPORTED refused "--platform ${TS_OPT_PLATFORM} does not match the managed profile ${profile}"
     fi
     case "$profile:$guess" in
+        *:umbrel)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Umbrel is not supported by tunnelsats.sh (detected: umbrel); install the native TunnelSats Umbrel app (https://github.com/Tunnelsats/ts-umbrel-app, https://tunnelsats.com/guide)"
+            ;;
         baremetal:|raspiblitz:raspiblitz|mynode:mynode) ;;
         baremetal:raspiblitz)
             ts_fail 7 E_PLATFORM_UNSUPPORTED refused "This node is a RaspiBlitz: use 'install --managed raspiblitz --impl lnd|cln'"
@@ -9800,6 +9084,9 @@ cmd_install_managed() {
             ;;
         *) ts_usage_error "--managed requires a profile for install (baremetal, raspiblitz or mynode)" ;;
     esac
+    if ts_has_umbrel_marker "$TS_FS_ROOT"; then
+        ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Umbrel is not supported by tunnelsats.sh (detected: umbrel); install the native TunnelSats Umbrel app (https://github.com/Tunnelsats/ts-umbrel-app, https://tunnelsats.com/guide)"
+    fi
     ts_m_lifecycle_lock
     if [[ "$TS_JSON" -ne 1 ]]; then
         print_header "Managed Install (preview)"
@@ -9963,10 +9250,16 @@ ts_m_adopt_preflight() {
     wg_rel="${wg_rel#"$TS_FS_ROOT"}"
     [[ -z "$wg_rel" ]] && wg_rel="/etc/wireguard"
     guess=$(ts_guess_platform "$TS_FS_ROOT")
+    if ts_has_umbrel_marker "$TS_FS_ROOT"; then
+        guess="umbrel"
+    fi
     if [[ -n "$TS_OPT_PLATFORM" ]] && [[ "$TS_OPT_PLATFORM" != "$profile" ]]; then
         ts_fail 7 E_PLATFORM_UNSUPPORTED refused "--platform ${TS_OPT_PLATFORM} does not match the managed profile ${profile}"
     fi
     case "$profile:$guess" in
+        *:umbrel)
+            ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Umbrel is not supported by tunnelsats.sh (detected: umbrel); install the native TunnelSats Umbrel app (https://github.com/Tunnelsats/ts-umbrel-app, https://tunnelsats.com/guide)"
+            ;;
         baremetal:|raspiblitz:raspiblitz|mynode:mynode) ;;
         baremetal:raspiblitz)
             ts_fail 7 E_PLATFORM_UNSUPPORTED refused "This node is a RaspiBlitz: use 'adopt --managed raspiblitz --impl lnd|cln'"
@@ -10133,6 +9426,9 @@ cmd_adopt_managed() {
             ;;
         *) ts_usage_error "--managed requires a profile for adopt (baremetal, raspiblitz or mynode)" ;;
     esac
+    if ts_has_umbrel_marker "$TS_FS_ROOT"; then
+        ts_fail 7 E_PLATFORM_UNSUPPORTED refused "Umbrel is not supported by tunnelsats.sh (detected: umbrel); install the native TunnelSats Umbrel app (https://github.com/Tunnelsats/ts-umbrel-app, https://tunnelsats.com/guide)"
+    fi
     ts_m_lifecycle_lock
     if [[ "$TS_JSON" -ne 1 ]]; then
         print_header "Managed Adopt"

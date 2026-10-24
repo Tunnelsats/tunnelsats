@@ -6,6 +6,7 @@
 # a stub, and detect reads fixture trees through TS_FS_ROOT and stub binaries.
 
 set -euo pipefail
+unset NO_COLOR
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_UNDER_TEST="${SCRIPT_DIR}/tunnelsats.sh"
@@ -20,6 +21,7 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 TMP_ROOT="$(mktemp -d)"
+mkdir -p "$TMP_ROOT/empty_fs"
 cleanup() {
     chmod -R u+rwX "$TMP_ROOT" 2>/dev/null || true
     rm -rf "$TMP_ROOT"
@@ -216,7 +218,7 @@ assert_contains "$CLI_OUT" "Exit codes: 0 success, 1 failure, 2 usage error or i
 assert_not_contains "$CLI_OUT$CLI_ERR" $'\033[' "No ANSI colours when the output is not a terminal"
 
 if command -v script >/dev/null 2>&1 && script -qec true /dev/null >/dev/null 2>&1; then
-    tty_out=$(script -qec "bash '$SCRIPT_UNDER_TEST' help" /dev/null 2>/dev/null || true)
+    tty_out=$(env -u NO_COLOR script -qec "bash '$SCRIPT_UNDER_TEST' help" /dev/null 2>/dev/null || true)
     assert_contains "$tty_out" $'\033[' "Colours are kept on a terminal (unchanged interactive output)"
     tty_out=$(NO_COLOR=1 script -qec "bash '$SCRIPT_UNDER_TEST' help" /dev/null 2>/dev/null || true)
     assert_not_contains "$tty_out" $'\033[' "NO_COLOR disables colours on a terminal"
@@ -265,6 +267,7 @@ run_snippet() {
     printf '%s' "$input" > "$TMP_ROOT/stdin"
     set +e
     SN_OUT=$(SCRIPT_UNDER_TEST="$SCRIPT_UNDER_TEST" LOG="$TMP_ROOT/stub.log" PROMPTS="$TMP_ROOT/prompts.log" \
+        TS_FS_ROOT="${TS_FS_ROOT:-$TMP_ROOT/empty_fs}" \
         UMBREL_VERSION_FILE="$TMP_ROOT/no-umbrel-package.json" \
         bash -c "${STUB_PRELUDE}"$'\n'"${snippet}" <"$TMP_ROOT/stdin" 2>&1)
     SN_RC=$?
@@ -349,19 +352,46 @@ run_snippet "TS_NONINTERACTIVE=1; ts_guess_platform() { :; }; detect_platform"
 assert_interaction_required "--platform <id>" "Platform menu in non-interactive mode"
 assert_not_contains "$SN_OUT" "What Lightning node package" "The platform menu is not printed in non-interactive mode"
 
-run_snippet "TS_NONINTERACTIVE=1; TS_OPT_PLATFORM=umbrel; ts_guess_platform() { echo raspiblitz; }; detect_platform; echo \"PLATFORM=\$PLATFORM\""
+run_snippet "TS_NONINTERACTIVE=1; TS_OPT_PLATFORM=mynode; ts_guess_platform() { echo raspiblitz; }; detect_platform; echo \"PLATFORM=\$PLATFORM\""
 assert_equals 0 "$SN_RC" "--platform answers the platform questions"
-assert_contains "$SN_OUT" "PLATFORM=umbrel" "--platform value is used"
-assert_contains "$SN_OUT" "Using --platform umbrel (detected: raspiblitz)" "A --platform that differs from the detected platform is reported"
+assert_contains "$SN_OUT" "PLATFORM=mynode" "--platform value is used"
+assert_contains "$SN_OUT" "Using --platform mynode (detected: raspiblitz)" "A --platform that differs from the detected platform is reported"
 assert_equals "" "$SN_PROMPTS" "--platform reads no answer"
+
+for umbrel_cmd in install uninstall status restart; do
+    run_cli bash "$SCRIPT_UNDER_TEST" "$umbrel_cmd" --platform umbrel
+    assert_equals 1 "$CLI_RC" "$umbrel_cmd --platform umbrel fails closed (exit 1)"
+    assert_contains "$CLI_ERR" "Umbrel is not supported by tunnelsats.sh" "$umbrel_cmd --platform umbrel explains Umbrel is unsupported"
+    assert_contains "$CLI_ERR" "Community App Store" "$umbrel_cmd --platform umbrel points to Community App Store"
+    assert_contains "$CLI_ERR" "https://github.com/Tunnelsats/ts-umbrel-app" "$umbrel_cmd --platform umbrel includes Community App Store URL"
+    assert_contains "$CLI_ERR" "https://tunnelsats.com/guide" "$umbrel_cmd --platform umbrel points to the guide"
+done
+
+umbrel_marker_root="$TMP_ROOT/umbrel_marker_root"
+mkdir -p "$umbrel_marker_root/opt/umbreld"
+printf '{"version":"1.5.0"}\n' > "$umbrel_marker_root/opt/umbreld/package.json"
+for umbrel_cmd in install uninstall status restart pre-check; do
+    run_cli env TS_FS_ROOT="$umbrel_marker_root" bash "$SCRIPT_UNDER_TEST" "$umbrel_cmd"
+    assert_equals 1 "$CLI_RC" "$umbrel_cmd on /opt/umbreld/package.json marker alone fails closed (exit 1)"
+    assert_contains "$CLI_ERR" "Umbrel is not supported by tunnelsats.sh" "$umbrel_cmd on /opt/umbreld/package.json marker explains Umbrel is unsupported"
+    assert_contains "$CLI_ERR" "https://tunnelsats.com/guide" "$umbrel_cmd on /opt/umbreld/package.json marker points to the guide"
+done
+
+# Mixed markers (/home/admin/config.scripts + /opt/umbreld/package.json): must still fail closed on Umbrel
+mkdir -p "$umbrel_marker_root/home/admin/config.scripts"
+for umbrel_cmd in install uninstall status restart pre-check; do
+    run_cli env TS_FS_ROOT="$umbrel_marker_root" bash "$SCRIPT_UNDER_TEST" "$umbrel_cmd"
+    assert_equals 1 "$CLI_RC" "$umbrel_cmd with mixed RaspiBlitz + Umbrel markers fails closed (exit 1)"
+    assert_contains "$CLI_ERR" "Umbrel is not supported by tunnelsats.sh" "$umbrel_cmd with mixed markers explains Umbrel is unsupported"
+done
 
 run_snippet "ts_guess_platform() { echo raspiblitz; }; detect_platform; echo \"PLATFORM=\$PLATFORM\"" $'Y\n'
 assert_contains "$SN_OUT" "PLATFORM=raspiblitz" "Interactive platform confirmation still works"
 assert_equals "Detected Platform: raspiblitz. Correct? [Y/n]: " "$SN_PROMPTS" "Platform confirmation prompt is unchanged"
 
-run_snippet "ts_guess_platform() { echo raspiblitz; }; detect_platform; echo \"PLATFORM=\$PLATFORM\"" $'n\n4\n'
+run_snippet "ts_guess_platform() { echo raspiblitz; }; detect_platform; echo \"PLATFORM=\$PLATFORM\"" $'n\n3\n'
 assert_contains "$SN_OUT" "PLATFORM=baremetal" "Interactive platform menu still works"
-assert_equals $'Detected Platform: raspiblitz. Correct? [Y/n]: \nSelect [1-4]: ' "$SN_PROMPTS" "Platform menu prompt is unchanged"
+assert_equals $'Detected Platform: raspiblitz. Correct? [Y/n]: \nSelect [1-3]: ' "$SN_PROMPTS" "Platform menu prompt uses 1-3"
 
 run_snippet "ts_guess_platform() { :; }; detect_platform"
 assert_interaction_required "--platform <id>" "Platform menu at end of input (piped answers ran out)" eof
@@ -529,16 +559,9 @@ else
     assert_contains "$SN_OUT" "extra-cln.conf:1:bind-addr=0.0.0.0:9735" "T6b CLN uninstall prints clearnet bind-addr from included CLN config"
     assert_contains "$SN_LOG" "systemctl disable lightningd.service" "T6b CLN uninstall disables lightningd.service when clearnet settings remain"
     assert_not_contains "$SN_OUT" "bind-addr=127.0.0.1:9736" "T6b CLN uninstall does not flag loopback Tor bind-addr"
-
-    run_snippet "WG_DIR='$wg_announce'; GETENT_BIN='$TMP_ROOT/getent-announce'; TS_NONINTERACTIVE=1; TS_OPT_YES=1; TS_OPT_PLATFORM=umbrel; TS_OPT_IMPL=lnd
-docker() { stub_log \"docker \$*\"; case \"\$1 \${2:-}\" in 'ps --filter') echo c0ffee ;; 'inspect --format') echo /lightning_lnd_1 ;; esac; return 0; }
-cmd_uninstall"
-    assert_equals 0 "$SN_RC" "Uninstall (LND on Umbrel) completes"
-    assert_contains "$SN_OUT" "docker exec lightning_lnd_1 lncli peers updatenodeannouncement --address_remove 1.2.3.4:24556" \
-        "Uninstall (LND on Umbrel): the command runs lncli in the LND container"
 fi
 
-# Prompts 10 and 11: restart confirmations, answered by --yes
+# Prompt 10: restart confirmation, answered by --yes
 wg_single="$TMP_ROOT/wg_single"
 mkdir -p "$wg_single"
 printf '[Interface]\n' > "$wg_single/tunnelsatsv2.conf"
@@ -546,15 +569,6 @@ restart_env="WG_DIR='$wg_single'"
 run_snippet "PLATFORM=baremetal; LN_IMPL=lnd; TS_NONINTERACTIVE=1; ${restart_env}; cmd_restart"
 assert_interaction_required "--yes" "restart (systemd) without --yes"
 assert_no_side_effects "restart (systemd) without --yes"
-
-run_snippet "PLATFORM=umbrel; LN_IMPL=lnd; TS_NONINTERACTIVE=1; ${restart_env}; cmd_restart"
-assert_interaction_required "--yes" "restart (Umbrel) without --yes"
-assert_no_side_effects "restart (Umbrel) without --yes"
-
-run_snippet "PLATFORM=umbrel; LN_IMPL=lnd; ${restart_env}; cmd_restart" $'n\n'
-assert_equals 0 "$SN_RC" "Interactive Umbrel restart can still be declined"
-assert_equals "Do you want to proceed? [y/N]: " "$SN_PROMPTS" "Umbrel restart prompt is unchanged"
-assert_no_side_effects "Declined Umbrel restart"
 
 if [[ "$EUID" -eq 0 ]]; then
     skip "running as root: full restart runs with stubs"
@@ -974,6 +988,17 @@ assert_json "$CLI_OUT" '[d["privileged"], d["unreadable_items"]]' "[$([[ $EUID -
     "[none] privileged flag and no unreadable item"
 assert_readonly_calls "[none]"
 assert_equals "$snapshot_before" "$(tree_snapshot "$fx_none")" "[none] detect changed nothing in the fixture tree"
+
+# Fixture: Umbrel 1.0+ (/opt/umbreld/package.json only, without /home/umbrel/umbrel)
+fx_umbreld=$(new_fixture umbreld_only)
+put "$fx_umbreld/fs/opt/umbreld/package.json" '{"version":"1.5.0"}'
+run_detect "$fx_umbreld" --json
+assert_equals 0 "$CLI_RC" "[umbreld_only] detect --json exits 0"
+assert_json "$CLI_OUT" 'd["platform"]["guess"]' umbrel "[umbreld_only] detect guesses umbrel from /opt/umbreld/package.json alone"
+assert_json "$CLI_OUT" 'next(e for e in d["platform"]["evidence"] if e["path"] == "/opt/umbreld/package.json")' \
+    '{"platform": "umbrel", "path": "/opt/umbreld/package.json", "status": "present"}' \
+    "[umbreld_only] /opt/umbreld/package.json is reported as present in platform.evidence"
+assert_readonly_calls "[umbreld_only]"
 
 # Fixture: legacy v2 (setupv2.sh on RaspiBlitz)
 fx_v2=$(new_fixture legacy_v2)

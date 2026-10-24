@@ -17,10 +17,10 @@ sudo bash tunnelsats.sh [install|adopt|uninstall|status|restart|verify|pre-check
 | **`install`**   | Interactive wizard to install WireGuard, configure your node (LND/CLN/LIT), and set up networking (`--managed` installs managed mode). |
 | **`adopt`**     | Converts an existing standard (v2 or v3) install into managed mode (`--managed baremetal`, `--managed raspiblitz` or `--managed mynode`) in one transition. |
 | **`uninstall`** | Removes TunnelSats configurations, units, and routing rules (never edits node configuration files; prints clearnet lines to remove). |
-| **`status`**    | Detailed diagnostics. Checks subscription validity, interface status, Docker health, and connectivity (Ping/RTT).                  |
+| **`status`**    | Detailed diagnostics. Checks subscription validity, interface status, systemd service health, and connectivity (Ping/RTT).         |
 | **`restart`**   | Smart restart helper. Re-initializes the WireGuard interface and DNS watchdog if you lose connection.                              |
 | **`verify`**    | Checks a managed install from kernel state and probes inside the Lightning slice (verdict `protected`, `degraded` or `unsafe`); on a standard install it reports the tunnel and its kill switch (verdict `unmanaged`). |
-| **`pre-check`** | Non-invasive verification. Checks if your system has the necessary prerequisites (WireGuard, Docker, etc.) without making changes. |
+| **`pre-check`** | Non-invasive verification. Checks if your system has the necessary prerequisites (WireGuard, nftables, cgroup-tools, etc.) without making changes. |
 | **`detect`**    | Read-only report: platform, Lightning units, an existing TunnelSats install (v2, v3 before or after the route guard, managed) with its artifacts, config facts, capabilities and conflicts. Needs no root; anything it cannot read is reported as such. |
 | **`version`**   | Prints the tool version, the CLI contract number and the sha256 of the running script.                                             |
 
@@ -34,7 +34,7 @@ Options are accepted before or after the command:
 | :----- | :----- |
 | `--non-interactive` | Never prompts. A question that no option answers fails with exit code 2 (`E_INTERACTION_REQUIRED`, naming the option) before anything is changed. A piped stdin alone does not switch this mode on. |
 | `--config <file>` | WireGuard config (`install`, `adopt --managed`: the config to install; `status`, `restart`: the installed config in `/etc/wireguard`); answers the config selection |
-| `--platform <id>` | `raspiblitz`, `umbrel`, `mynode` or `baremetal`; answers the platform questions (`install`, `uninstall`) and replaces auto-detection (`status`, `restart`) |
+| `--platform <id>` | `raspiblitz`, `mynode` or `baremetal` (passing `umbrel` fails closed and directs to the native Umbrel app); answers the platform questions (`install`, `uninstall`) and replaces auto-detection (`status`, `restart`) |
 | `--impl <id>` | `lnd`, `cln` or `lit`; same commands as `--platform`, for the Lightning implementation (`install --managed`, `adopt --managed`: the unit to tunnel) |
 | `--network <chain>` | `mainnet` (default), `testnet` or `signet` (`install --managed raspiblitz` and `adopt --managed raspiblitz`) |
 | `--yes` | Answers the confirmations (uninstall, restart: stop the node first, LIT, managed install, adopt and uninstall) |
