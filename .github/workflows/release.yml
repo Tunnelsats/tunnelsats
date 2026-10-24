@@ -1,0 +1,143 @@
+name: Release Tagging
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'scripts/tunnelsats.sh'
+      - 'scripts/tunnelsats.sh.sha256'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-tagging
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+      tag: ${{ steps.check.outputs.tag }}
+      ver: ${{ steps.check.outputs.ver }}
+      target_sha: ${{ steps.check.outputs.target_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve Release Target and Check Existing Release
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ver=$(sed -nE 's/^VERSION="([^"]+)"$/\1/p' scripts/tunnelsats.sh | head -n 1)
+          if [[ ! "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: Invalid SemVer VERSION in scripts/tunnelsats.sh: '$ver' (expected X.Y.Z)" >&2
+            exit 1
+          fi
+          sha256sum -c scripts/tunnelsats.sh.sha256
+
+          tag="v${ver}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "GitHub Release ${tag} is already published; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+            echo "ver=${ver}" >> "$GITHUB_OUTPUT"
+            echo "target_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists on origin without a published release; checking out tagged commit to resume release publication..."
+            git fetch origin "refs/tags/${tag}:refs/tags/${tag}" --force
+            git checkout --detach "refs/tags/${tag}"
+            tagged_ver=$(sed -nE 's/^VERSION="([^"]+)"$/\1/p' scripts/tunnelsats.sh | head -n 1)
+            if [[ "$tagged_ver" != "$ver" ]]; then
+              echo "ERROR: Tagged commit VERSION (${tagged_ver}) does not match ${ver}" >&2
+              exit 1
+            fi
+            sha256sum -c scripts/tunnelsats.sh.sha256
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "ver=${ver}" >> "$GITHUB_OUTPUT"
+          echo "target_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  verify-kernel:
+    name: Managed dataplane (${{ matrix.os }})
+    needs: preflight
+    if: needs.preflight.outputs.skip != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.preflight.outputs.target_sha }}
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -yqq wireguard-tools nftables curl python3
+      - name: Real-kernel scenarios (S1-S9)
+        run: sudo TS_KERNEL_TEST=1 bash scripts/test_dataplane_kernel.sh
+
+  release:
+    needs: [preflight, verify-kernel]
+    if: needs.preflight.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.preflight.outputs.target_sha }}
+          fetch-depth: 0
+
+      - name: Tag and Publish Release on VERSION Bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+        run: |
+          set -euo pipefail
+          sha256sum -c scripts/tunnelsats.sh.sha256
+
+          find . -name "*.sh" -print0 | xargs -0 -I {} bash -n "{}"
+          bash scripts/test_ufw_check.sh
+          bash scripts/test_ipv6_patch.sh
+          bash scripts/test_sanitize_config.sh
+          bash scripts/test_lifecycle_idempotency.sh
+          bash scripts/test_cli_contract.sh
+          bash scripts/test_managed_dataplane.sh
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub Release ${TAG} is already published; skipping."
+            exit 0
+          fi
+
+          if ! git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "TunnelSats Setup Tool ${TAG}"
+            git push origin "refs/tags/${TAG}"
+          fi
+
+          cp scripts/tunnelsats.sh "${RUNNER_TEMP}/tunnelsats.sh"
+          (
+            cd "${RUNNER_TEMP}"
+            sha256sum -b tunnelsats.sh > tunnelsats.sh.sha256
+            sha256sum -c tunnelsats.sh.sha256
+          )
+
+          gh release create "$TAG" \
+            "${RUNNER_TEMP}/tunnelsats.sh" \
+            "${RUNNER_TEMP}/tunnelsats.sh.sha256" \
+            --verify-tag \
+            --title "TunnelSats Setup Tool ${TAG}" \
+            --generate-notes

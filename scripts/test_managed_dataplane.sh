@@ -1862,6 +1862,7 @@ assert_equals "unsafe:skip: not run: emergency rules are present (the verifier r
 assert_equals "" "$(grep -E 'egress4|send 6' "$fx/state/calls" || true)" "verify: no echo or IPv6 probe unit is started"
 run_snippet "$fx" "$human_env cmd_verify"
 assert_contains "$SN_OUT" "Emergency block active: Lightning clearnet traffic blocked, Tor and the local network keep working" "verify (human): emergency text"
+assert_contains "$SN_OUT" "Tool: tunnelsats.sh v3.5.0 (" "verify (human): managed output includes Tool version and sha256 prefix"
 printf 'cgroup /tunnelsats.slice/run-u1.service\nsend 198.18.2.1 sent\n' > "$fx/state/probe_send4"
 verify_doc ""
 assert_json "$doc" '[d["verdict"], d["emergency_block"]]' '["unsafe", true]' "verify: under the emergency block a kill switch datagram that leaves is unsafe"
@@ -2017,6 +2018,7 @@ assert_json "$doc" '[e["code"] + ":" + e["class"] for e in d["errors"]]' '["E_UN
 run_snippet "$fx" "$human_env cmd_verify"
 assert_contains "$SN_OUT" "Standard install: the tunnel is up (handshake 20 s ago) and its kill switch is active while the tunnel stays up. Managed mode keeps it armed across restarts: see https://github.com/Tunnelsats/tunnelsats/blob/main/docs/managed-mode.md." \
     "verify (human): standard install text"
+assert_contains "$SN_OUT" "Tool: tunnelsats.sh v3.5.0 (" "verify (human): standard install output includes Tool version and sha256 prefix"
 assert_not_contains "$SN_OUT" "Not protected" "verify (human): a standard install with blocked IPv6 is not called not protected"
 
 # Standard install where an IPv6 datagram leaves the host: reported as unsafe (exit 4, E_IPV6_PROBE)

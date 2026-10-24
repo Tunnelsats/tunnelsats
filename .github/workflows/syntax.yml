@@ -10,6 +10,14 @@ jobs:
       - name: Check Syntax of Shell Scripts
         run: |
           find . -name "*.sh" -print0 | xargs -0 -I {} bash -n "{}"
+      - name: Validate SemVer VERSION Format
+        run: |
+          ver=$(sed -nE 's/^VERSION="([^"]+)"$/\1/p' scripts/tunnelsats.sh | head -n 1)
+          if [[ ! "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid SemVer VERSION in scripts/tunnelsats.sh: '$ver' (expected X.Y.Z)" >&2
+            exit 1
+          fi
+          echo "Verified SemVer VERSION=$ver"
       - name: Test UFW Firewall Checks
         run: bash scripts/test_ufw_check.sh
       - name: Test IPv6 Patch Logic
