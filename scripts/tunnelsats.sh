@@ -7214,12 +7214,14 @@ ts_m_cmd_verifier() {
     fi
     if [[ ${#drift[@]} -eq 0 ]] && ! ts_m_emergency_present "$TS_M_INV_UID"; then
         ts_m_state_protected armed "kill switch armed and verified (slice ${TS_M_SLICE}, table inet ${TS_M_NFT_TABLE})"
+        ts_m_reresolve_endpoint
         exit 0
     fi
     if [[ ${#drift[@]} -eq 0 ]]; then
         drift=("emergency block present")
     fi
     if ts_m_rearm "drift detected (${drift[*]})"; then
+        ts_m_reresolve_endpoint
         exit 0
     fi
     if ts_m_failclose "drift detected (${drift[*]}) and re-arming failed: ${TS_M_ERROR}"; then
@@ -7227,6 +7229,58 @@ ts_m_cmd_verifier() {
     fi
     ts_m_quarantine "$TS_M_ERROR" "$TS_M_INV_UNIT" || true
     exit 1
+}
+
+# Re-resolves a hostname Endpoint of the managed tunnel config when the tunnel interface is up,
+# and updates the WireGuard peer endpoint in place if DNS moved to a new IPv4 address. Leaves the
+# live endpoint untouched when the config uses a literal IPv4 address, the tunnel is down, or the
+# lookup gets no valid IPv4 answer within TS_V_RESOLVE_TIMEOUT seconds.
+ts_m_reresolve_endpoint() {
+    local conf="${TS_FS_ROOT}${TS_M_WG_CONF}" ep="" host="" port="" cfg_pub="" out="" peer_pub="" live="" live_ip="" timeout_s=5 rc=0 ip=""
+    if [[ ! -f "$conf" ]] || [[ -L "$conf" ]]; then
+        return 0
+    fi
+    ep=$(sed -nE 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*([^[:space:]#]+).*/\1/Ip' "$conf" 2>/dev/null | head -n 1) || ep=""
+    if ! ts_detect_parse_endpoint "$ep"; then
+        return 0
+    fi
+    host="$TSD_CFG_EP_HOST"
+    port="$TSD_CFG_EP_PORT"
+    if [[ -z "$host" ]] || [[ -z "$port" ]] || valid_ipv4 "$host"; then
+        return 0
+    fi
+    if ! out=$("$WG_BIN" show "$TS_M_IFACE" endpoints 2>/dev/null); then
+        return 0
+    fi
+    cfg_pub=$(sed -nE 's/^[[:space:]]*PublicKey[[:space:]]*=[[:space:]]*([^[:space:]#]+).*/\1/Ip' "$conf" 2>/dev/null | head -n 1) || cfg_pub=""
+    if [[ -n "$cfg_pub" ]]; then
+        read -r peer_pub live < <(printf '%s\n' "$out" | awk -v k="$cfg_pub" '$1 == k { print $1, $2; exit }') || true
+    else
+        read -r peer_pub live < <(printf '%s\n' "$out" | awk 'NR == 1 { print $1, $2 }') || true
+    fi
+    if [[ -z "$peer_pub" ]]; then
+        return 0
+    fi
+    timeout_s=$(ts_v_resolve_timeout 2>/dev/null) || timeout_s=5
+    out=$(timeout --kill-after=1 "$timeout_s" "$GETENT_BIN" ahostsv4 "$host" 2>/dev/null) || rc=$?
+    live_ip="${live%:*}"
+    if valid_ipv4 "$live_ip" && [[ "$live" == "${live_ip}:${port}" ]] && \
+        printf '%s\n' "$out" | awk -v ip="$live_ip" '$1 == ip { found = 1; exit } END { exit !found }'; then
+        return 0
+    fi
+    ip=$(printf '%s\n' "$out" | awk 'NR == 1 { print $1 }')
+    if ! valid_ipv4 "$ip"; then
+        return 0
+    fi
+    if [[ "$live" == "${ip}:${port}" ]]; then
+        return 0
+    fi
+    if "$WG_BIN" set "$TS_M_IFACE" peer "$peer_pub" endpoint "${ip}:${port}" >/dev/null 2>&1; then
+        ts_m_log "endpoint of ${TS_M_IFACE} updated from ${live:-none} to ${ip}:${port} (${host})"
+    else
+        ts_m_log "could not update endpoint of ${TS_M_IFACE} to ${ip}:${port} (${host})"
+    fi
+    return 0
 }
 
 # managed-mynode-lnd-pre: ExecStartPre=+ of the Lightning unit on the mynode profile.
@@ -10758,6 +10812,11 @@ TS_V_ACTION_TEXT=""
 # lookup got no answer within it (ts_v_read_endpoint)
 TS_V_RESOLVE_TIMEOUT=5
 TS_V_EP_LOOKUP=""
+TS_V_WG_DOWN=0
+TS_V_LIVE_EP=""
+TS_V_LIVE_IPV4=""
+TS_V_EP_STATE=""
+TS_V_TUNNEL_ROUTE=0
 
 # Records check $1 with class $2 (unsafe or degraded, the class a failure falls into), result $3
 # (pass, fail, skip) and detail $4.
@@ -10908,6 +10967,7 @@ ts_v_check_rules() {
 
 ts_v_check_table() {
     local fam routes line bh tun other iface_up=0 problems=() route_missing=0 missing_msg
+    TS_V_TUNNEL_ROUTE=0
     if "$IP_BIN" link show dev "$TS_M_IFACE" >/dev/null 2>&1; then
         iface_up=1
     fi
@@ -10956,6 +11016,7 @@ ts_v_check_table() {
         # outside the tunnel
         ts_v_add table_51820 degraded fail "$missing_msg"
     elif [[ "$iface_up" -eq 1 ]]; then
+        TS_V_TUNNEL_ROUTE=1
         ts_v_add table_51820 unsafe pass "blackhole present, default dev ${TS_M_IFACE} while the tunnel is up"
     else
         ts_v_add table_51820 unsafe pass "blackhole present, tunnel route absent while the tunnel is down"
@@ -11149,30 +11210,31 @@ ts_v_passed() {
 #   ipv6_probe        one UDP datagram from the slice to the TunnelSats host's IPv6 address must be
 #                     stopped on this host (the IPv6 drop, EPERM); behind the same gate.
 ts_v_check_probes() {
-    local block="$1" user="" iface="-" via="" out="" w="" a1="" a2="" a wrong="" ks_pass=0 gate=""
+    local block="$1" user="" iface="-" via="" out="" w="" a1="" a2="" a wrong="" ks_pass=0 gate="" probe_ip=""
     TS_V_GOT_THROUGH=0
+    probe_ip="${TS_V_ENDPOINT_IP:-${TS_V_LIVE_IPV4:-}}"
     if [[ "$block" -eq 1 ]] && ! ts_v_passed nft_killswitch; then
         user="$TS_M_INV_USER"
-    elif [[ -n "$TS_V_ENDPOINT_IP" ]]; then
-        iface=$(ts_v_route_dev 4 "$TS_V_ENDPOINT_IP")
+    elif [[ -n "$probe_ip" ]]; then
+        iface=$(ts_v_route_dev 4 "$probe_ip")
         via=" through ${iface}"
     fi
-    if [[ -z "$TS_V_ENDPOINT_IP" ]]; then
+    if [[ -z "$probe_ip" ]]; then
         ts_v_add killswitch_probe unsafe fail "could not run: the endpoint address is unknown"
     elif [[ -z "$iface" ]]; then
-        ts_v_add killswitch_probe unsafe fail "could not run: no route to ${TS_V_ENDPOINT_IP}"
-    elif ! out=$(ts_v_run_probe "$user" send 4 "$iface" "$TS_V_ENDPOINT_IP") || \
-        ! w=$(ts_v_probe_answer "$out" "$TS_V_ENDPOINT_IP"); then
+        ts_v_add killswitch_probe unsafe fail "could not run: no route to ${probe_ip}"
+    elif ! out=$(ts_v_run_probe "$user" send 4 "$iface" "$probe_ip") || \
+        ! w=$(ts_v_probe_answer "$out" "$probe_ip"); then
         ts_v_add killswitch_probe unsafe fail "could not run a probe unit inside ${TS_M_SLICE}"
     else
         case "$(ts_m_probe_classify "$w")" in
             blocked)
                 ks_pass=1
-                ts_v_add killswitch_probe unsafe pass "a datagram from inside the slice to ${TS_V_ENDPOINT_IP}${via} was stopped on this host (${w})"
+                ts_v_add killswitch_probe unsafe pass "a datagram from inside the slice to ${probe_ip}${via} was stopped on this host (${w})"
                 ;;
             left)
                 TS_V_GOT_THROUGH=1
-                ts_v_add killswitch_probe unsafe fail "a datagram from inside the slice to ${TS_V_ENDPOINT_IP}${via} left this host; nothing stopped it"
+                ts_v_add killswitch_probe unsafe fail "a datagram from inside the slice to ${probe_ip}${via} left this host; nothing stopped it"
                 ;;
             *)
                 ts_v_add killswitch_probe unsafe fail "could not run (${w})"
@@ -11181,7 +11243,8 @@ ts_v_check_probes() {
     fi
     gate=$(ts_v_probe_gate "$ks_pass" "$block")
 
-    # Egress: the node user inside the slice must appear with the endpoint address
+    # Egress: the node user inside the slice must appear with the endpoint address (or the live
+    # peer endpoint address when DNS changed or failed while the tunnel stays connected)
     if [[ -n "$gate" ]]; then
         ts_v_add egress_probe unsafe skip "not run: ${gate}, so the echo services were not contacted"
     elif ! out=$(ts_v_run_probe "$TS_M_INV_USER" egress4 "${TS_V_ECHO_URLS[@]}") || \
@@ -11189,18 +11252,25 @@ ts_v_check_probes() {
         ts_v_add egress_probe unsafe fail "could not run a probe unit inside ${TS_M_SLICE} as ${TS_M_INV_USER}"
     else
         for a in "$a1" "$a2"; do
-            if [[ "$a" != "-" ]] && [[ "$a" != "$TS_V_ENDPOINT_IP" ]]; then
+            if [[ "$a" != "-" ]] && [[ "$a" != "$TS_V_ENDPOINT_IP" ]] && { [[ -z "${TS_V_LIVE_IPV4:-}" ]] || [[ "$a" != "$TS_V_LIVE_IPV4" ]]; }; then
                 wrong="$a"
             fi
         done
+        if [[ -z "$wrong" ]] && [[ "$a1" != "-" ]] && [[ "$a2" != "-" ]] && [[ "$a1" != "$a2" ]]; then
+            wrong="$a2"
+        fi
         if [[ -n "$wrong" ]]; then
-            ts_v_add egress_probe unsafe fail "egress address ${wrong} differs from the endpoint address ${TS_V_ENDPOINT_IP:-unknown}"
+            ts_v_add egress_probe unsafe fail "egress address ${wrong} differs from the endpoint address ${TS_V_ENDPOINT_IP:-${TS_V_LIVE_IPV4:-unknown}}"
         elif [[ "$a1" == "-" ]] && [[ "$a2" == "-" ]]; then
             ts_v_add egress_probe degraded fail "no answer from inside the slice (clearnet traffic is blocked)"
         elif [[ "$a1" == "-" ]] || [[ "$a2" == "-" ]]; then
-            ts_v_add egress_probe degraded fail "only one echo service answered (${TS_V_ENDPOINT_IP}); the egress is not confirmed"
-        else
+            local answered="$a1"
+            [[ "$answered" == "-" ]] && answered="$a2"
+            ts_v_add egress_probe degraded fail "only one echo service answered (${TS_V_ENDPOINT_IP:-$answered}); the egress is not confirmed"
+        elif [[ -n "$TS_V_ENDPOINT_IP" ]] && [[ "$a1" == "$TS_V_ENDPOINT_IP" ]]; then
             ts_v_add egress_probe unsafe pass "egress ${a1} equals the endpoint address"
+        else
+            ts_v_add egress_probe unsafe pass "egress ${a1} equals the live endpoint address"
         fi
     fi
 
@@ -11261,11 +11331,43 @@ ts_v_resolve_timeout() {
     echo "$t"
 }
 
+# Reads the live WireGuard endpoint of interface $1 (default: the managed tunnel) into
+# TS_V_WG_DOWN (1 when down, else 0), TS_V_LIVE_EP (<addr>:<port>, (none), or empty),
+# TS_V_LIVE_IPV4 (dotted IPv4 of TS_V_LIVE_EP, or empty), and TS_V_EP_STATE (down, unresolved,
+# match, or mismatch).
+ts_v_read_live_endpoint() {
+    local iface="${1:-$TS_M_IFACE}" out="" live_host=""
+    TS_V_WG_DOWN=0
+    TS_V_LIVE_EP=""
+    TS_V_LIVE_IPV4=""
+    TS_V_EP_STATE=""
+    if ! out=$("$WG_BIN" show "$iface" endpoints 2>/dev/null); then
+        TS_V_WG_DOWN=1
+        TS_V_EP_STATE="down"
+        return 0
+    fi
+    TS_V_LIVE_EP=$(printf '%s\n' "$out" | awk 'NR == 1 { print $2 }')
+    if [[ "$TS_V_LIVE_EP" == *:* ]]; then
+        live_host="${TS_V_LIVE_EP%:*}"
+        if valid_ipv4 "$live_host"; then
+            TS_V_LIVE_IPV4="$live_host"
+        fi
+    fi
+    if [[ -z "$TS_V_ENDPOINT_IP" ]]; then
+        TS_V_EP_STATE="unresolved"
+    elif [[ "$TS_V_LIVE_EP" == "${TS_V_ENDPOINT_IP}:${TS_V_EP_PORT}" ]]; then
+        TS_V_EP_STATE="match"
+    else
+        TS_V_EP_STATE="mismatch"
+    fi
+}
+
 # Reads the endpoint of the managed tunnel config (or of config $1) into TS_V_EP_HOST, TS_V_EP_PORT,
-# TS_V_ENDPOINT_IP and TS_V_VPN_PORT (the private key is never read into a variable). A host name is
-# resolved once, for at most TS_V_RESOLVE_TIMEOUT seconds: a start guard runs verify before every
-# Lightning start, so a name server that does not answer must not hold it up. TS_V_EP_LOOKUP is
-# "timeout" when the lookup got no answer in time, else empty.
+# TS_V_ENDPOINT_IP, TS_V_VPN_PORT, TS_V_LIVE_EP, TS_V_LIVE_IPV4 and TS_V_EP_STATE (the private key
+# is never read into a variable). A host name is resolved once, for at most TS_V_RESOLVE_TIMEOUT
+# seconds: a start guard runs verify before every Lightning start, so a name server that does not
+# answer must not hold it up. TS_V_EP_LOOKUP is "timeout" when the lookup got no answer in time,
+# else empty.
 ts_v_read_endpoint() {
     local conf="${1:-${TS_FS_ROOT}${TS_M_WG_CONF}}" ep="" out="" rc=0
     TS_V_EP_HOST=""
@@ -11273,6 +11375,7 @@ ts_v_read_endpoint() {
     TS_V_ENDPOINT_IP=""
     TS_V_EP_LOOKUP=""
     TS_V_VPN_PORT=""
+    ts_v_read_live_endpoint "$TS_M_IFACE"
     ep=$(sed -nE 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*([^[:space:]#]+).*/\1/Ip' "$conf" 2>/dev/null | head -n 1) || ep=""
     if ts_detect_parse_endpoint "$ep"; then
         TS_V_EP_HOST="$TSD_CFG_EP_HOST"
@@ -11281,39 +11384,51 @@ ts_v_read_endpoint() {
             TS_V_ENDPOINT_IP="$TS_V_EP_HOST"
         else
             out=$(timeout --kill-after=1 "${TS_V_RESOLVE_TIMEOUT:-5}" "$GETENT_BIN" ahostsv4 "$TS_V_EP_HOST" 2>/dev/null) || rc=$?
-            TS_V_ENDPOINT_IP=$(printf '%s\n' "$out" | awk 'NR == 1 { print $1 }')
+            if [[ -n "$TS_V_LIVE_IPV4" ]] && printf '%s\n' "$out" | awk -v ip="$TS_V_LIVE_IPV4" '$1 == ip { found = 1; exit } END { exit !found }'; then
+                TS_V_ENDPOINT_IP="$TS_V_LIVE_IPV4"
+            else
+                TS_V_ENDPOINT_IP=$(printf '%s\n' "$out" | awk 'NR == 1 { print $1 }')
+            fi
             if [[ -z "$TS_V_ENDPOINT_IP" ]] && { [[ "$rc" -eq 124 ]] || [[ "$rc" -eq 137 ]]; }; then
                 TS_V_EP_LOOKUP="timeout"
             fi
         fi
     fi
     TS_V_VPN_PORT=$(ts_config_vpn_port "$conf" 2>/dev/null) || TS_V_VPN_PORT=""
+    ts_v_read_live_endpoint "$TS_M_IFACE"
 }
 
 ts_v_check_endpoint() {
-    local out="" live=""
-    if ! out=$("$WG_BIN" show "$TS_M_IFACE" endpoints 2>/dev/null); then
-        ts_v_add wg_endpoint degraded fail "${TS_M_IFACE} is down"
-        return 0
-    fi
-    live=$(printf '%s\n' "$out" | awk 'NR == 1 { print $2 }')
-    if [[ -z "$TS_V_ENDPOINT_IP" ]] && [[ "$TS_V_EP_LOOKUP" == "timeout" ]]; then
-        ts_v_add wg_endpoint degraded fail "the lookup of the configured endpoint ${TS_V_EP_HOST} got no answer within ${TS_V_RESOLVE_TIMEOUT:-5} s"
-    elif [[ -z "$TS_V_ENDPOINT_IP" ]]; then
-        ts_v_add wg_endpoint degraded fail "the configured endpoint ${TS_V_EP_HOST:-?} does not resolve"
-    elif [[ "$live" == "${TS_V_ENDPOINT_IP}:${TS_V_EP_PORT}" ]]; then
-        ts_v_add wg_endpoint degraded pass "${live}"
-    else
-        ts_v_add wg_endpoint degraded fail "live endpoint ${live:-none} differs from ${TS_V_ENDPOINT_IP}:${TS_V_EP_PORT}"
-    fi
+    ts_v_read_live_endpoint "$TS_M_IFACE"
+    case "$TS_V_EP_STATE" in
+        down)
+            ts_v_add wg_endpoint degraded fail "${TS_M_IFACE} is down"
+            ;;
+        unresolved)
+            if [[ "$TS_V_EP_LOOKUP" == "timeout" ]]; then
+                ts_v_add wg_endpoint degraded fail "the lookup of the configured endpoint ${TS_V_EP_HOST} got no answer within ${TS_V_RESOLVE_TIMEOUT:-5} s"
+            else
+                ts_v_add wg_endpoint degraded fail "the configured endpoint ${TS_V_EP_HOST:-?} does not resolve"
+            fi
+            ;;
+        match)
+            ts_v_add wg_endpoint degraded pass "${TS_V_LIVE_EP}"
+            ;;
+        *)
+            ts_v_add wg_endpoint degraded fail "live endpoint ${TS_V_LIVE_EP:-none} differs from ${TS_V_ENDPOINT_IP}:${TS_V_EP_PORT}"
+            ;;
+    esac
 }
 
-# Computes TS_V_VERDICT, TS_V_EXIT and TS_V_CLEARNET_BLOCKED from the recorded checks and $1 (1 if
-# the emergency block is in effect, ts_m_emergency_effective). While it is, the verdict is degraded
-# unless a probe got through (TS_V_GOT_THROUGH), which makes it unsafe. A block that is present but
-# not in effect is a failed emergency_block check, so the verdict is unsafe.
+# Computes TS_V_VERDICT, TS_V_EXIT and TS_V_CLEARNET_BLOCKED from the recorded checks, $1 (1 if
+# the emergency block is in effect, ts_m_emergency_effective) and $2 (probes: run or skipped,
+# default run). While the block is in effect, the verdict is degraded unless a probe got through
+# (TS_V_GOT_THROUGH), which makes it unsafe. When degraded without the emergency block:
+# clearnet_blocked is 1 (true) when the tunnel route in table 51820 is absent, null when no probe
+# ran (probes="skipped") while the tunnel route is present, 0 (false) when probes ran and
+# egress_probe passed, and 1 (true) when probes ran and egress_probe did not pass.
 ts_v_verdict() {
-    local emergency="$1" i unsafe=0 degraded=0
+    local emergency="$1" probes="${2:-run}" i unsafe=0 degraded=0
     for i in "${!TS_V_ID[@]}"; do
         if [[ "${TS_V_RESULT[$i]}" != "fail" ]]; then
             continue
@@ -11338,7 +11453,13 @@ ts_v_verdict() {
     elif [[ "$degraded" -gt 0 ]]; then
         TS_V_VERDICT="degraded"
         TS_V_EXIT=5
-        if [[ "${TS_V_GOT_THROUGH:-0}" -eq 0 ]]; then
+        if [[ "${TS_V_TUNNEL_ROUTE:-0}" -eq 0 ]]; then
+            TS_V_CLEARNET_BLOCKED=1
+        elif [[ "$probes" == "skipped" ]]; then
+            TS_V_CLEARNET_BLOCKED="null"
+        elif ts_v_passed egress_probe; then
+            TS_V_CLEARNET_BLOCKED=0
+        elif [[ "${TS_V_GOT_THROUGH:-0}" -eq 0 ]]; then
             TS_V_CLEARNET_BLOCKED=1
         fi
     else
@@ -11347,13 +11468,20 @@ ts_v_verdict() {
     fi
 }
 
-# Succeeds if a check about the tunnel itself failed (handshake, endpoint, egress, tunnel route).
+# Succeeds if a check about the tunnel itself failed (handshake, endpoint down or unconnected,
+# egress, tunnel route). A wg_endpoint mismatch or unresolved lookup while the tunnel has a live
+# peer endpoint is a DNS discrepancy, not a down tunnel.
 ts_v_tunnel_failed() {
     local i
     for i in "${!TS_V_ID[@]}"; do
         if [[ "${TS_V_RESULT[$i]}" == "fail" ]]; then
             case "${TS_V_ID[$i]}" in
-                wg_handshake|wg_endpoint|egress_probe|table_51820) return 0 ;;
+                wg_handshake|egress_probe|table_51820) return 0 ;;
+                wg_endpoint)
+                    if [[ "${TS_V_EP_STATE:-down}" == "down" ]] || [[ -z "${TS_V_LIVE_IPV4:-}" ]]; then
+                        return 0
+                    fi
+                    ;;
             esac
         fi
     done
@@ -11374,7 +11502,11 @@ ts_v_print_failed() {
 ts_v_checks_json() {
     local i items=()
     for i in "${!TS_V_ID[@]}"; do
-        ts_j_obj s:id "${TS_V_ID[$i]}" s:class "${TS_V_CLASS[$i]}" s:result "${TS_V_RESULT[$i]}" s:detail "${TS_V_DETAIL[$i]}"
+        if [[ "${TS_V_ID[$i]}" == "wg_endpoint" ]] && [[ -n "${TS_V_EP_STATE:-}" ]]; then
+            ts_j_obj s:id "${TS_V_ID[$i]}" s:class "${TS_V_CLASS[$i]}" s:result "${TS_V_RESULT[$i]}" s:state "$TS_V_EP_STATE" s:detail "${TS_V_DETAIL[$i]}"
+        else
+            ts_j_obj s:id "${TS_V_ID[$i]}" s:class "${TS_V_CLASS[$i]}" s:result "${TS_V_RESULT[$i]}" s:detail "${TS_V_DETAIL[$i]}"
+        fi
         items+=("$TS_R")
     done
     ts_j_arr "${items[@]}"
@@ -11396,7 +11528,7 @@ ts_v_report() {
         checks_j="$TS_R"
         ts_j_arr "${errors[@]}"
         errors_j="$TS_R"
-        ts_j_obj sn:host "${TS_V_EP_HOST:-}" sn:ipv4 "${TS_V_ENDPOINT_IP:-}" i:port "${TS_V_EP_PORT:-}" i:vpn_port "${TS_V_VPN_PORT:-}"
+        ts_j_obj sn:host "${TS_V_EP_HOST:-}" sn:ipv4 "${TS_V_ENDPOINT_IP:-}" sn:live_ipv4 "${TS_V_LIVE_IPV4:-}" i:port "${TS_V_EP_PORT:-}" i:vpn_port "${TS_V_VPN_PORT:-}"
         ep_j="$TS_R"
         ts_j_obj s:verdict "$TS_V_VERDICT" b:clearnet_blocked "$TS_V_CLEARNET_BLOCKED" b:emergency_block "$emergency" \
             s:emergency_state "${TS_V_EMERGENCY_STATE:-none}" \
@@ -11432,8 +11564,11 @@ ts_v_report() {
             elif ts_v_tunnel_failed; then
                 echo -e "${YELLOW}Tunnel down: clearnet traffic blocked, the kill switch holds${suffix}${NC}"
                 ts_v_print_failed
-            else
+            elif [[ "$TS_V_CLEARNET_BLOCKED" == "1" ]]; then
                 echo -e "${YELLOW}Degraded: clearnet traffic blocked, the kill switch holds${suffix}${NC}"
+                ts_v_print_failed
+            else
+                echo -e "${YELLOW}Degraded: the kill switch holds${suffix}${NC}"
                 ts_v_print_failed
             fi
             ;;
@@ -11590,7 +11725,12 @@ ts_v_unmanaged() {
     if [[ "$TS_JSON" -eq 1 ]]; then
         ts_v_checks_json
         checks_j="$TS_R"
-        ts_j_obj sn:host "$TSD_CFG_EP_HOST" sn:ipv4 "" i:port "$TSD_CFG_EP_PORT" i:vpn_port "$TSD_CFG_VPN_PORT"
+        local live_ipv4=""
+        if [[ -n "$iface" ]]; then
+            ts_v_read_live_endpoint "$iface"
+            live_ipv4="$TS_V_LIVE_IPV4"
+        fi
+        ts_j_obj sn:host "$TSD_CFG_EP_HOST" sn:ipv4 "" sn:live_ipv4 "$live_ipv4" i:port "$TSD_CFG_EP_PORT" i:vpn_port "$TSD_CFG_VPN_PORT"
         ep_j="$TS_R"
         if [[ "$TS_V_VERDICT" == "unsafe" ]]; then
             ts_j_error E_IPV6_PROBE unsafe "$ipv6_leak_detail"
@@ -11657,7 +11797,7 @@ ts_v_damaged() {
     fi
     ts_v_check_handshake
     ts_v_check_endpoint
-    ts_v_verdict "$emergency"
+    ts_v_verdict "$emergency" "$probes"
     TS_V_ACTION_TEXT="restore ${TS_M_INVENTORY} (for example from a backup) or reinstall"
     ts_j_obj s:reason install_record_damaged s:detail "The install record cannot be read (${why}); ${TS_V_ACTION_TEXT}"
     TS_V_ACTION_J="$TS_R"
@@ -11672,6 +11812,11 @@ cmd_verify() {
     TS_V_RESULT=()
     TS_V_DETAIL=()
     TS_V_GOT_THROUGH=0
+    TS_V_WG_DOWN=0
+    TS_V_LIVE_EP=""
+    TS_V_LIVE_IPV4=""
+    TS_V_EP_STATE=""
+    TS_V_TUNNEL_ROUTE=0
     # Probe targets, overridable for tests. The two echo services must agree; they are asked only
     # through the tunnel. The kill switch probe goes to the WireGuard endpoint; the IPv6 probe goes
     # to the TunnelSats host's IPv6 address (TS_VERIFY_ECHO_URLS="URL1 URL2", TS_VERIFY_IPV6_URL).
@@ -11734,7 +11879,7 @@ cmd_verify() {
     fi
     ts_v_check_handshake
     ts_v_check_endpoint
-    ts_v_verdict "$emergency"
+    ts_v_verdict "$emergency" "$probes"
     ts_v_report "$emergency" "$probes"
 }
 

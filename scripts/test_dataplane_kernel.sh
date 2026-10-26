@@ -856,6 +856,7 @@ run_verify
 assert_equals "0" "$V_RC" "S1: verify exits 0"
 assert_verdict protected "S1: verify verdict protected"
 assert_equals "[]" "$(json_get "$V_DOC" '[c["id"] + ": " + c["detail"] for c in d["checks"] if c["result"] != "pass"]')" "S1: every verify check passes"
+assert_equals "[\"${SERVER_ADDR}\", \"match\"]" "$(json_get "$V_DOC" '[d["endpoint"]["live_ipv4"], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]')" "S1: endpoint.live_ipv4 and wg_endpoint.state match the live peer"
 assert_equals "0" "$(echo_count)" "S1: verify never shows the home address to the echo services"
 assert_equals "a datagram from inside the slice to ${SERVER_ADDR} through ts-under was stopped on this host (EPERM)" \
     "$(json_get "$V_DOC" '[c["detail"] for c in d["checks"] if c["id"] == "killswitch_probe"][0]')" \
@@ -916,6 +917,8 @@ assert_equals "active" "$(systemctl is-active lnd.service)" "S4: Lightning runs 
 assert_equals "/tunnelsats.slice/lnd.service" "$(ln_cgroup)" "S4: Lightning runs in the slice"
 assert_equals "" "$(stub_egress)" "S4: the stub gets no answer"
 assert_equals "0" "$(outside_count)" "S4: no traffic outside the tunnel"
+run_verify --no-probe
+assert_equals '["degraded", null]' "$(json_get "$V_DOC" '[d["verdict"], d["clearnet_blocked"]]')" "S4: verify --no-probe degraded with clearnet_blocked null while tunnel route is present"
 run_verify
 assert_equals '["degraded", true]' "$(json_get "$V_DOC" '[d["verdict"], d["clearnet_blocked"]]')" "S4: verify degraded with clearnet_blocked"
 nsx ts-srv nft delete table inet ts_block
