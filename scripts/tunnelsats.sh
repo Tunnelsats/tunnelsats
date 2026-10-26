@@ -7231,6 +7231,49 @@ ts_m_cmd_verifier() {
     exit 1
 }
 
+# Reads the first [Peer] section of config $1 that defines Endpoint=, and prints "<PublicKey> <Endpoint>"
+# ("- <Endpoint>" when that [Peer] section has no PublicKey). Prints nothing if no [Peer] has Endpoint.
+ts_m_config_endpoint_peer() {
+    local conf="$1"
+    if [[ ! -f "$conf" ]] || [[ -L "$conf" ]]; then
+        return 1
+    fi
+    awk '
+        function emit() {
+            if (in_peer && ep != "") {
+                print (pub != "" ? pub : "-"), ep
+                found = 1
+                exit
+            }
+        }
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            sub(/#.*/, "", line)
+            sub(/^[[:space:]]+/, "", line)
+            sub(/[[:space:]]+$/, "", line)
+            if (line ~ /^\[[A-Za-z]+\]$/) {
+                emit()
+                in_peer = (tolower(line) == "[peer]")
+                pub = ""
+                ep = ""
+                next
+            }
+            if (in_peer && match(line, /^[A-Za-z]+[[:space:]]*=[[:space:]]*/)) {
+                k = tolower(substr(line, 1, RSTART + RLENGTH - 1))
+                sub(/[[:space:]]*=[[:space:]]*$/, "", k)
+                v = substr(line, RSTART + RLENGTH)
+                sub(/[[:space:]]+$/, "", v)
+                if (k == "publickey" && pub == "") pub = v
+                else if (k == "endpoint" && ep == "") ep = v
+            }
+        }
+        END {
+            if (!found) emit()
+        }
+    ' "$conf" 2>/dev/null
+}
+
 # Re-resolves a hostname Endpoint of the managed tunnel config when the tunnel interface is up,
 # and updates the WireGuard peer endpoint in place if DNS moved to a new IPv4 address. Leaves the
 # live endpoint untouched when the config uses a literal IPv4 address, the tunnel is down, or the
@@ -7240,8 +7283,9 @@ ts_m_reresolve_endpoint() {
     if [[ ! -f "$conf" ]] || [[ -L "$conf" ]]; then
         return 0
     fi
-    ep=$(sed -nE 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*([^[:space:]#]+).*/\1/Ip' "$conf" 2>/dev/null | head -n 1) || ep=""
-    if ! ts_detect_parse_endpoint "$ep"; then
+    read -r cfg_pub ep < <(ts_m_config_endpoint_peer "$conf") || true
+    [[ "$cfg_pub" == "-" ]] && cfg_pub=""
+    if [[ -z "$cfg_pub" ]] || ! ts_detect_parse_endpoint "$ep"; then
         return 0
     fi
     host="$TSD_CFG_EP_HOST"
@@ -7252,12 +7296,7 @@ ts_m_reresolve_endpoint() {
     if ! out=$("$WG_BIN" show "$TS_M_IFACE" endpoints 2>/dev/null); then
         return 0
     fi
-    cfg_pub=$(sed -nE 's/^[[:space:]]*PublicKey[[:space:]]*=[[:space:]]*([^[:space:]#]+).*/\1/Ip' "$conf" 2>/dev/null | head -n 1) || cfg_pub=""
-    if [[ -n "$cfg_pub" ]]; then
-        read -r peer_pub live < <(printf '%s\n' "$out" | awk -v k="$cfg_pub" '$1 == k { print $1, $2; exit }') || true
-    else
-        read -r peer_pub live < <(printf '%s\n' "$out" | awk 'NR == 1 { print $1, $2 }') || true
-    fi
+    read -r peer_pub live < <(printf '%s\n' "$out" | awk -v k="$cfg_pub" '$1 == k { print $1, $2; exit }') || true
     if [[ -z "$peer_pub" ]]; then
         return 0
     fi
@@ -11469,10 +11508,14 @@ ts_v_verdict() {
 }
 
 # Succeeds if a check about the tunnel itself failed (handshake, endpoint down or unconnected,
-# egress, tunnel route). A wg_endpoint mismatch or unresolved lookup while the tunnel has a live
-# peer endpoint is a DNS discrepancy, not a down tunnel.
+# egress, tunnel route) and clearnet traffic is confirmed blocked (TS_V_CLEARNET_BLOCKED == 1).
+# A wg_endpoint mismatch or unresolved lookup while the tunnel has a live peer endpoint is a DNS
+# discrepancy, not a down tunnel.
 ts_v_tunnel_failed() {
     local i
+    if [[ "${TS_V_CLEARNET_BLOCKED:-0}" != "1" ]]; then
+        return 1
+    fi
     for i in "${!TS_V_ID[@]}"; do
         if [[ "${TS_V_RESULT[$i]}" == "fail" ]]; then
             case "${TS_V_ID[$i]}" in

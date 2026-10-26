@@ -878,6 +878,43 @@ assert_equals "" "$SN_OUT" "managed-verify (reresolve): mismatched PublicKey log
 assert_not_contains "$(cat "$fx/state/calls")" "wg set" "managed-verify (reresolve): does not update an unrelated live peer when PublicKey has no match"
 assert_equals "198.18.2.2:51820" "$(cat "$fx/state/wg_live_ep")" "managed-verify (reresolve): unrelated live peer endpoint stays untouched"
 sed -i 's/b3RoZXItcGVlci1wdWJsaWMta2V5LWZvci10ZXN0cz0=/dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=/' "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+cat > "$fx/wg-reresolve-2peers" <<'EOF'
+#!/bin/bash
+s="${STUB_STATE:?}"
+if [[ ! -f "$s/wg_up" ]]; then exit 1; fi
+case "${1:-}:${3:-}" in
+    show:endpoints)
+        printf 'Zmlyc3QtcGVlci13aXRob3V0LWVuZHBvaW50LTAwMDA9\t(none)\n'
+        printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t%s\n' "$(cat "$s/wg_live_ep" 2>/dev/null || echo "(none)")"
+        ;;
+    set:peer)
+        printf 'wg %s\n' "$*" >> "$s/calls"
+        echo "${6:-}" > "$s/wg_live_ep"
+        ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$fx/wg-reresolve-2peers"
+cat > "$fx/fs/etc/wireguard/tunnelsatsv2.conf" <<'EOF'
+[Interface]
+PrivateKey = dHVubmVsc2F0cy10ZXN0LXByaXZhdGUta2V5LTAwMDE=
+Address = 10.9.0.42/32
+[Peer]
+PublicKey = Zmlyc3QtcGVlci13aXRob3V0LWVuZHBvaW50LTAwMDA9
+AllowedIPs = 10.9.0.1/32
+[Peer]
+PublicKey = dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=
+Endpoint = de2.tunnelsats.com:51820
+AllowedIPs = 0.0.0.0/0
+EOF
+: > "$fx/state/calls"
+run_snippet "$fx" "WG_BIN='$fx/wg-reresolve-2peers'; ts_m_cmd_verifier"
+assert_contains "$(cat "$fx/state/calls")" "wg set tunnelsatsv2 peer dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE= endpoint 198.18.2.3:51820" \
+    "managed-verify (reresolve): multi-peer config updates the [Peer] section that defines Endpoint, not an earlier peer without Endpoint"
+assert_not_contains "$(cat "$fx/state/calls")" "Zmlyc3QtcGVlci13aXRob3V0LWVuZHBvaW50LTAwMDA9" \
+    "managed-verify (reresolve): multi-peer config never touches the peer without Endpoint"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+echo "198.18.2.2:51820" > "$fx/state/wg_live_ep"
 rm -f "$fx/state/resolve_de2.tunnelsats.com"
 run_snippet "$fx" "WG_BIN='$fx/wg-reresolve'; ts_m_cmd_verifier"
 assert_equals "" "$SN_OUT" "managed-verify (reresolve): unresolved DNS logs nothing"
@@ -1932,6 +1969,13 @@ assert_json "$doc" '[d["endpoint"]["live_ipv4"], [c["state"] for c in d["checks"
 verify_doc "TS_OPT_NO_PROBE=1; WG_BIN='$TMP_ROOT/wg-noendpoint'; export WG_NO_PEER=1;"
 assert_equals "degraded:fail: live endpoint none differs from 198.18.2.1:51820" "$(check_detail wg_endpoint)" \
     "verify: no peer line at all (a start guard reads this detail)"
+run_snippet "$fx" "$human_env TS_OPT_NO_PROBE=1; WG_BIN='$TMP_ROOT/wg-noendpoint'; cmd_verify"
+assert_contains "$SN_OUT" "Degraded: the kill switch holds (kernel checks only, probes skipped)" \
+    "verify (human): failed wg_handshake with --no-probe and tunnel route present does not claim clearnet traffic is blocked"
+assert_not_contains "$SN_OUT" "clearnet traffic blocked" \
+    "verify (human): failed wg_handshake with --no-probe does not say clearnet traffic blocked"
+assert_not_contains "$SN_OUT" "Tunnel down" \
+    "verify (human): failed wg_handshake with --no-probe and tunnel route present does not say Tunnel down"
 
 # Emergency block armed and verified while the kill switch table is in place too (the fixture's
 # attestation stays valid), as after a re-arm before the release: degraded while no probe gets
