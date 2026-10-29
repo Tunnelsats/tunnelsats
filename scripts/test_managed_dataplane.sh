@@ -295,7 +295,7 @@ case "$1:$2" in
     passwd:root|passwd:0) echo "root:x:0:0:root:/root:/bin/bash" ;;
     ahostsv4:*)
         printf 'getent %s\n' "$*" >> "$s/calls"
-        if [[ -f "$s/resolve_$2" ]]; then echo "$(cat "$s/resolve_$2") STREAM $2"; else exit 2; fi
+        if [[ -f "$s/resolve_$2" ]]; then awk -v h="$2" 'NF { print $1, "STREAM", h }' "$s/resolve_$2"; else exit 2; fi
         ;;
     ahostsv6:*)
         if [[ -f "$s/resolve6_$2" ]]; then cat "$s/resolve6_$2"; else exit 2; fi
@@ -823,6 +823,103 @@ rm -f "$fx/state/nft_refuse"
 run_snippet "$fx" 'ts_m_cmd_verifier'
 assert_contains "$SN_OUT" "emergency block released" "managed-verify: releases the block only after a successful re-arm"
 assert_not_contains "$(cat "$fx/state/rules4")" "1001-1001 blackhole" "managed-verify: uid blackhole removed after the re-arm"
+
+# Endpoint re-resolve watchdog in managed-verify: updates the WireGuard peer endpoint in place when
+# DNS moves to a new IPv4 address, logs nothing in the steady state, and leaves the live endpoint
+# untouched when DNS fails or the tunnel is down
+cat > "$fx/wg-reresolve" <<'EOF'
+#!/bin/bash
+s="${STUB_STATE:?}"
+if [[ ! -f "$s/wg_up" ]]; then exit 1; fi
+case "${1:-}:${3:-}" in
+    show:endpoints)
+        printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t%s\n' "$(cat "$s/wg_live_ep" 2>/dev/null || echo "(none)")"
+        ;;
+    set:peer)
+        printf 'wg %s\n' "$*" >> "$s/calls"
+        echo "${6:-}" > "$s/wg_live_ep"
+        ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$fx/wg-reresolve"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+echo "198.18.2.1" > "$fx/state/resolve_de2.tunnelsats.com"
+echo "198.18.2.1:51820" > "$fx/state/wg_live_ep"
+touch "$fx/state/wg_up"
+: > "$fx/state/calls"
+run_snippet "$fx" "WG_BIN='$fx/wg-reresolve'; ts_m_cmd_verifier"
+assert_equals "0" "$SN_RC" "managed-verify (reresolve): steady state exits 0"
+assert_equals "" "$SN_OUT" "managed-verify (reresolve): steady state logs nothing"
+assert_not_contains "$(cat "$fx/state/calls")" "wg set" "managed-verify (reresolve): steady state does not call wg set"
+echo "198.18.2.2" > "$fx/state/resolve_de2.tunnelsats.com"
+run_snippet "$fx" "WG_BIN='$fx/wg-reresolve'; ts_m_cmd_verifier"
+assert_equals "0" "$SN_RC" "managed-verify (reresolve): DNS change exits 0"
+assert_contains "$SN_OUT" "endpoint of tunnelsatsv2 updated from 198.18.2.1:51820 to 198.18.2.2:51820 (de2.tunnelsats.com)" \
+    "managed-verify (reresolve): logs the endpoint update"
+assert_equals "198.18.2.2:51820" "$(cat "$fx/state/wg_live_ep")" "managed-verify (reresolve): updates the live WireGuard peer endpoint"
+assert_contains "$(cat "$fx/state/calls")" "wg set tunnelsatsv2 peer dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE= endpoint 198.18.2.2:51820" \
+    "managed-verify (reresolve): calls wg set with the peer public key and new endpoint"
+: > "$fx/state/calls"
+run_snippet "$fx" "WG_BIN='$fx/wg-reresolve'; ts_m_cmd_verifier"
+assert_equals "" "$SN_OUT" "managed-verify (reresolve): after updating, steady state logs nothing"
+assert_not_contains "$(cat "$fx/state/calls")" "wg set" "managed-verify (reresolve): after updating, does not call wg set again"
+printf '198.18.2.9\n198.18.2.2\n' > "$fx/state/resolve_de2.tunnelsats.com"
+: > "$fx/state/calls"
+run_snippet "$fx" "WG_BIN='$fx/wg-reresolve'; ts_m_cmd_verifier"
+assert_equals "" "$SN_OUT" "managed-verify (reresolve): multi-address DNS with live IP in answer set logs nothing"
+assert_not_contains "$(cat "$fx/state/calls")" "wg set" "managed-verify (reresolve): multi-address DNS keeps the live endpoint when it is still in DNS"
+assert_equals "198.18.2.2:51820" "$(cat "$fx/state/wg_live_ep")" "managed-verify (reresolve): live endpoint stays at 198.18.2.2:51820"
+echo "198.18.2.3" > "$fx/state/resolve_de2.tunnelsats.com"
+sed -i 's/dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=/b3RoZXItcGVlci1wdWJsaWMta2V5LWZvci10ZXN0cz0=/' "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+: > "$fx/state/calls"
+run_snippet "$fx" "WG_BIN='$fx/wg-reresolve'; ts_m_cmd_verifier"
+assert_equals "" "$SN_OUT" "managed-verify (reresolve): mismatched PublicKey logs nothing"
+assert_not_contains "$(cat "$fx/state/calls")" "wg set" "managed-verify (reresolve): does not update an unrelated live peer when PublicKey has no match"
+assert_equals "198.18.2.2:51820" "$(cat "$fx/state/wg_live_ep")" "managed-verify (reresolve): unrelated live peer endpoint stays untouched"
+sed -i 's/b3RoZXItcGVlci1wdWJsaWMta2V5LWZvci10ZXN0cz0=/dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=/' "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+cat > "$fx/wg-reresolve-2peers" <<'EOF'
+#!/bin/bash
+s="${STUB_STATE:?}"
+if [[ ! -f "$s/wg_up" ]]; then exit 1; fi
+case "${1:-}:${3:-}" in
+    show:endpoints)
+        printf 'Zmlyc3QtcGVlci13aXRob3V0LWVuZHBvaW50LTAwMDA9\t(none)\n'
+        printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t%s\n' "$(cat "$s/wg_live_ep" 2>/dev/null || echo "(none)")"
+        ;;
+    set:peer)
+        printf 'wg %s\n' "$*" >> "$s/calls"
+        echo "${6:-}" > "$s/wg_live_ep"
+        ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$fx/wg-reresolve-2peers"
+cat > "$fx/fs/etc/wireguard/tunnelsatsv2.conf" <<'EOF'
+[Interface]
+PrivateKey = dHVubmVsc2F0cy10ZXN0LXByaXZhdGUta2V5LTAwMDE=
+Address = 10.9.0.42/32
+[Peer]
+PublicKey = Zmlyc3QtcGVlci13aXRob3V0LWVuZHBvaW50LTAwMDA9
+AllowedIPs = 10.9.0.1/32
+[Peer]
+PublicKey = dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=
+Endpoint = de2.tunnelsats.com:51820
+AllowedIPs = 0.0.0.0/0
+EOF
+: > "$fx/state/calls"
+run_snippet "$fx" "WG_BIN='$fx/wg-reresolve-2peers'; ts_m_cmd_verifier"
+assert_contains "$(cat "$fx/state/calls")" "wg set tunnelsatsv2 peer dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE= endpoint 198.18.2.3:51820" \
+    "managed-verify (reresolve): multi-peer config updates the [Peer] section that defines Endpoint, not an earlier peer without Endpoint"
+assert_not_contains "$(cat "$fx/state/calls")" "Zmlyc3QtcGVlci13aXRob3V0LWVuZHBvaW50LTAwMDA9" \
+    "managed-verify (reresolve): multi-peer config never touches the peer without Endpoint"
+cp "$TMP_ROOT/fx/render/sub.conf" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+echo "198.18.2.2:51820" > "$fx/state/wg_live_ep"
+rm -f "$fx/state/resolve_de2.tunnelsats.com"
+run_snippet "$fx" "WG_BIN='$fx/wg-reresolve'; ts_m_cmd_verifier"
+assert_equals "" "$SN_OUT" "managed-verify (reresolve): unresolved DNS logs nothing"
+assert_equals "198.18.2.2:51820" "$(cat "$fx/state/wg_live_ep")" "managed-verify (reresolve): unresolved DNS leaves the live endpoint untouched"
+rm -f "$fx/fs/etc/wireguard/tunnelsatsv2.conf" "$fx/state/wg_up" "$fx/state/wg_live_ep"
 
 # managed-arm exits 0 only when Lightning's clearnet traffic is tunneled or blocked (the Lightning
 # unit requires it), and 1 when neither protection holds
@@ -1397,7 +1494,7 @@ cat > "$STUB_BIN/wg-announce" <<'EOF'
 # Stub for wg in the announcement tests: "show <iface> endpoints" prints wg_endpoint below STUB_STATE
 s="${STUB_STATE:?}"
 if [[ "${1:-} ${3:-}" == "show endpoints" ]] && [[ -f "$s/wg_endpoint" ]]; then
-    printf 'c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9\t%s\n' "$(cat "$s/wg_endpoint")"
+    printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t%s\n' "$(cat "$s/wg_endpoint")"
     exit 0
 fi
 exit 1
@@ -1579,6 +1676,12 @@ verdict_case 0 attest:unsafe:fail wg_handshake:degraded:fail
 assert_equals "unsafe 4 0" "$SN_OUT" "Verdict: any unsafe failure is unsafe"
 verdict_case 1 attest:unsafe:fail nft_killswitch:unsafe:fail
 assert_equals "degraded 5 1" "$SN_OUT" "Verdict: the armed emergency block is degraded, never protected"
+run_snippet "$fx" 'TS_V_ID=(ln_membership); TS_V_CLASS=(degraded); TS_V_RESULT=(fail); TS_V_DETAIL=(inactive); TS_V_TUNNEL_ROUTE=1; ts_v_verdict 0 skipped; echo "$TS_V_VERDICT $TS_V_EXIT $TS_V_CLEARNET_BLOCKED"'
+assert_equals "degraded 5 null" "$SN_OUT" "Verdict: degraded without probes and with tunnel route present sets clearnet_blocked to null"
+run_snippet "$fx" 'TS_V_ID=(table_51820); TS_V_CLASS=(degraded); TS_V_RESULT=(fail); TS_V_DETAIL=(missing); TS_V_TUNNEL_ROUTE=0; ts_v_verdict 0 skipped; echo "$TS_V_VERDICT $TS_V_EXIT $TS_V_CLEARNET_BLOCKED"'
+assert_equals "degraded 5 1" "$SN_OUT" "Verdict: degraded without probes and with tunnel route absent sets clearnet_blocked to 1"
+run_snippet "$fx" 'TS_V_ID=(egress_probe ln_membership); TS_V_CLASS=(unsafe degraded); TS_V_RESULT=(pass fail); TS_V_DETAIL=(ok inactive); TS_V_TUNNEL_ROUTE=1; ts_v_verdict 0 run; echo "$TS_V_VERDICT $TS_V_EXIT $TS_V_CLEARNET_BLOCKED"'
+assert_equals "degraded 5 0" "$SN_OUT" "Verdict: degraded with passing egress_probe sets clearnet_blocked to 0"
 
 # Full verify on an armed fixture with prepared probe answers
 fx=$(new_fixture verify)
@@ -1608,8 +1711,8 @@ wg_up() {
     cat > "$STUB_BIN/wg" <<'EOF'
 #!/bin/bash
 case "$3" in
-    latest-handshakes) echo "c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9	$(( $(date +%s) - 20 ))" ;;
-    endpoints) echo "c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9	198.18.2.1:51820" ;;
+    latest-handshakes) echo "dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=	$(( $(date +%s) - 20 ))" ;;
+    endpoints) echo "dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=	198.18.2.1:51820" ;;
     *) exit 1 ;;
 esac
 EOF
@@ -1633,7 +1736,8 @@ assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], d["emergency_block"], 
 assert_json "$doc" '[c["id"] for c in d["checks"]]' '["install_state", "attest", "nft_killswitch", "slice_id", "ip_rules", "table_51820", "ln_dropin", "ln_membership", "killswitch_probe", "egress_probe", "ipv6_probe", "wg_handshake", "wg_endpoint"]' \
     "verify: the bare-metal checks in order"
 assert_json "$doc" '[c["id"] for c in d["checks"] if c["result"] != "pass"]' '[]' "verify: every check passes on the armed fixture"
-assert_json "$doc" 'd["endpoint"]' '{"host": "198.18.2.1", "ipv4": "198.18.2.1", "port": 51820, "vpn_port": 24556}' "verify: endpoint object"
+assert_json "$doc" 'd["endpoint"]' '{"host": "198.18.2.1", "ipv4": "198.18.2.1", "live_ipv4": "198.18.2.1", "port": 51820, "vpn_port": 24556}' "verify: endpoint object"
+assert_json "$doc" '[c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]' 'match' "verify: wg_endpoint state is match"
 assert_not_contains "$SN_OUT" "dHVubmVsc2F0cy10ZXN0LXByaXZhdGUta2V5LTAwMDE=" "verify: never prints the private key"
 assert_not_contains "$doc" "direct" "verify: no direct address is fetched or reported"
 assert_equals "unsafe:pass: a datagram from inside the slice to 198.18.2.1 through eth0 was stopped on this host (EPERM)" "$(check_detail killswitch_probe)" \
@@ -1709,6 +1813,9 @@ echo "inactive" > "$fx/state/unit_lnd.service_ActiveState"
 verify_doc ""
 assert_equals "degraded:fail: lnd.service is inactive" "$(check_detail ln_membership)" "verify: a stopped Lightning unit is degraded"
 assert_contains "$(cat "$fx/state/calls")" "egress4" "verify: a stopped Lightning unit does not keep the echo services off"
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"]]' '["degraded", false]' "verify: when egress_probe passes while Lightning is stopped, clearnet_blocked is false"
+verify_doc "TS_OPT_NO_PROBE=1;"
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"]]' '["degraded", null]' "verify --no-probe: when Lightning is stopped and the tunnel route is present, clearnet_blocked is null"
 echo "active" > "$fx/state/unit_lnd.service_ActiveState"
 
 # An IPv6 datagram from the slice leaves the host: unsafe
@@ -1725,7 +1832,10 @@ printf 'cgroup /tunnelsats.slice/run-u2.service\nanswer http://203.0.113.10/ -\n
 printf '#!/bin/bash\nexit 1\n' > "$STUB_BIN/wg"
 verify_doc ""
 assert_equals "5" "$SN_RC" "verify: tunnel down exits 5"
-assert_json "$doc" '[d["verdict"], d["clearnet_blocked"]]' '["degraded", true]' "verify: tunnel down is degraded with clearnet_blocked"
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], d["endpoint"]["live_ipv4"], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '["degraded", true, null, "down"]' "verify: tunnel down is degraded with clearnet_blocked, live_ipv4 null and wg_endpoint state down"
+verify_doc "TS_OPT_NO_PROBE=1;"
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"]]' '["degraded", true]' "verify --no-probe: tunnel down (tunnel route absent) keeps clearnet_blocked true"
 run_snippet "$fx" "$human_env cmd_verify"
 assert_contains "$SN_OUT" "Tunnel down: clearnet traffic blocked, the kill switch holds" "verify (human): tunnel down text"
 
@@ -1760,8 +1870,9 @@ assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], [c["class"] + ":" + c[
     '["unsafe", false, "unsafe:fail"]' "verify: a missing IPv4 tunnel route plus a missing IPv6 blackhole is unsafe (--no-probe)"
 mv "$fx/state/routes6.saved" "$fx/state/routes6"
 verify_doc "TS_OPT_NO_PROBE=1;"
-assert_json "$doc" '[d["verdict"], [c["class"] + ":" + c["result"] for c in d["checks"] if c["id"] == "table_51820"][0]]' \
-    '["degraded", "degraded:fail"]' "verify: the missing tunnel route on its own is degraded"
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], [c["class"] + ":" + c["result"] for c in d["checks"] if c["id"] == "table_51820"][0]]' \
+    '["degraded", true, "degraded:fail"]' "verify: the missing tunnel route on its own is degraded with clearnet_blocked true (--no-probe)"
+printf 'default dev tunnelsatsv2 scope link \n' >> "$fx/state/routes4"
 
 # The endpoint host name is resolved once, for at most TS_VERIFY_RESOLVE_TIMEOUT seconds (default
 # 5): a name server that does not answer holds verify up for that long at most (a start guard runs
@@ -1785,8 +1896,9 @@ verify_doc "TS_OPT_NO_PROBE=1; GETENT_BIN='$TMP_ROOT/getent-silent'; export TS_V
 lookup_secs=$((SECONDS - lookup_started))
 assert_equals "degraded:fail: the lookup of the configured endpoint vpn.ts-host.test got no answer within 1 s" "$(check_detail wg_endpoint)" \
     "verify: an endpoint lookup that gets no answer is reported as such"
-assert_json "$doc" '[d["exit_code"], d["endpoint"]["host"], d["endpoint"]["ipv4"]]' '[5, "vpn.ts-host.test", null]' \
-    "verify: degraded, with the host name and no address"
+assert_json "$doc" '[d["exit_code"], d["clearnet_blocked"], d["endpoint"]["host"], d["endpoint"]["ipv4"], d["endpoint"]["live_ipv4"], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '[5, null, "vpn.ts-host.test", null, "198.18.2.1", "unresolved"]' \
+    "verify: degraded, clearnet_blocked null, host name with ipv4 null, live_ipv4 set, and wg_endpoint state unresolved"
 if [[ "$lookup_secs" -lt 10 ]]; then
     pass "verify: the lookup is cut off after the timeout (${lookup_secs} s)"
 else
@@ -1795,10 +1907,46 @@ fi
 verify_doc "TS_OPT_NO_PROBE=1;"
 assert_equals "degraded:fail: the configured endpoint vpn.ts-host.test does not resolve" "$(check_detail wg_endpoint)" \
     "verify: a name that does not resolve is reported as before"
+assert_json "$doc" '[d["clearnet_blocked"], d["endpoint"]["live_ipv4"], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '[null, "198.18.2.1", "unresolved"]' "verify: unresolved DNS with tunnel up reports clearnet_blocked null and state unresolved"
+run_snippet "$fx" "$human_env TS_OPT_NO_PROBE=1; cmd_verify"
+assert_contains "$SN_OUT" "Degraded: the kill switch holds (kernel checks only, probes skipped)" \
+    "verify (human): unresolved DNS while tunnel is up is not reported as Tunnel down or clearnet blocked"
+assert_not_contains "$SN_OUT" "Tunnel down" "verify (human): unresolved DNS while tunnel is up does not say Tunnel down"
+probe_ok
+verify_doc ""
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], [c["result"] for c in d["checks"] if c["id"] in ("killswitch_probe", "egress_probe")]]' \
+    '["degraded", false, ["pass", "pass"]]' "verify: with probes, unresolved DNS falls back to live_ipv4 for probes and reports clearnet_blocked false"
+assert_equals "unsafe:pass: egress 198.18.2.1 equals the live endpoint address" "$(check_detail egress_probe)" \
+    "verify: egress_probe accepts the live endpoint address when DNS is unresolved"
+echo "198.18.2.2" > "$fx/state/resolve_vpn.ts-host.test"
+verify_doc "TS_OPT_NO_PROBE=1;"
+assert_equals "degraded:fail: live endpoint 198.18.2.1:51820 differs from 198.18.2.2:51820" "$(check_detail wg_endpoint)" \
+    "verify: DNS change is reported as a live endpoint mismatch"
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], d["endpoint"]["ipv4"], d["endpoint"]["live_ipv4"], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '["degraded", null, "198.18.2.2", "198.18.2.1", "mismatch"]' \
+    "verify --no-probe: DNS mismatch reports state mismatch, both ipv4 and live_ipv4, and clearnet_blocked null"
+printf 'cgroup /tunnelsats.slice/run-u1.service\nsend 198.18.2.2 EPERM\n' > "$fx/state/probe_send4"
+verify_doc ""
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], [c["result"] for c in d["checks"] if c["id"] in ("killswitch_probe", "egress_probe")]]' \
+    '["degraded", false, ["pass", "pass"]]' \
+    "verify: with probes, DNS mismatch while traffic exits through live_ipv4 is degraded with clearnet_blocked false"
+assert_equals "unsafe:pass: egress 198.18.2.1 equals the live endpoint address" "$(check_detail egress_probe)" \
+    "verify: egress_probe confirms traffic exiting through live_ipv4 after a DNS change"
+run_snippet "$fx" "$human_env cmd_verify"
+assert_contains "$SN_OUT" "Degraded: the kill switch holds" "verify (human): DNS mismatch with traffic flowing says Degraded: the kill switch holds"
+assert_not_contains "$SN_OUT" "Tunnel down" "verify (human): DNS mismatch with traffic flowing does not say Tunnel down"
+probe_ok
 echo "198.18.2.1" > "$fx/state/resolve_vpn.ts-host.test"
 verify_doc "TS_OPT_NO_PROBE=1;"
 assert_equals "degraded:pass: 198.18.2.1:51820" "$(check_detail wg_endpoint)" "verify: a resolved host name is compared with the live endpoint"
-assert_json "$doc" 'd["endpoint"]["ipv4"]' "198.18.2.1" "verify: and reported with its address"
+assert_json "$doc" '[d["endpoint"]["ipv4"], d["endpoint"]["live_ipv4"], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '["198.18.2.1", "198.18.2.1", "match"]' "verify: and reported with its address, live_ipv4, and state match"
+printf '198.18.2.9\n198.18.2.1\n' > "$fx/state/resolve_vpn.ts-host.test"
+verify_doc "TS_OPT_NO_PROBE=1;"
+assert_equals "degraded:pass: 198.18.2.1:51820" "$(check_detail wg_endpoint)" "verify: multi-address DNS matches when live_ipv4 is in the answer set"
+assert_json "$doc" '[d["endpoint"]["ipv4"], d["endpoint"]["live_ipv4"], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '["198.18.2.1", "198.18.2.1", "match"]' "verify: multi-address DNS keeps live_ipv4 as endpoint.ipv4 and state match"
 rm -f "$fx/state/resolve_vpn.ts-host.test"
 sed -i 's/vpn.ts-host.test:51820/198.18.2.1:51820/' "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
 # The wg_endpoint details a start guard reads (docs/managed-mode.md, contract 1): the peer has no
@@ -1807,8 +1955,8 @@ cat > "$TMP_ROOT/wg-noendpoint" <<'EOF'
 #!/bin/bash
 # wg whose peer has no live endpoint yet: "(none)", or no peer line at all with WG_NO_PEER
 case "$3" in
-    endpoints) if [[ -z "${WG_NO_PEER:-}" ]]; then printf 'c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9\t(none)\n'; fi ;;
-    latest-handshakes) printf 'c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9\t0\n' ;;
+    endpoints) if [[ -z "${WG_NO_PEER:-}" ]]; then printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t(none)\n'; fi ;;
+    latest-handshakes) printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t0\n' ;;
     *) exit 1 ;;
 esac
 EOF
@@ -1816,9 +1964,103 @@ chmod +x "$TMP_ROOT/wg-noendpoint"
 verify_doc "TS_OPT_NO_PROBE=1; WG_BIN='$TMP_ROOT/wg-noendpoint';"
 assert_equals "degraded:fail: live endpoint (none) differs from 198.18.2.1:51820" "$(check_detail wg_endpoint)" \
     "verify: a peer without a live endpoint yet (a start guard reads this detail)"
+assert_json "$doc" '[d["endpoint"]["live_ipv4"], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '[null, "mismatch"]' "verify: a peer without a live endpoint has live_ipv4 null and state mismatch"
 verify_doc "TS_OPT_NO_PROBE=1; WG_BIN='$TMP_ROOT/wg-noendpoint'; export WG_NO_PEER=1;"
 assert_equals "degraded:fail: live endpoint none differs from 198.18.2.1:51820" "$(check_detail wg_endpoint)" \
     "verify: no peer line at all (a start guard reads this detail)"
+run_snippet "$fx" "$human_env TS_OPT_NO_PROBE=1; WG_BIN='$TMP_ROOT/wg-noendpoint'; cmd_verify"
+assert_contains "$SN_OUT" "Degraded: the kill switch holds (kernel checks only, probes skipped)" \
+    "verify (human): failed wg_handshake with --no-probe and tunnel route present does not claim clearnet traffic is blocked"
+assert_not_contains "$SN_OUT" "clearnet traffic blocked" \
+    "verify (human): failed wg_handshake with --no-probe does not say clearnet traffic blocked"
+assert_not_contains "$SN_OUT" "Tunnel down" \
+    "verify (human): failed wg_handshake with --no-probe and tunnel route present does not say Tunnel down"
+
+# Multi-peer WireGuard config where an auxiliary peer precedes the server [Peer] owning Endpoint:
+# verify selects the configured endpoint peer by PublicKey for live_ipv4, wg_endpoint, wg_handshake,
+# and the DNS-failure probe fallback, never the preceding auxiliary peer.
+cp "$fx/fs/etc/wireguard/tunnelsatsv2.conf" "$fx/tunnelsatsv2.conf.single"
+cat > "$fx/fs/etc/wireguard/tunnelsatsv2.conf" <<'EOF'
+[Interface]
+# Port Forwarding: 24556
+PrivateKey = dHVubmVsc2F0cy10ZXN0LXByaXZhdGUta2V5LTAwMDE=
+Address = 10.9.0.42/32
+[Peer]
+PublicKey = Zmlyc3QtcGVlci13aXRob3V0LWVuZHBvaW50LTAwMDA9
+AllowedIPs = 10.9.0.1/32
+[Peer]
+PublicKey = dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=
+Endpoint = vpn.ts-host.test:51820
+AllowedIPs = 0.0.0.0/0
+EOF
+cat > "$TMP_ROOT/wg-multipeer" <<'EOF'
+#!/bin/bash
+aux_ep="${WG_AUX_EP:-(none)}"
+aux_hs="${WG_AUX_HS:-0}"
+case "$3" in
+    endpoints)
+        printf 'Zmlyc3QtcGVlci13aXRob3V0LWVuZHBvaW50LTAwMDA9\t%s\n' "$aux_ep"
+        if [[ -z "${WG_OMIT_SERVER:-}" ]]; then
+            printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t198.18.2.1:51820\n'
+        fi
+        ;;
+    latest-handshakes)
+        printf 'Zmlyc3QtcGVlci13aXRob3V0LWVuZHBvaW50LTAwMDA9\t%s\n' "$aux_hs"
+        if [[ -z "${WG_OMIT_SERVER:-}" ]]; then
+            printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t%s\n' "$(( $(date +%s) - 20 ))"
+        fi
+        ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$TMP_ROOT/wg-multipeer"
+probe_ok
+echo "198.18.2.1" > "$fx/state/resolve_vpn.ts-host.test"
+: > "$fx/state/calls"
+verify_doc "WG_BIN='$TMP_ROOT/wg-multipeer';"
+assert_equals "0" "$SN_RC" "verify (multi-peer, aux none, DNS ok): protected exits 0"
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], d["endpoint"]["ipv4"], d["endpoint"]["live_ipv4"], [c["id"] + ":" + c["result"] for c in d["checks"] if c["id"] in ("wg_handshake", "wg_endpoint")], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '["protected", false, "198.18.2.1", "198.18.2.1", ["wg_handshake:pass", "wg_endpoint:pass"], "match"]' \
+    "verify (multi-peer, aux none, DNS ok): selects the server peer for live_ipv4, wg_handshake, and wg_endpoint"
+rm -f "$fx/state/resolve_vpn.ts-host.test"
+: > "$fx/state/calls"
+verify_doc "WG_BIN='$TMP_ROOT/wg-multipeer';"
+assert_equals "5" "$SN_RC" "verify (multi-peer, aux none, DNS failed): degraded exits 5"
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], d["endpoint"]["ipv4"], d["endpoint"]["live_ipv4"], [c["id"] + ":" + c["result"] for c in d["checks"] if c["id"] in ("killswitch_probe", "egress_probe", "wg_handshake", "wg_endpoint")], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '["degraded", false, null, "198.18.2.1", ["killswitch_probe:pass", "egress_probe:pass", "wg_handshake:pass", "wg_endpoint:fail"], "unresolved"]' \
+    "verify (multi-peer, aux none, DNS failed): falls back to the server peer live_ipv4 for probes"
+assert_contains "$(cat "$fx/state/calls")" "managed-probe send 4 eth0 198.18.2.1" \
+    "verify (multi-peer, aux none, DNS failed): kill switch probe targets the server peer live_ipv4"
+echo "198.18.2.1" > "$fx/state/resolve_vpn.ts-host.test"
+verify_doc "WG_BIN='$TMP_ROOT/wg-multipeer'; export WG_AUX_EP='198.51.100.9:51820';"
+assert_json "$doc" '[d["verdict"], d["endpoint"]["live_ipv4"], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '["protected", "198.18.2.1", "match"]' \
+    "verify (multi-peer, aux different endpoint, DNS ok): ignores preceding peer live address"
+rm -f "$fx/state/resolve_vpn.ts-host.test"
+: > "$fx/state/calls"
+verify_doc "WG_BIN='$TMP_ROOT/wg-multipeer'; export WG_AUX_EP='198.51.100.9:51820';"
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], d["endpoint"]["live_ipv4"], [c["id"] + ":" + c["result"] for c in d["checks"] if c["id"] in ("killswitch_probe", "egress_probe")]]' \
+    '["degraded", false, "198.18.2.1", ["killswitch_probe:pass", "egress_probe:pass"]]' \
+    "verify (multi-peer, aux different endpoint, DNS failed): uses server peer live_ipv4 rather than auxiliary peer"
+assert_contains "$(cat "$fx/state/calls")" "managed-probe send 4 eth0 198.18.2.1" \
+    "verify (multi-peer, aux different endpoint, DNS failed): probes server peer IP, never auxiliary peer IP"
+assert_not_contains "$(cat "$fx/state/calls")" "198.51.100.9" \
+    "verify (multi-peer, aux different endpoint, DNS failed): never probes auxiliary peer IP 198.51.100.9"
+: > "$fx/state/calls"
+verify_doc "WG_BIN='$TMP_ROOT/wg-multipeer'; export WG_AUX_EP='198.51.100.9:51820' WG_AUX_HS='$(( $(date +%s) - 5 ))' WG_OMIT_SERVER=1;"
+assert_json "$doc" '[d["verdict"], d["endpoint"]["live_ipv4"], [c["id"] + ":" + c["result"] for c in d["checks"] if c["id"] in ("killswitch_probe", "wg_handshake", "wg_endpoint")]]' \
+    '["unsafe", null, ["killswitch_probe:fail", "wg_handshake:fail", "wg_endpoint:fail"]]' \
+    "verify (multi-peer, server peer absent from wg show, DNS failed): never borrows auxiliary peer live_ipv4 or handshake"
+assert_not_contains "$(cat "$fx/state/calls")" "198.51.100.9" \
+    "verify (multi-peer, server peer absent from wg show, DNS failed): does not probe auxiliary peer IP"
+echo "198.18.2.1" > "$fx/state/resolve_vpn.ts-host.test"
+verify_doc "TS_OPT_NO_PROBE=1; WG_BIN='$TMP_ROOT/wg-multipeer'; export WG_AUX_EP='198.51.100.9:51820' WG_AUX_HS='$(( $(date +%s) - 5 ))' WG_OMIT_SERVER=1;"
+assert_equals "degraded:fail: live endpoint none differs from 198.18.2.1:51820" "$(check_detail wg_endpoint)" \
+    "verify (multi-peer, server peer absent from wg show, DNS ok): reports live endpoint none"
+mv "$fx/tunnelsatsv2.conf.single" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+rm -f "$fx/state/resolve_vpn.ts-host.test"
+probe_ok
 
 # Emergency block armed and verified while the kill switch table is in place too (the fixture's
 # attestation stays valid), as after a re-arm before the release: degraded while no probe gets
@@ -1827,7 +2069,6 @@ assert_equals "degraded:fail: live endpoint none differs from 198.18.2.1:51820" 
 # while emergency rules are present.
 wg_up
 touch "$fx/state/link_tunnelsatsv2"
-printf 'default dev tunnelsatsv2 scope link \n' >> "$fx/state/routes4"
 # $1 = what stops the kill switch datagram: EPERM (the kill chain, default) or EINVAL (uid blackhole)
 probe_emergency() {
     probe_ok
