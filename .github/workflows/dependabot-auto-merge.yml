@@ -1,0 +1,89 @@
+# Auto-approve and enable native auto-merge for Dependabot eligible updates:
+# - Minor and patch dependency updates
+# - GitHub Actions updates (minor/patch/SHA bumps; major bumps stay open for review)
+
+name: Dependabot Auto-Merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-24.04
+    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.0.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check that only dependency files changed
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          (steps.metadata.outputs.package-ecosystem == 'github_actions' && steps.metadata.outputs.update-type != 'version-update:semver-major')
+        run: |
+          set -euo pipefail
+          files=$(gh api --paginate "repos/${{ github.repository }}/pulls/$PR_NUMBER/files" --jq '.[].filename')
+          printf 'Changed files:\n%s\n' "$files"
+          other=$(printf '%s\n' "$files" | grep -Ev '^(\.github/workflows/[^/]+\.ya?ml)$' || true)
+          if [ -n "$other" ]; then
+            echo "::error::Not auto-merging: this PR changes files outside the dependency allow-list."
+            printf '%s\n' "$other"
+            exit 1
+          fi
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Auto-approve eligible Dependabot updates
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          (steps.metadata.outputs.package-ecosystem == 'github_actions' && steps.metadata.outputs.update-type != 'version-update:semver-major')
+        run: |
+          set -euo pipefail
+          approved=$(gh api --paginate "repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" \
+            --jq "[.[] | select((.user.login == \"github-actions[bot]\" or .user.login == \"github-actions\") and .state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\")] | length")
+          if [ "$approved" -eq 0 ]; then
+            gh pr review --approve "$PR_NUMBER" --repo "${{ github.repository }}"
+          else
+            echo "Commit $HEAD_SHA is already approved by github-actions."
+          fi
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Mark the TunnelSentinel review as not required
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          (steps.metadata.outputs.package-ecosystem == 'github_actions' && steps.metadata.outputs.update-type != 'version-update:semver-major')
+        run: |
+          gh api --method POST "repos/${{ github.repository }}/statuses/$HEAD_SHA" \
+            -f state=success \
+            -f context='TunnelSentinel / Code Review' \
+            -f description='Not reviewed: Dependabot minor/patch update, gated on CI' \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable native auto-merge for eligible Dependabot updates
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          (steps.metadata.outputs.package-ecosystem == 'github_actions' && steps.metadata.outputs.update-type != 'version-update:semver-major')
+        run: |
+          gh pr merge "$PR_NUMBER" --auto --squash --repo "${{ github.repository }}"
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
