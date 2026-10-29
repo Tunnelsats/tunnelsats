@@ -1494,7 +1494,7 @@ cat > "$STUB_BIN/wg-announce" <<'EOF'
 # Stub for wg in the announcement tests: "show <iface> endpoints" prints wg_endpoint below STUB_STATE
 s="${STUB_STATE:?}"
 if [[ "${1:-} ${3:-}" == "show endpoints" ]] && [[ -f "$s/wg_endpoint" ]]; then
-    printf 'c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9\t%s\n' "$(cat "$s/wg_endpoint")"
+    printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t%s\n' "$(cat "$s/wg_endpoint")"
     exit 0
 fi
 exit 1
@@ -1711,8 +1711,8 @@ wg_up() {
     cat > "$STUB_BIN/wg" <<'EOF'
 #!/bin/bash
 case "$3" in
-    latest-handshakes) echo "c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9	$(( $(date +%s) - 20 ))" ;;
-    endpoints) echo "c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9	198.18.2.1:51820" ;;
+    latest-handshakes) echo "dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=	$(( $(date +%s) - 20 ))" ;;
+    endpoints) echo "dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=	198.18.2.1:51820" ;;
     *) exit 1 ;;
 esac
 EOF
@@ -1955,8 +1955,8 @@ cat > "$TMP_ROOT/wg-noendpoint" <<'EOF'
 #!/bin/bash
 # wg whose peer has no live endpoint yet: "(none)", or no peer line at all with WG_NO_PEER
 case "$3" in
-    endpoints) if [[ -z "${WG_NO_PEER:-}" ]]; then printf 'c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9\t(none)\n'; fi ;;
-    latest-handshakes) printf 'c2VydmVyLXB1YmxpYy1rZXktZm9yLXRlc3RzLTAwMDA9\t0\n' ;;
+    endpoints) if [[ -z "${WG_NO_PEER:-}" ]]; then printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t(none)\n'; fi ;;
+    latest-handshakes) printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t0\n' ;;
     *) exit 1 ;;
 esac
 EOF
@@ -1976,6 +1976,91 @@ assert_not_contains "$SN_OUT" "clearnet traffic blocked" \
     "verify (human): failed wg_handshake with --no-probe does not say clearnet traffic blocked"
 assert_not_contains "$SN_OUT" "Tunnel down" \
     "verify (human): failed wg_handshake with --no-probe and tunnel route present does not say Tunnel down"
+
+# Multi-peer WireGuard config where an auxiliary peer precedes the server [Peer] owning Endpoint:
+# verify selects the configured endpoint peer by PublicKey for live_ipv4, wg_endpoint, wg_handshake,
+# and the DNS-failure probe fallback, never the preceding auxiliary peer.
+cp "$fx/fs/etc/wireguard/tunnelsatsv2.conf" "$fx/tunnelsatsv2.conf.single"
+cat > "$fx/fs/etc/wireguard/tunnelsatsv2.conf" <<'EOF'
+[Interface]
+# Port Forwarding: 24556
+PrivateKey = dHVubmVsc2F0cy10ZXN0LXByaXZhdGUta2V5LTAwMDE=
+Address = 10.9.0.42/32
+[Peer]
+PublicKey = Zmlyc3QtcGVlci13aXRob3V0LWVuZHBvaW50LTAwMDA9
+AllowedIPs = 10.9.0.1/32
+[Peer]
+PublicKey = dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=
+Endpoint = vpn.ts-host.test:51820
+AllowedIPs = 0.0.0.0/0
+EOF
+cat > "$TMP_ROOT/wg-multipeer" <<'EOF'
+#!/bin/bash
+aux_ep="${WG_AUX_EP:-(none)}"
+aux_hs="${WG_AUX_HS:-0}"
+case "$3" in
+    endpoints)
+        printf 'Zmlyc3QtcGVlci13aXRob3V0LWVuZHBvaW50LTAwMDA9\t%s\n' "$aux_ep"
+        if [[ -z "${WG_OMIT_SERVER:-}" ]]; then
+            printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t198.18.2.1:51820\n'
+        fi
+        ;;
+    latest-handshakes)
+        printf 'Zmlyc3QtcGVlci13aXRob3V0LWVuZHBvaW50LTAwMDA9\t%s\n' "$aux_hs"
+        if [[ -z "${WG_OMIT_SERVER:-}" ]]; then
+            printf 'dHVubmVsc2F0cy10ZXN0LXNlcnZlci1rZXktMDAwMDE=\t%s\n' "$(( $(date +%s) - 20 ))"
+        fi
+        ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$TMP_ROOT/wg-multipeer"
+probe_ok
+echo "198.18.2.1" > "$fx/state/resolve_vpn.ts-host.test"
+: > "$fx/state/calls"
+verify_doc "WG_BIN='$TMP_ROOT/wg-multipeer';"
+assert_equals "0" "$SN_RC" "verify (multi-peer, aux none, DNS ok): protected exits 0"
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], d["endpoint"]["ipv4"], d["endpoint"]["live_ipv4"], [c["id"] + ":" + c["result"] for c in d["checks"] if c["id"] in ("wg_handshake", "wg_endpoint")], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '["protected", false, "198.18.2.1", "198.18.2.1", ["wg_handshake:pass", "wg_endpoint:pass"], "match"]' \
+    "verify (multi-peer, aux none, DNS ok): selects the server peer for live_ipv4, wg_handshake, and wg_endpoint"
+rm -f "$fx/state/resolve_vpn.ts-host.test"
+: > "$fx/state/calls"
+verify_doc "WG_BIN='$TMP_ROOT/wg-multipeer';"
+assert_equals "5" "$SN_RC" "verify (multi-peer, aux none, DNS failed): degraded exits 5"
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], d["endpoint"]["ipv4"], d["endpoint"]["live_ipv4"], [c["id"] + ":" + c["result"] for c in d["checks"] if c["id"] in ("killswitch_probe", "egress_probe", "wg_handshake", "wg_endpoint")], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '["degraded", false, null, "198.18.2.1", ["killswitch_probe:pass", "egress_probe:pass", "wg_handshake:pass", "wg_endpoint:fail"], "unresolved"]' \
+    "verify (multi-peer, aux none, DNS failed): falls back to the server peer live_ipv4 for probes"
+assert_contains "$(cat "$fx/state/calls")" "managed-probe send 4 eth0 198.18.2.1" \
+    "verify (multi-peer, aux none, DNS failed): kill switch probe targets the server peer live_ipv4"
+echo "198.18.2.1" > "$fx/state/resolve_vpn.ts-host.test"
+verify_doc "WG_BIN='$TMP_ROOT/wg-multipeer'; export WG_AUX_EP='198.51.100.9:51820';"
+assert_json "$doc" '[d["verdict"], d["endpoint"]["live_ipv4"], [c["state"] for c in d["checks"] if c["id"] == "wg_endpoint"][0]]' \
+    '["protected", "198.18.2.1", "match"]' \
+    "verify (multi-peer, aux different endpoint, DNS ok): ignores preceding peer live address"
+rm -f "$fx/state/resolve_vpn.ts-host.test"
+: > "$fx/state/calls"
+verify_doc "WG_BIN='$TMP_ROOT/wg-multipeer'; export WG_AUX_EP='198.51.100.9:51820';"
+assert_json "$doc" '[d["verdict"], d["clearnet_blocked"], d["endpoint"]["live_ipv4"], [c["id"] + ":" + c["result"] for c in d["checks"] if c["id"] in ("killswitch_probe", "egress_probe")]]' \
+    '["degraded", false, "198.18.2.1", ["killswitch_probe:pass", "egress_probe:pass"]]' \
+    "verify (multi-peer, aux different endpoint, DNS failed): uses server peer live_ipv4 rather than auxiliary peer"
+assert_contains "$(cat "$fx/state/calls")" "managed-probe send 4 eth0 198.18.2.1" \
+    "verify (multi-peer, aux different endpoint, DNS failed): probes server peer IP, never auxiliary peer IP"
+assert_not_contains "$(cat "$fx/state/calls")" "198.51.100.9" \
+    "verify (multi-peer, aux different endpoint, DNS failed): never probes auxiliary peer IP 198.51.100.9"
+: > "$fx/state/calls"
+verify_doc "WG_BIN='$TMP_ROOT/wg-multipeer'; export WG_AUX_EP='198.51.100.9:51820' WG_AUX_HS='$(( $(date +%s) - 5 ))' WG_OMIT_SERVER=1;"
+assert_json "$doc" '[d["verdict"], d["endpoint"]["live_ipv4"], [c["id"] + ":" + c["result"] for c in d["checks"] if c["id"] in ("killswitch_probe", "wg_handshake", "wg_endpoint")]]' \
+    '["unsafe", null, ["killswitch_probe:fail", "wg_handshake:fail", "wg_endpoint:fail"]]' \
+    "verify (multi-peer, server peer absent from wg show, DNS failed): never borrows auxiliary peer live_ipv4 or handshake"
+assert_not_contains "$(cat "$fx/state/calls")" "198.51.100.9" \
+    "verify (multi-peer, server peer absent from wg show, DNS failed): does not probe auxiliary peer IP"
+echo "198.18.2.1" > "$fx/state/resolve_vpn.ts-host.test"
+verify_doc "TS_OPT_NO_PROBE=1; WG_BIN='$TMP_ROOT/wg-multipeer'; export WG_AUX_EP='198.51.100.9:51820' WG_AUX_HS='$(( $(date +%s) - 5 ))' WG_OMIT_SERVER=1;"
+assert_equals "degraded:fail: live endpoint none differs from 198.18.2.1:51820" "$(check_detail wg_endpoint)" \
+    "verify (multi-peer, server peer absent from wg show, DNS ok): reports live endpoint none"
+mv "$fx/tunnelsatsv2.conf.single" "$fx/fs/etc/wireguard/tunnelsatsv2.conf"
+rm -f "$fx/state/resolve_vpn.ts-host.test"
+probe_ok
 
 # Emergency block armed and verified while the kill switch table is in place too (the fixture's
 # attestation stays valid), as after a re-arm before the release: degraded while no probe gets

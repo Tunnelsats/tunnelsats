@@ -7231,8 +7231,9 @@ ts_m_cmd_verifier() {
     exit 1
 }
 
-# Reads the first [Peer] section of config $1 that defines Endpoint=, and prints "<PublicKey> <Endpoint>"
-# ("- <Endpoint>" when that [Peer] section has no PublicKey). Prints nothing if no [Peer] has Endpoint.
+# Reads the first [Peer] section of config $1 that defines Endpoint=, and prints
+# "<PublicKey>\t<Endpoint>" ("-\t<Endpoint>" when that [Peer] section has no PublicKey).
+# Prints nothing if no [Peer] has Endpoint.
 ts_m_config_endpoint_peer() {
     local conf="$1"
     if [[ ! -f "$conf" ]] || [[ -L "$conf" ]]; then
@@ -7241,7 +7242,7 @@ ts_m_config_endpoint_peer() {
     awk '
         function emit() {
             if (in_peer && ep != "") {
-                print (pub != "" ? pub : "-"), ep
+                printf "%s\t%s\n", (pub != "" ? pub : "-"), ep
                 found = 1
                 exit
             }
@@ -7265,7 +7266,10 @@ ts_m_config_endpoint_peer() {
                 v = substr(line, RSTART + RLENGTH)
                 sub(/[[:space:]]+$/, "", v)
                 if (k == "publickey" && pub == "") pub = v
-                else if (k == "endpoint" && ep == "") ep = v
+                else if (k == "endpoint" && ep == "") {
+                    sub(/[[:space:]].*/, "", v)
+                    ep = v
+                }
             }
         }
         END {
@@ -7283,7 +7287,7 @@ ts_m_reresolve_endpoint() {
     if [[ ! -f "$conf" ]] || [[ -L "$conf" ]]; then
         return 0
     fi
-    read -r cfg_pub ep < <(ts_m_config_endpoint_peer "$conf") || true
+    IFS=$'\t' read -r cfg_pub ep < <(ts_m_config_endpoint_peer "$conf") || true
     [[ "$cfg_pub" == "-" ]] && cfg_pub=""
     if [[ -z "$cfg_pub" ]] || ! ts_detect_parse_endpoint "$ep"; then
         return 0
@@ -10586,7 +10590,7 @@ ts_m_uninstall_print_lines() {
 # forwarded port (TS_M_ANN_PORT), plus those an earlier uninstall that did not complete saved in the
 # install record (TS_M_INV_ANNOUNCE). TS_M_ANN_WHY says why TS_M_ANN_ADDRS is empty.
 ts_m_announce_read() {
-    local live="" a
+    local a
     TS_M_ANN_ADDRS=()
     TS_M_ANN_PORT=""
     TS_M_ANN_WHY=""
@@ -10596,10 +10600,9 @@ ts_m_announce_read() {
         if [[ -n "$TS_V_ENDPOINT_IP" ]] && valid_ipv4 "$TS_V_ENDPOINT_IP"; then
             TS_M_ANN_ADDRS+=("${TS_V_ENDPOINT_IP}:${TS_M_ANN_PORT}")
         fi
-        live=$("$WG_BIN" show "$TS_M_IFACE" endpoints 2>/dev/null | awk 'NR == 1 { print $2 }') || live=""
-        live="${live%:*}"
-        if valid_ipv4 "$live" && ! ts_in_list "${live}:${TS_M_ANN_PORT}" "${TS_M_ANN_ADDRS[*]}"; then
-            TS_M_ANN_ADDRS+=("${live}:${TS_M_ANN_PORT}")
+        if [[ -n "$TS_V_LIVE_IPV4" ]] && valid_ipv4 "$TS_V_LIVE_IPV4" && \
+            ! ts_in_list "${TS_V_LIVE_IPV4}:${TS_M_ANN_PORT}" "${TS_M_ANN_ADDRS[*]}"; then
+            TS_M_ANN_ADDRS+=("${TS_V_LIVE_IPV4}:${TS_M_ANN_PORT}")
         fi
     fi
     for a in $TS_M_INV_ANNOUNCE; do
@@ -10850,6 +10853,7 @@ TS_V_ACTION_TEXT=""
 # Time limit of the endpoint lookup in seconds (ts_v_resolve_timeout), and "timeout" when the
 # lookup got no answer within it (ts_v_read_endpoint)
 TS_V_RESOLVE_TIMEOUT=5
+TS_V_EP_PUB=""
 TS_V_EP_LOOKUP=""
 TS_V_WG_DOWN=0
 TS_V_LIVE_EP=""
@@ -11339,6 +11343,19 @@ ts_v_check_probes() {
     fi
 }
 
+# Selects the second column of `wg show <iface> endpoints|latest-handshakes` output ($1) for the
+# configured endpoint peer (TS_V_EP_PUB). When no endpoint peer could be read from the config at
+# all (both TS_V_EP_PUB and TS_V_EP_HOST empty) and WireGuard reports a single peer row, uses that
+# single row; never attributes another peer's row on a multi-peer interface or a keyless [Peer].
+ts_v_select_peer_value() {
+    local out="$1"
+    if [[ -n "${TS_V_EP_PUB:-}" ]]; then
+        printf '%s\n' "$out" | awk -v k="$TS_V_EP_PUB" '$1 == k { print $2; exit }'
+    elif [[ -z "${TS_V_EP_HOST:-}" ]]; then
+        printf '%s\n' "$out" | awk 'NF >= 2 { n++; v = $2 } END { if (n == 1) print v }'
+    fi
+}
+
 # $1 = interface (default: the managed tunnel).
 ts_v_check_handshake() {
     local iface="${1:-$TS_M_IFACE}" out="" ts="" age now
@@ -11346,7 +11363,7 @@ ts_v_check_handshake() {
         ts_v_add wg_handshake degraded fail "${iface} is down"
         return 0
     fi
-    ts=$(printf '%s\n' "$out" | awk 'NR == 1 { print $2 }')
+    ts=$(ts_v_select_peer_value "$out")
     if [[ ! "$ts" =~ ^[0-9]+$ ]] || [[ "$ts" -eq 0 ]]; then
         ts_v_add wg_handshake degraded fail "no handshake yet"
         return 0
@@ -11370,10 +11387,10 @@ ts_v_resolve_timeout() {
     echo "$t"
 }
 
-# Reads the live WireGuard endpoint of interface $1 (default: the managed tunnel) into
-# TS_V_WG_DOWN (1 when down, else 0), TS_V_LIVE_EP (<addr>:<port>, (none), or empty),
-# TS_V_LIVE_IPV4 (dotted IPv4 of TS_V_LIVE_EP, or empty), and TS_V_EP_STATE (down, unresolved,
-# match, or mismatch).
+# Reads the live WireGuard endpoint of interface $1 (default: the managed tunnel) for the
+# configured endpoint peer (TS_V_EP_PUB) into TS_V_WG_DOWN (1 when down, else 0), TS_V_LIVE_EP
+# (<addr>:<port>, (none), or empty), TS_V_LIVE_IPV4 (dotted IPv4 of TS_V_LIVE_EP, or empty), and
+# TS_V_EP_STATE (down, unresolved, match, or mismatch).
 ts_v_read_live_endpoint() {
     local iface="${1:-$TS_M_IFACE}" out="" live_host=""
     TS_V_WG_DOWN=0
@@ -11385,7 +11402,7 @@ ts_v_read_live_endpoint() {
         TS_V_EP_STATE="down"
         return 0
     fi
-    TS_V_LIVE_EP=$(printf '%s\n' "$out" | awk 'NR == 1 { print $2 }')
+    TS_V_LIVE_EP=$(ts_v_select_peer_value "$out")
     if [[ "$TS_V_LIVE_EP" == *:* ]]; then
         live_host="${TS_V_LIVE_EP%:*}"
         if valid_ipv4 "$live_host"; then
@@ -11401,24 +11418,31 @@ ts_v_read_live_endpoint() {
     fi
 }
 
-# Reads the endpoint of the managed tunnel config (or of config $1) into TS_V_EP_HOST, TS_V_EP_PORT,
-# TS_V_ENDPOINT_IP, TS_V_VPN_PORT, TS_V_LIVE_EP, TS_V_LIVE_IPV4 and TS_V_EP_STATE (the private key
-# is never read into a variable). A host name is resolved once, for at most TS_V_RESOLVE_TIMEOUT
-# seconds: a start guard runs verify before every Lightning start, so a name server that does not
-# answer must not hold it up. TS_V_EP_LOOKUP is "timeout" when the lookup got no answer in time,
-# else empty.
+# Reads the endpoint of the managed tunnel config (or of config $1) into TS_V_EP_PUB, TS_V_EP_HOST,
+# TS_V_EP_PORT, TS_V_ENDPOINT_IP, TS_V_VPN_PORT, TS_V_LIVE_EP, TS_V_LIVE_IPV4 and TS_V_EP_STATE
+# (the private key is never read into a variable). A host name is resolved once, for at most
+# TS_V_RESOLVE_TIMEOUT seconds: a start guard runs verify before every Lightning start, so a name
+# server that does not answer must not hold it up. TS_V_EP_LOOKUP is "timeout" when the lookup got
+# no answer in time, else empty.
 ts_v_read_endpoint() {
-    local conf="${1:-${TS_FS_ROOT}${TS_M_WG_CONF}}" ep="" out="" rc=0
+    local conf="${1:-${TS_FS_ROOT}${TS_M_WG_CONF}}" iface="$TS_M_IFACE" ep="" out="" rc=0
+    if [[ $# -ge 1 ]]; then
+        iface=$(basename "$conf" .conf)
+    fi
+    TS_V_EP_PUB=""
     TS_V_EP_HOST=""
     TS_V_EP_PORT=""
     TS_V_ENDPOINT_IP=""
     TS_V_EP_LOOKUP=""
     TS_V_VPN_PORT=""
-    ts_v_read_live_endpoint "$TS_M_IFACE"
-    ep=$(sed -nE 's/^[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*([^[:space:]#]+).*/\1/Ip' "$conf" 2>/dev/null | head -n 1) || ep=""
+    IFS=$'\t' read -r TS_V_EP_PUB ep < <(ts_m_config_endpoint_peer "$conf") || true
+    [[ "$TS_V_EP_PUB" == "-" ]] && TS_V_EP_PUB=""
     if ts_detect_parse_endpoint "$ep"; then
         TS_V_EP_HOST="$TSD_CFG_EP_HOST"
         TS_V_EP_PORT="$TSD_CFG_EP_PORT"
+    fi
+    ts_v_read_live_endpoint "$iface"
+    if [[ -n "$TS_V_EP_HOST" ]]; then
         if valid_ipv4 "$TS_V_EP_HOST"; then
             TS_V_ENDPOINT_IP="$TS_V_EP_HOST"
         else
@@ -11434,7 +11458,7 @@ ts_v_read_endpoint() {
         fi
     fi
     TS_V_VPN_PORT=$(ts_config_vpn_port "$conf" 2>/dev/null) || TS_V_VPN_PORT=""
-    ts_v_read_live_endpoint "$TS_M_IFACE"
+    ts_v_read_live_endpoint "$iface"
 }
 
 ts_v_check_endpoint() {
@@ -11681,6 +11705,12 @@ ts_v_unmanaged() {
         ts_v_add wg_handshake degraded skip "no single TunnelSats config to check (${TSD_CFG_SELECTION:-none})"
         ts_v_add legacy_killswitch degraded skip "no single TunnelSats config to check"
     else
+        TS_V_EP_PUB=""
+        TS_V_EP_HOST="$TSD_CFG_EP_HOST"
+        if [[ -n "$TSD_CFG_PATH" ]]; then
+            IFS=$'\t' read -r TS_V_EP_PUB _ < <(ts_m_config_endpoint_peer "${TS_FS_ROOT}${TSD_CFG_PATH}") || true
+            [[ "$TS_V_EP_PUB" == "-" ]] && TS_V_EP_PUB=""
+        fi
         ts_v_check_handshake "$iface"
         n=$((${#TS_V_ID[@]} - 1))
         if [[ "${TS_V_RESULT[$n]}" == "pass" ]]; then
@@ -11856,6 +11886,8 @@ cmd_verify() {
     TS_V_DETAIL=()
     TS_V_GOT_THROUGH=0
     TS_V_WG_DOWN=0
+    TS_V_EP_PUB=""
+    TS_V_EP_HOST=""
     TS_V_LIVE_EP=""
     TS_V_LIVE_IPV4=""
     TS_V_EP_STATE=""
